@@ -1,0 +1,9 @@
+# Keep source checkouts consistent on Windows and other platforms.
+* text=auto eol=lf
+
+# Preserve the exact bytes of the signed, hash-pinned Microsoft runtime.
+runtime/conpty/** -text
+
+# These exact bytes are pinned by the bundled Git runtime/release verifiers.
+crates/rocket-git/src/managed_git.manifest -text
+tools/Git-Runtime.ps1 -text

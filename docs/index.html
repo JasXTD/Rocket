@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rocket: a native Git client for Windows</title>
+<meta name="description" content="A native Windows Git client built in Rust. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes and add your own features.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://jasxtd.github.io/rocket/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Rocket: a native Git client for Windows">
+<meta property="og:description" content="A native Windows Git client built in Rust. An open-source alternative to Fork and GitKraken.">
+<meta property="og:url" content="https://jasxtd.github.io/rocket/">
+<meta property="og:image" content="https://jasxtd.github.io/rocket/media/social-preview.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="images/rocket-logo.png">
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap bar">
+  <a class="brand" href="./" aria-label="Rocket home"><img src="images/rocket-logo.png" alt="" width="34" height="34"><span>Rocket</span></a>
+  <span class="sp"></span>
+  <nav class="nav" aria-label="Main">
+    <a href="#review">Features</a>
+    <a href="#extensions">Extensions</a>
+    <a href="get.html">Get Rocket</a>
+    <a href="#docs">Docs</a>
+    <a href="https://github.com/JasXTD/rocket">GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a>
+  </nav>
+  <button class="theme" type="button" aria-label="Switch between light and dark" hidden>
+    <svg class="sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"></circle><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"></path></svg>
+    <svg class="moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 9.6A6 6 0 1 1 6.4 2.5a4.8 4.8 0 0 0 7.1 7.1z"></path></svg>
+  </button>
+  <details class="menu"><summary aria-label="Menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14"></path></svg></summary>
+    <div><a href="#review">Features</a><a href="#extensions">Extensions</a><a href="get.html">Get Rocket</a><a href="#docs">Docs</a><a href="https://github.com/JasXTD/rocket">GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a></div>
+  </details>
+</div></header>
+
+<main id="main">
+<section class="hero" aria-labelledby="hero-title"><div class="wrap">
+  <div class="hero-copy">
+    <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
+    <div class="tag mono"><b>HEAD</b> native Git client for Windows</div>
+    <h1 id="hero-title">Review first.<span>Then launch.</span></h1>
+    <p class="lead">A native Windows Git client built in Rust. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes and add your own features.</p>
+    <div class="cta"><a class="btn pri" href="get.html">Build from source</a><a class="btn" href="https://github.com/JasXTD/rocket">View on GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a></div>
+    <p class="meta">In development · Windows x64 · MIT or Apache-2.0</p>
+  </div>
+  <figure class="hero-shot">
+    <div class="zoom" style="--zw: 330%; --zx: -31%; --zy: -24%; --ar: 5/4">
+      <img class="only-dark" src="media/hero-dark.webp" width="1920" height="990" alt="Rocket showing a diff of a Rust file, with staged and unstaged files on the left and word-level highlights.">
+      <img class="only-light" src="media/hero-light.webp" width="1920" height="990" alt="Rocket showing a diff of a Rust file, with staged and unstaged files on the left and word-level highlights.">
+    </div>
+    <figcaption>Real desktop app · demo repository</figcaption>
+  </figure>
+</div></section>
+
+<div class="wrap"><div class="log">
+
+<section class="c wide" id="demo" aria-labelledby="h-demo">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
+  <div class="head"><span class="ref mono">demo</span>
+    <h2 id="h-demo">See it in 30 seconds.</h2></div>
+  <figure class="clip">
+    <video class="v-wide" src="media/demo-wide.mp4" poster="media/poster-wide.jpg" width="1920" height="990" controls preload="none" playsinline aria-label="A 30-second tour of Rocket: a diff, single-line staging, the branch graph, the conflict editor, an AI proposal, Extensions, the command palette and the themes."><a href="media/demo-wide.mp4">Download the video</a></video>
+    <video class="v-phone" src="media/demo-phone.mp4" poster="media/poster-phone.jpg" width="864" height="1080" controls preload="none" playsinline aria-label="A 30-second tour of Rocket: a diff, single-line staging, the branch graph, the conflict editor, an AI proposal, Extensions, the command palette and the themes."><a href="media/demo-phone.mp4">Download the video</a></video>
+    <figcaption>Real screens from a demo repository, with a scripted AI reply. The pointer and captions are added. No sound.</figcaption>
+  </figure>
+</section>
+
+<section class="c wide" id="review" aria-labelledby="h-review">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
+  <div class="head"><span class="ref mono">review</span>
+    <h2 id="h-review">See what will happen before it happens.</h2>
+    <p>Operations that change a repository open a review first. It shows what will happen, and nothing is written until you confirm.</p></div>
+  <div class="four">
+    <div><h3>Reviews recheck</h3><p>Supported previews pin the selected commits, paths and settings. A change from outside Rocket can invalidate one before it runs.</p></div>
+    <div><h3>Recovery data</h3><p>Supported destructive file operations keep recovery copies. History rewrites keep the original tips in recovery references.</p></div>
+    <div><h3>Honest cancellation</h3><p>Stop doesn't undo finished work. Rocket refreshes or checks the result, and says when it's unsure.</p></div>
+    <div><h3>Secret checks</h3><p>Local checks can block recognized credentials in commits and pushes. Pattern detection has limits.</p></div>
+  </div>
+</section>
+
+<section class="c wide" id="extensions" aria-labelledby="h-extensions">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><svg class="bend a leave-ext" viewBox="0 0 26 36" aria-hidden="true"><path d="M1 0C1 18 25 16 25 36"></path></svg><i class="ln a"></i><svg class="bend a back-ext" viewBox="0 0 26 36" aria-hidden="true"><path d="M25 0C25 18 1 16 1 36"></path></svg><i class="dot side low"></i></div>
+  <div class="two">
+    <div><span class="ref mono">extensions</span>
+      <h2 id="h-extensions">Add your own features.</h2>
+      <p>Extensions are sandboxed Lua packages with their own native panels, forms and tables, plus commands in the palette, the Repository menu and right-click menus.</p>
+      <a class="lnk" href="https://github.com/JasXTD/rocket/blob/main/INTEGRATIONS.md">Write your own extension</a></div>
+    <div><ul class="ticks flush"><li>Install a package from a file after a review of its code and permissions</li><li>An extension can't run Git or shell commands, read your files or see your tokens</li><li>Build with the extension API, an offline Lua playground and developer tools that validate Lua</li><li>Jira and PlayGround ship with Rocket and start off</li></ul></div>
+  </div>
+  <div class="shot pair band">
+    <figure class="shot zoom" style="--zw: 213%; --zx: -50.5%; --zy: -18.5%; --ar: 2/1">
+      <img class="only-dark" src="media/lua-dark.webp" width="1684" height="874" loading="lazy" alt="The Lua playground: a short script on the left, and on the right the release checklist panel it draws, with a table, a progress bar and a button.">
+      <img class="only-light" src="media/lua-light.webp" width="1684" height="874" loading="lazy" alt="The Lua playground: a short script on the left, and on the right the release checklist panel it draws, with a table, a progress bar and a button.">
+    </figure>
+    <figure class="shot over review">
+      <img class="only-dark" src="media/review-dark.webp" width="643" height="540" loading="lazy" alt="The review shown before an extension is turned on, listing its permissions, its commands and what it can never do.">
+      <img class="only-light" src="media/review-light.webp" width="643" height="540" loading="lazy" alt="The review shown before an extension is turned on, listing its permissions, its commands and what it can never do.">
+    </figure>
+  </div>
+</section>
+
+<section class="c wide" id="changes" aria-labelledby="h-changes">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
+  <div class="two">
+    <div><span class="ref mono">changes</span>
+      <h2 id="h-changes">Stage exactly what you mean to commit.</h2></div>
+    <div><p>Stage whole files, or pick hunks and lines in supported text changes. Read unified or side-by-side diffs with syntax highlighting, word highlights, search and an overview strip for long files.</p>
+      <ul class="ticks"><li>Drag selections between Staged and Unstaged</li><li>Compare images with overlays, a swipe view and pixel differences</li><li>Open commit details, file history and blame in their own windows</li></ul></div>
+  </div>
+  <figure class="shot zoom band" style="--zw: 225%; --zx: -55%; --zy: 0%; --ar: 5/4">
+    <img class="only-dark" src="media/split-dark.webp" width="1304" height="536" loading="lazy" alt="A side-by-side diff with syntax and word highlights, and a checkbox on each changed line for staging it alone.">
+    <img class="only-light" src="media/split-light.webp" width="1304" height="536" loading="lazy" alt="A side-by-side diff with syntax and word highlights, and a checkbox on each changed line for staging it alone.">
+  </figure>
+</section>
+
+<section class="c" id="history" aria-labelledby="h-history">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><svg class="bend v leave-history" viewBox="0 0 26 36" aria-hidden="true"><path d="M1 0C1 18 25 16 25 36"></path></svg><i class="ln v from"></i><i class="dot"></i></div>
+  <div><span class="ref mono">history</span>
+    <h2 id="h-history">Read the graph. Plan the rewrite.</h2>
+    <p>Browse the commit graph across branches, search beyond the loaded commits and follow file renames. Plan interactive rebases with reorder, reword, edit, squash, fixup and drop.</p>
+    <ul class="ticks"><li>Merge or rebase with a preview</li><li>Cherry-pick a series or revert selected commits</li><li>Continue, Skip or Abort recovery on supported operations</li></ul>
+  </div>
+  <div class="shot pair">
+    <figure class="shot zoom" style="--zw: 160%; --zx: 0%; --zy: 0%; --ar: 3/2">
+      <img class="only-dark" src="media/history-dark.webp" width="944" height="420" loading="lazy" alt="The Commits page with a branch graph across five branches, merges, and branch and remote labels.">
+      <img class="only-light" src="media/history-light.webp" width="944" height="420" loading="lazy" alt="The Commits page with a branch graph across five branches, merges, and branch and remote labels.">
+    </figure>
+    <figure class="shot over">
+      <img class="only-dark" src="media/rebase-dark.webp" width="690" height="220" loading="lazy" alt="An interactive rebase plan: five commits marked Pick, Fixup or Drop.">
+      <img class="only-light" src="media/rebase-light.webp" width="690" height="220" loading="lazy" alt="An interactive rebase plan: five commits marked Pick, Fixup or Drop.">
+    </figure>
+  </div>
+</section>
+
+<section class="c wide" id="conflicts" aria-labelledby="h-conflicts">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><i class="ln v to"></i><svg class="bend v back-conflicts" viewBox="0 0 26 36" aria-hidden="true"><path d="M25 0C25 18 1 16 1 36"></path></svg><i class="dot merge low"></i></div>
+  <div class="two">
+    <div><span class="ref mono">conflicts</span>
+      <h2 id="h-conflicts">Resolve conflicts and keep a way back.</h2>
+      <p>Resolve supported text conflicts in a three-column editor with linked scrolling and conflict navigation. Saving and staging keep recovery backups and check for edits made outside Rocket.</p></div>
+    <div><p>Ask Claude Code, Codex or a connected MCP agent for a proposal, read the explanation and the result, then apply it to the editor draft. Each applied conflict keeps its own Undo.</p>
+      <p class="small">AI tools are optional and run only when you ask, under that program's own account. Rocket stores no AI API key. Repository content you send can leave your computer, so each tool shows or explains it first. The proposal pictured here is a scripted example.</p></div>
+  </div>
+  <div class="shot pair band">
+    <figure class="shot zoom" style="--zw: 290%; --zx: -33%; --zy: -21%; --ar: 5/4">
+      <img class="only-dark" src="media/conflict-dark.webp" width="1684" height="874" loading="lazy" alt="The three-column conflict editor with Ours, Result and Theirs, and two conflicts numbered and linked across the columns.">
+      <img class="only-light" src="media/conflict-light.webp" width="1684" height="874" loading="lazy" alt="The three-column conflict editor with Ours, Result and Theirs, and two conflicts numbered and linked across the columns.">
+    </figure>
+    <figure class="shot over narrow">
+      <img class="only-dark" src="media/cards-dark.webp" width="356" height="276" loading="lazy" alt="An AI proposal for two conflicts, each with a short explanation and a confidence label.">
+      <img class="only-light" src="media/cards-light.webp" width="356" height="276" loading="lazy" alt="An AI proposal for two conflicts, each with a short explanation and a confidence label.">
+    </figure>
+  </div>
+</section>
+
+<section class="c" id="remotes" aria-labelledby="h-remotes">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
+  <div><span class="ref mono">origin/main</span>
+    <h2 id="h-remotes">Fetch, pull and push with the details in view.</h2>
+    <p>Choose fast-forward only, merge or rebase when pulling. Review normal and force-with-lease pushes, and publish several branches atomically when the server supports all-or-nothing updates.</p>
+    <p>See every SSH key in one list, unlock one in ssh-agent, or make one repository use only one key. Existing keys and SSH config stay in place.</p>
+  </div>
+  <div>
+    <ul class="hosts"><li>GitHub</li><li>GitHub Enterprise Server</li><li>GitLab</li><li>Gitea</li><li>Bitbucket Cloud</li><li>Bitbucket Server/Data Center</li><li>Azure DevOps Services</li><li>Azure DevOps Server</li></ul>
+    <p>Browse pull requests and supported issue lists, prepare reviewed PR or MR creation, and inspect details, available checks and reviews.</p>
+    <p class="small">What each host can do differs. Live acceptance for hosts other than github.com is still unverified. <a href="https://github.com/JasXTD/rocket/blob/main/HOSTING.md">Hosting details</a></p>
+  </div>
+</section>
+
+<section class="c wide" id="themes" aria-labelledby="h-themes">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
+  <div class="two">
+    <div><span class="ref mono">themes</span>
+      <h2 id="h-themes">Make the window yours.</h2></div>
+    <div><p>Default, Dark, Light and System, or Custom with your own accent colour and a picture behind the window.</p></div>
+  </div>
+  <div class="thumbs">
+    <figure><img src="media/theme-default.webp" width="960" height="495" loading="lazy" alt="The Commits page in the Default navy theme."><figcaption>Default</figcaption></figure>
+    <figure><img src="media/theme-dark.webp" width="960" height="495" loading="lazy" alt="The Commits page in the Dark graphite theme."><figcaption>Dark</figcaption></figure>
+    <figure><img src="media/theme-light.webp" width="960" height="495" loading="lazy" alt="The Commits page in the Light theme."><figcaption>Light</figcaption></figure>
+    <figure><img src="media/theme-custom.webp" width="960" height="495" loading="lazy" alt="The Commits page in a Custom theme with a pink accent and the Astronaut picture behind the window."><figcaption>Custom</figcaption></figure>
+  </div>
+</section>
+
+<section class="c wide" id="more" aria-labelledby="h-more">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
+  <div class="head"><span class="ref mono">more</span><h2 id="h-more">And the rest of your Git day.</h2></div>
+  <div class="grid3">
+    <div><h3>Stashes</h3><p>Save and inspect them, or apply selected files, hunks or lines.</p></div>
+    <div><h3>Worktrees</h3><p>Manage linked worktrees alongside your main checkout.</p></div>
+    <div><h3>Submodules</h3><p>Reviewed add, move, remove, sync and update, nested ones included.</p></div>
+    <div><h3>Git LFS</h3><p>Inspect files and objects, manage tracking rules and locks.</p></div>
+    <div><h3>Tags</h3><p>Inspect, publish and safely delete remote tags.</p></div>
+    <div><h3>Recovery</h3><p>Inspect reflogs, find lost commits and recover them onto new branches.</p></div>
+    <div><h3>Bisect</h3><p>Find the commit that introduced a problem, by hand or automated.</p></div>
+    <div><h3>Terminal</h3><p>Windows PowerShell, Git Bash, Command Prompt, PowerShell 7 or your own shell.</p></div>
+    <div><h3>Command palette</h3><p>Ctrl+K finds commands, branches and views.</p></div>
+    <div><h3>Repository manager</h3><p>Saved repositories in folders, nested workspaces and tabs.</p></div>
+    <div><h3>Command line</h3><p><span class="mono inline">rocket-cli.exe</span> calls the same backend, with structured JSON output.</p></div>
+    <div><h3>Your tools</h3><p>External editor, diff and merge profiles, custom commands and your own shortcuts.</p></div>
+  </div>
+</section>
+
+<section class="c" id="get" aria-labelledby="h-get">
+  <div class="rail" aria-hidden="true"><i class="ln end"></i><i class="dot root low"></i></div>
+  <div><span class="ref mono">root</span>
+    <h2 id="h-get">Get Rocket.</h2>
+    <p>Rocket is in development and has no public installer yet. Build it from source on Windows x64.</p>
+    <div class="cta"><a class="btn pri" href="get.html">See the full steps</a></div>
+  </div>
+  <pre class="code mono" tabindex="0" role="region" aria-label="Build commands"><span class="cm"># needs Rust (MSVC), C++ build tools and Git 2.46+</span>
+git clone https://github.com/JasXTD/rocket.git
+cd rocket
+.\tools\Build-Local.ps1
+.\target\release\rocket.exe</pre>
+</section>
+
+</div></div>
+
+<section class="wrap docs-area" id="docs" aria-labelledby="h-docs">
+  <h2 id="h-docs">Documentation</h2>
+  <div class="docs">
+    <a href="https://github.com/JasXTD/rocket/blob/main/docs/wiki/Home.md"><strong>Beginner wiki</strong><span>First commit, everyday work, remotes and recovery.</span></a>
+    <a href="https://github.com/JasXTD/rocket/blob/main/crates/rocket-ui/src/guide.md"><strong>User guide</strong><span>Desktop workflows and recovery.</span></a>
+    <a href="https://github.com/JasXTD/rocket/blob/main/CLI.md"><strong>CLI reference</strong><span>Commands, JSON output and cancellation.</span></a>
+    <a href="https://github.com/JasXTD/rocket/blob/main/HOSTING.md"><strong>Hosting</strong><span>Accounts, providers and verification limits.</span></a>
+    <a href="https://github.com/JasXTD/rocket/blob/main/docs/wiki/Integrations.md"><strong>Extensions</strong><span>Install, enable and update extensions.</span></a>
+    <a href="https://github.com/JasXTD/rocket/blob/main/INTEGRATIONS.md"><strong>Extension API</strong><span>Write your own extension package.</span></a>
+    <a href="https://github.com/JasXTD/rocket/blob/main/SECURITY.md"><strong>Security</strong><span>Safeguards and known boundaries.</span></a>
+    <a href="https://github.com/JasXTD/rocket/blob/main/CHANGELOG.md"><strong>Changelog</strong><span>Version history.</span></a>
+  </div>
+  <div class="lic" id="license"><span>Licensed under either <a href="https://github.com/JasXTD/rocket/blob/main/LICENSE-APACHE">Apache-2.0</a> or <a href="https://github.com/JasXTD/rocket/blob/main/LICENSE-MIT">MIT</a>, at your option.</span><span><a href="https://github.com/JasXTD/rocket/blob/main/THIRD-PARTY-NOTICES.txt">Third-party notices</a> list bundled components.</span></div>
+</section>
+</main>
+
+<footer class="foot"><div class="wrap">
+  <a class="brand" href="./" aria-label="Rocket home"><img src="images/rocket-logo.png" alt="" width="34" height="34"><span>Rocket</span></a>
+  <span>Created by Xetro</span>
+  <span class="sp"></span>
+  <a href="https://github.com/JasXTD/rocket/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/JasXTD/rocket/blob/main/SECURITY.md">Security</a>
+  <a href="#license">MIT or Apache-2.0</a>
+</div></footer>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "api": 1, "id": "jira", "name": "Jira", "version": "1.2.0",
+  "description": "Jira Cloud search, details, reviewed creation, edits, transitions and comments.",
+  "permissions": {"network": true, "write": true, "repository": true},
+  "settings": [
+    {"id": "project", "label": "Project key", "default": "ROCKET"}
+  ],
+  "commands": [
+    {"id": "create-issue", "label": "Create issue"},
+    {"id": "find-commit", "label": "Find issues for this commit", "target": "commit"},
+    {"id": "comment-commit", "label": "Comment on the open issue", "target": "commit"},
+    {"id": "open-branch", "label": "Open issue for this branch", "target": "branch"}
+  ]
+}

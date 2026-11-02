@@ -1,0 +1,13 @@
+[package]
+name = "rocket-mcp-control"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Local Rocket MCP configuration and service control"
+
+[lints]
+workspace = true
+
+# OS randomness, files, process control and loopback HTTP use the platform/std only.

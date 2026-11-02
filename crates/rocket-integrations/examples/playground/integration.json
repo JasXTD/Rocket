@@ -1,0 +1,9 @@
+{
+  "api": 1, "id": "playground", "name": "PlayGround", "version": "1.1.0",
+  "description": "Every control an extension can use, with the Lua that draws it.",
+  "permissions": {"network": false, "write": false, "repository": true}, "settings": [],
+  "commands": [
+    {"id": "say-hello", "label": "Say hello"},
+    {"id": "show-target", "label": "Show what a command receives", "target": "commit"}
+  ]
+}

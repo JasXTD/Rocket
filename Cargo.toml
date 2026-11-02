@@ -1,0 +1,24 @@
+[workspace]
+members = ["crates/rocket-git", "crates/rocket-ui", "crates/rocket-mcp", "crates/rocket-terminal", "crates/rocket-mcp-control", "crates/rocket-spell", "crates/rocket-cli", "crates/rocket-integrations"]
+resolver = "3"
+
+[workspace.package]
+version = "0.89.2"
+edition = "2024"
+rust-version = "1.89"
+license = "MIT OR Apache-2.0"
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+all = "warn"
+
+# Keep full symbols for Rocket code, including tests and local variables.
+# Third-party code retains source locations without its bulky type/variable data.
+# The test profile inherits these settings; incremental compilation stays enabled.
+[profile.dev]
+debug = "full"
+
+[profile.dev.package."*"]
+debug = "line-tables-only"

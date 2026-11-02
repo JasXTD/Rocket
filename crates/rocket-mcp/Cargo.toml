@@ -1,0 +1,20 @@
+[package]
+name = "rocket-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version = "1.95"
+publish = false
+description = "Local MCP control of a persistent Rocket development window"
+
+[dependencies]
+rocket-ui = { path = "../rocket-ui" }
+rocket-git = { path = "../rocket-git" }
+rocket-mcp-control = { path = "../rocket-mcp-control" }
+rocket-terminal = { path = "../rocket-terminal" }
+eframe = { version = "=0.36.2", default-features = false, features = ["default_fonts", "glow"] }
+serde_json = "=1.0.151"
+png = "=0.18.1"
+
+[lints]
+workspace = true

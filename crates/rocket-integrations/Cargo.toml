@@ -1,0 +1,29 @@
+[package]
+name = "rocket-integrations"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[features]
+runtime = ["dep:mlua", "dep:mlua-sys", "dep:lua-src"]
+
+[dependencies]
+rocket-git = { path = "../rocket-git" }
+serde_json = "=1.0.151"
+mlua = { version = "=0.12.2", optional = true, default-features = false, features = ["lua55"] }
+# Build the one audited Lua version ourselves, using mlua's supported external
+# linking mode. This avoids bringing the unused LuaJIT source/build dependencies.
+mlua-sys = { version = "=0.13.0", optional = true, default-features = false, features = ["lua55", "external"] }
+
+[build-dependencies]
+lua-src = { version = "=551.1.0", optional = true }
+
+[[bin]]
+name = "rocket-lua-host"
+path = "src/host.rs"
+required-features = ["runtime"]
+
+[lints]
+workspace = true

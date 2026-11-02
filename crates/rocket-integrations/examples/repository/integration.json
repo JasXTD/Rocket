@@ -1,0 +1,5 @@
+{
+  "api": 1, "id": "repository", "name": "Repository context", "version": "1.0.0",
+  "description": "An offline example of explicitly approved branch, commit and change-count context.",
+  "permissions": {"network": false, "write": false, "repository": true}, "settings": []
+}

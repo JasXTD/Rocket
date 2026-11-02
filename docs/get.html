@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Get Rocket: build the Git client from source</title>
+<meta name="description" content="Build Rocket, a native Windows Git client, from source on Windows x64. There is no public installer yet.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://jasxtd.github.io/rocket/get.html">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Get Rocket">
+<meta property="og:description" content="Build Rocket, a native Windows Git client, from source on Windows x64.">
+<meta property="og:url" content="https://jasxtd.github.io/rocket/get.html">
+<meta property="og:image" content="https://jasxtd.github.io/rocket/media/social-preview.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="images/rocket-logo.png">
+<link rel="stylesheet" href="site.css">
+<script src="site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top"><div class="wrap bar">
+  <a class="brand" href="./" aria-label="Rocket home"><img src="images/rocket-logo.png" alt="" width="34" height="34"><span>Rocket</span></a>
+  <span class="sp"></span>
+  <nav class="nav" aria-label="Main">
+    <a href="./#review">Features</a>
+    <a href="./#extensions">Extensions</a>
+    <a href="get.html" aria-current="page">Get Rocket</a>
+    <a href="./#docs">Docs</a>
+    <a href="https://github.com/JasXTD/rocket">GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a>
+  </nav>
+  <button class="theme" type="button" aria-label="Switch between light and dark" hidden>
+    <svg class="sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"></circle><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"></path></svg>
+    <svg class="moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 9.6A6 6 0 1 1 6.4 2.5a4.8 4.8 0 0 0 7.1 7.1z"></path></svg>
+  </button>
+  <details class="menu"><summary aria-label="Menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14"></path></svg></summary>
+    <div><a href="./#review">Features</a><a href="./#extensions">Extensions</a><a href="get.html" aria-current="page">Get Rocket</a><a href="./#docs">Docs</a><a href="https://github.com/JasXTD/rocket">GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a></div>
+  </details>
+</div></header>
+
+<main id="main"><div class="wrap">
+  <div class="page-head">
+    <h1>Get Rocket</h1>
+    <p class="lead">Build Rocket from source on Windows x64.</p>
+    <div class="status"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l6 10.5H2zM8 6.5v3.2M8 11.4v.1"></path></svg><span>Rocket is in development, at version 0.87.3. There is no public installer or download yet.</span></div>
+  </div>
+
+  <div class="build">
+    <ol class="steps">
+      <li><span class="n mono" aria-hidden="true">1</span>
+        <h2>Install the tools</h2>
+        <p>The Rust MSVC toolchain, 1.89 or newer, with Microsoft C++ build tools, and Git 2.46 or newer.</p></li>
+      <li><span class="n mono" aria-hidden="true">2</span>
+        <h2>Get the source</h2>
+        <pre class="code mono" tabindex="0" role="region" aria-label="Clone commands">git clone https://github.com/JasXTD/rocket.git
+cd rocket</pre></li>
+      <li><span class="n mono" aria-hidden="true">3</span>
+        <h2>Build it</h2>
+        <pre class="code mono" tabindex="0" role="region" aria-label="Build command">.\tools\Build-Local.ps1</pre>
+        <p>This builds the desktop app, the CLI and their helpers under <span class="mono inline">target\release</span>. Plain <span class="mono inline">cargo build</span> compiles too, but turns Lua extensions off.</p></li>
+      <li><span class="n mono" aria-hidden="true">4</span>
+        <h2>Start Rocket</h2>
+        <pre class="code mono" tabindex="0" role="region" aria-label="Run command">.\target\release\rocket.exe</pre>
+        <p>Help → Setup Guide walks you through a first local commit. Press F1 for the guide and Ctrl+K for the command palette.</p></li>
+    </ol>
+
+    <aside class="side" aria-labelledby="h-need">
+      <h2 id="h-need">What it uses</h2>
+      <table class="tbl" aria-labelledby="h-need"><tbody>
+        <tr><th scope="row">Windows x64</th><td>The validated platform. Testing has focused on Windows 10.</td></tr>
+        <tr><th scope="row">Git</th><td>A build from a fresh clone uses the Git you installed. HTTPS needs Git for Windows 2.56.0.windows.4 or newer; older builds stay on local and SSH.</td></tr>
+        <tr><th scope="row">Git Credential Manager</th><td>For the supported browser sign-in flows.</td></tr>
+        <tr><th scope="row">Windows OpenSSH</th><td>For SSH keys and profiles.</td></tr>
+        <tr><th scope="row">Git LFS 3.8.1+</th><td>Only for Git LFS operations.</td></tr>
+        <tr><th scope="row">Claude Code or Codex</th><td>Optional, for AI drafts, review and resolve.</td></tr>
+      </tbody></table>
+      <p>Moving a build? Keep every file from <span class="mono inline">target\release</span> together.</p>
+    </aside>
+  </div>
+
+  <section class="limits" aria-labelledby="h-limits">
+    <h2 id="h-limits">Current limits</h2>
+    <ul>
+      <li>Windows is the validated platform. Linux and macOS are not certified.</li>
+      <li>Live acceptance for hosts other than github.com is still unverified.</li>
+      <li>Partial diff and stash actions support specific text and file cases.</li>
+      <li>Jira has been tested against mock services, not a live server.</li>
+      <li>The AI conflict page has been tested with a stand-in program, not a real reply.</li>
+      <li>The CLI and localhost MCP expose subsets of the desktop workflows.</li>
+    </ul>
+  </section>
+</div></main>
+
+<footer class="foot"><div class="wrap">
+  <a class="brand" href="./" aria-label="Rocket home"><img src="images/rocket-logo.png" alt="" width="34" height="34"><span>Rocket</span></a>
+  <span>Created by Xetro</span>
+  <span class="sp"></span>
+  <a href="https://github.com/JasXTD/rocket/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/JasXTD/rocket/blob/main/SECURITY.md">Security</a>
+  <a href="./#license">MIT or Apache-2.0</a>
+</div></footer>
+</body>
+</html>

@@ -1,0 +1,16 @@
+[package]
+name = "rocket-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Rocket command-line Git client with a versioned JSON contract"
+
+[dependencies]
+rocket-git = { path = "../rocket-git" }
+# Already pinned, reviewed and used by Rocket UI/MCP. No parser dependency added.
+serde_json = "=1.0.151"
+
+[lints]
+workspace = true

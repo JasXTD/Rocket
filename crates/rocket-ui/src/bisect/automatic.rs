@@ -1,0 +1,201 @@
+use super::*;
+use std::{path::PathBuf, sync::Mutex};
+
+pub struct State {
+    pub enabled: bool,
+    pub program: String,
+    pub arguments: String,
+    pub seconds: String,
+    pub preview: Option<Arc<BisectAutoPreview>>,
+    pub progress: Arc<Mutex<BisectAutoProgress>>,
+}
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            program: String::new(),
+            arguments: String::new(),
+            seconds: "60".into(),
+            preview: None,
+            progress: Default::default(),
+        }
+    }
+}
+impl State {
+    pub fn command(&self) -> rocket_git::Result<BisectTestCommand> {
+        let command = BisectTestCommand {
+            program: PathBuf::from(self.program.trim()),
+            arguments: if self.arguments.is_empty() {
+                Vec::new()
+            } else {
+                self.arguments.lines().map(str::to_owned).collect()
+            },
+            timeout_seconds: self.seconds.parse().map_err(|_| {
+                rocket_git::Error::InvalidInput("Enter a timeout from 1 to 3,600 seconds.".into())
+            })?,
+        };
+        command.validate()?;
+        Ok(command)
+    }
+    pub fn fields(
+        &mut self,
+        ui: &mut Ui,
+        widgets: &mut std::collections::HashMap<String, crate::app::UiControl>,
+        waiting: bool,
+    ) -> bool {
+        // Widget map type is supplied by the shared page controls.
+        let mut changed = false;
+        let r = ui.add_enabled(
+            !waiting,
+            Checkbox::new(&mut self.enabled, "Run a test command automatically"),
+        );
+        pages::control(widgets, "dialog-bisect-auto", &r, ui.clip_rect());
+        changed |= r.changed();
+        if !self.enabled {
+            return changed;
+        }
+        pages::caption(ui, "Test command");
+        for (value, label, key) in [
+            (
+                &mut self.program,
+                "Executable · local absolute path",
+                "dialog-bisect-program",
+            ),
+            (
+                &mut self.seconds,
+                "Timeout per revision · 1–3,600 seconds",
+                "dialog-bisect-timeout",
+            ),
+        ] {
+            ui.label(label);
+            let r = ui.add_enabled(
+                !waiting,
+                TextEdit::singleline(value)
+                    .desired_width(f32::INFINITY)
+                    .char_limit(32768),
+            );
+            pages::control(widgets, key, &r, ui.clip_rect());
+            changed |= r.changed();
+        }
+        ui.label("Arguments · one literal argument per line");
+        let r = ui.add_enabled(
+            !waiting,
+            TextEdit::multiline(&mut self.arguments)
+                .font(TextStyle::Monospace)
+                .desired_rows(3)
+                .desired_width(f32::INFINITY)
+                .char_limit(16000),
+        );
+        pages::control(widgets, "dialog-bisect-arguments", &r, ui.clip_rect());
+        changed |= r.changed();
+        pages::note(
+            ui,
+            "0 = Good · 1–124 = Bad · 125 = Skip · other codes or timeout stop without a decision.",
+        );
+        pages::note(
+            ui,
+            "The test runs with your account in each checked-out revision. Keep it outside this folder; Rocket stops on tracked edits.",
+        );
+        if let Some(p) = &self.preview {
+            pages::caption(ui, "Reviewed automated search");
+            pages::well(ui, |ui| {
+                pages::field(
+                    ui,
+                    "Working folder",
+                    // Without the \\?\ prefix of a verbatim path.
+                    p.worktree().display().to_string().trim_start_matches(r"\\?\"),
+                    false,
+                );
+                pages::field(
+                    ui,
+                    "Program",
+                    &custom_command_display(&p.command().program.to_string_lossy()),
+                    true,
+                );
+                for (i, arg) in p.command().arguments.iter().enumerate() {
+                    pages::field(
+                        ui,
+                        &format!("Argument {}", i + 1),
+                        &format!("{:?}", arg),
+                        true,
+                    );
+                }
+                pages::field(ui, "Known good", p.step().good().as_str().get(..12).unwrap_or(p.step().good().as_str()), true);
+                pages::field(ui, "Known bad", p.step().bad().as_str().get(..12).unwrap_or(p.step().bad().as_str()), true);
+                pages::field(
+                    ui,
+                    "Return checkout",
+                    &head_text(p.step().original()),
+                    false,
+                );
+            });
+            pages::callout(
+                ui,
+                BLUE(),
+                "Runs once per candidate, up to 256 tests. The original checkout is kept until you choose Restore original.",
+            );
+        }
+        changed
+    }
+    pub fn results(&self, ui: &mut Ui) {
+        let progress = self
+            .progress
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if progress.results.is_empty() {
+            return;
+        }
+        pages::caption(ui, "Test results");
+        if let Some(id) = &progress.running {
+            pages::waiting(ui, &format!("Testing {}…", &id.as_str()[..12]));
+        }
+        for (index, r) in progress.results.iter().enumerate().rev().take(30) {
+            let label = format!(
+                "{} · {} · exit {} · {} ms{}",
+                &r.commit.as_str()[..12],
+                r.outcome.label(),
+                r.exit_code.map_or("—".into(), |v| v.to_string()),
+                r.elapsed_ms,
+                if r.recorded {
+                    " · recorded"
+                } else {
+                    " · unclassified"
+                }
+            );
+            CollapsingHeader::new(label).id_salt(("bisect-test-output",index)).show(ui,|ui|{
+                if r.stdout.is_empty()&&r.stderr.is_empty(){pages::note(ui,"No output retained in this window. Test summaries survive reopening; raw output is not written to diagnostics.");}
+                for(label,bytes)in[("Standard output",&r.stdout),("Standard error",&r.stderr)]{if !bytes.is_empty(){ui.label(label);ScrollArea::both().id_salt((index,label)).max_height(150.).show(ui,|ui|{ui.monospace(custom_command_display(&String::from_utf8_lossy(bytes)));});}}
+                if r.truncated{pages::note(ui,"Output truncated to the bounded preview.");}
+            });
+        }
+        if progress.results.len() > 30 {
+            pages::note(
+                ui,
+                "Showing the last 30 tests. All bounded summaries remain in the repository's bisect test record.",
+            );
+        }
+    }
+}
+
+pub(crate) fn outcome(out: &mut Outcome, r: BisectAutoReport) {
+    out.command_succeeded =
+        r.result.is_ok() && r.status.is_ok() && r.session.is_ok() && r.state.is_ok();
+    out.recovery_pending = r.session.as_ref().is_ok_and(Option::is_some);
+    out.summary=if out.command_succeeded {match r.session.as_ref().ok().and_then(|s|s.as_ref()).map(|s|s.phase){Some(BisectPhase::Found)=>"First bad commit found. Inspect the result, then Restore original.",Some(BisectPhase::Inconclusive)=>"Skipped tests leave several possible first bad commits. Review the candidates, then restore.",_=>"Automated tests finished. Refresh and inspect the bisect session."}}else{"Automated bisect stopped. The current test may be unclassified; inspect the session before retrying or restoring."}.into();
+    if let Err(e) = r.result {
+        out.details.push(user_error(&e));
+    }
+    if let Err(e) = r.status {
+        out.details
+            .push(format!("Refresh changes: {}", user_error(&e)));
+    }
+    if let Err(e) = r.session {
+        out.details
+            .push(format!("Refresh bisect: {}", user_error(&e)));
+    }
+    if let Err(e) = r.state {
+        out.details
+            .push(format!("Refresh operation: {}", user_error(&e)));
+    }
+    out.details.push(format!("{} test summaries retained. Generated files are not deleted; preserve edits before restoring.",r.tests.len()));
+}

@@ -1,0 +1,224 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Website media</title><style>body{margin:0;background:#000}</style></head>
+<body><canvas id="c"></canvas>
+<script>
+// Run by media.cjs. Crops the screenshots into web pictures, then builds the demo videos from them:
+// only those real frames, a drawn pointer, captions and an end card, so nothing unchecked can appear.
+const WEBP = .9, JPEG = .86, FPS = 30;
+
+// name, shot, x, y, width, height, output width
+const PICTURES = [
+  ['hero-dark', 'changes-unified', 0, 0, 1920, 990], ['hero-light', 'changes-unified-light', 0, 0, 1920, 990],
+  ['split-dark', 'changes-split', 596, 236, 1304, 536], ['split-light', 'changes-split-light', 596, 236, 1304, 536],
+  ['history-dark', 'commits-default', 236, 116, 944, 420], ['history-light', 'commits-light', 236, 116, 944, 420],
+  ['rebase-dark', 'rebase', 415, 240, 690, 220], ['rebase-light', 'rebase-light', 415, 240, 690, 220],
+  ['conflict-dark', 'conflict', 236, 116, 1684, 874], ['conflict-light', 'conflict-light', 236, 116, 1684, 874],
+  ['cards-dark', 'proposal', 1552, 245, 356, 276], ['cards-light', 'proposal-light', 1552, 245, 356, 276],
+  ['lua-dark', 'lua-2', 236, 116, 1684, 874], ['lua-light', 'lua-light', 236, 116, 1684, 874],
+  ['review-dark', 'review', 639, 239, 643, 540], ['review-light', 'review-light', 639, 239, 643, 540],
+  ['theme-default', 'commits-default', 0, 0, 1920, 990, 960], ['theme-dark', 'commits-dark', 0, 0, 1920, 990, 960],
+  ['theme-light', 'commits-light', 0, 0, 1920, 990, 960], ['theme-custom', 'commits-custom', 0, 0, 1920, 990, 960]
+];
+
+// Each scene: its shot, or shots with the time each one starts; the pointer's path as [x, y, time]; and
+// the moment of each click. crop, pp and pclicks are the phone version's window and path.
+const THEMES = [0, 0, 792];
+const SCENES = [
+  { shot: 'changes-unified', dur: 2.6, cap: 'Review every change', path: [[1180, 560, 0], [908, 176, 1.8]], clicks: [2.0], crop: [640, 236, 432], pp: [[900, 640, 0], [730, 362, 1.8]] },
+  { shots: [[0, 'stage-0'], [1.1, 'stage-1'], [1.8, 'stage-2'], [3.0, 'stage-3']], area: [596, 116, 1324, 683], dur: 3.8, cap: 'Stage files, hunks or lines', path: [[1000, 560, 0], [1361, 403, 1.0], [1361, 425, 1.7], [1020, 176, 2.8]], clicks: [1.1, 1.8, 2.9], crop: [1340, 236, 432], pp: [[1560, 700, 0], [1361, 403, 1.0], [1361, 425, 1.7]], pclicks: [1.1, 1.8] },
+  { shots: [[0, 'commits-default'], [2.2, 'commit-selected']], dur: 3.2, cap: 'Follow every branch', path: [[1000, 420, 0], [270, 319, 1.0], [286, 452, 1.7], [700, 353, 2.1]], clicks: [2.2], crop: [236, 216, 432], pp: [[600, 640, 0], [270, 319, 1.0], [286, 452, 1.7], [520, 353, 2.1]], pclicks: [2.2] },
+  { shot: 'conflict', dur: 2.8, cap: 'Resolve conflicts in three columns', path: [[640, 640, 0], [1520, 188, 2.0]], clicks: [2.2], crop: [806, 330, 432], pp: [[1150, 760, 0], [1060, 400, 2.0]] },
+  { shot: 'proposal', dur: 3.2, cap: 'Read an AI proposal first', path: [[1520, 188, 0], [1880, 345, 1.2], [1830, 200, 2.6]], clicks: [2.8], crop: [1548, 230, 364], pp: [[1800, 640, 0], [1885, 345, 2.0]] },
+  { shots: [[0, 'lua-0'], [1.3, 'lua-1'], [2.5, 'lua-2'], [3.3, 'lua-3']], dur: 4.2, cap: 'Add your own features', path: [[900, 560, 0], [1879, 148, 1.2], [1163, 568, 2.4], [1163, 568, 3.2]], clicks: [1.3, 2.5, 3.3], crop: [1090, 130, 640], pp: [[1500, 800, 0], [1163, 568, 2.4], [1163, 568, 3.2]], pclicks: [2.5, 3.3] },
+  { shots: [[0, 'palette-r'], [.5, 'palette-reb'], [1.0, 'palette-rebase']], dur: 2.2, cap: 'Find any command with Ctrl+K', path: null, crop: [640, 70, 640] },
+  { shot: 'commits-default', dur: 1.1, cap: 'Make the window yours', path: null, crop: THEMES },
+  { shot: 'commits-dark', dur: 1.0, cap: 'Make the window yours', path: null, keep: true, crop: THEMES },
+  { shot: 'commits-light', dur: 1.0, cap: 'Make the window yours', path: null, keep: true, crop: THEMES },
+  { shot: 'commits-custom', dur: 1.5, cap: 'Make the window yours', path: null, keep: true, crop: THEMES },
+  { end: true, dur: 2.4 }
+];
+let start = 0; for (const s of SCENES) { s.t0 = start; start += s.dur; }
+const TOTAL = start;
+
+const c = document.getElementById('c'), g = c.getContext('2d', { alpha: false });
+const images = {};
+const post = (url, body) => fetch(url, { method: 'POST', body });
+const log = text => post('/log', text);
+const ease = x => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2;
+const load = src => new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = src; });
+const shot = async name => (name in images) ? images[name] : (images[name] = await load('/shots/' + name + '.png'));
+const blob = (type, quality) => new Promise(ok => c.toBlob(ok, type, quality));
+const size = (w, h) => { c.width = w; c.height = h; g.imageSmoothingQuality = 'high'; };
+const arrow = new Path2D('M0 0 L0 24 L6.5 18.2 L11 28.4 L15.2 26.6 L10.8 16.6 L19 16 Z');
+
+let W, H, PHONE, LOGO;
+const shotAt = (s, local) => { if (!s.shots) return s.shot; let name = s.shots[0][1]; for (const [t, n] of s.shots) if (local >= t) name = n; return name; };
+function view(s) {
+  if (PHONE) { const [x, y, w] = s.crop, h = w * H / W; return { x, y, w, h, k: W / w, dx: 0, dy: 0 }; }
+  if (s.area) { const [x, y, w, h] = s.area, k = Math.min(W / w, H / h); return { x, y, w, h, k, dx: (W - w * k) / 2, dy: (H - h * k) / 2 }; }
+  return { x: 0, y: 0, w: W, h: H, k: 1, dx: 0, dy: 0 };
+}
+function frame(s, local, alpha) {
+  const v = view(s); g.globalAlpha = alpha;
+  if (v.dx || v.dy) { g.fillStyle = '#07111A'; g.fillRect(0, 0, W, H); }
+  g.drawImage(images[shotAt(s, local)], v.x, v.y, v.w, v.h, v.dx, v.dy, v.w * v.k, v.h * v.k);
+  g.globalAlpha = 1;
+}
+function pointer(x, y, scale) {
+  g.save(); g.translate(x, y); g.scale(scale, scale);
+  g.lineJoin = 'round'; g.lineWidth = 2.2; g.strokeStyle = '#03202B'; g.stroke(arrow); g.fillStyle = '#FFFFFF'; g.fill(arrow);
+  g.restore();
+}
+function caption(text, alpha) {
+  if (alpha <= 0) return;
+  const font = PHONE ? 44 : 34, h = PHONE ? 92 : 72, x = PHONE ? 28 : 48, pad = PHONE ? 34 : 32;
+  g.save(); g.globalAlpha = alpha; g.font = `600 ${font}px "Segoe UI", system-ui, sans-serif`;
+  const w = g.measureText(text).width + pad * 2, y = H - (PHONE ? 36 : 48) - h;
+  g.fillStyle = 'rgba(7,17,26,.94)'; g.strokeStyle = '#2A4560'; g.lineWidth = 2;
+  g.beginPath(); g.roundRect(x, y, w, h, 14); g.fill(); g.stroke();
+  g.fillStyle = '#E7EEF8'; g.textBaseline = 'middle'; g.fillText(text, x + pad, y + h / 2 + 1);
+  g.restore();
+}
+function endCard(alpha) {
+  const k = PHONE ? 1.04 : 1, top = 250, mark = 160 * k, big = PHONE ? 92 : 88, base = top + mark + 124;
+  g.globalAlpha = alpha; g.fillStyle = '#0A1621'; g.fillRect(0, 0, W, H);
+  g.drawImage(LOGO, W / 2 - mark / 2, top, mark, mark);
+  g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  g.fillStyle = '#E7EEF8'; g.font = `700 ${big}px "Segoe UI", system-ui, sans-serif`; g.fillText('Review first.', W / 2, base);
+  g.fillStyle = '#22C3EE'; g.fillText('Then launch.', W / 2, base + big * 1.09);
+  g.fillStyle = '#A3B7CC'; g.font = `400 ${PHONE ? 38 : 32}px "Segoe UI", system-ui, sans-serif`; g.fillText('A native Git client for Windows', W / 2, base + big * 1.09 + 74);
+  g.textAlign = 'start'; g.globalAlpha = 1;
+}
+function draw(t) {
+  let i = SCENES.findIndex(s => t < s.t0 + s.dur); if (i < 0) i = SCENES.length - 1;
+  const s = SCENES[i], p = SCENES[i - 1], local = t - s.t0, fade = Math.min(1, local / .35);
+  if (s.end) { frame(p, p.dur, 1); endCard(ease(fade)); return; }
+  if (p && fade < 1) { frame(p, p.dur, 1); frame(s, local, ease(fade)); } else frame(s, local, 1);
+  const pts = PHONE ? s.pp : s.path, clicks = (PHONE ? s.pclicks : s.clicks) || [];
+  if (pts) {
+    let x = pts[0][0], y = pts[0][1];
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const [ax, ay, at] = pts[k], [bx, by, bt] = pts[k + 1];
+      if (local >= at) { const u = ease(Math.min(1, (local - at) / Math.max(.01, bt - at))); x = ax + (bx - ax) * u; y = ay + (by - ay) * u; }
+    }
+    const v = view(s), sx = v.dx + (x - v.x) * v.k, sy = v.dy + (y - v.y) * v.k;
+    for (const click of clicks) if (local >= click && local < click + .4) {
+      const r = (local - click) / .4;
+      g.save(); g.globalAlpha = 1 - r; g.strokeStyle = '#22C3EE'; g.lineWidth = PHONE ? 5 : 4; g.beginPath(); g.arc(sx, sy, (12 + 30 * r) * (PHONE ? 1.6 : 1), 0, Math.PI * 2); g.stroke(); g.restore();
+    }
+    pointer(sx, sy, PHONE ? 2.2 : 1.25);
+  }
+  const next = SCENES[i + 1];
+  const fadeIn = s.keep ? 1 : Math.min(1, Math.max(0, (local - .25) / .3)), fadeOut = next && next.keep ? 1 : Math.min(1, Math.max(0, (s.dur - local) / .25));
+  caption(s.cap, Math.min(fadeIn, fadeOut));
+}
+function poster() {
+  frame(SCENES.find(s => s.shot === 'conflict'), 0, 1);
+  const r = PHONE ? 76 : 62;
+  g.fillStyle = 'rgba(7,17,26,.34)'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#22C3EE'; g.beginPath(); g.arc(W / 2, H / 2, r, 0, Math.PI * 2); g.fill();
+  g.fillStyle = '#03202B'; g.beginPath(); g.moveTo(W / 2 - r * .3, H / 2 - r * .46); g.lineTo(W / 2 + r * .5, H / 2); g.lineTo(W / 2 - r * .3, H / 2 + r * .46); g.closePath(); g.fill();
+}
+
+// A plain MP4 with its index first, so the length is known and playback starts before the file has loaded.
+const u32 = (...v) => { const o = new Uint8Array(v.length * 4), d = new DataView(o.buffer); v.forEach((x, i) => d.setUint32(i * 4, x)); return o; };
+const u16 = (...v) => { const o = new Uint8Array(v.length * 2), d = new DataView(o.buffer); v.forEach((x, i) => d.setUint16(i * 2, x)); return o; };
+const ascii = t => Uint8Array.from(t, x => x.charCodeAt(0));
+const zero = n => new Uint8Array(n);
+function box(type, ...parts) {
+  const n = parts.reduce((a, p) => a + p.length, 8), o = new Uint8Array(n);
+  new DataView(o.buffer).setUint32(0, n); o.set(ascii(type), 4);
+  let p = 8; for (const x of parts) { o.set(x, p); p += x.length; }
+  return o;
+}
+const full = (type, version, flags, ...parts) => box(type, u32(((version << 24) | flags) >>> 0), ...parts);
+const MATRIX = u32(0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000);
+function mux(samples, avcC, width, height) {
+  const timescale = FPS * 1000, delta = 1000, count = samples.length, duration = count * delta;
+  const ftyp = box('ftyp', ascii('isom'), u32(0x200), ascii('isomiso2avc1mp41'));
+  const moov = offset => box('moov',
+    full('mvhd', 0, 0, u32(0, 0, timescale, duration, 0x10000), u16(0x100, 0), zero(8), MATRIX, zero(24), u32(2)),
+    box('trak',
+      full('tkhd', 0, 3, u32(0, 0, 1, 0, duration), zero(8), u16(0, 0, 0, 0), MATRIX, u32(width * 65536, height * 65536)),
+      box('mdia',
+        full('mdhd', 0, 0, u32(0, 0, timescale, duration), u16(0x55C4, 0)),
+        full('hdlr', 0, 0, u32(0), ascii('vide'), zero(12), ascii('Rocket demo\0')),
+        box('minf',
+          full('vmhd', 0, 1, zero(8)),
+          box('dinf', full('dref', 0, 0, u32(1), full('url ', 0, 1))),
+          box('stbl',
+            full('stsd', 0, 0, u32(1), box('avc1', zero(6), u16(1), zero(16), u16(width, height), u32(0x480000, 0x480000, 0), u16(1), zero(32), u16(0x18, 0xFFFF), box('avcC', avcC))),
+            full('stts', 0, 0, u32(1, count, delta)),
+            full('stss', 0, 0, u32(samples.filter(s => s.key).length, ...samples.flatMap((s, i) => s.key ? [i + 1] : []))),
+            full('stsc', 0, 0, u32(1, 1, count, 1)),
+            full('stsz', 0, 0, u32(0, count, ...samples.map(s => s.data.length))),
+            full('stco', 0, 0, u32(1, offset)))))));
+  const head = ftyp.length + moov(0).length, body = samples.reduce((a, s) => a + s.data.length, 0), out = new Uint8Array(head + 8 + body);
+  out.set(ftyp, 0); out.set(moov(head + 8), ftyp.length);
+  new DataView(out.buffer).setUint32(head, 8 + body); out.set(ascii('mdat'), head + 4);
+  let p = head + 8; for (const s of samples) { out.set(s.data, p); p += s.data.length; }
+  return out;
+}
+async function video(phone, bitrate, name) {
+  PHONE = phone; W = phone ? 864 : 1920; H = phone ? 1080 : 990; size(W, H);
+  poster(); await post(`/save/poster-${phone ? 'phone' : 'wide'}.jpg`, await blob('image/jpeg', JPEG));
+  const samples = []; let avcC = null, failure = null;
+  const encoder = new VideoEncoder({
+    output: (chunk, meta) => {
+      const d = meta && meta.decoderConfig && meta.decoderConfig.description;
+      if (d) avcC = new Uint8Array(d.buffer ? d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) : d.slice(0));
+      const data = new Uint8Array(chunk.byteLength); chunk.copyTo(data);
+      samples.push({ data, key: chunk.type === 'key', ts: chunk.timestamp });
+    },
+    error: e => { failure = e; }
+  });
+  encoder.configure({ codec: 'avc1.640028', width: W, height: H, bitrate, framerate: FPS, bitrateMode: 'variable', latencyMode: 'quality', hardwareAcceleration: 'prefer-software', avc: { format: 'avc' } });
+  const count = Math.round(TOTAL * FPS);
+  for (let i = 0; i < count && !failure; i++) {
+    draw(i / FPS);
+    const f = new VideoFrame(c, { timestamp: Math.round(i * 1e6 / FPS), duration: Math.round(1e6 / FPS) });
+    encoder.encode(f, { keyFrame: i % (FPS * 4) === 0 }); f.close();
+    while (encoder.encodeQueueSize > 6) await new Promise(r => setTimeout(r, 4));
+  }
+  await encoder.flush(); encoder.close();
+  if (failure) throw failure;
+  samples.sort((a, b) => a.ts - b.ts);
+  await post('/save/' + name, mux(samples, avcC, W, H));
+}
+async function social() {
+  size(1200, 630);
+  g.fillStyle = '#0A1621'; g.fillRect(0, 0, 1200, 630);
+  const screen = images['commits-default'];
+  g.drawImage(screen, 230, 110, 1000, 690, 560, 96, 880, 607);
+  g.strokeStyle = '#243E56'; g.lineWidth = 2; g.strokeRect(560, 96, 880, 607);
+  g.drawImage(LOGO, 72, 96, 96, 96);
+  g.textBaseline = 'alphabetic'; g.fillStyle = '#E7EEF8'; g.font = '700 76px "Segoe UI", system-ui, sans-serif'; g.fillText('Review first.', 72, 300);
+  g.fillStyle = '#22C3EE'; g.fillText('Then launch.', 72, 384);
+  g.fillStyle = '#C3D1DF'; g.font = '400 30px "Segoe UI", system-ui, sans-serif'; g.fillText('A native Git client for Windows', 72, 450);
+  await post('/save/social-preview.jpg', await blob('image/jpeg', JPEG));
+}
+
+(async () => {
+  try {
+    LOGO = await load('/logo.png');
+    await document.fonts.load('700 88px "Segoe UI"'); await document.fonts.ready;
+    for (const [name, from, x, y, w, h, outW] of PICTURES) {
+      const image = await shot(from);
+      if (!image) { await log(`skipped ${name}: no ${from}.png`); continue; }
+      const width = outW || w, height = Math.round(h * width / w);
+      size(width, height); g.drawImage(image, x, y, w, h, 0, 0, width, height);
+      await post(`/save/${name}.webp`, await blob('image/webp', WEBP));
+    }
+    const needed = new Set(SCENES.flatMap(s => s.shots ? s.shots.map(e => e[1]) : s.shot ? [s.shot] : []));
+    let ready = true;
+    for (const name of needed) if (!await shot(name)) { await log(`no videos: no ${name}.png`); ready = false; }
+    if (ready) {
+      await video(false, 3000000, 'demo-wide.mp4');
+      await video(true, 1200000, 'demo-phone.mp4');
+    }
+    if (images['commits-default']) await social();
+    await post('/done', '');
+  } catch (e) { await post('/fail', String(e && e.stack || e)); }
+})();
+</script>
+</body></html>

@@ -1,0 +1,80 @@
+/target/
+/work/
+/tools/helpers/bin/
+
+# Internal design, coordination and validation records stay local.
+/UI.md
+/COORDINATION.md
+/VALIDATION.md
+
+# Local archives, packaged releases and historical validation snapshots.
+# Keep the reusable scripts directly inside tools/maintenance/.
+/tools/archive/
+/tools/releases/
+/tools/maintenance/*/
+
+# Optional, separately downloaded advisory scanner (see DEPENDENCIES.md).
+# The bundled ConPTY runtime under runtime/conpty/ must remain versioned.
+/runtime/osv-scanner/
+
+# Reviewed portable Git payloads are assembled locally, not committed as binaries.
+# Provenance and the compiled hash inventory remain versioned.
+/runtime/git/*/
+
+# Local assistant/editor settings and credentials.
+/.codex/
+/.agents/
+/.aws/
+/.ssh/
+/AGENTS.md
+/.vs/
+/.idea/
+/.vscode/
+.env
+.env.*
+!.env.example
+!.env.sample
+credentials.json
+credentials.*.json
+secrets.json
+secrets.*.json
+id_rsa
+id_dsa
+id_ecdsa
+id_ed25519
+*.pem
+*.key
+*.pfx
+*.p12
+*.dpapi
+
+# Generated logs, databases, debug symbols and temporary files.
+*.log
+*.log.*
+*.jsonl
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3
+*.pdb
+*.dmp
+*.profraw
+*.profdata
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Do not blanket-ignore executables or DLLs: the signed, hash-pinned ConPTY
+# runtime is a required dependency. Generated test helpers are excluded above.

@@ -1,0 +1,93 @@
+// Native acceptance of conflict proposals from Claude Code and Codex through authenticated
+// localhost MCP, with a fake CLI built from crates/rocket-git/examples/claude_cli_fixture.rs inside
+// the fixture root (never the real CLI or service). Covers: the source choice, a program that isn't
+// there, the stub-only MCP rule, the program from Preferences on the open page, what is sent, review
+// and Apply with per-conflict Undo, Stop of the process tree, a malformed reply, Codex, AI resolve
+// from Changes, switching back to the MCP agent, and privacy of state and logs.
+// Usage: node tools/tests/test-mcp-ai-conflict-claude.cjs
+const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto'),net=require('node:net'),assert=require('node:assert/strict');
+const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');
+const root=path.resolve('work/mcp-fixtures/ai-conflict-claude-'+crypto.randomUUID().replaceAll('-',''));
+const profile=path.join(root,'http-profile'),repo=path.join(root,'PRIVATE_界面'),stubDir=path.join(root,'AI 文'),stub=path.join(stubDir,'claude.exe'),codexStub=path.join(stubDir,'codex.exe');
+const branch='rocket-ui-test/ai',file='src/界面/解決 🚀 é.rs',exe=path.resolve('target/release/rocket-mcp.exe');
+const report={passed:false,root,cases:[],timings:[]},marker=path.join(root,'rocket-private-state');
+fs.mkdirSync(repo,{recursive:true});fs.mkdirSync(stubDir);fs.mkdirSync(path.join(root,'empty-template'));for(const d of ['home','local','roaming'])fs.mkdirSync(path.join(root,d));fs.writeFileSync(path.join(root,'empty.config'),'');fs.writeFileSync(marker,'synthetic-content-only-v1\n');
+const env={...process.env};for(const k of Object.keys(env))if(/^(GIT_|SSH_|GCM_|CODEX_|OPENAI_|ANTHROPIC_)|_PROXY$/i.test(k))delete env[k];
+Object.assign(env,{GIT_CONFIG_GLOBAL:path.join(root,'empty.config'),GIT_CONFIG_SYSTEM:path.join(root,'empty.config'),GIT_CONFIG_NOSYSTEM:'1',GIT_ALLOW_PROTOCOL:'file',GIT_TERMINAL_PROMPT:'0',GIT_OPTIONAL_LOCKS:'0',GIT_TEMPLATE_DIR:path.join(root,'empty-template')});
+// No real CLI is in reach: whatever is installed here stays out of the source Rocket starts on.
+Object.assign(env,{USERPROFILE:path.join(root,'home'),LOCALAPPDATA:path.join(root,'local'),APPDATA:path.join(root,'roaming')});
+const git=a=>cp.execFileSync('git',['-C',repo,...a],{env,windowsHide:true,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trimEnd();
+const write=(p,text)=>{const dest=path.join(repo,p);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,text);};
+const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex'),delay=ms=>new Promise(r=>setTimeout(r,ms));
+const content=(one,two)=>Array.from({length:35},(_,i)=>i===4?one:i===26?two:'// common '+i+' 日本語').join('\n')+'\n';
+git(['init','--initial-branch='+branch]);for(const[k,v]of[['user.name','Synthetic Fixture'],['user.email','fixture@example.invalid'],['core.autocrlf','false'],['commit.gpgsign','false'],['core.hooksPath',path.join(root,'empty-template')],['merge.conflictStyle','diff3']])git(['config',k,v]);
+write(file,content('base one','base two'));write('keep.txt','PRIVATE_KEEP');git(['add','-A']);git(['commit','-m','base']);git(['checkout','-b','rocket-ui-test/other']);write(file,content('PRIVATE_THEIRS one','PRIVATE_THEIRS two'));git(['add','-A']);git(['commit','-m','theirs']);git(['checkout',branch]);write(file,content('PRIVATE_OURS one','PRIVATE_OURS two'));git(['add','-A']);git(['commit','-m','ours']);assert.throws(()=>git(['merge','rocket-ui-test/other']));write('.git/rocket-ui-fixture',branch);write('untracked.txt','PRIVATE_LOCAL');
+const original=fs.readFileSync(path.join(repo,file),'utf8');
+const preserved=()=>({head:git(['rev-parse','HEAD']),index:hash(path.join(repo,'.git/index')),config:hash(path.join(repo,'.git/config')),keep:hash(path.join(repo,'keep.txt')),untracked:hash(path.join(repo,'untracked.txt')),file:hash(path.join(repo,file))});
+// The stub replies with this proposal: both sides of each conflict section, in order.
+function sections(text){const out=[];let cur=null,part=null;for(const line of text.split('\n')){if(line.startsWith('<<<<<<<')){cur={ours:'',theirs:''};part='ours';}else if(cur&&line.startsWith('|||||||'))part='base';else if(cur&&line==='=======')part='theirs';else if(cur&&line.startsWith('>>>>>>>')){out.push(cur);cur=null;}else if(cur&&part!=='base')cur[part]+=line+'\n';}return out;}
+const reply=JSON.stringify({resolutions:sections(original).map((b,id)=>({id,replacement:b.ours+b.theirs,explanation:'PRIVATE_PROPOSAL Keeps both checks '+id,confidence:'high'}))});
+const mode=m=>fs.writeFileSync(path.join(stubDir,'mode'),m),requests=()=>fs.readdirSync(stubDir).filter(n=>/^request-\d+\.txt$/.test(n)).length;
+const before=preserved();let state,client,service;
+const tab=()=>state.tabs?.find(t=>t.id===state.active_tab),editor=()=>tab()?.conflict_editor,ai=()=>editor()?.ai,control=id=>state.controls?.find(c=>c.id===id);
+const pass=s=>{report.cases.push(s);console.log('PASS '+s);};
+async function until(fn,label='state',timeout=45000){const at=performance.now();for(;;){state=await client.tool('rocket_state');if(fn(state))return;assert(performance.now()-at<timeout,label+' timeout '+JSON.stringify({busy:state.busy,input:state.input_pending,ai:ai(),dialog:state.dialog?.kind}));await delay(40);}}
+async function settled(){await until(s=>!s.busy&&!s.input_pending,'settled');}
+async function stable(){let last='',n=0;await until(s=>{const current=JSON.stringify(s.controls);n=current===last?n+1:0;last=current;return !s.input_pending&&n>=2;},'stable controls');}
+async function click(id,wait=true){await stable();assert(control(id)?.enabled,'Missing or disabled '+id);await client.tool('rocket_click',{target:id,expected_tab:state.active_tab});if(wait)await settled();}
+async function type(id,text){await stable();assert(control(id)?.enabled,'Missing input '+id);await client.tool('rocket_type',{target:id,text,expected_tab:state.active_tab});await settled();}
+async function reveal(id){await stable();for(let i=0;i<12&&!(control(id)&&control(id).rect[3]-control(id).rect[1]>=16);i++){await client.tool('rocket_scroll',{target:'dialog-scroll',direction:'down',pixels:160,expected_tab:state.active_tab});await until(s=>!s.input_pending);await stable();}assert(control(id),'Not visible: '+id);}
+async function resize(width,height){await stable();await client.tool('rocket_resize',{width,height});await until(s=>s.viewport[0]===width&&s.viewport[1]===height&&!s.input_pending,'resize');await settled();}
+async function capture(name){await stable();const r=await client.request('tools/call',{name:'rocket_capture',arguments:{}});assert(!r.isError);fs.writeFileSync(path.join(root,name+'.png'),Buffer.from(r.content.find(c=>c.type==='image').data,'base64'));}
+async function launch(){const log=fs.openSync(path.join(root,'service.log'),'a');service=cp.spawn(exe,['--http-profile',profile],{env,windowsHide:true,stdio:['ignore',log,log]});fs.closeSync(log);client=new RocketHttpClient(profile);for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break;}catch(e){if(i>=100)throw e;await delay(80);}}await client.initialize();}
+async function open(){await client.tool('rocket_open',{path:repo});await settled();await resize(1440,900);if(control('console-close'))await click('console-close');}
+async function close(){await client.tool('rocket_close');await until(s=>['closed','not_started'].includes(s.window)||s.dialog?.kind==='quit');if(state.dialog?.kind==='quit'){await client.tool('rocket_click',{target:'dialog-submit',expected_tab:state.active_tab});await until(s=>['closed','not_started'].includes(s.window),'closed');}}
+async function stop(){if(service&&service.exitCode===null&&service.signalCode===null){if(state?.window==='running'){if(ai()?.busy)await client.tool('rocket_click',{target:'conflict-ai-cancel',expected_tab:state.active_tab});await until(s=>!ai()?.busy);await close();}await client.raw('POST','/shutdown');const at=performance.now();while(service.exitCode===null&&service.signalCode===null){if(performance.now()-at>=15000){service.kill();throw Error('Owned service required termination');}await delay(50);}}if(client)await client.finish();}
+const changeRow='change-unstaged-'+Buffer.from(file).toString('hex');
+async function conflict(){await click('view-changes');await click(changeRow);await click('conflict-open');assert.equal(editor().blocks,2);await capture('00-editor');await click('conflict-ai');}
+// Preferences → Commit messages holds the Claude Code program (shown once AI drafts are on).
+async function program(text,provider='claude'){await click('menu-edit');await click('preferences');await until(s=>s.dialog&&control('pref-page-commit'),'Preferences');await click('pref-page-commit');if(!state.drafting.enabled)await click('pref-ai-enabled');await reveal('pref-ai-provider-'+provider);await click('pref-ai-provider-'+provider);await reveal('pref-ai-executable');await type('pref-ai-executable',text);await click('dialog-submit');await until(s=>!s.dialog,'Preferences closed');}
+const logs=()=>[...fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).map(n=>path.join(root,n)),path.join(profile,'logs')].filter(p=>fs.existsSync(p)).flatMap(p=>fs.readdirSync(p).filter(f=>/^rocket(?:\.\d+)?\.jsonl$/.test(f)).flatMap(f=>fs.readFileSync(path.join(p,f),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));
+const secrets=['PRIVATE_INSTRUCTIONS','PRIVATE_PROPOSAL','PRIVATE_OURS','PRIVATE_THEIRS','PRIVATE_LOCAL','PRIVATE_KEEP'];
+async function run(){try{
+ report.executable_sha256=hash(exe);
+ cp.execFileSync('rustc',['--edition=2024','--crate-name=claude_cli_fixture','-C','opt-level=1',path.resolve('crates/rocket-git/examples/claude_cli_fixture.rs'),'-o',stub],{windowsHide:true,stdio:'pipe'});report.stub_sha256=hash(stub);fs.copyFileSync(stub,codexStub);
+ assert.equal(sections(original).length,2);fs.writeFileSync(path.join(stubDir,'reply'),reply);
+ cp.execFileSync(exe,['--init-http',profile,root],{env,windowsHide:true});const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));fs.writeFileSync(path.join(profile,'settings'),'ROCKET-MCP-1\n'+port+'\n'+root+'\n');await launch();
+ await open();await conflict();
+ await stable();assert.equal(ai().source,'agent');assert(ai().prepared,'The page prepares by itself');assert.equal(control('conflict-ai-prepare'),undefined);await capture('01-agent');
+ await click('conflict-ai-source-claude');assert.equal(ai().source,'claude');await type('conflict-ai-instructions','PRIVATE_INSTRUCTIONS Keep both checks');await stable();assert(ai().prepared);assert(!control('conflict-ai-share'));
+ assert.equal(control('conflict-ai-claude')?.enabled,false,'No Send while the program is missing');assert(control('conflict-ai-browse')?.enabled,'Not found offers Browse');await capture('01b-claude-missing');
+ await assert.rejects(client.tool('rocket_click',{target:'conflict-ai-claude',expected_tab:state.active_tab}));await settled();assert.equal(requests(),0);assert(!ai().busy);
+ pass('Claude Code missing shows Not found with Browse and no Send, so nothing started');
+ await program(stub);assert.equal(state.drafting.executable,stub);await stable();assert(control('conflict-ai-claude')?.enabled);assert(!control('conflict-ai-browse'));assert(ai().prepared);await capture('02-claude-ready');await resize(780,660);await capture('02b-claude-ready-compact');await resize(1440,900);
+ await click('conflict-ai-exact');await stable();await capture('02c-exact-data');await click('conflict-ai-exact');
+ pass('The program set in Preferences → Commit messages applies to the open page at once');
+ const sent=performance.now();await click('conflict-ai-claude',false);await until(()=>ai()?.has_proposal&&!ai().busy,'Claude Code proposal reviewed');report.timings.push({case:'Claude Code proposal',ms:Math.round(performance.now()-sent)});
+ assert.equal(ai().sections,2);assert.equal(ai().error,null);assert.equal(editor().draft,original);assert.deepEqual(preserved(),before);assert.equal(requests(),1);
+ const prompt=fs.readFileSync(path.join(stubDir,'request-1.txt'),'utf8'),args=fs.readFileSync(path.join(stubDir,'arguments-1.txt'),'utf8');
+ for(const text of ['<conflict-context>','PRIVATE_OURS one','PRIVATE_THEIRS two','PRIVATE_INSTRUCTIONS'])assert(prompt.includes(text),'prompt lacks '+text);
+ for(const text of ['PRIVATE_KEEP','PRIVATE_LOCAL'])assert(!prompt.includes(text),'unrelated file sent: '+text);
+ for(const text of ['--tools','--strict-mcp-config','You resolve Git merge conflicts'])assert(args.includes(text),'arguments lack '+text);
+ await capture('03-claude-proposal');await click('conflict-ai-section-1');assert.equal(ai().selected,1);await capture('03b-second-conflict');await resize(780,660);await capture('03c-proposal-compact');await resize(1440,900);pass('Send gives Claude Code only the reviewed snapshot, with no tools; its reply is reviewed, a conflict can be picked, and files and index are unchanged');
+ await click('conflict-ai-apply');assert.equal(editor().blocks,0);assert(editor().draft.includes('PRIVATE_OURS one\nPRIVATE_THEIRS one\n'));assert.deepEqual(preserved(),before);await capture('03d-applied');
+ await click('conflict-undo-1');assert.equal(editor().blocks,1);assert(editor().draft.includes('PRIVATE_OURS one\nPRIVATE_THEIRS one\n'));await click('conflict-undo-0');assert.equal(editor().blocks,2);assert.equal(editor().draft,original);await click('conflict-ai');assert.equal(ai().source,'claude');pass('Apply changes only the editor draft, each conflict has its own Undo, and Claude Code stays chosen afterwards');
+ mode('slow');await stable();await client.tool('rocket_click',{target:'conflict-ai-claude',expected_tab:state.active_tab});await until(()=>ai()?.busy,'Claude Code running');
+ for(let n=0;!fs.existsSync(path.join(stubDir,'heartbeat'));n++){assert(n<400,'The stub did not start');await delay(50);}
+ await stable();assert(!control('conflict-ai-back'),'Back is hidden while Claude Code works');assert(control('conflict-ai-cancel')?.enabled);await capture('04-claude-working');
+ const at=performance.now();await client.tool('rocket_click',{target:'conflict-ai-cancel',expected_tab:state.active_tab});await until(()=>!ai().busy,'Claude Code stopped');report.timings.push({case:'Claude Code stop',ms:Math.round(performance.now()-at)});
+ const beats=fs.statSync(path.join(stubDir,'heartbeat')).size;await delay(700);assert.equal(fs.statSync(path.join(stubDir,'heartbeat')).size,beats,"The stub's child process still runs");
+ assert(!ai().has_proposal);assert.equal(ai().error,null);assert.equal(editor().draft,original);assert.deepEqual(preserved(),before);pass('Stop in the status card ends Claude Code and its child process; draft and files are unchanged');
+ mode('garbage');await click('conflict-ai-claude',false);await until(()=>!ai()?.busy&&(ai()?.error||ai()?.has_proposal),'bad reply');report.garbage_error=ai().error;assert(ai().error);assert(!ai().has_proposal);assert.equal(editor().draft,original);await capture('05-claude-error');pass('A reply that is not Claude Code output is refused with an error and no proposal');
+ await click('conflict-ai-source-codex');assert.equal(ai().source,'codex');await stable();assert.equal(control('conflict-ai-codex')?.enabled,false,'No Send until Codex is found');await program(codexStub,'codex');await stable();assert(control('conflict-ai-codex')?.enabled);await capture('05b-codex-ready');
+ mode('ok');const asked=requests();await click('conflict-ai-codex',false);await until(()=>ai()?.has_proposal&&!ai().busy,'Codex proposal reviewed');assert.equal(requests(),asked+1);assert.equal(editor().draft,original);assert.deepEqual(preserved(),before);
+ const codexArgs=fs.readFileSync(path.join(stubDir,'arguments-'+requests()+'.txt'),'utf8');for(const text of ['exec','--ephemeral','--ignore-user-config','read-only'])assert(codexArgs.includes(text),'Codex arguments lack '+text);await capture('05c-codex-proposal');
+ await click('conflict-ai-discard');assert(!ai().has_proposal);assert(control('conflict-ai-codex')?.enabled);pass('Codex answers from the same page with the read-only run, and Ask again returns to the request');
+ await click('conflict-ai-back');await click('view-changes');await click(changeRow);assert(control('conflict-open-ai')?.enabled);await capture('05d-changes');await click('conflict-open-ai');await until(()=>ai()?.open,'AI resolve from Changes');assert.equal(ai().source,'codex');pass('AI resolve opens the page straight from the conflicted file in Changes');
+ await click('conflict-ai-source-agent');assert.equal(ai().source,'agent');await stable();assert(control('conflict-ai-share'));assert(!control('conflict-ai-claude'));
+ await click('conflict-ai-share',false);await until(()=>ai()?.shared&&!state.input_pending,'snapshot shared');await stable();assert(control('conflict-ai-cancel')?.enabled,'header Stop while the agent request waits');assert(control('conflict-ai-copy'));await capture('06-agent-waiting');
+ await client.tool('rocket_click',{target:'conflict-ai-cancel',expected_tab:state.active_tab});await until(()=>!ai().busy,'agent request stopped');assert(!ai().has_proposal);assert.equal(editor().draft,original);pass('Switching back shares with a connected MCP agent from the same card, and the header Stop ends that request');
+ fs.unlinkSync(marker);await until(s=>!s.private_state_opt_in);for(const text of secrets)assert(!JSON.stringify(state).includes(text),'general state leak '+text);await close();await stop();
+ const events=logs(),encoded=JSON.stringify(events);for(const text of secrets)assert(!encoded.includes(text),'diagnostic leak '+text);for(const name of ['ai-conflict-claude','ai-conflict-codex'])assert(events.some(e=>e.operation===name),'missing log '+name);report.log_records=events.length;pass('General MCP state and diagnostics exclude the snapshot, instructions and proposal');report.passed=true;
+}catch(e){report.error=String(e.stack||e);fs.writeFileSync(path.join(root,'failure-state.json'),JSON.stringify(state??null,null,2));process.exitCode=1;}finally{try{await stop();}catch(e){report.cleanup_error=String(e);report.passed=false;process.exitCode=1;}if(service?.exitCode!==null||service?.signalCode!==null){const tokenPath=path.join(profile,'access-token');if(fs.existsSync(tokenPath))fs.unlinkSync(tokenPath);}report.after=preserved();fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));fs.writeFileSync('work/ai-conflict-claude-last-result',path.join(root,'result.json'));console.log(JSON.stringify(report,null,2));}}
+run();

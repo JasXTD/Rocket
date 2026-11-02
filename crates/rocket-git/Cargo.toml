@@ -1,0 +1,13 @@
+[package]
+name = "rocket-git"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Rocket's Git helper backend"
+publish = false
+
+[lints]
+workspace = true
+
+# Deliberately no third-party dependencies, including development dependencies.

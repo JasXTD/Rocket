@@ -1,0 +1,11 @@
+[package]
+name = "rocket-spell"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Spell checking for Rocket through the operating system's spell checker"
+publish = false
+
+[lints]
+workspace = true
