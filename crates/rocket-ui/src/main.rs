@@ -17,6 +17,8 @@ fn main() -> eframe::Result {
         }, Box::new(move |_| Ok(Box::new(StartupRefusal(message)))))?;
         return Err(eframe::Error::AppCreation(Box::new(error)));
     }
+    // Capture errors remain visible in Help > Crash Reports; startup stays usable.
+    let _ = rocket_git::crash_reports::install(rocket_git::crash_reports::default_directory(),rocket_git::crash_reports::Component::Desktop);
     let mut args:Vec<_>=std::env::args_os().skip(1).collect();
     if args.first().is_some_and(|a|a=="--rocket-apply-update") {
         let result=if args.len()==2 {rocket_ui::app_updates::install::apply(&PathBuf::from(&args[1]))}else{Err(rocket_git::Error::InvalidInput("Expected one local update plan.".into()))};

@@ -105,7 +105,7 @@ impl Rocket {
     /// A dialog that owns input: any modal dialog, or a page with a review or
     /// write in progress. Browsing pages leave shortcuts and navigation available.
     pub fn blocking_dialog(&self) -> bool {
-        self.dependency_push_review_open() || self.updates.open || self.commit_link.is_some() || self.dialog.as_ref().is_some_and(|d| !browsing(d))
+        self.crash_reports.open || self.dependency_push_review_open() || self.updates.open || self.commit_link.is_some() || self.dialog.as_ref().is_some_and(|d| !browsing(d))
             || self.picker.is_some()
             || self.integrations.prompt_open()
             || self.external.open

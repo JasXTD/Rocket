@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod activity_history;
+pub mod crash_reports;
 pub mod app;
 pub mod app_updates;
 pub mod app_icon;

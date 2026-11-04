@@ -75,6 +75,10 @@ fn main() -> ExitCode {
         return deliver(Outcome::failure(Problem::backend(&error)), command, Value::Null, options.json);
     }
     let mut warnings = vec![];
+    let crash_directory=options.log_dir.as_ref().map(|p|Ok(p.join("crashes"))).unwrap_or_else(rocket_git::crash_reports::default_directory);
+    if rocket_git::crash_reports::install(crash_directory,rocket_git::crash_reports::Component::Cli).is_err(){
+        warnings.push(json!({"code":"crash_capture_unavailable","message":"Local crash reporting could not initialize; the requested operation is unaffected."}));
+    }
     let log = if options.no_log || std::env::var_os("ROCKET_LOG").is_some_and(|v| v == "off") {
         None
     } else {

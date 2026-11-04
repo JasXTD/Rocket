@@ -10,6 +10,13 @@ Rocket is a native Git workspace. Each open repository has its own tab. The side
 
 Operations that change a repository open a review first. The dialog shows what will happen, and nothing is written until you confirm. Press F1, or the ? in a dialog's header, to open the guide at the topic for what is on screen.
 
+### Crash reports
+
+- Open Help → Crash Reports after an unexpected failure. Reports stay on this PC; Rocket does not upload them. Refresh reads the local list without blocking repository work.
+- A Rust panic may have been caught in a worker, so its report does not necessarily mean the whole app stopped. Windows exception reports describe an unhandled native failure. Forced termination and some severe failures can prevent a report.
+- Select a report and review its version, component, time, source location and code offsets. Copy report copies a structured summary; Export report saves a new .json file in an existing folder. Existing files are never replaced. Stop export cancels before publication; a file already saved remains a successful export.
+- Reports omit panic messages, repository contents, credentials and memory dumps. Review the exported file before sharing it. Default storage is %LOCALAPPDATA%\Rocket\crashes; old inactive session files rotate automatically.
+
 ### Saved repositories
 
 - File → Repository manager saves repository shortcuts in folders and workspaces. Scan folder discovers repositories beneath a parent folder without opening tabs or changing files. Include subfolders searches deeper; turn it off to check only the selected folder and its immediate children.

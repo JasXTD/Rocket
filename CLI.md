@@ -699,6 +699,14 @@ selects a dedicated directory. `--no-log` or `ROCKET_LOG=off` disables logging.
 `diagnostics` gives the actual log path, session ID and dropped-event count.
 Logging failure is a warning, never a reason to repeat a successful write.
 
+Crash metadata is separate from operation logs. Operational CLI commands capture
+Rust panics and best-effort unhandled Windows exceptions locally, without panic
+payloads, repository data, credentials or dumps. The default directory is
+`%LOCALAPPDATA%\Rocket\crashes`; explicit `--log-dir` uses its `crashes` subfolder
+for isolated runs. `--no-log` controls operation logging, not crash capture.
+Initialization failure adds `crash_capture_unavailable` without changing the
+requested operation. Reports are never uploaded. See [capture limits](SECURITY.md#local-crash-reports-0920).
+
 Request spans describe report delivery; for write results inspect the backend's
 write/phase/outcome records and the JSON `command_result`. Numeric process timings
 and actual cancellation cleanup timing remain available. Arguments, paths, commit

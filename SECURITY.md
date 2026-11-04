@@ -6,6 +6,40 @@ see the reports for the first pass in `work/security-remediation-20261023/REPORT
 and the follow-up in `work/security-remediation-20261024-v2/REPORT.md` for tested
 artifacts and limits.
 
+## Local crash reports (0.92.0)
+
+Desktop, operational CLI commands and the MCP host install a process-local Rust
+panic hook and a best-effort Windows unhandled-exception filter after the privilege
+check. They do not catch or resume a faulting process. Caught panics can produce a
+report without terminating the app; the viewer says so explicitly.
+
+Reports contain only version, recorded OS/architecture, fixed component/kind,
+time, numeric process/thread IDs, a validated source basename/line and bounded
+code offsets in a fixed set of known modules. Unknown module addresses are
+omitted. Panic payloads, thread names, full paths, command arguments, repository
+contents, environment, credentials, registers and memory dumps are excluded.
+There is no upload service, telemetry call or automatic issue submission.
+
+The writer uses a pre-opened file, a stack buffer and a nonblocking reentrancy
+guard independently of operation-log locks. Each process attempts at most eight
+records of 2 KiB. Storage retains at most 20 session files (320 KiB of records),
+preserves active files, rejects redirected directory ancestry, and inspects at
+most 256 entries. Reads validate/project the private record format; incomplete or
+damaged records do not become raw text in the UI or exports. Export publishes a
+new JSON file atomically without overwriting an existing file. Cancellation before
+publication creates no destination; completion remains success after a late Stop.
+
+Default storage is `%LOCALAPPDATA%\Rocket\crashes`. An explicit CLI `--log-dir`
+puts reports in its `crashes` subdirectory; MCP uses its explicit profile or test
+root. Initialization failure is visible in the viewer/CLI warning. Crash-time disk
+failure, simultaneous/reentrant failures, exhausted report limits, hard process
+termination, fail-fast, a debugger, stack corruption or a replaced exception hook
+can prevent capture. Git, terminal and sandboxed Lua helper failures remain in
+their existing operation diagnostics; sandbox filesystem access is not expanded.
+
+API contracts: [Rust panic hooks](https://doc.rust-lang.org/std/panic/fn.set_hook.html),
+[Windows exception filters](https://learn.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-setunhandledexceptionfilter).
+
 ## History map availability (0.91.1, 2026-11-04)
 
 An aggregate 12,000-parent-link budget now bounds each history snapshot before

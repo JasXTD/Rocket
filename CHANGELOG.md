@@ -8,6 +8,19 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## 0.92.0 — Local crash reports
+
+- Desktop, CLI and MCP hosts record bounded local metadata for Rust panics and
+  best-effort unhandled Windows exceptions. Reports omit panic messages, thread
+  names, repository contents, credentials, absolute code paths and memory dumps.
+- Help → Crash Reports reviews saved reports, copies a structured summary and
+  exports a new JSON file with cancellation and no-overwrite protection. Reads
+  and exports run in the background; damaged records leave valid ones available.
+- No automatic upload or extra dependency. Caught panics are labelled separately
+  from fatal exceptions; forced termination, fail-fast and stack corruption can
+  bypass an in-process handler. Git, terminal and sandboxed Lua helper failures
+  continue to use their existing operation diagnostics.
+
 ## 0.91.3 — Structured counter scanner correction
 
 - Secret protection distinguishes narrowly structured source constants made of

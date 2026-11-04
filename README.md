@@ -36,7 +36,7 @@ repository formats and operations. New bundled builds include **Git for Windows
 choices remain available. HTTPS and SSH use your configured credential helpers
 and SSH setup. Rocket itself does not require a .NET runtime.
 
-Current development version: **0.91.3**. See the [changelog](CHANGELOG.md) for
+Current development version: **0.92.0**. See the [changelog](CHANGELOG.md) for
 release history and the [user guide](crates/rocket-ui/src/guide.md) for individual
 workflows.
 
@@ -180,7 +180,8 @@ See the [extensions guide](docs/wiki/Integrations.md).
 - Manage Windows OpenSSH keys and repository-specific profiles for multiple
   accounts while preserving your existing keys and main SSH configuration.
 - Use the integrated terminal (Windows PowerShell, Git Bash, Command Prompt, PowerShell 7 or your own shell), command palette, configurable shortcuts,
-  scoped custom commands, activity history and diagnostic viewer.
+  scoped custom commands, activity history and diagnostic viewer. **Help → Crash
+  Reports** reviews local crash metadata and exports JSON without automatic uploads.
 - Choose a theme: Default, Dark, Light, System, or Custom with your own accent colour and
   a picture behind the window.
 - Set up Rocket in **Preferences → General**: a source code folder for new clones, tags in

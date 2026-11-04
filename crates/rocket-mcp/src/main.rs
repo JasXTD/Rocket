@@ -55,6 +55,9 @@ fn run() -> Result<(), String> {
     };
     let root = config.as_ref().map_or(&directory, |c| &c.root);
     let policy = Policy::new(root)?;
+    // Test hosts keep crash metadata inside their explicit profile/fixture root.
+    // A storage failure is visible in the native report viewer, without raw paths.
+    let _ = rocket_git::crash_reports::install(Ok(directory.join("crashes")),rocket_git::crash_reports::Component::Mcp);
     let sources = policy.github_publish_check().map_or_else(
         || rocket_mcp::policy::GITHUB_TEST_SOURCES.iter().map(|s| (*s).to_owned()).collect(),
         |(repository,_)| vec![format!("git@github.com:{repository}.git")]);

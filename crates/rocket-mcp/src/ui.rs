@@ -425,6 +425,7 @@ impl Ui {
             .app
             .activity_history
             .state(self.app.backend.as_ref().map_or("", |b| b.log.session_id()));
+        state["crash_reports"] = self.app.crash_reports.snapshot();
         let tools = &self.app.external;
         state["external_tools"] = json!({"open":tools.open,"kind":tools.kind.label(),"owner":tools.owner,"running":tools.running(),"pending":tools.pending(),"cancelling":tools.cancelling,"label":tools.label,"error":tools.error,"notice":tools.notice,"imported":tools.imported,"executable":tools.config().executable,"arguments":tools.config().arguments,"workspace":tools.report.as_ref().and_then(|r|r.workspace.as_ref()).map(|p|p.display().to_string()),"success":tools.report.as_ref().map(|r|r.result.is_ok()),"result":tools.report.as_ref().and_then(|r|r.text.as_ref()).map(|s|s.chars().take(16000).collect::<String>())});
         state["external_tools"]["profiles"] = json!(tools.editing.0[tools.kind.index()].entries.iter().map(|p| &p.name).collect::<Vec<_>>());
@@ -644,6 +645,7 @@ impl Ui {
     /// Controls of a modal that is on top: the Browse picker, the Open folder browser,
     /// External tools and MCP server inside Preferences, or the external tool dialog.
     fn modal_owns(&self, target: &str) -> bool {
+        if self.app.crash_reports.open { return target.starts_with("crash-"); }
         if self.app.picker.is_some() {
             return target.starts_with("picker-");
         }
@@ -1160,6 +1162,7 @@ impl Ui {
         }
         // This panel reads only this host's configured diagnostic directory and copies
         // a bounded structured summary; it cannot execute Git or select arbitrary files.
+        if target.starts_with("crash-") || target == "help-crash-reports" { return Ok(()); }
         if target.starts_with("activity-") || target == "menu-view" {
             return Ok(());
         }
@@ -1893,6 +1896,7 @@ impl Ui {
                         | "dialog-workflow-nav"
                         | "commit-message-scroll"
                         | "commit-link-scroll"
+                        | "crash-scroll"
                         | "update-scroll"
                         | "dialog-commit-scroll"
                         | "dialog-rebase-scroll"
@@ -2039,7 +2043,7 @@ impl Ui {
                             | "conflict-ai-instructions"
                             | "file-path"
                             | "tree-revision"
-                            | "map-revision" | "map-search" | "map-base" | "map-path-scope" | "map-export-path"
+                            | "map-revision" | "map-search" | "map-base" | "map-path-scope" | "map-export-path" | "crash-export-path"
                             | "compare-base" | "compare-target" | "compare-filter"
                             | "review-base" | "review-target" | "review-program"
                             | "compare-base-pick-filter" | "compare-target-pick-filter"

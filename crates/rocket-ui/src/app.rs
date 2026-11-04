@@ -682,6 +682,7 @@ pub struct Rocket {
     pub library: crate::repository_library::Library,
     pub manager: crate::repository_manager::State,
     pub activity_history: crate::activity_history::Panel,
+    pub crash_reports: crate::crash_reports::State,
     pub benchmark: crate::benchmark::State,
     pub external: crate::external_tools::State,
     pub mcp: crate::mcp::Panel,
@@ -837,6 +838,7 @@ impl Rocket {
             library: Default::default(),
             manager: Default::default(),
             activity_history: Default::default(),
+            crash_reports: crate::crash_reports::State::new(rocket_git::crash_reports::directory().map(PathBuf::from).unwrap_or_else(||log_path.join("crashes"))),
             benchmark: Default::default(),
             external: Default::default(),
             mcp: crate::mcp::Panel::new(state_directory.join("mcp")),
@@ -986,6 +988,7 @@ impl Rocket {
             || (self.quitting && self.external.running())
             || (self.quitting && self.dependencies.running())
             || (self.quitting && self.updates.running())
+            || (self.quitting && self.crash_reports.exporting())
             || (self.quitting && self.spelling.waiting())
             || self.dialog.as_ref().is_some_and(|d| {
                 d.identity_task.is_some()
@@ -2168,6 +2171,7 @@ impl Rocket {
         self.dependencies.cancel();
         self.cancel_dependency_push_review();
         self.activity_history.close();
+        self.crash_reports.shutdown();
         self.external.cancel();
         self.cancel_write();
         if let Some(task) = self
@@ -2212,6 +2216,7 @@ impl Rocket {
     }
 
     pub fn poll(&mut self, ctx: &Context) {
+        self.crash_reports.poll();
         self.general.publish(ctx);
         self.poll_guided(ctx);
         self.poll_git_settings(ctx);
@@ -3097,6 +3102,7 @@ impl eframe::App for Rocket {
         self.guide_ui(&ctx);
         self.commit_link_ui(&ctx);
         self.app_updates_ui(&ctx);
+        self.crash_reports_ui(&ctx);
         self.dependency_push_review_ui(&ctx);
         if let Some((path, _)) = &self.pending_review
             && let Some(index) = self.tabs.iter().position(|t| &t.path == path && t.snapshot.is_some()) {

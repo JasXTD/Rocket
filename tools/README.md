@@ -1,5 +1,15 @@
 # Rocket development tools
 
+## Crash reports
+
+The interactive design is `tools/mockups/crash-reports/preview.html`. Focused
+checks select `rocket-git --lib crash_reports`, `rocket-git --test crash_reports`
+and `rocket-ui --lib crash_reports`. Only the test executable's isolated child
+mode deliberately panics or raises a Windows exception; no shipped app exposes
+a crash trigger. After building, `node tools/tests/test-mcp-crash-reports.cjs`
+checks the native viewer/copy/export, errors, Unicode and compact layout through
+an isolated localhost MCP service. Its reports and repository are synthetic.
+
 ## Repository map
 
 After building, run `node tools/tests/test-mcp-map-security.cjs <new-evidence-directory>`

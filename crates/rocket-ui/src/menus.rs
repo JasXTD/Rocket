@@ -794,6 +794,9 @@ impl Rocket {
                 let r=item_response(ui,"Check for Updates","",true);
                 self.frame_widgets.insert("help-updates".into(),(&r).into());
                 if r.clicked(){self.updates.open();}
+                let r=item_response(ui,"Crash Reports","",true);
+                self.frame_widgets.insert("help-crash-reports".into(),(&r).into());
+                if r.clicked(){self.crash_reports.open=true;self.crash_reports.refresh_requested=true;}
                 ui.separator();
                 let r = item_response(ui, "About", "", true);
                 self.frame_widgets.insert("help-about".into(), (&r).into());

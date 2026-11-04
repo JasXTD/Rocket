@@ -938,6 +938,7 @@ fn outcome<T>(result: &Result<T>) -> String {
 
 fn operation_label(value: &str) -> &'static str {
     const OPERATIONS: &[&str] = &[
+        "crash-report-read", "crash-report-export",
         "managed-git-verify", "git-selection-save",
         "benchmark", "benchmark-prepare", "benchmark-refresh", "benchmark-history", "benchmark-diff",
         "info",
