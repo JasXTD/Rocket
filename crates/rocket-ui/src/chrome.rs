@@ -316,6 +316,7 @@ impl Rocket {
                                 View::Changes
                                     | View::Commits
                                     | View::Compare
+                                    | View::Map
                                     | View::BranchReview
                                     | View::Branches
                                     | View::Remotes
@@ -365,6 +366,7 @@ impl Rocket {
                 View::Conflict => crate::conflicts::view(ui, tab, writable, self.write.as_ref().filter(|w| w.owner == Some(tab.id)).map(|w| w.cancelling), &self.drafting, self.mcp.hosted || self.mcp.status.running, intents, &mut self.frame_widgets),
                 View::FileHistory => crate::file_history::view(ui, tab, intents, &mut self.frame_widgets, &self.commands, true),
                 View::Tree => crate::tree::view(ui, tab, intents, &mut self.frame_widgets, &self.commands),
+                View::Map => crate::repository_map::view(ui, tab, intents, &mut self.frame_widgets),
                 View::Compare => crate::compare::view(ui, tab, intents, &mut self.frame_widgets),
                 View::BranchReview => crate::branch_review::view(ui, tab, &self.drafting, intents, &mut self.frame_widgets),
                 View::Commits => views::commits(ui, tab, self.show_details, self.row_height, intents, &mut self.frame_widgets, &self.commands),
@@ -1407,6 +1409,7 @@ impl Rocket {
                         (View::Changes, "Changes", Icon::File, "view-changes"),
                         (View::Commits, "Commits", Icon::Commit, "view-commits"),
                         (View::Compare, "Compare", Icon::Branch, "view-compare"),
+                        (View::Map, "Map", Icon::Branch, "view-map"),
                         (View::BranchReview, "AI review", Icon::Search, "view-review"),
                         (View::Tree, "Files", Icon::Folder, "view-tree"),
                     ] {

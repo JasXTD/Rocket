@@ -179,8 +179,9 @@ fn review_layout_keeps_actions_visible_and_escape_cancels() {
                 phase: push::Phase::Scanning,
             });
             for size in [vec2(1280.0, 860.0), vec2(780.0, 620.0)] {
-                for secrets in [true, false] {
+                for (secrets, ai_keys) in [(true, true), (true, false), (false, true), (false, false)] {
                     app.secret_protection = secrets;
+                    app.guard_ai_api_keys = ai_keys;
                     for _ in 0..3 {
                         frame(&ctx, &mut app, size, vec![]);
                     }
@@ -188,6 +189,7 @@ fn review_layout_keeps_actions_visible_and_escape_cancels() {
                     assert!(text.contains("Checking dependencies before push"));
                     assert!(text.contains("The push has not started"));
                     assert_eq!(text.contains("No secrets detected"), secrets);
+                    assert_eq!(text.contains("No supported AI API-key formats detected"), ai_keys);
                     assert!(!app.frame_widgets.contains_key("dependency-push-continue"));
                     assert!(
                         Rect::from_min_size(Pos2::ZERO, size)

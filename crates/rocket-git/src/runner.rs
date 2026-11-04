@@ -80,6 +80,7 @@ pub(crate) struct Runner {
     pub log: Option<DiagnosticLog>,
     pub transport_scope: Option<crate::TransportScope>,
     pub secret_protection: Arc<AtomicBool>,
+    pub guard_ai_api_keys: Arc<AtomicBool>,
     pub push_check: crate::push_check::Policy,
     pub git_http_allowed: bool,
     // Holds bundled files read-only for this runner and all request/repository clones.
@@ -161,6 +162,11 @@ impl Output {
 }
 
 impl Runner {
+    pub(crate) fn content_guard_enabled(&self) -> bool {
+        self.secret_protection.load(Ordering::Acquire)
+            || self.guard_ai_api_keys.load(Ordering::Acquire)
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn lfs_push(
         &self,
@@ -453,7 +459,7 @@ impl Runner {
             && let Some(scope) = &self.transport_scope {
             scope.configuration(self, cwd, &[], cancel)?;
         }
-        if writing && !helper && !tool && self.secret_protection.load(Ordering::Acquire) {
+        if writing && !helper && !tool && self.content_guard_enabled() {
             self.step("secret-protection", "scan_before_write", || {
                 crate::secret_guard::check(self, cwd, args, &input, cancel)
             })?;

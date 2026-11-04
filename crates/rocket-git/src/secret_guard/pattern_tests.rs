@@ -1,6 +1,186 @@
 //! Generated values are inert fixtures. These tests never contact a provider.
 use super::{SecretKind, environment_file, safe_path, scan, scan_message};
 
+#[path = "variation_tests.rs"]
+mod variations;
+
+#[test]
+fn short_marker_constants_are_not_literal_credentials() {
+    for (tag, suffix) in [
+        ("XD-PRIVATE", "7f3a"),
+        ("EXPORT-CANARY", "4b92"),
+        ("CACHE-PROBE", "5ac9d1"),
+        ("AUDIT_TRACE", "9e20c7a3"),
+        ("QUEUE_ITEM", "c4f8"),
+        ("NETWORK-SAMPLE", "a7c2"),
+    ] {
+        let separator = if tag.contains('_') { '_' } else { '-' };
+        let marker = format!("{tag}{separator}{suffix}");
+        for key in ["SECRET", "secret", "TOKEN", "token"] {
+            for source in [
+                format!("const {key}: &str = \"{marker}\";"),
+                format!("pub const {key}: &'static str = r#\"{marker}\"#;"),
+                format!("pub(crate) const {key}: &str = \"{marker}\";"),
+                format!("export const {key}: string = '{marker}';"),
+                format!("const {key} = `{marker}`; // visible marker"),
+            ] {
+                for ending in ["\n", "\r\n"] {
+                    for encoding in 0..4 {
+                        let bytes = encoded(&(source.clone() + ending), encoding);
+                        assert_eq!(scan(&bytes), None, "marker constant, encoding={encoding}");
+                        assert_eq!(
+                            scan_message(&bytes),
+                            None,
+                            "marker in message, encoding={encoding}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn word_label_constants_are_not_literal_credentials() {
+    for marker in [
+        "fixture-token-DO-NOT-LOG",
+        "local-parser-STATE-READY",
+        "demo_session_EVENT_COMPLETE",
+        "BUILD-SIGNAL-worker-ready",
+        "queue-item-TRACE-ONLY",
+        "preview-cache-LOCAL-READ",
+        "disposable_PUBLISH_TOKEN_never_log",
+        "offline_TRACE_EVENT_ignore_output",
+    ] {
+        for key in ["TOKEN", "token", "SECRET", "secret"] {
+            for source in [
+                format!("const {key}: &str = \"{marker}\";"),
+                format!("pub const {key}: &'static str = r#\"{marker}\"#;"),
+                format!("pub(crate) const {key}: &str = \"{marker}\";"),
+                format!("export const {key}: string = '{marker}';"),
+                format!("const {key} = `{marker}`; // visible label"),
+            ] {
+                for ending in ["\n", "\r\n"] {
+                    for encoding in 0..4 {
+                        let bytes = encoded(&(source.clone() + ending), encoding);
+                        assert_eq!(scan(&bytes), None, "word label, encoding={encoding}");
+                        assert_eq!(
+                            scan_message(&bytes),
+                            None,
+                            "message label, encoding={encoding}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn marker_patterns_preserve_credential_fields_payloads_and_boundaries() {
+    for marker in [
+        "EXPORT-CANARY-4b92",
+        "example-context-NEVER-TRANSMIT",
+        "offline_TRACE_EVENT_ignore_output",
+    ] {
+        let opaque = format!("M8p4{}", generated(4017, 40));
+        let mut cases = vec![
+            format!("const SECRET: &str = \"{opaque}\";"),
+            format!("const secret = r#\"{opaque}\"#;"),
+            format!("const token = \"{opaque}\";"),
+            format!("secret = \"{marker}\";"),
+            format!("let secret: &str = \"{marker}\";"),
+            format!("{{\"secret\":\"{marker}\"}}"),
+            format!("secret: '{marker}'"),
+            format!("// const secret = \"{marker}\";"),
+            format!("\"const secret = '{marker}';\""),
+            format!("let const secret = \"{marker}\";"),
+            format!("const /* comment */ secret = \"{marker}\";"),
+            format!("const secret = \"{marker}\"#extra"),
+            format!("{}const secret = \"{marker}\";", " ".repeat(600)),
+            format!("const secret = \"{marker}\" arbitrary_tail"),
+            format!("const secret = \"{marker}-{opaque}\";"),
+            format!("const secret = \"{marker}\" + \"{opaque}\";"),
+            format!("const secret = \"{marker}"),
+            format!("const secret = r##\"{marker}\"#;"),
+            format!(
+                "const secret = \"{marker}\"{}+ \"{opaque}\";",
+                " ".repeat(600)
+            ),
+            format!("const secret = \"{marker}\"; password = \"{opaque}\";"),
+            "const secret = \"QAZWSX-EDCRFV-TGBYHN-7f3a\";".into(),
+            "const secret = \"EXPORT-CANARY-71bc95d2a4f6\";".into(),
+            "const secret = \"EXPORT-CANARY-7f3a-92bc\";".into(),
+            "const secret = \"EXPORT-CANARY-7f3a:more\";".into(),
+            "const secret = \"EXPORT-CANARY-2A7c9F\";".into(),
+            "const secret = \"EXPORT-CANARY-f9x2\";".into(),
+            "const secret = \"EXPORT-CANARY-7938\";".into(),
+            "const secret = \"example-context-NEVER-TRANSMIT-1234\";".into(),
+            "const secret = \"qazwsx-edcrfv-TGBYHN-UJMIKO\";".into(),
+            "const secret = \"example-context-NEVER-TrAnSmIt\";".into(),
+            "const secret = \"example-context-NEVER_TRANSMIT\";".into(),
+            "const secret = \"example-context-NEVER--TRANSMIT\";".into(),
+            "const secret = \"example-CONTEXT-never-TRANSMIT\";".into(),
+            "const secret = \"example-context-TOKEN-never-transmit\";".into(),
+        ];
+        for key in [
+            "password",
+            "passwd",
+            "api_key",
+            "api_secret",
+            "client_secret",
+            "auth_token",
+            "access_token",
+            "github_token",
+            "db_password",
+            "aws_secret_access_key",
+        ] {
+            cases.push(format!("const {key}: &str = \"{marker}\";"));
+        }
+        for (index, source) in cases.iter().enumerate() {
+            for ending in ["\n", "\r\n"] {
+                for encoding in 0..4 {
+                    let bytes = encoded(&(source.clone() + ending), encoding);
+                    assert_eq!(
+                        scan(&bytes).map(|(kind, _)| kind),
+                        Some(SecretKind::Credential),
+                        "negative case={index}, encoding={encoding}"
+                    );
+                    assert_eq!(
+                        scan_message(&bytes).map(|(kind, _)| kind),
+                        Some(SecretKind::Credential),
+                        "message negative case={index}, encoding={encoding}"
+                    );
+                }
+            }
+        }
+        for (payload, expected) in [
+            (
+                format!("ghp_{}", generated(4021, 40)),
+                SecretKind::GithubToken,
+            ),
+            (
+                format!(
+                    "-----BEGIN PRIVATE KEY-----\n{}\n-----END PRIVATE KEY-----",
+                    "Q3x7A9b2".repeat(8)
+                ),
+                SecretKind::PrivateKey,
+            ),
+        ] {
+            for source in [
+                format!("const secret = \"{payload}\";"),
+                format!("const secret = \"{marker}\";\n{payload}"),
+            ] {
+                for encoding in 0..4 {
+                    let bytes = encoded(&source, encoding);
+                    assert_eq!(scan(&bytes).map(|(kind, _)| kind), Some(expected));
+                    assert_eq!(scan_message(&bytes).map(|(kind, _)| kind), Some(expected));
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn protocol_identifiers_are_not_generic_token_credentials() {
     // Vary every component, including the absence of a version. The reported
@@ -38,6 +218,99 @@ fn protocol_identifiers_are_not_generic_token_credentials() {
                 }
             }
         }
+    }
+}
+
+#[test]
+fn protocol_identifiers_allow_one_escaped_line_ending() {
+    for value in [
+        "IDM_EX_AV_REQUESTED_V1:malwarebytes",
+        "UPLOAD_REQUEST_ACCEPTED_V27:file.sync",
+        "CACHE_STATUS_READY:local_worker",
+        "PREVIEW_SESSION_STARTED_V2026:another-engine",
+    ] {
+        for ending in [r"\n", r"\r\n"] {
+            for source in [
+                format!("let token = \"{value}{ending}\";"),
+                format!("token = '{value}{ending}'"),
+                format!("const TOKEN = `{value}{ending}`; // request received"),
+                format!("{{\"token\":\"{value}{ending}\",\"status\":\"received\"}}"),
+                format!("token: \"{value}{ending}\""),
+            ] {
+                for encoding in 0..4 {
+                    let bytes = encoded(&source, encoding);
+                    assert_eq!(scan(&bytes), None, "content: {source}, encoding {encoding}");
+                    assert_eq!(
+                        scan_message(&bytes),
+                        None,
+                        "message: {source}, encoding {encoding}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn protocol_line_endings_do_not_exempt_credentials_or_incomplete_literals() {
+    let acknowledgment = "IDM_EX_AV_REQUESTED_V1:malwarebytes";
+    let credential = "A9mK7pR4sT2vX8n6Q5bC3z";
+    for ending in [r"\n", r"\r\n"] {
+        let mut cases = [
+            "password",
+            "api_key",
+            "auth_token",
+            "github_token",
+            "client_secret",
+        ]
+        .map(|key| format!("{key} = \"{acknowledgment}{ending}\""))
+        .to_vec();
+        cases.extend([
+            format!("token = \"{credential}{ending}\""),
+            format!("token = \"{acknowledgment}{credential}{ending}\""),
+            format!("token = \"{acknowledgment}{ending}{credential}\""),
+            format!("token = \"{acknowledgment}{ending}{ending}\""),
+            format!("token = \"{acknowledgment}\\{ending}\""),
+            format!("token = \"{acknowledgment}{ending}\" + \"{credential}\""),
+            format!("token = \"{acknowledgment}{ending}\".concat(\"{credential}\")"),
+            format!("token = \"{acknowledgment}{ending}"),
+            format!(
+                "token = \"{acknowledgment}{ending}\"{}+ \"{credential}\"",
+                " ".repeat(600)
+            ),
+            format!("token = \"UPLOAD_REQUEST_ACCEPTED_V1:qazwsx.edcrfv.tgbyhn{ending}\""),
+            format!("token = \"{acknowledgment}{ending}\"; password = \"{credential}\""),
+            format!("token = \"{acknowledgment}{ending}\"; token = \"{credential}\""),
+        ]);
+        for source in cases {
+            for encoding in 0..4 {
+                let bytes = encoded(&source, encoding);
+                assert_eq!(
+                    scan(&bytes),
+                    Some((SecretKind::Credential, 1)),
+                    "content: {source}, encoding {encoding}"
+                );
+                assert_eq!(
+                    scan_message(&bytes),
+                    Some((SecretKind::Credential, 1)),
+                    "message: {source}, encoding {encoding}"
+                );
+            }
+        }
+    }
+    // No general unescaping, trimming, or multiple-terminator exemption.
+    for suffix in [r"\r", r"\t", r"\0", r"\x0a", r"\u000a", r"\n\r", r"\n\t"] {
+        let source = format!("token = \"{acknowledgment}{suffix}\"");
+        assert_eq!(
+            scan(source.as_bytes()),
+            Some((SecretKind::Credential, 1)),
+            "{source}"
+        );
+        assert_eq!(
+            scan_message(source.as_bytes()),
+            Some((SecretKind::Credential, 1)),
+            "{source}"
+        );
     }
 }
 
@@ -94,7 +367,7 @@ fn protocol_identifiers_do_not_exempt_credential_fields_or_opaque_values() {
 
 #[test]
 fn protocol_identifiers_do_not_hide_other_candidates() {
-    let acknowledgment = "token = \"UPLOAD_REQUEST_ACCEPTED_V27:local_worker\";";
+    let acknowledgment = "token = \"UPLOAD_REQUEST_ACCEPTED_V27:local_worker\\r\\n\";";
     let credential = "A9mK7pR4sT2vX8n6Q5bC3z";
     for source in [
         format!("{acknowledgment} token = \"{credential}\""),
@@ -123,14 +396,38 @@ fn protocol_identifiers_do_not_hide_other_candidates() {
 
 #[test]
 fn marker_prefixes_cannot_hide_literal_passwords() {
-    for prefix in ["your_", "example", "placeholder", "changeme", "replace_me", "redacted", "fixture", "dummy", "test-only", "process.env", "std::env", "os.environ", "getenv(", "env(", "#/"] {
+    for prefix in [
+        "your_",
+        "example",
+        "placeholder",
+        "changeme",
+        "replace_me",
+        "redacted",
+        "fixture",
+        "dummy",
+        "test-only",
+        "process.env",
+        "std::env",
+        "os.environ",
+        "getenv(",
+        "env(",
+        "#/",
+    ] {
         for separator in ["", "-"] {
             let candidate = format!("{prefix}{separator}A9mK7pR4sT2vX8n6Q5bC3z");
             for quote in ['\'', '"', '`'] {
                 for encoding in 0..4 {
                     let bytes = encoded(&format!("password = {quote}{candidate}{quote}"), encoding);
-                    assert_eq!(scan(&bytes), Some((SecretKind::Credential, 1)), "prefix {prefix}, encoding {encoding}");
-                    assert_eq!(scan_message(&bytes), Some((SecretKind::Credential, 1)), "message prefix {prefix}, encoding {encoding}");
+                    assert_eq!(
+                        scan(&bytes),
+                        Some((SecretKind::Credential, 1)),
+                        "prefix {prefix}, encoding {encoding}"
+                    );
+                    assert_eq!(
+                        scan_message(&bytes),
+                        Some((SecretKind::Credential, 1)),
+                        "message prefix {prefix}, encoding {encoding}"
+                    );
                 }
             }
         }
@@ -244,21 +541,35 @@ fn password_placeholders_and_references_remain_usable() {
 fn binary_candidate_prefixes_cross_search_chunk_boundaries() {
     let prefixes = ["ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"];
     let headers = [
-        "PRIVATE KEY", "ENCRYPTED PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY",
-        "OPENSSH PRIVATE KEY", "PGP PRIVATE KEY BLOCK",
+        "PRIVATE KEY",
+        "ENCRYPTED PRIVATE KEY",
+        "RSA PRIVATE KEY",
+        "EC PRIVATE KEY",
+        "OPENSSH PRIVATE KEY",
+        "PGP PRIVATE KEY BLOCK",
     ];
     for offset in [64 * 1024 - 3, 64 * 1024 - 1, 64 * 1024, 64 * 1024 + 1] {
         for prefix in prefixes {
             let mut bytes = vec![0; offset];
             bytes[0] = b'\n';
             bytes.extend_from_slice(format!("{prefix}{}", generated(51, 40)).as_bytes());
-            assert_eq!(scan(&bytes), Some((SecretKind::GithubToken, 2)), "{prefix} at {offset}");
+            assert_eq!(
+                scan(&bytes),
+                Some((SecretKind::GithubToken, 2)),
+                "{prefix} at {offset}"
+            );
         }
         for header in headers {
             let mut bytes = vec![0; offset];
             bytes[0] = b'\n';
-            bytes.extend_from_slice(format!("-----BEGIN {header}-----\n{}", "A".repeat(40)).as_bytes());
-            assert_eq!(scan(&bytes), Some((SecretKind::PrivateKey, 2)), "{header} at {offset}");
+            bytes.extend_from_slice(
+                format!("-----BEGIN {header}-----\n{}", "A".repeat(40)).as_bytes(),
+            );
+            assert_eq!(
+                scan(&bytes),
+                Some((SecretKind::PrivateKey, 2)),
+                "{header} at {offset}"
+            );
         }
     }
     // Dense false candidates exercise the same checks without an empty-chunk
@@ -288,7 +599,13 @@ fn large_content_checks_propagate_mid_scan_cancellation_and_deadlines() {
             0 => super::scan_with_check(&bytes, &mut check).map(|_| ()),
             1 => super::scan_message_with_check(&bytes, &mut check).map(|_| ()),
             2 => super::github(&bytes, &mut check).map(|_| ()),
-            _ => super::assignment(&bytes, super::Context::Content, &mut check).map(|_| ()),
+            _ => super::assignment(
+                &bytes,
+                super::Context::Content,
+                super::Policy::ALL,
+                &mut check,
+            )
+            .map(|_| ()),
         };
         assert!(matches!(result, Err(crate::Error::Cancelled)));
         assert_eq!(checks, 3);

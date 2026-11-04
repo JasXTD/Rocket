@@ -6,6 +6,20 @@ see the reports for the first pass in `work/security-remediation-20261023/REPORT
 and the follow-up in `work/security-remediation-20261024-v2/REPORT.md` for tested
 artifacts and limits.
 
+## History map availability (0.91.1, 2026-11-04)
+
+An aggregate 12,000-parent-link budget now bounds each history snapshot before
+its connections can reach the UI. This covers initial reads and pinned Load more;
+the existing per-commit parent and total commit limits alone did not bound the
+combined graph tightly enough. An excessive scope returns an explicit error and
+retains the last completed map. Narrowing the branch, base or literal path scope
+can reduce it. Parent links are never silently dropped to make a scope fit.
+
+History layout indexes parent connections and active/free lanes, preserving
+first-parent ordering without scanning the whole edge collection for every node.
+Regression evidence, including synthetic dense Git history and native acceptance,
+is in `tools/maintenance/security-fixes-20261104/REPORT.md`.
+
 ## Privilege and npm coverage follow-up (0.89.2, 2026-11-02)
 
 One Windows primary-token check now protects the desktop and MCP entry points,
@@ -39,6 +53,59 @@ Unsupported source metadata stops that attempt before publication, including whe
 the working copy contains a valid replacement. Existing scan preferences and
 warning approval policy are unchanged. Evidence and runtime limits are recorded
 in `tools/maintenance/security-fixes-20261102/REPORT.md`.
+
+## AI API-key guard
+
+**Edit → Preferences → Security → Guard AI API keys** is a separate, default-on
+setting. Disabling general Secret protection does not disable this guard, and
+disabling this guard does not disable general credential-assignment checks.
+Each desktop profile saves the choice; existing profiles start with the new
+guard enabled. Explicit opt-out uses profile format v25, which older Rocket
+builds reject instead of silently losing the setting. MCP reports both settings
+but cannot change them. The standalone CLI enables both and has no bypass flag.
+
+The shared content scan checks messages, staged index contents, imported commit
+series and all outgoing immutable history, including deleted files in ancestors.
+The same policy is applied before GitHub publication creates the remote repository.
+A refusal uses `ai_api_key_detected`; reports contain the location and rule, not
+the matched value. Cancellation, object/byte limits and index/history rechecks
+are shared with general Secret protection. Matching is offline: Rocket never
+submits a candidate to an AI provider to determine whether it works.
+
+Distinctive complete formats are recognized for OpenAI legacy/project/service/
+admin keys, Anthropic API/admin keys, Groq, xAI, OpenRouter, Hugging Face and
+standard Google `AIza` API keys (also used by Gemini). Prefix, alphabet, payload
+length, marker and boundary checks prevent matching a prefix alone or a slice of
+a larger identifier. Low-variation repeated filler is ignored. Ordinary environment
+references and placeholders are not treated as complete keys; realistic synthetic
+keys intentionally remain blocked, even in tests, comments or examples. UTF-8 and
+UTF-16 text use the same checks. There is no project-name or test-file allowlist.
+
+DeepSeek and GLM/Z.ai do not have equally distinctive public fingerprints. This
+guard therefore checks their conservative shapes only in credential assignments,
+including `DEEPSEEK_API_KEY`, `ZAI_API_KEY`, `GLM_API_KEY`, `ZHIPUAI_API_KEY` and
+generic `api_key`/`token`/`secret` fields. DeepSeek matching uses `sk-` followed by
+32 hexadecimal characters; GLM/Z.ai matching uses a hexadecimal ID and a URL-safe
+secret separated by one dot. These are bounded heuristics, not provider contracts
+or proof of ownership. Hashes and dotted identifiers elsewhere are left alone.
+
+Provider formats change. Unrecognized versions, computed/escaped credentials,
+short or low-variation values and newer Google authorization-key formats can be
+missed. General Secret protection supplies overlapping coverage for credential
+assignments. Neither switch guarantees that a repository contains no secrets.
+
+Format evidence: [OpenAI key safety](https://help.openai.com/en/articles/5112595-best-practices-for-api-key-safety),
+[Anthropic authentication](https://platform.claude.com/docs/en/cli-sdks-libraries/cli/authentication),
+[DeepSeek API](https://api-docs.deepseek.com/),
+[Z.ai authentication](https://docs.z.ai/api-reference/introduction),
+[GLM HTTP authentication](https://docs.bigmodel.cn/cn/guide/develop/http/introduction),
+[xAI authentication](https://docs.x.ai/developers/rest-api-reference/management/auth),
+[Hugging Face tokens](https://huggingface.co/docs/hub/security-tokens),
+[Google API keys](https://aistudio.google.com/docs/api-key) and
+[OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication).
+Published detector rules from [Gitleaks](https://github.com/gitleaks/gitleaks/tree/master/cmd/generate/config/rules)
+and [TruffleHog](https://github.com/trufflesecurity/trufflehog/tree/main/pkg/detectors)
+were used as format references, not installed or copied as dependencies.
 
 ## Local secret protection
 
@@ -81,16 +148,50 @@ exemption. Complete references such as `${NAME}`, `${NAME:-}`, `$env:NAME`,
 remain supported. Bare `$NAME` remains a reference in unquoted source; quoted
 bare-dollar values receive the normal literal heuristic. The check is lexical,
 not a language parser, and does not evaluate templates or environment variables.
+The bounded assignment matcher recognizes common colon type annotations and Go
+`var name TYPE` / `:=` bindings. Literal matching includes Rust/Python raw and
+byte prefixes, Rust hash delimiters, backticks and C# verbatim strings. Lookahead
+is limited to 512 bytes, with bounded type nesting; this is not complete language
+syntax support. It does not follow arbitrary expressions or computed credentials.
+Quoted configuration values are not reinterpreted as type annotations, and an
+annotation cannot consume an adjacent field, comment or statement. Incomplete
+literals remain candidates; CRLF line boundaries do not become credential bytes.
 For ambiguous `token` fields, complete quoted protocol identifiers such as
 `REQUEST_ACCEPTED_V2:local-worker` are classified by structure and component
 entropy, without application/event/provider allowlists. The form requires at least
 two uppercase tag words, an optional short version, and lowercase label words.
+Each word retains the 3.5-bit character-entropy bound; the combined words use a
+separate 4.0-bit bound because ordinary compound names contain more distinct
+letters. The credential threshold remains 3.5. Both bounds apply only after full
+case, separator and component-length matching; they are not a dictionary of names.
+One terminal escaped `\n` or `\r\n` is allowed inside the complete literal for
+line-oriented protocol messages. This does not decode other escapes, trim
+arbitrary whitespace or accept repeated terminators; values that do not match
+are checked unchanged by the credential heuristic.
 Long or high-entropy components, mixed-case/numeric payloads, malformed separators,
 concatenations and incomplete literals do not receive this classification.
 Password/auth/API-key fields retain their credential checks. This is a heuristic,
 not proof of a value's purpose. Other findings in the same file still scan.
 The same rule applies to staged content and reachable history; there is no
 test-file exemption, history rewrite or already-public-history bypass.
+Ambiguous `secret`/`token` constant declarations also recognize short diagnostic
+markers: at least two uppercase alphabetic words, separated consistently by
+hyphens or underscores, followed by a 4–8-character lowercase hexadecimal ID
+containing both a letter and a digit. Label words have 2–24 characters and use
+the same component/aggregate entropy bounds above. Word-only labels also qualify
+when they contain one contiguous group of at least two uppercase words, with
+lowercase namespace or annotation words before and/or after it, and use a single
+separator throughout. Their aggregate bound applies to case-folded letters; a mixed-case
+word, numeric component or opaque alphabet does not gain this classification.
+Both marker forms require an explicit
+line-leading `const` declaration (optionally Rust visibility or `export`), a
+complete quoted literal and a statement boundary within the bounded lookahead.
+Ordinary assignments, configuration fields, password/API-key fields, longer or
+opaque payloads and concatenated/incomplete literals do not gain this exception.
+No application name, marker word or test-file location is recognized. A real
+unprefixed secret deliberately shaped like such a marker in that exact constant
+context is indistinguishable to this lexical rule; this is not semantic proof
+that the value is harmless. Provider-token and private-key checks remain independent.
 GitHub tokens (including stateless installation tokens) and private
 keys use independent rules: examples, comments and templates do not exempt them.
 Synthetic values that look like credentials can still trigger a refusal.

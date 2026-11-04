@@ -1018,6 +1018,7 @@ impl Rocket {
                 | PickTarget::DependencyScanner
                 | PickTarget::ExtensionFile
                 | PickTarget::LibraryRepository
+                | PickTarget::LibraryScanFolder
                 | PickTarget::CloneParent
                 | PickTarget::InitFolder
                 | PickTarget::WorktreeFolder
@@ -1458,6 +1459,11 @@ mod tests {
             app.show_preferences(Page::Security);
             frame(&ctx, &mut app, vec![]); frame(&ctx, &mut app, vec![]);
             assert!(app.frame_widgets["pref-secret-protection"].enabled);
+            assert!(app.guard_ai_api_keys);
+            assert!(app.frame_widgets["pref-ai-key-guard"].enabled);
+            click(&ctx, &mut app, "pref-ai-key-guard");
+            assert!(!app.guard_ai_api_keys);
+            assert!(app.secret_protection, "AI guard does not toggle the existing guard");
             click(&ctx, &mut app, "pref-secret-protection");
             assert!(!app.secret_protection);
             app.poll(&ctx);
@@ -1477,13 +1483,20 @@ mod tests {
             }
             assert!(app.state_error.is_none());
             assert!(!app.secret_protection, "the user's off choice survives restarting");
+            assert!(!app.guard_ai_api_keys, "AI guard choice survives restarting");
             app.show_preferences(Page::Security);
             frame(&ctx, &mut app, vec![]); frame(&ctx, &mut app, vec![]);
             click(&ctx, &mut app, "pref-secret-protection");
             assert!(app.secret_protection);
+            assert!(!app.guard_ai_api_keys);
+            click(&ctx, &mut app, "pref-ai-key-guard");
+            assert!(app.guard_ai_api_keys);
             app.secret_protection_editable = false;
             frame(&ctx, &mut app, vec![]);
             assert!(!app.frame_widgets["pref-secret-protection"].enabled);
+            assert!(!app.frame_widgets["pref-ai-key-guard"].enabled);
+            click(&ctx, &mut app, "pref-ai-key-guard");
+            assert!(app.guard_ai_api_keys);
             click(&ctx, &mut app, "pref-secret-protection");
             assert!(app.secret_protection);
         });

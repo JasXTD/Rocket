@@ -118,6 +118,7 @@ impl GitClient {
             log,
             transport_scope: None,
             secret_protection: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            guard_ai_api_keys: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             push_check: Default::default(),
             git_http_allowed: !cfg!(windows),
             managed_git,
@@ -187,6 +188,12 @@ impl GitClient {
         self.runner.secret_protection.store(enabled, std::sync::atomic::Ordering::Release);
     }
 
+    /// Independent, default-on AI API-key format guard. Shared clones and
+    /// already-open repositories observe the application's explicit preference.
+    pub fn set_guard_ai_api_keys(&self, enabled: bool) {
+        self.runner.guard_ai_api_keys.store(enabled, std::sync::atomic::Ordering::Release);
+    }
+
     /// Optional application-owned check shared with existing and request-specific clients.
     pub fn set_push_check(&self, check: Option<Arc<dyn crate::PushCheck>>) -> Result<()> {
         self.runner.push_check.set(check)
@@ -197,6 +204,7 @@ impl GitClient {
         let mut client = Self::new_with_log(&self.runner.executable, limits, log)?
             .with_transport_scope(self.runner.transport_scope.clone());
         client.runner.secret_protection = self.runner.secret_protection.clone();
+        client.runner.guard_ai_api_keys = self.runner.guard_ai_api_keys.clone();
         client.runner.push_check = self.runner.push_check.clone();
         Ok(client)
     }

@@ -331,7 +331,7 @@ impl Repository {
         branch: &str,
         c: &CancellationToken,
     ) -> Result<()> {
-        if self.runner.secret_protection.load(Ordering::Acquire) {
+        if self.runner.content_guard_enabled() {
             self.runner
                 .step("github-publish-preview", "scan_publish_history", || {
                     crate::secret_guard::check(

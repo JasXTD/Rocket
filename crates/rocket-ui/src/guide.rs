@@ -400,7 +400,7 @@ impl Rocket {
                 Some(View::Branches) => Topic::Branches,
                 Some(View::Remotes) => Topic::Remotes,
                 Some(View::Stashes) => Topic::Stashes,
-                Some(View::Summary | View::Commits | View::Tree | View::Compare | View::BranchReview) | None => Topic::GettingStarted,
+                Some(View::Summary | View::Commits | View::Tree | View::Compare | View::BranchReview | View::Map) | None => Topic::GettingStarted,
             });
         };
         Some(match &d.kind {

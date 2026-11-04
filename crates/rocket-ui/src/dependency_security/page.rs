@@ -71,7 +71,7 @@ impl Rocket {
                 if !self.secret_protection {
                     help(
                         ui,
-                        "Rocket can commit and push secrets while protection is off.",
+                        "General secret checks are off. The AI API-key guard has its own switch below.",
                     );
                 }
                 if !self.secret_protection_editable {
@@ -94,17 +94,86 @@ impl Rocket {
                 );
             });
         });
+        preferences::card_frame(ui, |ui| {
+            let changed = protection_header(ui, "Guard AI API keys", |ui| {
+                let response = ui
+                    .add_enabled_ui(protection_editable, |ui| {
+                        switch(ui, &mut self.guard_ai_api_keys, "Enable AI API-key guard")
+                    })
+                    .inner;
+                pages::control(
+                    &mut self.frame_widgets,
+                    "pref-ai-key-guard",
+                    &response,
+                    ui.clip_rect(),
+                );
+                response.changed()
+            });
+            if changed && let Some(backend) = &self.backend {
+                backend.set_guard_ai_api_keys(self.guard_ai_api_keys);
+            }
+            preferences::card_note(ui, |ui| {
+                status(
+                    ui,
+                    if self.guard_ai_api_keys {
+                        "Blocks exposed AI API keys"
+                    } else {
+                        "AI key guard is off"
+                    },
+                    if self.guard_ai_api_keys {
+                        GREEN()
+                    } else {
+                        AMBER()
+                    },
+                );
+                help(
+                    ui,
+                    "Checks known key formats in messages, staged files and outgoing history. Runs locally, without contacting providers.",
+                );
+                if !self.guard_ai_api_keys {
+                    help(
+                        ui,
+                        "Provider-format checks are off. Secret protection may still block credential assignments.",
+                    );
+                }
+                if !self.secret_protection_editable {
+                    help(
+                        ui,
+                        "Only the user can change this in the normal Rocket application.",
+                    );
+                }
+            });
+            preferences::divider(ui);
+            preferences::card_note(ui, |ui| {
+                let response = ui.collapsing("Supported key formats", |ui| {
+                    help(ui, "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).");
+                    help(ui, "DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs.");
+                    help(ui, "Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked.");
+                });
+                pages::control(
+                    &mut self.frame_widgets,
+                    "security-ai-key-coverage",
+                    &response.header_response,
+                    ui.clip_rect(),
+                );
+            });
+        });
         self.dependency_page(ui);
         self.sync_dependency_push_check();
         preferences::status_line(
             ui,
             MUTED(),
             &format!(
-                "When you push: {} {}",
+                "When you push: {} {} {}",
                 if self.secret_protection {
                     "Secrets are checked first."
                 } else {
                     "Secret protection is off."
+                },
+                if self.guard_ai_api_keys {
+                    "AI key formats are checked."
+                } else {
+                    "AI key guard is off."
                 },
                 if self.dependencies.before_push {
                     "OSV scans the pushed tips; warnings pause the push for review."

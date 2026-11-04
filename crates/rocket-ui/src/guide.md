@@ -10,6 +10,20 @@ Rocket is a native Git workspace. Each open repository has its own tab. The side
 
 Operations that change a repository open a review first. The dialog shows what will happen, and nothing is written until you confirm. Press F1, or the ? in a dialog's header, to open the guide at the topic for what is on screen.
 
+### Saved repositories
+
+- File → Repository manager saves repository shortcuts in folders and workspaces. Scan folder discovers repositories beneath a parent folder without opening tabs or changing files. Include subfolders searches deeper; turn it off to check only the selected folder and its immediate children.
+- In scan results, filter by name or path and use Select shown to change only visible new entries. Hidden selections remain selected and are counted in the footer. Search and Save in stay above the scrolling list; Review details explains skipped entries. Stop scan or Stop adding leaves the library unchanged.
+- Review the results, select repositories and a saved folder, then Add repositories. Already added entries keep their names and groups; linked worktrees stay separate. Rocket rechecks the selection and saves it together, so a failed or cancelled validation adds nothing.
+- Stop cancels discovery or validation. Git metadata and folder links are skipped. Skipped entries and scan limits are reported; narrow the parent folder if a scan is incomplete.
+
+### Repository map
+
+- Map in the sidebar has Code, Git history and People views. Enter a revision and Refresh to pin a local snapshot. Reads never switch the checkout or change the index. Uncommitted files are excluded.
+- Code shows committed folder/file containment and literal Cargo path dependencies. Other language imports and unsupported Cargo declarations are not inferred. Git history connects parent commits to children; All branches uses locally available branch tips. People uses recorded authors and the pinned .mailmap, showing changed areas or shared paths, not productivity or direct collaboration.
+- Search finds names, paths, authors and commits in the loaded data. Drag to pan; scroll or + / − to zoom; Focus reads the selected node; Fit shows the overview. Compact windows use a Details drawer. Stop and read errors keep the prior snapshot. Refresh explicitly follows external changes.
+- Limits are shown: up to 500 commits, 4,096 nodes and 240 drawn nodes. Narrow the scope or search when the result is partial. Renames remain old/new paths; merge-only resolutions are excluded from contributor attribution.
+
 ### Command palette
 
 - Ctrl+K, or the search field in the toolbar, opens the command palette. With nothing typed it lists what you can do now: commands you ran from it this session, suggestions such as Pull and Push with their commit counts, views, branches to switch to and the rest by group. Without a repository it offers opening, cloning or creating one, and your recent repositories.
@@ -656,6 +670,11 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 - Rocket checks staged content before explicit commits and checks reachable history before pushes. Recognized GitHub tokens, private keys, likely credential literals and .env files cause a refusal with a location and instructions. Deleting a secret only from the newest commit does not remove it from history.
 - Use placeholder-only .env.example, .env.sample or .env.template files. Keep real secrets outside Git. Revoke credentials that have already been exposed.
 - MCP cannot change this preference. This guard covers Rocket operations; raw Git and custom shell commands are outside it. Detection is bounded and cannot recognize every secret or encoding. An incomplete scan also refuses the write.
+
+### Guard AI API keys
+
+- **Guard AI API keys** is a separate switch in Edit → Preferences → Security, on by default. It checks supported OpenAI, Anthropic, DeepSeek, GLM/Z.ai, Google, Groq, xAI, OpenRouter and Hugging Face key shapes locally, without contacting providers. DeepSeek and GLM/Z.ai shapes require a credential assignment because ordinary IDs can look similar. Unknown formats can be missed.
+- The two guards are independent: switching off Secret protection leaves the AI guard on, and switching off the AI guard leaves general credential checks on. Both inspect outgoing history. Only the user in the normal desktop app can change them; MCP cannot. The CLI always enables both.
 
 ### Dependency advisories
 

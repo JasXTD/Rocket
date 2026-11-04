@@ -26,6 +26,7 @@ pub enum View {
     Summary,
     Commits,
     Compare,
+    Map,
     BranchReview,
     FileHistory,
     Tree,
@@ -65,6 +66,7 @@ pub struct Tab {
     pub search_state: crate::history::SearchState,
     pub file_history: crate::file_history::State,
     pub tree: crate::tree::State,
+    pub map: crate::repository_map::State,
     pub compare: crate::compare::State,
     pub branch_review: crate::branch_review::State,
     pub stash: crate::stashes::State,
@@ -138,6 +140,7 @@ impl Tab {
             search_state: Default::default(),
             file_history: Default::default(),
             tree: Default::default(),
+            map: Default::default(),
             compare: Default::default(),
             branch_review: Default::default(),
             stash: Default::default(),
@@ -322,6 +325,7 @@ impl Tab {
         self.conflict.stop();
         self.file_history.stop();
         self.tree.stop();
+        self.map.stop();
         self.compare.stop();
         self.branch_review.stop();
         self.search_state.stop();
@@ -344,6 +348,7 @@ pub enum Intent {
     Stash(crate::stashes::StashIntent),
     File(crate::file_history::FileIntent),
     Tree(crate::tree::TreeIntent),
+    Map(crate::repository_map::MapIntent),
     Compare(crate::compare::CompareIntent),
     BranchReview(crate::branch_review::ReviewIntent),
     Open(PathBuf),
@@ -782,6 +787,7 @@ pub struct Rocket {
     pub(crate) context: Context,
     pub auto_refresh: bool,
     pub secret_protection: bool,
+    pub guard_ai_api_keys: bool,
     /// The native application permits this user preference; MCP-hosted windows do not automate it.
     pub secret_protection_editable: bool,
     pub dependencies: crate::dependency_security::State,
@@ -904,6 +910,7 @@ impl Rocket {
             context: ctx.clone(),
             auto_refresh: true,
             secret_protection: true,
+            guard_ai_api_keys: true,
             secret_protection_editable: true,
             dependencies: Default::default(),
             previous_auto_refresh: true,
@@ -1028,6 +1035,7 @@ impl Rocket {
                     || t.search_state.task.is_some()
                     || t.file_history.running()
                     || t.tree.running()
+                    || t.map.running()
                     || t.compare.running()
                     || t.branch_review.running()
                     || t.stash.running()
@@ -1216,7 +1224,7 @@ impl Rocket {
         tab.diff_tools.cancel();
         tab.patch = None;
         tab.patch_error = None;
-        if matches!(tab.view, View::Summary | View::FileHistory | View::Conflict | View::Tree) {
+        if matches!(tab.view, View::Summary | View::FileHistory | View::Conflict | View::Tree | View::Map) {
             return;
         }
         if tab.view == View::Changes {
@@ -1639,6 +1647,7 @@ impl Rocket {
             Intent::Tool(intent) => self.external_intent(intent),
             Intent::File(intent) => self.file_intent(intent),
             Intent::Tree(intent) => self.tree_intent(intent),
+            Intent::Map(intent) => self.map_intent(intent),
             Intent::Compare(intent) => self.compare_intent(intent),
             Intent::BranchReview(intent) => self.branch_review_intent(intent),
             Intent::Stash(intent) => self.stash_intent(intent),
@@ -1727,6 +1736,7 @@ impl Rocket {
                 {
                     self.tree_intent(crate::tree::TreeIntent::OpenSelected);
                 }
+                if view == View::Map { self.map_intent(crate::repository_map::MapIntent::Open); }
             }
             Intent::Refresh => {
                 if let Some(tab) = self.tab() {
@@ -2300,6 +2310,7 @@ impl Rocket {
                             self.show_console = p.console;
                             self.auto_refresh = p.auto_refresh;
                             self.secret_protection = p.secret_protection;
+                            self.guard_ai_api_keys = p.guard_ai_api_keys;
                             self.dependencies.enabled = p.dependency_warnings;
                             self.dependencies.before_push = p.dependency_before_push;
                             self.previous_auto_refresh = p.auto_refresh;
@@ -2333,6 +2344,7 @@ impl Rocket {
                         }
                     }
                     startup.backend.set_secret_protection(self.secret_protection);
+                    startup.backend.set_guard_ai_api_keys(self.guard_ai_api_keys);
                     self.backend = Some(startup.backend);
                     if !self.quitting {
                         for path in std::mem::take(&mut self.pending_paths) {
@@ -2742,6 +2754,7 @@ impl Rocket {
         self.poll_history_search(ctx);
         self.poll_file_history(ctx);
         self.poll_tree(ctx);
+        self.poll_repository_map(ctx);
         self.poll_compare(ctx);
         self.poll_branch_reviews(ctx);
         self.poll_stashes(ctx);
@@ -2853,6 +2866,7 @@ impl Rocket {
             console: self.show_console,
             auto_refresh: self.auto_refresh,
             secret_protection: self.secret_protection,
+            guard_ai_api_keys: self.guard_ai_api_keys,
             dependency_warnings: self.dependencies.enabled,
             dependency_before_push: self.dependencies.before_push,
             row_height: self.row_height,

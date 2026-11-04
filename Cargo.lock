@@ -1714,7 +1714,7 @@ dependencies = [
 
 [[package]]
 name = "rocket-cli"
-version = "0.89.2"
+version = "0.91.2"
 dependencies = [
  "rocket-git",
  "serde_json",
@@ -1722,11 +1722,11 @@ dependencies = [
 
 [[package]]
 name = "rocket-git"
-version = "0.89.2"
+version = "0.91.2"
 
 [[package]]
 name = "rocket-integrations"
-version = "0.89.2"
+version = "0.91.2"
 dependencies = [
  "lua-src",
  "mlua",
@@ -1737,7 +1737,7 @@ dependencies = [
 
 [[package]]
 name = "rocket-mcp"
-version = "0.89.2"
+version = "0.91.2"
 dependencies = [
  "eframe",
  "png",
@@ -1750,15 +1750,15 @@ dependencies = [
 
 [[package]]
 name = "rocket-mcp-control"
-version = "0.89.2"
+version = "0.91.2"
 
 [[package]]
 name = "rocket-spell"
-version = "0.89.2"
+version = "0.91.2"
 
 [[package]]
 name = "rocket-terminal"
-version = "0.89.2"
+version = "0.91.2"
 dependencies = [
  "unicode-segmentation",
  "unicode-width",
@@ -1766,7 +1766,7 @@ dependencies = [
 
 [[package]]
 name = "rocket-ui"
-version = "0.89.2"
+version = "0.91.2"
 dependencies = [
  "eframe",
  "image",

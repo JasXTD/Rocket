@@ -559,3 +559,36 @@ fn publish_org_public_and_secret_history_preflight() {
         },
     );
 }
+
+#[test]
+fn ai_guard_prevents_remote_creation_with_general_guard_off() {
+    isolated("ROCKET_PUBLISH_CASE", "ai_guard_prevents_remote_creation_with_general_guard_off", || {
+        let f = fixture();
+        let api = Api::new();
+        let session = api.session(&f);
+        let repo = f.repo();
+        let c = CancellationToken::new();
+        let key = format!("sk-{}", "0123456789abcdef".repeat(2));
+        f.write("settings.py", format!("DEEPSEEK_API_KEY = '{key}'\n"));
+        f.commit("Synthetic credential fixture");
+        f.run(&["rm", "settings.py"]);
+        f.commit("Deleted from current snapshot");
+        f.git.set_secret_protection(false);
+        let head = f.run(&["rev-parse", "HEAD"]);
+        let config = fs::read(f.repository.join(".git/config")).unwrap();
+        let failure = repo.preview_github_publish(&session, draft(), &c).err().unwrap();
+        assert!(matches!(&failure, Error::SecretProtection(f) if f.code() == "ai_api_key_detected"));
+        assert!(!failure.to_string().contains(&key));
+        assert_eq!(api.posts.load(Ordering::Acquire), 0);
+        // A reviewed preview cannot bypass a guard enabled before execution.
+        f.git.set_guard_ai_api_keys(false);
+        let preview = repo.preview_github_publish(&session, draft(), &c).unwrap();
+        f.git.set_guard_ai_api_keys(true);
+        let failure = repo.publish_github(&session, &preview, &GitHubPublishProgress::default(), &c).err().unwrap();
+        assert!(matches!(&failure, Error::SecretProtection(f) if f.code() == "ai_api_key_detected"));
+        assert!(!failure.to_string().contains(&key));
+        assert_eq!(api.posts.load(Ordering::Acquire), 0);
+        assert_eq!(head, f.run(&["rev-parse", "HEAD"]));
+        assert_eq!(config, fs::read(f.repository.join(".git/config")).unwrap());
+    });
+}

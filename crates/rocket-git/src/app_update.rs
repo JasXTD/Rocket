@@ -231,6 +231,7 @@ impl UpdateClient {
                 log,
                 transport_scope: None,
                 secret_protection: Arc::new(AtomicBool::new(true)),
+                guard_ai_api_keys: Arc::new(AtomicBool::new(true)),
                 push_check: Default::default(),
                 git_http_allowed: true,
                 managed_git: None,

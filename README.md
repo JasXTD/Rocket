@@ -36,7 +36,7 @@ repository formats and operations. New bundled builds include **Git for Windows
 choices remain available. HTTPS and SSH use your configured credential helpers
 and SSH setup. Rocket itself does not require a .NET runtime.
 
-Current development version: **0.89.2**. See the [changelog](CHANGELOG.md) for
+Current development version: **0.91.2**. See the [changelog](CHANGELOG.md) for
 release history and the [user guide](crates/rocket-ui/src/guide.md) for individual
 workflows.
 
@@ -50,8 +50,10 @@ or use the [wiki](docs/wiki/Home.md) to find instructions for a specific task.
 Inside the app, **Help → Setup Guide** walks you through a first local commit, and
 **Help → Guide** (`F1`) explains the current workflow.
 
-The local 0.89.2 bundle includes the pre-push review improvements and the privilege
-and dependency-coverage security fixes described in the changelog.
+The Windows ZIP includes bundled Git and the required native runtimes. Extract
+the complete archive and open `rocket.exe` normally; no installer or administrator
+access is needed. The Lua worker keeps its isolated execution and links its
+runtime into the worker executable.
 
 ## Features
 
@@ -70,6 +72,10 @@ and dependency-coverage security fixes described in the changelog.
   two bindings per command, duplicate checks, reset options and a search by keys.
 
 ### History and branch workflows
+
+- Explore committed code structure, Git ancestry and contributor connections in
+  the native [Repository map](docs/wiki/Repository-map.md). Local, cancellable
+  reads have explicit limits; Code includes literal Cargo path dependencies.
 
 - Browse the commit graph across branches, search beyond the currently loaded
   commits, follow file renames and browse the repository tree at a chosen commit.
@@ -148,7 +154,10 @@ See the [extensions guide](docs/wiki/Integrations.md).
 ### Repository management
 
 - Organize saved repositories into folders and nested workspaces in the **Repository
-  manager**, with independent tabs, commit drafts and view preferences.
+  manager**, with independent tabs, commit drafts and view preferences. Use **Scan
+  folder** to discover repositories and worktrees together, review duplicates and
+  save selected shortcuts without opening every repository.
+  See the [repository manager guide](docs/wiki/Repository-manager.md).
 - Manage linked worktrees, local tags, submodules and nested submodules, including
   reviewed submodule add, move, remove, sync and update operations.
 - Inspect Git LFS files and objects, manage tracking rules and locks, and review
@@ -336,6 +345,9 @@ setup and authorization.
 - **Secret protection:** local checks can block recognized credentials in commits
   and pushes. Pattern detection has limits and does not replace credential
   revocation or a repository security review.
+- **Guard AI API keys:** a separate, default-on Security setting checks supported
+  OpenAI, Anthropic, DeepSeek, GLM/Z.ai and other provider key formats locally.
+  Both guards also check outgoing history; neither sends keys to a provider.
 - **Diagnostics:** operation history and structured logs help trace failures and
   cancellation. Review any exported diagnostic information before sharing it.
 

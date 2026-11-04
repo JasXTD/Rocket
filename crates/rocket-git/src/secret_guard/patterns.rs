@@ -2,6 +2,24 @@
 use super::SecretKind;
 use crate::Result;
 
+#[path = "syntax.rs"]
+mod syntax;
+use syntax::{SCAN_WINDOW, literal};
+#[path = "ai_keys.rs"]
+mod ai_keys;
+
+#[derive(Clone, Copy)]
+pub(super) struct Policy {
+    pub secrets: bool,
+    pub ai_keys: bool,
+}
+impl Policy {
+    pub const ALL: Self = Self {
+        secrets: true,
+        ai_keys: true,
+    };
+}
+
 // A check covers cancellation and the scan's shared deadline. Inspection must
 // remain interruptible even for a binary blob or a single very long text line.
 fn checkpoint(at: usize, check: &mut dyn FnMut() -> Result<()>) -> Result<()> {
@@ -143,30 +161,12 @@ fn github(bytes: &[u8], check: &mut dyn FnMut() -> Result<()>) -> Result<bool> {
     .is_some())
 }
 
-fn literal(right: &[u8]) -> Option<(&[u8], bool)> {
-    match right.first() {
-        Some(quote @ (b'\'' | b'"' | b'`')) => {
-            let mut at = 1;
-            while at < right.len() {
-                if right[at] == *quote {
-                    return Some((&right[1..at], true));
-                }
-                at += if right[at] == b'\\' { 2 } else { 1 };
-            }
-            // Keep checking a long secret whose closing quote lies beyond the
-            // bounded prefix. Shape/entropy still reject source snippets.
-            Some((&right[1..], true))
-        }
-        _ => Some((
-            right
-                .split(|b| b.is_ascii_whitespace() || matches!(b, b';' | b',' | b'#' | b'`'))
-                .next()?,
-            false,
-        )),
-    }
-}
-
 const CREDENTIAL_ENTROPY_THRESHOLD: f64 = 3.5;
+// A compound identifier draws letters from several different words. Do not use
+// a single credential's diversity cutoff for that aggregate. Each word still
+// uses the stricter 3.5 bound; this separate bound rejects opaque split alphabets
+// after full case/separator/length matching. Credential detection is unchanged.
+const COMPOUND_IDENTIFIER_ENTROPY_THRESHOLD: f64 = 4.0;
 
 // Callers validate ASCII first. Sharing this calculation keeps the ordinary
 // credential heuristic and the structured-identifier check on the same scale.
@@ -210,7 +210,7 @@ fn identifier_words(value: &[u8], separators: &[u8], upper: bool, minimum: usize
     }
     words >= minimum
         && ascii_entropy(value.iter().copied().filter(u8::is_ascii_alphabetic))
-            < CREDENTIAL_ENTROPY_THRESHOLD
+            < COMPOUND_IDENTIFIER_ENTROPY_THRESHOLD
 }
 
 fn protocol_identifier(value: &[u8]) -> bool {
@@ -218,6 +218,14 @@ fn protocol_identifier(value: &[u8]) -> bool {
     // separators and version digits that inflate whole-value entropy. Classify
     // its word components instead; no application, event or provider names are
     // recognized here. The caller restricts this to the ambiguous `token` key.
+    // Line-oriented protocols may include one escaped LF or CRLF inside the
+    // literal. Remove only that terminal sequence for structural classification,
+    // not arbitrary escapes/whitespace or repeated endings. Failed recognition
+    // still checks the original value, and the caller validates its closing quote.
+    let value = value
+        .strip_suffix(b"\\r\\n")
+        .or_else(|| value.strip_suffix(b"\\n"))
+        .unwrap_or(value);
     let mut parts = value.split(|b| *b == b':');
     let (Some(mut tag), Some(subject), None) = (parts.next(), parts.next(), parts.next()) else {
         return false;
@@ -234,6 +242,64 @@ fn protocol_identifier(value: &[u8]) -> bool {
         }
     }
     identifier_words(tag, b"_", true, 2) && identifier_words(subject, b"_-.", false, 1)
+}
+
+fn short_marker_identifier(value: &[u8]) -> bool {
+    // Diagnostic sentinels can combine uppercase label words with a short hex
+    // ID. Whole-value entropy mistakes that case/digit structure for a secret.
+    // Match the complete grammar, not any project's labels or test filenames.
+    // Callers additionally require an explicit constant and an ambiguous key.
+    let Some(at) = value.iter().rposition(|b| matches!(b, b'-' | b'_')) else {
+        return false;
+    };
+    let separator = value[at];
+    let (label, suffix) = (&value[..at], &value[at + 1..]);
+    (4..=8).contains(&suffix.len())
+        && suffix
+            .iter()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(b))
+        && suffix.iter().any(u8::is_ascii_digit)
+        && suffix.iter().any(u8::is_ascii_lowercase)
+        && label.split(|b| *b == separator).all(|word| word.len() >= 2)
+        && identifier_words(label, &[separator], true, 2)
+}
+
+fn word_label_identifier(value: &[u8]) -> bool {
+    // Source constants can surround an uppercase label with lowercase namespace
+    // or annotation words. Case transitions inflate whole-value entropy even
+    // when each component is an ordinary word. Require one uniform separator,
+    // one contiguous uppercase label, and bounded component/aggregate
+    // diversity. No names, file paths or marker prefixes grant an exemption.
+    let Some(&separator) = value.iter().find(|b| matches!(b, b'-' | b'_')) else {
+        return false;
+    };
+    let mut upper_words = 0;
+    let mut lower_words = 0;
+    let mut label_ended = false;
+    for word in value.split(|b| *b == separator) {
+        let upper = word.first().is_some_and(u8::is_ascii_uppercase);
+        if word.len() < 2 || !identifier_words(word, &[], upper, 1) {
+            return false;
+        }
+        if upper {
+            if label_ended {
+                return false;
+            }
+            upper_words += 1;
+        } else {
+            lower_words += 1;
+            label_ended |= upper_words > 0;
+        }
+    }
+    upper_words >= 2
+        && lower_words >= 1
+        && ascii_entropy(
+            value
+                .iter()
+                .copied()
+                .filter(u8::is_ascii_alphabetic)
+                .map(|b| b.to_ascii_lowercase()),
+        ) < COMPOUND_IDENTIFIER_ENTROPY_THRESHOLD
 }
 
 fn credential_like(value: &[u8], quoted: bool) -> bool {
@@ -321,8 +387,9 @@ fn message_reference(value: &[u8], quoted: bool, prose_prefix: bool) -> bool {
 fn assignment(
     line: &[u8],
     context: Context,
+    policy: Policy,
     check: &mut dyn FnMut() -> Result<()>,
-) -> Result<bool> {
+) -> Result<Option<SecretKind>> {
     // Resolve prefix context once. Repeated `token:` clauses must not rescan
     // the whole prefix for every candidate in a long message line.
     let (first_structure, first_word) = if context == Context::Message {
@@ -338,7 +405,9 @@ fn assignment(
         if b != b'=' && b != b':' {
             continue;
         }
-        if matches!(line.get(i + 1), Some(b'=' | b'>')) {
+        if (b == b'=' && matches!(line.get(i + 1), Some(b'=' | b'>')))
+            || (b == b':' && line.get(i + 1) == Some(&b':'))
+        {
             continue; // Comparisons and arrows are not assignments.
         }
         let original_left = line[..i].trim_ascii_end();
@@ -347,11 +416,15 @@ fn assignment(
             .strip_suffix(b"\"")
             .or_else(|| original_left.strip_suffix(b"'"))
             .unwrap_or(original_left);
-        let raw_key = left
+        let direct_key = left
             .rsplit(|b| !b.is_ascii_alphanumeric() && *b != b'_' && *b != b'-')
             .next()
             .unwrap_or_default();
-        let key_start = left.len() - raw_key.len();
+        let go_binding = (b == b'=' && !quoted_key)
+            .then(|| syntax::go_binding(left))
+            .flatten();
+        let (raw_key, key_start) =
+            go_binding.unwrap_or((direct_key, left.len() - direct_key.len()));
         let mut key = Vec::with_capacity(24);
         for (at, &byte) in raw_key.iter().enumerate() {
             checkpoint(at, check)?;
@@ -364,7 +437,7 @@ fn assignment(
                 }
             }
         }
-        if !matches!(
+        let general_key = matches!(
             key.as_slice(),
             b"token"
                 | b"githubtoken"
@@ -381,36 +454,61 @@ fn assignment(
                 | b"awssecretaccesskey"
                 | b"databasepassword"
                 | b"dbpassword"
-        ) {
+        );
+        let ai_key = policy.ai_keys && ai_keys::context_name(&key);
+        if !(policy.secrets && general_key || ai_key) {
             continue;
         }
-        let full_right = line[i + 1..].trim_ascii_start();
-        let right = &full_right[..full_right.len().min(512)];
-        let Some((value, quoted)) = literal(right) else {
+        let shorthand = b == b':' && line.get(i + 1) == Some(&b'=');
+        let mut source_binding = shorthand || go_binding.is_some();
+        let mut full_right = line[i + 1 + usize::from(shorthand)..].trim_ascii_start();
+        let mut colon_value = b == b':' && !shorthand;
+        if colon_value
+            && !quoted_key
+            && let Some(value) = syntax::annotated_value(full_right)
+        {
+            full_right = value;
+            source_binding = true;
+            colon_value = false;
+        }
+        let right = &full_right[..full_right.len().min(SCAN_WINDOW)];
+        let Some(literal) = literal(right) else {
             continue;
         };
-        // A generic token can name protocol data. Require the complete
-        // structured identifier; password/provider-specific labels stay strict.
-        if key == b"token"
-            && quoted
+        let (value, quoted) = (literal.value, literal.quoted);
+        if ai_key && ai_keys::context_value(value) {
+            return Ok(Some(SecretKind::AiApiKey));
+        }
+        if !policy.secrets || !general_key {
+            continue;
+        }
+        // Generic token/secret names can describe structured data. Stronger
+        // credential fields stay strict even when their value has this shape.
+        let protocol = key == b"token" && protocol_identifier(value);
+        let marker = matches!(key.as_slice(), b"secret" | b"token")
+            && !quoted_key
+            && !colon_value
+            && syntax::constant_binding(&line[..key_start])
+            && (short_marker_identifier(value) || word_label_identifier(value));
+        if quoted
             && full_right.len() == right.len()
-            && right.get(value.len() + 1) == right.first()
-            && protocol_identifier(value)
+            && let Some(end) = literal.end
+            && (protocol || marker)
         {
             // Require a complete literal boundary. Concatenation, an unclosed
             // quote or an expression beyond the bounded prefix still blocks.
-            let tail = right[value.len() + 2..].trim_ascii_start();
+            let tail = right[end..].trim_ascii_start();
             if tail.is_empty()
                 || tail.starts_with(b";")
                 || tail.starts_with(b"//")
-                || tail.starts_with(b"#")
-                || (b == b':' && matches!(tail.first(), Some(b',' | b'}')))
+                || (protocol && tail.starts_with(b"#"))
+                || (protocol && colon_value && matches!(tail.first(), Some(b',' | b'}')))
             {
                 continue; // Other assignments/provider tokens/keys still scan.
             }
         }
         if context == Context::Message
-            && b == b':'
+            && colon_value
             && key == b"token"
             && !quoted_key
             // Inline code/object snippets retain content matching too.
@@ -420,6 +518,9 @@ fn assignment(
             continue;
         }
         if !quoted {
+            if source_binding {
+                continue; // A typed/shorthand RHS is a source expression, not bare config.
+            }
             let mut words = line.trim_ascii_start().split(|b| b.is_ascii_whitespace());
             let mut first = words.next().unwrap_or_default();
             if first == b"export" {
@@ -453,21 +554,28 @@ fn assignment(
             continue;
         }
         if credential_like(value, quoted) {
-            return Ok(true);
+            return Ok(Some(SecretKind::Credential));
         }
     }
-    Ok(false)
+    Ok(None)
 }
 
 fn ascii_scan(
     bytes: &[u8],
     context: Context,
+    policy: Policy,
     check: &mut dyn FnMut() -> Result<()>,
 ) -> Result<Option<(SecretKind, usize)>> {
     let mut fence: Option<(u8, usize)> = None;
     for (number, line) in bytes.split(|b| *b == b'\n').enumerate() {
+        // CRLF's final carriage return is a line boundary, not part of an
+        // unfinished literal. Keep LF and CRLF refusal behavior identical.
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
         check()?;
-        if github(line, check)? {
+        if policy.ai_keys && ai_keys::contains_key(line, check)? {
+            return Ok(Some((SecretKind::AiApiKey, number + 1)));
+        }
+        if policy.secrets && github(line, check)? {
             return Ok(Some((SecretKind::GithubToken, number + 1)));
         }
         let mut line_context = context;
@@ -491,8 +599,10 @@ fn ascii_scan(
                 line_context = Context::Content;
             }
         }
-        if assignment(line, line_context, check)? {
-            return Ok(Some((SecretKind::Credential, number + 1)));
+        if (policy.secrets || policy.ai_keys)
+            && let Some(kind) = assignment(line, line_context, policy, check)?
+        {
+            return Ok(Some((kind, number + 1)));
         }
     }
     Ok(None)
@@ -511,19 +621,39 @@ pub(super) fn scan_with_check(
     bytes: &[u8],
     check: &mut dyn FnMut() -> Result<()>,
 ) -> Result<Option<(SecretKind, usize)>> {
-    scan_context(bytes, Context::Content, check)
+    scan_context(bytes, Context::Content, Policy::ALL, check)
 }
 
+#[cfg(test)]
 pub(super) fn scan_message_with_check(
     bytes: &[u8],
     check: &mut dyn FnMut() -> Result<()>,
 ) -> Result<Option<(SecretKind, usize)>> {
-    scan_context(bytes, Context::Message, check)
+    scan_context(bytes, Context::Message, Policy::ALL, check)
+}
+
+pub(super) fn scan_with_policy(
+    bytes: &[u8],
+    message: bool,
+    policy: Policy,
+    check: &mut dyn FnMut() -> Result<()>,
+) -> Result<Option<(SecretKind, usize)>> {
+    scan_context(
+        bytes,
+        if message {
+            Context::Message
+        } else {
+            Context::Content
+        },
+        policy,
+        check,
+    )
 }
 
 fn scan_context(
     bytes: &[u8],
     context: Context,
+    policy: Policy,
     check: &mut dyn FnMut() -> Result<()>,
 ) -> Result<Option<(SecretKind, usize)>> {
     check()?;
@@ -541,7 +671,10 @@ fn scan_context(
         b"-----BEGIN EC PRIVATE KEY-----",
         b"-----BEGIN OPENSSH PRIVATE KEY-----",
         b"-----BEGIN PGP PRIVATE KEY BLOCK-----",
-    ] {
+    ]
+    .into_iter()
+    .filter(|_| policy.secrets)
+    {
         if let Some(found) = find_candidate(bytes, b'-', check, |at| {
             if !bytes[at..].starts_with(header) {
                 return None;
@@ -565,7 +698,7 @@ fn scan_context(
             return Ok(Some(found));
         }
     }
-    if let Some(found) = ascii_scan(bytes, context, check)? {
+    if let Some(found) = ascii_scan(bytes, context, policy, check)? {
         return Ok(Some(found));
     }
     // Windows-authored configuration files often use UTF-16. Never execute or
@@ -590,7 +723,7 @@ fn scan_context(
         checkpoint(at, check)?;
         text.push(character.unwrap_or(char::REPLACEMENT_CHARACTER));
     }
-    scan_context(text.as_bytes(), context, check)
+    scan_context(text.as_bytes(), context, policy, check)
 }
 
 fn private_key_body(rest: &[u8]) -> (bool, usize) {
@@ -663,6 +796,10 @@ pub(super) fn safe_path(bytes: &[u8]) -> String {
 #[cfg(test)]
 #[path = "pattern_tests.rs"]
 mod extended_tests;
+
+#[cfg(test)]
+#[path = "ai_key_tests.rs"]
+mod ai_key_tests;
 
 #[cfg(test)]
 mod tests {

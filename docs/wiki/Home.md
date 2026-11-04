@@ -6,7 +6,7 @@ Start here if Rocket's menus feel overwhelming. You can do ordinary Git work
 with just **Changes**, **Commits**, **Fetch**, **Pull** and **Push**. Open the
 advanced tools when you need a particular operation.
 
-These pages describe **Rocket 0.88.1 on Windows**. Menu names omit trailing
+These pages describe **Rocket on Windows**. Menu names omit trailing
 ellipses. Press **F1** for the guide inside Rocket, or **Ctrl+K** to find a command
 without remembering its menu location.
 
@@ -15,6 +15,8 @@ without remembering its menu location.
 | Your goal | Read this |
 | --- | --- |
 | Open a project or make your first commit | [Getting started](Getting-started.md) |
+| Scan a folder and organize saved repositories | [Repository manager](Repository-manager.md) |
+| Explore code structure, Git ancestry and contributor connections | [Repository map](Repository-map.md) |
 | Save changes, create a branch or switch tasks | [Everyday workflows](Everyday-workflows.md) |
 | Connect GitHub, fetch, pull, push or publish a project | [Remotes and accounts](Remotes-and-accounts.md) |
 | Fix a conflict, failed operation or cancelled push | [Recovery and troubleshooting](Recovery-and-troubleshooting.md) |
@@ -46,6 +48,7 @@ work to GitHub; **Commit & Push** explicitly combines those two steps.
 - **Summary:** local change counts, tracking-ref comparison and a suggested next step (current unreleased source).
 - **Changes:** inspect edits, stage files and write a commit message.
 - **Commits:** browse saved history and select a commit to inspect it.
+- **Map:** explore committed code, Git history and contributor connections locally.
 - **Branch dropdown:** create a branch or find branch workflow actions.
 - **Remotes:** inspect the saved destinations for fetch and push.
 - **Activity:** see the running operation and its result in the bottom drawer.

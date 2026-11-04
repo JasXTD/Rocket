@@ -532,6 +532,7 @@ impl Rocket {
             ("Changes", View::Changes, Icon::File),
             ("Commits", View::Commits, Icon::Commit),
             ("Compare commits and branches", View::Compare, Icon::Columns),
+            ("Repository map", View::Map, Icon::Branch),
             ("Files", View::Tree, Icon::Folder),
             ("Branches", View::Branches, Icon::Branch),
             ("Remotes", View::Remotes, Icon::Remote),

@@ -28,6 +28,10 @@ const SHELL_MAGIC: &[u8] = b"ROCKET-STATE\0\x17";
 // v24 adds opt-in pre-push dependency review. Default-off profiles retain their
 // earlier format; older binaries reject an enabled policy instead of losing it.
 const PUSH_CHECK_MAGIC: &[u8] = b"ROCKET-STATE\0\x18";
+// v25 persists explicit opt-out of the independent default-on AI-key guard.
+// Default-on settings retain their older representation. Older binaries reject
+// v25 rather than silently losing a user's explicit security preference.
+const AI_KEYS_MAGIC: &[u8] = b"ROCKET-STATE\0\x19";
 // v15 uses the v14 layout and version-2 definitions for context-specific commands.
 const SCOPED_MAGIC: &[u8] = b"ROCKET-STATE\0\x0f";
 const URL_MAGIC: &[u8] = b"ROCKET-STATE\0\x10";
@@ -68,6 +72,7 @@ pub struct Preferences {
     pub console: bool,
     pub auto_refresh: bool,
     pub secret_protection: bool,
+    pub guard_ai_api_keys: bool,
     pub dependency_warnings: bool,
     pub dependency_before_push: bool,
     pub row_height: f32,
@@ -95,6 +100,7 @@ impl Default for Preferences {
             console: false,
             auto_refresh: true,
             secret_protection: true,
+            guard_ai_api_keys: true,
             dependency_warnings: true,
             dependency_before_push: false,
             row_height: 33.0,
@@ -315,7 +321,8 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     if !p.general.valid() || !p.shell.valid() {
         return Err(invalid());
     }
-    let push_check = p.dependency_before_push;
+    let ai_keys = !p.guard_ai_api_keys;
+    let push_check = ai_keys || p.dependency_before_push;
     let shell = push_check || p.shell != crate::terminal_settings::Settings::default();
     let general = shell || p.general != crate::general::Settings::default();
     let nested_workspaces = general || state.library.workspaces.iter().any(|w| w.parent.is_some());
@@ -324,7 +331,7 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     let orders = shortcuts || state.worktree_views.values().any(|v| v.history_order != rocket_git::HistoryOrder::default());
     let urls = orders || state.commands.iter().any(|c| c.action == rocket_git::CommandAction::Url);
     let scoped = urls || state.commands.iter().any(|c| c.scope != rocket_git::CommandScope::Repository);
-    let mut bytes = if push_check { PUSH_CHECK_MAGIC } else if shell { SHELL_MAGIC } else if general { GENERAL_MAGIC } else if nested_workspaces { WORKSPACES_MAGIC } else if themes { THEME_MAGIC } else if shortcuts { SHORTCUT_MAGIC } else if orders { ORDER_MAGIC } else if urls { URL_MAGIC } else if scoped { SCOPED_MAGIC } else if state.hosting_searches.is_empty() { DEPENDENCIES_MAGIC } else { SEARCH_MAGIC }.to_vec();
+    let mut bytes = if ai_keys { AI_KEYS_MAGIC } else if push_check { PUSH_CHECK_MAGIC } else if shell { SHELL_MAGIC } else if general { GENERAL_MAGIC } else if nested_workspaces { WORKSPACES_MAGIC } else if themes { THEME_MAGIC } else if shortcuts { SHORTCUT_MAGIC } else if orders { ORDER_MAGIC } else if urls { URL_MAGIC } else if scoped { SCOPED_MAGIC } else if state.hosting_searches.is_empty() { DEPENDENCIES_MAGIC } else { SEARCH_MAGIC }.to_vec();
     bytes.extend([
         u8::from(p.sidebar),
         u8::from(p.details),
@@ -465,6 +472,7 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
         put(&mut bytes, s.arguments.as_bytes())?;
     }
     if push_check { bytes.push(u8::from(p.dependency_before_push)); }
+    if ai_keys { bytes.push(u8::from(p.guard_ai_api_keys)); }
     if bytes.len() as u64 > MAX_BYTES {
         return Err(invalid());
     }
@@ -605,7 +613,8 @@ impl<'a> Reader<'a> {
 fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     let mut r = Reader(bytes);
     let magic = r.take(MAGIC.len())?;
-    let push_check = magic == PUSH_CHECK_MAGIC;
+    let ai_keys = magic == AI_KEYS_MAGIC;
+    let push_check = ai_keys || magic == PUSH_CHECK_MAGIC;
     let shell = push_check || magic == SHELL_MAGIC;
     let general = shell || magic == GENERAL_MAGIC;
     let nested_workspaces = general || magic == WORKSPACES_MAGIC;
@@ -642,6 +651,7 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
         console: r.boolean()?,
         auto_refresh: r.boolean()?,
         secret_protection: true,
+        guard_ai_api_keys: true,
         dependency_warnings: true,
         dependency_before_push: false,
         row_height: f32::from_bits(r.u32()?),
@@ -882,6 +892,7 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
         s.arguments = text(&mut r)?;
     }
     if push_check { state.preferences.dependency_before_push = r.boolean()?; }
+    if ai_keys { state.preferences.guard_ai_api_keys = r.boolean()?; }
     if !r.0.is_empty() {
         return Err(invalid());
     }
@@ -1165,6 +1176,33 @@ mod tests {
         assert!(decode(&invalid_boolean).is_err());
         state.preferences.secret_protection = true;
         assert!(decode(&encode(&state).unwrap()).unwrap().preferences.secret_protection);
+    }
+
+    #[test]
+    fn ai_key_guard_migrates_old_profiles_and_persists_independently() {
+        for secrets in [false,true] {
+            for push in [false,true] {
+                let mut state = SavedState::default();
+                state.preferences.secret_protection = secrets;
+                state.preferences.dependency_before_push = push;
+                let legacy = encode(&state).unwrap();
+                assert_ne!(&legacy[..MAGIC.len()], AI_KEYS_MAGIC);
+                let restored = decode(&legacy).unwrap();
+                assert!(restored.preferences.guard_ai_api_keys);
+                assert_eq!(restored.preferences.secret_protection,secrets);
+                state.preferences.guard_ai_api_keys = false;
+                let bytes = encode(&state).unwrap();
+                assert_eq!(&bytes[..MAGIC.len()],AI_KEYS_MAGIC);
+                assert_eq!(decode(&bytes).unwrap(),state);
+                for length in 0..bytes.len() { assert!(decode(&bytes[..length]).is_err()); }
+                let mut invalid = bytes.clone(); *invalid.last_mut().unwrap()=2;
+                assert!(decode(&invalid).is_err());
+                let mut old_version=bytes; old_version[MAGIC.len()-1]=24;
+                assert!(decode(&old_version).is_err(),"the new field cannot be silently ignored");
+                state.preferences.guard_ai_api_keys=true;
+                assert_eq!(decode(&encode(&state).unwrap()).unwrap(),state);
+            }
+        }
     }
     #[test]
     fn tool_profiles_round_trip_and_reject_truncation_or_invalid_defaults() {

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Rocket · Repository Map preview</title>
+  <link rel="stylesheet" href="preview.css">
+  <script src="preview.js" defer></script>
+</head>
+<body>
+  <svg class="icon-defs" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
+    <symbol id="i-map" viewBox="0 0 24 24"><rect x="3" y="3" width="6" height="6" rx="1.5"/><rect x="15" y="4" width="6" height="6" rx="1.5"/><rect x="9" y="15" width="6" height="6" rx="1.5"/><path d="M9 6h6M6 9v9h3m9-8v8h-3"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-3-15-2 18"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><circle cx="6" cy="4" r="2"/><circle cx="6" cy="20" r="2"/><circle cx="18" cy="7" r="2"/><path d="M6 6v12m12-9v3c0 4-12 2-12 6"/></symbol>
+    <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m2-16a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="7"/><path d="m16 16 5 5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="m5 9 7 7 7-7"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 5h7l2 3h9v12H3z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M5 3h9l5 5v13H5zM14 3v6h5M8 13h8m-8 4h6"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><path d="m12 2 9 5v10l-9 5-9-5V7zM3 7l9 5 9-5m-9 5v10M7.5 4.5l9 5"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 8a9 9 0 0 0-16-2L2 9m0-6v6h6m-4 7a9 9 0 0 0 16 2l2-3m0 6v-6h-6"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m6 8 4 4-4 4m7 0h5"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></symbol>
+    <symbol id="i-compare" viewBox="0 0 24 24"><path d="M8 3v18m8-18v18M4 7l4-4 4 4m0 10 4 4 4-4"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/><rect x="8" y="8" width="8" height="8" rx="1"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M14 4v16"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v1"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m4 12 5 5L20 6"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+    <symbol id="i-warn" viewBox="0 0 24 24"><path d="m12 3 10 18H2zM12 9v5m0 3v1"/></symbol>
+    <symbol id="i-rocket" viewBox="0 0 24 24"><path d="M8 15c-3-5 5-12 13-12 0 8-7 16-12 13m-1-1-4 2 1-6 5-2m-1 7-2 4 6-1 2-5M4 20l3-3"/><circle cx="16" cy="8" r="2"/></symbol>
+  </defs></svg>
+
+  <header class="preview-header">
+    <div class="preview-brand"><svg class="icon"><use href="#i-rocket"/></svg><div><strong>Rocket / Repository Map</strong><span>Interactive design preview · synthetic data</span></div></div>
+    <div class="preview-options">
+      <label>State <select id="scenario" aria-label="Preview state"><option value="ready">Ready</option><option value="loading">Loading</option><option value="empty">Empty repository</option><option value="error">Read error</option><option value="stopped">Stopped</option></select></label>
+      <label>Window <select id="window-size" aria-label="Preview window size"><option value="desktop">Fit window</option><option value="compact">Compact · 780</option><option value="small">Small · 480</option></select></label>
+      <button id="reset-preview" class="quiet" title="Reset all sample filters and selections"><svg class="icon"><use href="#i-refresh"/></svg><span>Reset</span></button>
+    </div>
+  </header>
+
+  <div class="preview-stage">
+    <div class="app" id="app" data-size="desktop" data-state="ready">
+      <div class="menubar" aria-label="Application menu preview"><div class="menu-items"><span>File</span><span>Edit</span><span>View</span><span>Repository</span><span>Terminal</span><span>Window</span><span>Help</span></div><span class="window-title">Rocket</span><span class="window-decoration" aria-hidden="true">− &nbsp; □ &nbsp; ×</span></div>
+      <div class="repo-tabs"><div class="repo-tab"><svg class="icon"><use href="#i-folder"/></svg>Rocket <span class="sample-tag">Sample</span><svg class="icon small faint"><use href="#i-close"/></svg></div><span class="repo-tab-hint">Local repository preview</span></div>
+      <div class="app-toolbar" aria-label="Repository toolbar preview">
+        <span class="branch-indicator"><svg class="icon"><use href="#i-history"/></svg>main<svg class="icon small"><use href="#i-down"/></svg></span><span class="separator"></span>
+        <div class="shell-actions"><button disabled title="Outside this Map preview"><svg class="icon"><use href="#i-refresh"/></svg>Fetch</button><button disabled title="Outside this Map preview"><svg class="icon"><use href="#i-download"/></svg>Pull</button><button disabled title="Outside this Map preview"><svg class="icon"><use href="#i-upload"/></svg>Push</button><button disabled title="Outside this Map preview"><svg class="icon"><use href="#i-history"/></svg>Branch</button></div>
+        <div class="toolbar-end"><span class="read-only"><span class="status-dot"></span>Read-only map</span><span class="console-label"><svg class="icon"><use href="#i-terminal"/></svg>Console</span></div>
+      </div>
+
+      <div class="app-body">
+        <aside class="sidebar" aria-label="Repository navigation preview">
+          <div class="repo-identity"><div class="repo-avatar"><svg class="icon"><use href="#i-rocket"/></svg></div><div><strong>Rocket</strong><span>Local workspace</span></div></div>
+          <nav class="main-nav">
+            <span title="Summary"><svg class="icon"><use href="#i-grid"/></svg><span>Summary</span></span>
+            <span title="Changes"><svg class="icon"><use href="#i-file"/></svg><span>Changes</span><small>3</small></span>
+            <span title="Commits"><svg class="icon"><use href="#i-history"/></svg><span>Commits</span></span>
+            <span title="Compare"><svg class="icon"><use href="#i-compare"/></svg><span>Compare</span></span>
+            <span class="active" aria-current="page" title="Map"><svg class="icon"><use href="#i-map"/></svg><span>Map</span><small class="new-label">NEW</small></span>
+            <span title="Files"><svg class="icon"><use href="#i-folder"/></svg><span>Files</span></span>
+          </nav>
+          <div class="sidebar-section"><div class="section-label">REPOSITORY</div><span><svg class="icon"><use href="#i-down"/></svg>Branches <small>3</small></span><span class="branch-current"><svg class="icon"><use href="#i-history"/></svg>main<span class="tiny-dot"></span></span><span class="nested"><svg class="icon"><use href="#i-history"/></svg>feature/map-lab</span><span class="nested"><svg class="icon"><use href="#i-history"/></svg>fix/cancel</span><span><svg class="icon"><use href="#i-down"/></svg>Remotes <small>1</small></span><span class="nested faint"><svg class="icon"><use href="#i-folder"/></svg>origin</span></div>
+          <div class="sidebar-bottom"><svg class="icon"><use href="#i-info"/></svg><span>This preview never reads or changes a repository.</span></div>
+        </aside>
+
+        <main class="workspace" id="workspace">
+          <header class="map-header"><div class="page-title"><svg class="icon"><use href="#i-map"/></svg><h1>Repository map</h1></div><div class="header-actions"><button id="refresh-map" class="quiet" title="Simulate rebuilding this map"><svg class="icon"><use href="#i-refresh"/></svg><span>Refresh</span></button><button id="toggle-details" class="quiet" aria-expanded="true" aria-controls="inspector"><svg class="icon"><use href="#i-panel"/></svg><span>Details</span></button></div></header>
+          <div class="view-bar"><div class="view-tabs" role="tablist" aria-label="Map views"><button role="tab" id="tab-code" aria-controls="map-panel" aria-selected="true" data-view="code"><svg class="icon"><use href="#i-code"/></svg>Code</button><button role="tab" id="tab-history" aria-controls="map-panel" aria-selected="false" tabindex="-1" data-view="history"><svg class="icon"><use href="#i-history"/></svg>Git history</button><button role="tab" id="tab-people" aria-controls="map-panel" aria-selected="false" tabindex="-1" data-view="people"><svg class="icon"><use href="#i-people"/></svg>People</button></div><span id="view-context" class="view-context">Workspace dependencies</span></div>
+          <div class="filter-bar">
+            <div class="search-field"><svg class="icon"><use href="#i-search"/></svg><input id="map-search" type="search" placeholder="Find a crate or file" aria-label="Search the map" autocomplete="off" spellcheck="false"><button id="clear-search" class="icon-button" aria-label="Clear search" hidden><svg class="icon small"><use href="#i-close"/></svg></button></div>
+            <label class="filter-control"><span id="scope-label">Snapshot</span><select id="map-scope" aria-labelledby="scope-label"></select></label>
+            <label class="filter-control"><span id="detail-label">Show</span><select id="map-detail" aria-labelledby="detail-label"></select></label>
+          </div>
+          <div class="context-strip"><span id="context-copy"></span><span id="context-count" class="count"></span></div>
+          <section class="map-panel" id="map-panel" role="tabpanel" aria-labelledby="tab-code">
+            <div class="graph-and-details" id="graph-and-details">
+              <div class="graph-area" id="graph-area">
+                <div class="graph-title"><span class="eyebrow" id="graph-eyebrow">WORKSPACE CRATES</span><span class="graph-badge" id="graph-badge">Sample · main</span></div>
+                <svg id="graph" xmlns="http://www.w3.org/2000/svg" tabindex="0" role="group" aria-label="Interactive code dependency map. Select a node for details. Drag empty space to pan; use plus, minus or Fit to zoom.">
+                  <defs><pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#243e56" opacity=".42"/></pattern><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0 1 9 5 0 9" fill="none" stroke="context-stroke" stroke-width="1.4"/></marker></defs>
+                  <rect width="100%" height="100%" fill="url(#dots)"/>
+                  <g id="graph-world"></g>
+                </svg>
+                <div class="graph-bottom"><div id="legend" class="legend"></div><div class="zoom-controls" aria-label="Map navigation"><button id="zoom-out" class="icon-button" aria-label="Zoom out"><svg class="icon"><use href="#i-minus"/></svg></button><span id="zoom-label" aria-live="off">100%</span><button id="zoom-in" class="icon-button" aria-label="Zoom in"><svg class="icon"><use href="#i-plus"/></svg></button><span class="separator"></span><button id="focus-node" class="quiet" title="Focus selected node at a readable scale"><svg class="icon"><use href="#i-search"/></svg><span>Focus</span></button><button id="fit-map" class="quiet" title="Fit the whole map (F)"><svg class="icon"><use href="#i-fit"/></svg>Fit</button></div></div>
+                <div class="state-layer" id="state-layer" hidden aria-live="polite"></div>
+              </div>
+              <button id="drawer-backdrop" class="drawer-backdrop" hidden aria-label="Close details"></button>
+              <aside class="inspector" id="inspector" aria-label="Selected map item details"><div class="inspector-top"><span>DETAILS</span><button id="close-details" class="icon-button" aria-label="Close details"><svg class="icon small"><use href="#i-close"/></svg></button></div><div id="inspector-content"></div></aside>
+            </div>
+          </section>
+          <div class="map-hint"><span><svg class="icon small"><use href="#i-info"/></svg><span id="map-hint-text">Select a crate to explore its dependencies.</span></span><span class="navigation-hint">Drag to pan <b>·</b> Scroll to zoom <b>·</b> <kbd>F</kbd> fit</span></div>
+        </main>
+      </div>
+      <footer class="statusbar"><span><svg class="icon small"><use href="#i-history"/></svg>main</span><span class="status-middle" id="status-message" role="status">Sample data · no repository connected</span><span class="status-right"><span class="status-dot"></span>Local preview</span></footer>
+    </div>
+  </div>
+
+  <dialog id="evidence-dialog" aria-labelledby="dialog-title"><div class="dialog-heading"><div><span class="eyebrow">SAMPLE EVIDENCE</span><h2 id="dialog-title">Changed files</h2></div><button id="close-dialog" class="icon-button" aria-label="Close evidence"><svg class="icon"><use href="#i-close"/></svg></button></div><div id="dialog-body"></div><div class="dialog-footer"><span>Synthetic records for design review.</span><button id="done-dialog" class="primary">Done</button></div></dialog>
+  <div class="sr-only" id="announcement" role="status" aria-live="polite"></div>
+</body>
+</html>

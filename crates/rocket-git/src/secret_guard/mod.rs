@@ -12,6 +12,7 @@ use std::{ffi::OsString, fmt, path::Path};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SecretKind {
+    AiApiKey,
     GithubToken,
     PrivateKey,
     Credential,
@@ -21,6 +22,7 @@ pub enum SecretKind {
 impl SecretKind {
     pub fn code(self) -> &'static str {
         match self {
+            Self::AiApiKey => "ai_api_key_detected",
             Self::GithubToken => "github_token_detected",
             Self::PrivateKey => "private_key_detected",
             Self::Credential => "credential_detected",
@@ -30,6 +32,7 @@ impl SecretKind {
     }
     fn label(self) -> &'static str {
         match self {
+            Self::AiApiKey => "a possible AI-provider API key",
             Self::GithubToken => "a GitHub token",
             Self::PrivateKey => "a private key",
             Self::Credential => "a possible hardcoded credential",
@@ -153,14 +156,14 @@ pub(crate) fn check(
 }
 
 pub(crate) fn check_import_text(runner: &Runner, cwd: &Path, message: &[u8], files: &[(Vec<u8>,Vec<u8>)], cancel: &CancellationToken) -> Result<()> {
-    if !runner.secret_protection.load(std::sync::atomic::Ordering::Acquire) { return Ok(()); }
+    if !runner.content_guard_enabled() { return Ok(()); }
     let scan=objects::Scan::new(runner,cwd,"commit",cancel);
     scan.message(message,"imported commit message".into())?;
     for (path,bytes) in files { scan.path(path)?;scan.content(bytes,patterns::safe_path(path))?; }
     Ok(())
 }
 pub(crate) fn check_import_index(runner: &Runner, cwd: &Path, cancel: &CancellationToken) -> Result<()> {
-    if !runner.secret_protection.load(std::sync::atomic::Ordering::Acquire) { return Ok(()); }
+    if !runner.content_guard_enabled() { return Ok(()); }
     check_commit(runner,cwd,&args(&["commit"]),&[],cancel)
 }
 

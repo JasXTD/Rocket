@@ -1162,6 +1162,7 @@ pub enum PickTarget {
     CloneSource,
     /// Repository manager: the repository a saved entry points to.
     LibraryRepository,
+    LibraryScanFolder,
     /// Clone: the folder the new folder goes into.
     CloneParent,
     /// New repository: the project folder.
@@ -1279,6 +1280,7 @@ impl Rocket {
         let mode = match target {
             PickTarget::CommandInput(_) | PickTarget::CommandImport | PickTarget::ThemePicture | PickTarget::ExtensionFile => Mode::File,
             PickTarget::McpRoot
+            | PickTarget::LibraryScanFolder
             | PickTarget::SourceFolder
             | PickTarget::CloneParent
             | PickTarget::InitFolder
@@ -1325,7 +1327,7 @@ impl Rocket {
                     current.parent().map_or_else(|| current.to_path_buf(), Path::to_path_buf),
                     None,
                 ),
-                PickTarget::McpRoot | PickTarget::SourceFolder | PickTarget::CloneParent => (current.to_path_buf(), None),
+                PickTarget::McpRoot | PickTarget::LibraryScanFolder | PickTarget::SourceFolder | PickTarget::CloneParent => (current.to_path_buf(), None),
             }
         } else if mode == Mode::Program {
             (
@@ -1491,6 +1493,7 @@ impl Rocket {
             PickTarget::McpRoot => self.mcp.root = text,
             PickTarget::SourceFolder => self.source_folder_picked(path),
             PickTarget::LibraryRepository => self.library_repository_picked(path),
+            PickTarget::LibraryScanFolder => self.manager_scan_picked(path),
             PickTarget::ToolProgram(kind, index) => {
                 if let Some(profile) = self.external.editing.0[kind.index()].entries.get_mut(index) {
                     profile.config.executable = text;

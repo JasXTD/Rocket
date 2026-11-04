@@ -8,6 +8,126 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## 0.91.2 — Word-label scanner correction
+
+- Secret protection recognizes complete, low-diversity word labels in explicit
+  `token`/`secret` source constants, including labels that change case between
+  words. This avoids false positives on synthetic diagnostics in current files
+  and existing history, without recognizing project names or skipping test files.
+- Credential-specific fields, opaque payloads, concatenated values and known
+  provider key formats retain their checks. Commit/push history inspection,
+  cancellation and redacted diagnostics remain enabled.
+
+## 0.91.1 — History map security limit
+
+- Git history maps refuse scopes exceeding 12,000 parent links, including Load
+  more. The last completed snapshot stays visible; narrow the branch, base or
+  literal path scope to read a smaller graph.
+- History layout indexes parent connections and available lanes so dense valid
+  graphs do not repeatedly scan every connection for every commit. First-parent
+  lane ordering and stable positions across filters are preserved.
+
+## 0.91.0 — Map exploration and Mermaid export
+
+- Collapse Code folders/package directories while retaining connections between
+  groups; focus on a selected node and its direct neighbors in all three maps.
+  Search also finds files inside collapsed groups and keeps retained node positions.
+- Scope history by revision/branches, excluded base and literal file/folder path.
+  Load more grows the same immutable snapshot in 500-commit steps, up to 2,000;
+  Refresh reads current tips. Boundary parent links and incomplete scopes are visible.
+  Browse loaded nodes in 240-node sections; search spans the loaded snapshot.
+  Stable control identities preserve search focus when paging or scope rows change.
+- Review, copy and export the visible map as Mermaid text with pinned object IDs.
+  No additional renderer or dependency. New-file publication preserves existing
+  destinations, including racing external creators, with cancellation before publication.
+- Added affected backend/UI tests and isolated localhost MCP coverage for scopes,
+  groups, neighbors, Unicode exports, cancellation, external changes and compact layouts.
+
+## 0.90.0 — Repository map
+
+- Add native Code, Git history and People maps backed by pinned local Git
+  objects. Browse committed folders, literal Cargo path dependencies, merge
+  ancestry, canonical authors, changed areas and shared-file connections.
+- Search, pan, zoom, focus, inspect nodes and open commit diffs. Compact windows
+  use a details drawer. Stop or a failed read retains the previous snapshot;
+  explicit refresh follows external changes without touching local edits.
+- Bound history and graph size and label partial results. Record named map
+  operations and read steps without repository contents in diagnostic logs.
+  No new dependency or hosted service is required.
+
+## 0.89.9 — Independent AI API-key guard
+
+- Add **Guard AI API keys** in Preferences → Security, enabled by default and
+  independent of general Secret protection. Saved profiles retain their general
+  guard choice; the new guard starts on. Both settings apply to open repositories.
+- Recognize supported OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and
+  standard Google API-key formats, plus DeepSeek and GLM/Z.ai shapes in credential
+  assignments. Inspect messages, staged files, imported commits and outgoing
+  history locally, with bounded scans, cancellation and redacted errors.
+- Show both guard states in push review and MCP state. MCP cannot change either
+  setting; the CLI enables both without a bypass flag. No provider validation
+  requests or dependencies are added. Unknown formats can still be missed.
+
+## 0.89.8 — Short marker constant recognition
+
+- Recognize complete constant literals made from uppercase label words and a
+  short hexadecimal ID in ambiguous `secret`/`token` fields. This corrects false
+  refusals for diagnostic markers in staged content and older Git history.
+- Match declaration, value and string boundaries without application names,
+  fixture-file exclusions or a history bypass. Password/API-key fields, opaque
+  credential literals, GitHub tokens and private keys retain their checks.
+
+## 0.89.7 — Broader credential syntax matching
+
+- Detect credential literals in typed assignments, Go shorthand declarations,
+  Rust/Python raw and byte strings, and C# verbatim strings. Keep source/type
+  references distinct from literal values and preserve complete string boundaries.
+- Classify compound protocol labels independently of the generic credential
+  threshold, fixing false refusals for varied event names without naming specific
+  applications. Credential-specific fields and opaque payloads retain protection.
+- Handle incomplete literals consistently under LF and Windows CRLF. The shared
+  checks apply to staged content, commit messages and older push history.
+
+## 0.89.6 — Protocol acknowledgment secret-scan correction
+
+- Recognize a single escaped LF or CRLF at the end of a complete quoted protocol
+  identifier in a generic `token` field. This fixes false credential refusals for
+  line-oriented acknowledgment fixtures, including those in older push history.
+- Keep credential-specific fields, opaque payloads, appended data and incomplete
+  literals under the existing checks. No test-file or published-history exemption.
+
+## 0.89.5 — Clearer folder scan review
+
+- Search discovered repositories by name or path, hide saved entries and select
+  only the visible results. Hidden selections are retained and counted explicitly.
+- Keep search, destination and selection controls above a compact, scrolling list
+  with relative paths. Empty, already-saved and stopped states have clearer actions.
+- Show bounded explanations for skipped entries and validation progress. Unreadable
+  scan roots fail visibly; all-saved results no longer show a checked Select all.
+
+## 0.89.4 — Scan folders for saved repositories
+
+- Repository manager can scan a parent folder in the background, review discovered
+  repositories and add selected shortcuts to a saved folder in one operation.
+- Existing shortcuts keep their names and groups; linked worktrees appear as
+  separate repositories. Unicode paths, bare repositories and nested repositories
+  are supported. Git metadata and folder links are not traversed.
+- Stop cancels discovery or validation without partially saving the selection.
+  Selected repositories are rechecked before saving. Large scans report explicit
+  limits and skipped entries; compact windows keep the review actions visible.
+
+## 0.89.3 — Portable Windows runtime dependencies
+
+- Portable Windows x64 packages include the reviewed, Microsoft-signed Visual
+  C++ runtime beside Rocket, avoiding a separate system runtime prerequisite.
+- The isolated Lua worker links its runtime statically so its sandbox does not
+  depend on the main application's folder or a system Visual C++ installation.
+  Worker identity checks and sandbox restrictions remain intact.
+- Release checks cover missing/replaced runtime files, ordinary startup, bundled
+  Git, Unicode paths, external changes, terminal execution and compact windows.
+  The HTTP fixture now stays alive through the bounded Git attempt; focused
+  timing checks retain their existing limits and run sequentially.
+
 ## 0.89.2 — Complete privilege guards and npm scan coverage
 
 - Rocket refuses elevated Windows startup and child-process launches across Git,

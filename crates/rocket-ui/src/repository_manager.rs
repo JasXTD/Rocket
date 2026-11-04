@@ -76,6 +76,7 @@ pub struct State {
     pub include_nested: bool,
     pub collapsed: BTreeSet<u64>,
     pub form: Option<Form>,
+    pub scan: Option<crate::repository_scan::State>,
     pub error: Option<String>,
     pub notice: Option<String>,
     pub unavailable: BTreeMap<u64, String>,
@@ -105,7 +106,7 @@ impl State {
         self.notice = None;
     }
     pub fn running(&self) -> bool {
-        self.check.is_some() || self.opening.is_some()
+        self.check.is_some() || self.opening.is_some() || self.scan.as_ref().is_some_and(|s|s.running())
     }
     pub fn opening(&self) -> bool {
         self.opening.is_some()
@@ -115,6 +116,7 @@ impl State {
             + usize::from(self.checking_id.is_some())
     }
     pub fn cancel(&mut self) {
+        if let Some(scan)=&mut self.scan {scan.cancel();}
         self.check = None;
         self.checking_id = None;
         if let Some(o) = self.opening.take() {
@@ -125,6 +127,7 @@ impl State {
     pub fn cancel_form(&mut self) {
         self.check = None;
         self.form = None;
+        self.scan = None;
     }
 }
 /// The details rows' and the forms' label column.
@@ -150,6 +153,7 @@ fn check_error(error: &rocket_git::Error) -> String {
 /// What the page was asked to do this frame; applied once it is drawn.
 #[derive(Default)]
 struct Asked {
+    scan: bool,
     form: Option<FormKind>,
     /// A new empty workspace under this parent (`None`: the top level).
     workspace: Option<Option<u64>>,
@@ -166,6 +170,18 @@ struct Parts<'a> {
     busy: bool,
     editable: bool,
     asked: Asked,
+}
+fn add_actions(ui: &mut Ui, p: &mut Parts<'_>) {
+    let r = pages::primary(ui, p.editable, "Add repository");
+    pages::control(p.widgets, "manager-add", &r, ui.clip_rect());
+    if r.clicked() { p.asked.form = Some(FormKind::Repository(None)); }
+    let r = ui.add_enabled(p.editable, Button::new("Scan folder"));
+    pages::control(p.widgets, "manager-scan", &r, ui.clip_rect());
+    p.asked.scan = r.clicked();
+    let r = ui.add_enabled(p.editable, Button::new("Save open tabs"))
+        .on_hover_text("Save the open tabs as a new workspace");
+    pages::control(p.widgets, "manager-workspace-save", &r, ui.clip_rect());
+    if r.clicked() { p.asked.form = Some(FormKind::Workspace(None)); }
 }
 /// A sidebar heading; with `add` (its tooltip, automation id and whether it is enabled), a +
 /// at its right edge. Returns whether + was clicked.
@@ -623,7 +639,7 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
         };
         bar_title(&mut row, None, &title, &counted);
         if library.repositories.is_empty() {
-            let labels = ["Add repository", "Save open tabs"];
+            let labels = ["Add repository", "Scan folder"];
             let width = buttons_width(ui, &labels);
             empty(ui, Some(Icon::Database), "No saved repositories", width, |ui| {
                 let r = pages::primary(ui, editable, labels[0]);
@@ -632,9 +648,9 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
                     p.asked.form = Some(FormKind::Repository(None));
                 }
                 let r = ui.add_enabled(editable, Button::new(labels[1]));
-                pages::control(p.widgets, "manager-empty-save", &r, ui.clip_rect());
+                pages::control(p.widgets, "manager-empty-scan", &r, ui.clip_rect());
                 if r.clicked() {
-                    p.asked.form = Some(FormKind::Workspace(None));
+                    p.asked.scan = true;
                 }
             });
             return;
@@ -1260,9 +1276,10 @@ impl Rocket {
     pub(crate) fn poll_manager(&mut self, ctx: &Context) {
         if self.quitting {
             self.manager.cancel();
-            self.manager.form = None;
+            self.manager.cancel_form();
             return;
         }
+        self.poll_manager_scan();
         if let Some(result) = self.manager.check.as_mut().and_then(ReadTask::try_finish) {
             self.manager.check = None;
             if let Some(id) = self.manager.checking_id.take() {
@@ -1387,23 +1404,17 @@ impl Rocket {
             count(library.folders.len(), "folder", "folders"),
             count(library.workspaces.len(), "workspace", "workspaces"),
         );
+        let compact = main.width() < 1000.0;
         pages::header(&mut body, Icon::Database, "Repository manager", &summary, |ui| {
             let r = pages::ghost(ui, !busy, "Close");
             pages::control(p.widgets, "manager-close", &r, ui.clip_rect());
             p.asked.close = r.clicked();
-            let r = pages::primary(ui, p.editable, "Add repository");
-            pages::control(p.widgets, "manager-add", &r, ui.clip_rect());
-            if r.clicked() {
-                p.asked.form = Some(FormKind::Repository(None));
-            }
-            let r = ui
-                .add_enabled(p.editable, Button::new("Save open tabs"))
-                .on_hover_text("Save the open tabs as a new workspace");
-            pages::control(p.widgets, "manager-workspace-save", &r, ui.clip_rect());
-            if r.clicked() {
-                p.asked.form = Some(FormKind::Workspace(None));
-            }
+            if !compact { add_actions(ui, &mut p); }
         });
+        if compact {
+            Frame::new().inner_margin(Margin {left:24,right:20,top:0,bottom:12})
+                .show(&mut body, |ui| { ui.horizontal_wrapped(|ui| add_actions(ui, &mut p)); });
+        }
         if let Some(error) = &self.state_error {
             Frame::new()
                 .inner_margin(Margin { left: 24, right: 24, top: 0, bottom: 12 })
@@ -1449,6 +1460,7 @@ impl Rocket {
         }
         ui.advance_cursor_after_rect(full);
         let asked = p.asked;
+        if asked.scan { self.manager_scan(); ui.ctx().request_repaint(); }
         // Applied after drawing: the next frame shows what they changed.
         if asked.form.is_some() || asked.workspace.is_some() || asked.stop || asked.open || asked.close {
             ui.ctx().request_repaint();
@@ -1473,6 +1485,7 @@ impl Rocket {
         }
     }
     pub(crate) fn repository_manager_dialog(&mut self, ctx: &Context) {
+        if self.manager.scan.is_some() { self.manager_scan_dialog(ctx); return; }
         let busy = self.manager.check.is_some();
         let mut submit = false;
         let mut browse = false;

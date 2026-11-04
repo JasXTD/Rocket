@@ -1,6 +1,6 @@
 # Build and verify a new local unsigned release; never replace an existing version.
 [CmdletBinding()]
-param([switch]$Offline, [switch]$WithoutBundledGit)
+param([switch]$Offline, [switch]$WithoutBundledGit, [string]$VcRuntimeDirectory)
 $ErrorActionPreference = 'Stop'
 $packageRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $manifest = [IO.File]::ReadAllText((Join-Path $packageRoot 'Cargo.toml'))
@@ -16,13 +16,23 @@ $source = Join-Path $packageRoot 'target/release'
 $binaries = @('rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-lua-host.exe')
 $documents = @('CHANGELOG.md','CLI.md','DEPENDENCIES.md','HOSTING.md','INTEGRATIONS.md','LICENSE-APACHE','LICENSE-MIT','README.md','SECURITY.md','THIRD-PARTY-NOTICES.txt','tools/Verify-Release.ps1',
     'docs/images/rocket-logo.png','crates/rocket-ui/src/guide.md','tools/README.md','runtime/conpty/1.25.260930003/README.md',
-    'runtime/git/README.md','tools/Git-Runtime.ps1')
+    'runtime/git/README.md','tools/Git-Runtime.ps1','runtime/vc/README.md')
 # User-facing wiki pages ship with the app. Developer/test notes stay local,
 # matching their source-publication exclusions in .gitignore.
 $documents += @(Get-ChildItem -LiteralPath (Join-Path $packageRoot 'docs/wiki') -File -Filter '*.md' | ForEach-Object { 'docs/wiki/' + $_.Name })
 foreach ($name in $binaries) {
     if (-not (Test-Path -LiteralPath (Join-Path $source $name) -PathType Leaf)) { throw "Missing build output: $name" }
 }
+# The sandbox copies only the worker EXE into its private directory. Inspect the
+# actual PE imports using the existing compiler toolchain, not merely build flags.
+$vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+$dumpbin = @(& $vswhere -latest -products '*' -find 'VC\Tools\MSVC\**\bin\Hostx64\x64\dumpbin.exe') | Select-Object -First 1
+if ($LASTEXITCODE -ne 0 -or -not $dumpbin) { throw 'Existing MSVC dumpbin is required to verify the sandbox worker imports.' }
+$workerImports = @(& $dumpbin /DEPENDENTS (Join-Path $source 'rocket-lua-host.exe'))
+if ($LASTEXITCODE -ne 0) { throw 'Could not inspect sandbox worker imports.' }
+$dlls = @($workerImports | ForEach-Object { if ($_ -match '^\s+([A-Za-z0-9_.-]+\.dll)\s*$') { $Matches[1] } })
+if ($dlls -notcontains 'KERNEL32.dll' -or @($dlls | Where-Object { $_ -match '^(?:vcruntime|msvcp|msvcr|ucrtbase|api-ms-win-crt-)' }).Count) { throw 'Sandbox worker must use a statically linked CRT; a system or app-local runtime dependency remains.' }
+Write-Output ('Sandbox worker PE imports verified: ' + ($dlls -join ', '))
 $cliOutput = & (Join-Path $source 'rocket-cli.exe') --json --version
 if ($LASTEXITCODE -ne 0) { throw 'Built CLI version check failed.' }
 $cliVersion = $cliOutput | ConvertFrom-Json
@@ -42,6 +52,7 @@ $runtime = 'conpty/1.25.260930003'
 foreach ($name in @('conpty.dll','OpenConsole.exe','LICENSE')) {
     Copy-Item -LiteralPath (Join-Path $source "$runtime/$name") -Destination (Join-Path $stage "$runtime/$name")
 }
+& (Join-Path $PSScriptRoot 'Copy-VcRuntime.ps1') -Destination $stage -RuntimeDirectory $VcRuntimeDirectory
 if (-not $WithoutBundledGit) {
     & (Join-Path $PSScriptRoot 'Assemble-GitRuntime.ps1') -Destination $stage
 }

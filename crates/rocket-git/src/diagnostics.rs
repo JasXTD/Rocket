@@ -945,6 +945,8 @@ fn operation_label(value: &str) -> &'static str {
         "auto_refresh",
         "watch",
         "library-check",
+        "library-scan",
+        "library-scan-add",
         "load_state",
         "save_state",
         "terminal_start",
@@ -1059,6 +1061,7 @@ fn operation_label(value: &str) -> &'static str {
         "discard-selection",
         "tree-list",
         "tree-content",
+        "map-code", "map-history", "map-people", "map-export",
         "compare",
         "compare-base",
         "compare-target",
@@ -1775,6 +1778,7 @@ mod tests {
         assert_eq!(fs::read_dir(directory.0.join("rocket-overflow")).unwrap().count(), 0);
         // The original request budget also covers a burst once contention is
         // known; later events must not each spend another full lock wait.
+        eprintln!("contended request burst: {elapsed:?} (budget: 3 seconds)");
         assert!(elapsed < Duration::from_secs(3), "contended request burst took {elapsed:?}");
     }
 

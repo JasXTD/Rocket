@@ -16,9 +16,24 @@ try {
     $common = @('build', '--locked', '--target-dir', $buildTarget)
     if ($Offline) { $common += '--offline' }
     if ($Profile -eq 'release') { $common += '--release' }
-    & cargo @common -p rocket-integrations --features runtime --bin rocket-lua-host
-    if ($LASTEXITCODE -ne 0) { throw 'Lua worker build failed.' }
+    # The LPAC sandbox stages only the verified worker EXE. Link its CRT into
+    # that binary; an app-local DLL beside the main app cannot accompany it.
+    # An explicit target keeps this variant separate from ordinary host builds.
+    $workerTarget = 'x86_64-pc-windows-msvc'
+    $oldEncodedFlags = [Environment]::GetEnvironmentVariable('CARGO_ENCODED_RUSTFLAGS', 'Process')
+    $workerFlags = @()
+    if ($oldEncodedFlags) { $workerFlags += $oldEncodedFlags.Split([char]31) }
+    elseif ($env:RUSTFLAGS) { $workerFlags += @($env:RUSTFLAGS -split '\s+' | Where-Object { $_ }) }
+    $env:CARGO_ENCODED_RUSTFLAGS = ($workerFlags + @('-C','target-feature=+crt-static')) -join [char]31
+    try {
+        & cargo @common --target $workerTarget -p rocket-integrations --features runtime --bin rocket-lua-host
+        if ($LASTEXITCODE -ne 0) { throw 'Static-runtime Lua worker build failed.' }
+    } finally {
+        [Environment]::SetEnvironmentVariable('CARGO_ENCODED_RUSTFLAGS', $oldEncodedFlags, 'Process')
+    }
     $worker = Join-Path $buildTarget "$Profile/rocket-lua-host.exe"
+    [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($worker)) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $buildTarget "$workerTarget/$Profile/rocket-lua-host.exe") -Destination $worker
     $expected = (Get-FileHash -LiteralPath $worker -Algorithm SHA256).Hash.ToLowerInvariant()
     $env:ROCKET_LUA_WORKER_SHA256 = $expected
     # Exclude the worker's package from binary targets so the file just hashed

@@ -121,7 +121,7 @@ fn step(ui: &mut Ui, title: &str, state: &str, description: &str, tint: Color32,
         });
     });
 }
-fn scanning(ui: &mut Ui, secrets: bool) {
+fn scanning(ui: &mut Ui, secrets: bool, ai_keys: bool) {
     step(
         ui,
         "Secret protection",
@@ -134,6 +134,10 @@ fn scanning(ui: &mut Ui, secrets: bool) {
         if secrets { GREEN() } else { AMBER() },
         false,
     );
+    ui.add_space(12.0);
+    step(ui, "Guard AI API keys", if ai_keys { "Passed" } else { "Off" },
+        if ai_keys { "No supported AI API-key formats detected." } else { "AI key format checks are disabled in Preferences." },
+        if ai_keys { GREEN() } else { AMBER() }, false);
     ui.add_space(12.0);
     step(
         ui,
@@ -348,6 +352,7 @@ impl Rocket {
                 })
         });
         let secrets = self.secret_protection;
+        let ai_keys = self.guard_ai_api_keys;
         let editable = self.dependencies.editable;
         let widgets = &mut self.frame_widgets;
         // Phase-specific sizing avoids inheriting loading bounds in a warning view.
@@ -378,7 +383,7 @@ impl Rocket {
                 let scroll = ScrollArea::vertical().id_salt(("dependency-push-results", active.id, phase)).max_height(height).show(ui, |ui| {
                     ui.set_width(ui.available_width());
                     match &active.phase {
-                        Phase::Scanning => scanning(ui, secrets),
+                        Phase::Scanning => scanning(ui, secrets, ai_keys),
                         Phase::Continuing => { ui.horizontal(|ui| { ui.spinner(); help(ui, "Continuing the reviewed push…"); }); }
                         Phase::Failed(error) => { pages::callout(ui, RED(), error); ui.add_space(10.0); help(ui, "No push was sent by this attempt. Check scanner setup, then retry Push. Your local commits are retained."); }
                         Phase::Review { reports, .. } => { ui.push_id(active.id, |ui| findings(ui, reports, widgets)); }

@@ -58,6 +58,7 @@ fn scoped() -> (Runner, PathBuf) {
             log: None,
             transport_scope: Some(crate::TransportScope::new(&root, vec![]).unwrap()),
             secret_protection: Arc::new(AtomicBool::new(true)),
+            guard_ai_api_keys: Arc::new(AtomicBool::new(true)),
             push_check: Default::default(),
             git_http_allowed: true,
             managed_git: None,
@@ -122,10 +123,14 @@ fn vulnerable_runtime_keeps_local_git_working() {
             runner.transport_scope = None;
             runner.git_http_allowed = false;
             let cancel = CancellationToken::new();
+            // The fixture can itself sit inside the Rocket checkout. Git's
+            // remote lookup may discover that parent repository, so use the
+            // owned bare repository's absolute path instead of a relative URL.
+            let local = root.join("local.git").into_os_string();
             runner
                 .run(
                     &root,
-                    &args(&["init", "--bare", "local.git"]),
+                    &[OsString::from("init"), OsString::from("--bare"), local.clone()],
                     vec![],
                     &cancel,
                 )
@@ -133,7 +138,7 @@ fn vulnerable_runtime_keeps_local_git_working() {
                 .success("init")
                 .unwrap();
             runner
-                .run(&root, &args(&["ls-remote", "local.git"]), vec![], &cancel)
+                .run(&root, &[OsString::from("ls-remote"), local], vec![], &cancel)
                 .unwrap()
                 .success("local refs")
                 .unwrap();
@@ -152,9 +157,13 @@ fn patched_runtime_keeps_http_transport_available() {
             let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
             listener.set_nonblocking(true).unwrap();
             let url = format!("http://{}/repo", listener.local_addr().unwrap());
+            // Keep the fixture alive for the actual bounded Git attempt. A
+            // separate five-second listener deadline can expire during process
+            // startup on a busy Windows host, before Git has tried HTTP at all.
+            // Dropping the sender also stops the fixture if the caller unwinds.
+            let (finished, stop) = std::sync::mpsc::channel::<()>();
             let server = std::thread::spawn(move || {
-                let deadline = Instant::now() + Duration::from_secs(5);
-                while Instant::now() < deadline {
+                loop {
                     match listener.accept() {
                         Ok((mut socket, _)) => {
                             socket.set_nonblocking(false).unwrap();
@@ -170,12 +179,14 @@ fn patched_runtime_keeps_http_transport_available() {
                             return request[..count].starts_with(b"GET /repo/info/refs");
                         }
                         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            if stop.try_recv() != Err(std::sync::mpsc::TryRecvError::Empty) {
+                                return false;
+                            }
                             std::thread::sleep(Duration::from_millis(5));
                         }
                         Err(e) => panic!("loopback fixture: {e}"),
                     }
                 }
-                false
             });
             let output = runner.run(
                 &root,
@@ -183,6 +194,7 @@ fn patched_runtime_keeps_http_transport_available() {
                 vec![],
                 &CancellationToken::new(),
             );
+            drop(finished);
             assert!(
                 server.join().unwrap(),
                 "patched runtime never reached its local HTTP fixture"

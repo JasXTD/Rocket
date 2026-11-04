@@ -1,5 +1,19 @@
 # Dependency review
 
+## Portable Windows Visual C++ runtime — 2026-11-03
+
+The package now carries Microsoft x64 `vcruntime140.dll` 14.51.36247.0 beside
+the executables. Five Rocket binaries import it; the older ZIP
+silently depended on an installed system copy. The reviewed DLL is reused from
+the existing Visual Studio redistributable directory, with its exact hash,
+Microsoft signature and timestamp checked before copying. No download, system
+installation or Cargo dependency is involved. The Lua worker links the runtime
+statically because its sandbox stages only the EXE; the 0.89.3 hosts bind that
+rebuilt worker's hash. Provenance,
+redistribution references and servicing responsibility are recorded in
+[runtime/vc/README.md](runtime/vc/README.md). Existing versioned bundles remain
+unchanged; Windows 11 testing uses the corrected 0.89.3 package.
+
 ## Optional pre-push OSV check — 0.89.0
 
 Preferences > Security > **Scan dependencies before pushing** reuses the same

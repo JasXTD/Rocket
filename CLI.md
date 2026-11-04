@@ -425,8 +425,9 @@ even when `--repo` names a subdirectory. Use `--` before paths beginning with `-
 
 ### Secret protection
 
-CLI commits and pushes default to local secret protection. Recognized GitHub
-tokens, private keys, likely credential assignments and `.env` paths cause exit
+CLI commits and pushes enable both local Secret protection and Guard AI API keys.
+Recognized AI-provider key formats use the fixed code `ai_api_key_detected`.
+Recognized GitHub tokens, private keys, likely credential assignments and `.env` paths cause exit
 1 before the write process starts. The JSON error has a fixed detection `code`,
 sanitized `location`, optional `line`, `operation_started: false` and
 `retry_requires_changes: true`, plus corrective `guidance`. Normal push results
@@ -435,7 +436,8 @@ report `remote_outcome: "not_attempted"`. The matching secret is never echoed.
 Remove the content from the staged snapshot and all history being published
 before retrying; a later deletion is insufficient. Do not retry through another
 tool to bypass the refusal. The optional desktop setting applies to its own
-profile; the CLI has no bypass flag. See [coverage and scan limits](SECURITY.md#local-secret-protection).
+profile; the CLI has no bypass flag. See [AI key coverage](SECURITY.md#ai-api-key-guard)
+and [general coverage and scan limits](SECURITY.md#local-secret-protection).
 
 ### Concurrent writes
 

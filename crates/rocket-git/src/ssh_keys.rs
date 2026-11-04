@@ -150,6 +150,7 @@ impl SshManager {
                 log,
                 transport_scope: None,
                 secret_protection: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                guard_ai_api_keys: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
                 push_check: Default::default(),
                 git_http_allowed: false, // This runner launches only OpenSSH tools.
                 managed_git: None,

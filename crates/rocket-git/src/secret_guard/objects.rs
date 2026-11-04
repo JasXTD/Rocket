@@ -35,6 +35,7 @@ pub(super) struct Scan<'a> {
     queue: VecDeque<(String, String)>,
     seen: HashSet<String>,
     bytes: usize,
+    policy: patterns::Policy,
 }
 impl<'a> Scan<'a> {
     pub(super) fn new(
@@ -52,6 +53,14 @@ impl<'a> Scan<'a> {
             queue: VecDeque::new(),
             seen: HashSet::new(),
             bytes: 0,
+            policy: patterns::Policy {
+                secrets: runner
+                    .secret_protection
+                    .load(std::sync::atomic::Ordering::Acquire),
+                ai_keys: runner
+                    .guard_ai_api_keys
+                    .load(std::sync::atomic::Ordering::Acquire),
+            },
         }
     }
     fn check(&self) -> Result<()> {
@@ -106,14 +115,17 @@ impl<'a> Scan<'a> {
     }
     pub(super) fn content(&self, bytes: &[u8], location: String) -> Result<()> {
         self.check()?;
-        if let Some((kind, line)) = patterns::scan_with_check(bytes, &mut || self.check())? {
+        if let Some((kind, line)) =
+            patterns::scan_with_policy(bytes, false, self.policy, &mut || self.check())?
+        {
             return Err(refusal(self.operation, kind, location, Some(line)));
         }
         Ok(())
     }
     pub(super) fn message(&self, bytes: &[u8], location: String) -> Result<()> {
         self.check()?;
-        if let Some((kind, line)) = patterns::scan_message_with_check(bytes, &mut || self.check())?
+        if let Some((kind, line)) =
+            patterns::scan_with_policy(bytes, true, self.policy, &mut || self.check())?
         {
             return Err(refusal(self.operation, kind, location, Some(line)));
         }
@@ -121,7 +133,7 @@ impl<'a> Scan<'a> {
     }
     pub(super) fn path(&self, path: &[u8]) -> Result<()> {
         self.content(path, "a filename (hidden)".into())?;
-        if path.split(|b| *b == b'/').any(patterns::environment_file) {
+        if self.policy.secrets && path.split(|b| *b == b'/').any(patterns::environment_file) {
             return Err(refusal(
                 self.operation,
                 SecretKind::EnvironmentFile,

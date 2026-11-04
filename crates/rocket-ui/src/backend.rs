@@ -1869,6 +1869,10 @@ impl Backend {
     pub fn set_secret_protection(&self, enabled: bool) {
         self.client.set_secret_protection(enabled);
     }
+
+    pub fn set_guard_ai_api_keys(&self, enabled: bool) {
+        self.client.set_guard_ai_api_keys(enabled);
+    }
     pub(crate) fn set_push_check(&self, check: Option<Arc<dyn rocket_git::PushCheck>>) -> Result<()> {
         self.client.set_push_check(check)
     }
@@ -1881,7 +1885,7 @@ impl Backend {
                 .head(cancel)
         })
     }
-    fn request<T>(
+    pub(crate) fn request<T>(
         &self,
         operation: &str,
         network: bool,

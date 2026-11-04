@@ -1,15 +1,73 @@
 # Rocket development tools
 
+## Repository map
+
+After building, run `node tools/tests/test-mcp-map-security.cjs <new-evidence-directory>`
+for the history-link budget. It checks refusal above 12,000 links on initial reads
+and Load more, retained snapshots and responsive filtering, exact-limit rendering
+at wide/compact sizes, and repository preservation. Its synthetic fixture and
+owned MCP service are removed after success; failures retain fixture evidence.
+
+The focused exploration runner is `node tools/tests/test-mcp-map-exploration.cjs`.
+It checks collapse/neighbor navigation, pinned scoped pagination and cancellation,
+Mermaid review/new-file safety, external changes, Unicode and compact windows.
+The design preview is `tools/mockups/map-exploration/preview.html`.
+
+After `Build-Local.ps1 -Offline`, run `node tools/tests/test-mcp-repository-map.cjs`.
+It tests the native Code, Git history and People pages through an isolated
+localhost MCP profile using synthetic local repositories. It covers Unicode,
+Cargo path links, merge parents, canonical authors, compact detail drawers,
+external changes, bounded large trees, cancellation, superseded reads, errors
+and diagnostic privacy. No hosted remotes or personal credentials are used.
+Focused Rust checks select `rocket-git --test repository_map` and
+`rocket-ui --lib repository_map`; parser tests select `rocket-git --lib repository_map`.
+
+## Repository folder scan
+
+Run `node tools/tests/test-mcp-repository-scan.cjs` after a matching
+`Build-Local.ps1 -Offline` build. It creates an isolated localhost MCP profile and
+32 local repositories/worktrees, then checks scan/add cancellation, duplicates,
+Unicode paths, filtered selection, skipped-entry details, external removal,
+pinned compact-window controls, persistence and log privacy.
+Only disposable fixture repositories are used; no remote operation runs.
+The refined mockup is `tools/mockups/repository-scan/preview-v2.html`; native
+results and captures are kept under `tools/maintenance/repository-scan-ux-20261103`.
+Focused Rust checks: `cargo test --offline --locked --release -p rocket-ui --lib repository_scan`
+and `cargo test --offline --locked --release -p rocket-ui --lib repository_manager`.
+
+## Windows package acceptance
+
+Use Test-ReleaseChecks.ps1 -Offline for the five exact sequential release gates,
+and Test-WindowsPackage.ps1 with a reviewed bundle and new system-temp output
+directory for the packaged CLI, ordinary desktop and localhost MCP smoke checks.
+Run them one at a time, with the shared test slot reserved. All original timing
+criteria remain enforced; no full workspace test or automatic retry is implied.
+See [Windows release testing](../docs/Windows-release-testing.md) for commands,
+isolation, evidence, clean-machine limits and Windows 11 handoff instructions.
+
 Reusable tools live here. `work/` is only generated test data, logs and temporary
 output. Run commands below from the Rocket project root. Run only the checks for
 the feature you changed; reserve the build/MCP slot in `COORDINATION.md` first.
 
 Create a new unsigned local release with `.\tools\Package-Release.ps1 -Offline`
 after updating the workspace version. It builds through `Build-Local.ps1`, includes
-all six Rocket executables and the ConPTY runtime, regenerates `SHA256SUMS.txt`,
+all six Rocket executables, ConPTY and the reviewed app-local Visual C++ runtime,
+regenerates `SHA256SUMS.txt`,
 then runs the bundled verifier before naming the versioned directory. Existing
 release versions are never overwritten. A failed candidate stays in a `.partial`
 directory for inspection. No certificate is required.
+
+The Lua worker links its runtime statically because it runs from a private sandbox
+directory. Packaging checks actual PE imports using the existing MSVC toolchain;
+the worker's compiler flags do not alter the ordinary host builds.
+
+`Copy-VcRuntime.ps1` reuses the pinned Microsoft DLL from an existing Visual Studio
+installation; `Package-Release.ps1 -VcRuntimeDirectory <directory>` can select
+that reviewed directory explicitly. It downloads/installs nothing and refuses an
+unknown hash or an existing destination. See [runtime provenance](../runtime/vc/README.md).
+Run `tests/test-vc-runtime.ps1 -OutputDirectory <new directory>` for its focused
+missing/tampered-runtime and overwrite-protection checks. Historical bundles
+retain their own verifier; use the new verifier for newly assembled packages.
 
 The canonical verifier is `tools/Verify-Release.ps1`; keep it in source control.
 Packaging also creates `Rocket-<version>-windows-x64.zip` with update metadata and
@@ -41,9 +99,9 @@ disposable app copy. It reuses the closed fixture to check pinned files, invento
 verifier code, mixed builds and missing/extra files. It never executes damaged
 binaries or changes an existing versioned release.
 
-`node tools/tests/test-release-bundle.cjs tools/releases/0.89.2` checks missing
+`node tools/tests/test-release-bundle.cjs tools/releases/0.89.3` checks missing
 workers, mismatched host/worker pairs, manifest tampering and unsigned policy on
-a disposable copy. `node tools/tests/test-release-git-guard.cjs tools/releases/0.89.2/rocket-cli.exe`
+a disposable copy. `node tools/tests/test-release-git-guard.cjs tools/releases/0.89.3/rocket-cli.exe`
 checks vulnerable/fixed/unknown Git versions using an owned compiled fixture that
 never starts Git or opens a network connection.
 
@@ -117,7 +175,7 @@ redacted logs and unchanged local files. The matching mockup is
 | `helpers/` | Test-only Git relays and small Rust helpers; never put them on your normal PATH |
 | `diagnostics/` | Diagnostic log viewer |
 | `website/` | Website preview, checks, screenshots and demo video |
-| `releases/0.89.2/` | Current standalone local release and hash manifest; older bundles are retained locally |
+| `releases/0.89.3/` | Current standalone local release and hash manifest; older bundles are retained locally |
 | `mockups/branch-dropdown/` | Interactive Branch dropdown preview with compact and recovery states |
 | `mockups/review-windows/` | Independent review windows, history order and commit browser link preview |
 | `archive/` | Compressed pre-cleanup source snapshots, patches, mockups and test evidence |

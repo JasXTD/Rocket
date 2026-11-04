@@ -71,6 +71,146 @@ fn utf16_fixture(text: &str, little: bool) -> Vec<u8> {
 }
 
 #[test]
+fn short_marker_constants_can_commit_and_push_unchanged_history() {
+    isolated(
+        "ROCKET_SECRET",
+        "short_marker_constants_can_commit_and_push_unchanged_history",
+        || {
+            for format in ["sha1", "sha256"] {
+                let (f, remote) = base(format);
+                let repo = f.repo();
+                let source = concat!(
+                    "const SECRET",
+                    ": &str = \"XD-PRIVATE-7f3a\";\r\n",
+                    "pub const token",
+                    ": &'static str = r#\"CACHE-PROBE-5ac9d1\"#;\r\n",
+                    "export const secret",
+                    ": string = 'AUDIT_TRACE_9e20c7a3';\r\n",
+                    "const TOKEN",
+                    ": &str = \"fixture-token-DO-NOT-LOG\";\r\n",
+                    "const secret",
+                    " = \"BUILD-SIGNAL-worker-ready\";\r\n",
+                    "const TOKEN",
+                    ": &str = \"disposable_PUBLISH_TOKEN_never_log\";\r\n",
+                );
+                f.write("資料/markers.txt", source);
+                f.write("資料/markers-utf16.txt", utf16_fixture(source, true));
+                repo.stage_all(&c()).unwrap().result.unwrap();
+                repo.commit("const secret: &str = \"QUEUE-ITEM-c4f8\";", &c())
+                    .unwrap()
+                    .result
+                    .unwrap();
+                let historical = String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap();
+                f.write("資料/markers.txt", "updated ordinary source\n");
+                repo.stage_all(&c()).unwrap().result.unwrap();
+                repo.commit("Update current snapshot", &c())
+                    .unwrap()
+                    .result
+                    .unwrap();
+                let pushed = push(&f);
+                pushed.result.unwrap();
+                assert_eq!(pushed.remote_outcome, PushRemoteOutcome::Confirmed);
+                let spec = format!("{}:資料/markers.txt", historical.trim());
+                assert_eq!(f.run_at(&remote, &["show", &spec]), source.as_bytes());
+                assert_eq!(
+                    f.run(&["rev-parse", "HEAD"]),
+                    f.run_at(&remote, &["rev-parse", "main"])
+                );
+                // Also inspect the same immutable marker from already-published
+                // history during a later push, without rewriting that commit.
+                f.write("readme.md", "clean follow-up\n");
+                repo.stage_all(&c()).unwrap().result.unwrap();
+                repo.commit("Clean follow-up", &c())
+                    .unwrap()
+                    .result
+                    .unwrap();
+                push(&f).result.unwrap();
+                assert_eq!(f.run_at(&remote, &["show", &spec]), source.as_bytes());
+                assert_eq!(
+                    f.run(&["rev-parse", "HEAD"]),
+                    f.run_at(&remote, &["rev-parse", "main"])
+                );
+            }
+        },
+    );
+}
+
+#[test]
+fn short_marker_context_cannot_hide_staged_or_historical_credentials() {
+    isolated(
+        "ROCKET_SECRET",
+        "short_marker_context_cannot_hide_staged_or_historical_credentials",
+        || {
+            let (f, remote) = base("sha1");
+            let log = DiagnosticLog::open(f.root.join("logs")).unwrap();
+            let repo = f
+                .git
+                .with_log(log.clone())
+                .open(&f.repository, &c())
+                .unwrap();
+            let safe_head = String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap();
+            let remote_objects = f.run_at(&remote, &["count-objects", "-v"]);
+            let opaque = ["N8a4", "fT3pQ7xL9mV2sK5zR0cB6dW1yH"].concat();
+            let marker = "EXPORT-CANARY-4b92";
+            let word_label = "example-context-NEVER-TRANSMIT";
+            for source in [
+                format!("const SECRET: &str = \"{opaque}\";"),
+                format!("const password: &str = \"{marker}\";"),
+                format!("const api_key: &str = \"{marker}\";"),
+                format!("const secret: &str = \"{marker}\";\nconst token = \"{opaque}\";"),
+                format!("const password = \"{word_label}\";"),
+                format!("const api_key = \"{word_label}\";"),
+                format!("const token = \"{word_label}-{opaque}\";"),
+                format!("const TOKEN: &str = \"{word_label}\";\nconst secret = \"{opaque}\";"),
+                format!("const token = \"offline_TRACE_EVENT_ignore_output-{opaque}\";"),
+            ] {
+                f.write("資料/source.txt", &source);
+                repo.stage_all(&c()).unwrap().result.unwrap();
+                let index = fs::read(f.repository.join(".git/index")).unwrap();
+                let report = repo.commit("Review constant", &c()).unwrap();
+                let error = report.result.as_ref().unwrap_err();
+                blocked(error, "credential_detected");
+                assert!(!format!("{error:?}").contains(&opaque));
+                assert!(!format!("{error:?}").contains(marker));
+                assert_eq!(f.run(&["rev-parse", "HEAD"]), safe_head.as_bytes());
+                assert_eq!(fs::read(f.repository.join(".git/index")).unwrap(), index);
+
+                // Raw Git seeds only this disposable local fixture. A clean tip
+                // must not conceal earlier values from Rocket's push scan.
+                f.commit("Synthetic historical credential");
+                f.run(&["rm", "--", "資料/source.txt"]);
+                f.commit("Clean tip");
+                let head = f.run(&["rev-parse", "HEAD"]);
+                let index = fs::read(f.repository.join(".git/index")).unwrap();
+                let report = push(&f);
+                blocked(report.result.as_ref().unwrap_err(), "credential_detected");
+                assert_eq!(report.remote_outcome, PushRemoteOutcome::NotAttempted);
+                assert!(refs(&f, &remote).is_empty());
+                assert_eq!(f.run_at(&remote, &["count-objects", "-v"]), remote_objects);
+                assert_eq!(f.run(&["rev-parse", "HEAD"]), head);
+                assert_eq!(fs::read(f.repository.join(".git/index")).unwrap(), index);
+                f.run(&["reset", "--hard", safe_head.trim()]);
+            }
+            drop(repo);
+            drop(log);
+            let mut recorded_refusal = false;
+            for entry in fs::read_dir(f.root.join("logs")).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_file() {
+                    let text = fs::read_to_string(path).unwrap();
+                    recorded_refusal |= text.contains("credential_detected");
+                    assert!(!text.contains(&opaque));
+                    assert!(!text.contains(marker));
+                    assert!(!text.contains(word_label));
+                    assert!(!text.contains("source.txt"));
+                }
+            }
+            assert!(recorded_refusal);
+        },
+    );
+}
+
+#[test]
 fn protocol_identifiers_can_commit_and_push_local_and_remote_history() {
     isolated(
         "ROCKET_SECRET",
@@ -83,6 +223,12 @@ fn protocol_identifiers_can_commit_and_push_local_and_remote_history() {
                     "let token = \"IDM_EX_AV_REQUESTED_V1:malwarebytes\";\n",
                     "let token = \"UPLOAD_REQUEST_ACCEPTED_V27:file.sync\";\n",
                     "let token = \"CACHE_STATUS_READY:local_worker\";\n",
+                    "let token = \"IDM_EX_AV_REQUESTED_V1:malwarebytes\\n\";\n",
+                    "let token = \"UPLOAD_REQUEST_ACCEPTED_V27:file.sync\\r\\n\";\n",
+                    "let token: &str = \"JOB_RUN_FINISHED:worker.pool\";\n",
+                    "let token = r#\"NETWORK_REQUEST_ACCEPTED_V12:local_client\"#;\n",
+                    "token",
+                    " := `TELEMETRY_EVENT_ACKNOWLEDGED_V23:telemetry`\n",
                 );
                 f.write("acknowledgment.rs", old);
                 repo.stage_all(&c()).unwrap().result.unwrap();
@@ -145,7 +291,7 @@ fn protocol_identifiers_cannot_hide_staged_or_historical_credentials() {
         || {
             let (f, remote) = base("sha1");
             let repo = f.repo();
-            let acknowledgment = "let token = \"UPLOAD_REQUEST_ACCEPTED_V27:local_worker\";\n";
+            let acknowledgment = "let token = \"UPLOAD_REQUEST_ACCEPTED_V27:local_worker\\n\";\n";
             let credential = "A9mK7pR4sT2vX8n6Q5bC3z";
             let mixed = format!("{acknowledgment}let password = \"{credential}\";\n");
             f.write("acknowledgment.rs", &mixed);
@@ -193,6 +339,107 @@ fn protocol_identifiers_cannot_hide_staged_or_historical_credentials() {
 }
 
 #[test]
+fn typed_raw_and_shorthand_credentials_refuse_commit_and_historical_push() {
+    isolated(
+        "ROCKET_SECRET",
+        "typed_raw_and_shorthand_credentials_refuse_commit_and_historical_push",
+        || {
+            let (f, remote) = base("sha1");
+            let log = DiagnosticLog::open(f.root.join("logs")).unwrap();
+            let repo = f
+                .git
+                .with_log(log.clone())
+                .open(&f.repository, &c())
+                .unwrap();
+            let safe_head = String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap();
+            let remote_objects = f.run_at(&remote, &["count-objects", "-v"]);
+            let candidate = ["J7p9", "aD8cR2nH5sW1yB6mL0vF3kT9uP4xQ7zE"].concat();
+            let cases = [
+                format!("let token: &str = \"{candidate}\";"),
+                format!("let token = r#\"{candidate}\"#;"),
+                format!("const token: string = \"{candidate}\";"),
+                format!("token: str = '{candidate}'"),
+                format!("token = r'{candidate}'"),
+                format!("token = b'{candidate}'"),
+                format!("token := \"{candidate}\""),
+                format!("var token string = \"{candidate}\""),
+                format!("token := `{candidate}`"),
+                format!("string token = @\"{candidate}\";"),
+                format!("val token: String = \"{candidate}\""),
+                format!("let token: String = \"{candidate}\""),
+            ];
+            for (index, source) in cases.iter().enumerate() {
+                let source = format!("{source}\r\n");
+                let bytes = match index % 3 {
+                    0 => source.into_bytes(),
+                    1 => utf16_fixture(&source, true),
+                    _ => utf16_fixture(&source, false),
+                };
+                f.write("資料/credential-source.txt", bytes);
+                repo.stage_all(&c()).unwrap().result.unwrap();
+                let index_before = fs::read(f.repository.join(".git/index")).unwrap();
+                let report = repo.commit("Check source literal", &c()).unwrap();
+                let error = report.result.as_ref().unwrap_err();
+                blocked(error, "credential_detected");
+                assert!(!error.to_string().contains(&candidate));
+                assert!(!format!("{error:?}").contains(&candidate));
+                assert_eq!(f.run(&["rev-parse", "HEAD"]), safe_head.as_bytes());
+                assert_eq!(
+                    fs::read(f.repository.join(".git/index")).unwrap(),
+                    index_before
+                );
+
+                // Seed only this disposable fixture using raw Git. A clean tip
+                // must not conceal a credential in a typed/raw ancestor.
+                f.commit("Synthetic historical source literal");
+                f.run(&["rm", "--", "資料/credential-source.txt"]);
+                f.commit("Clean current snapshot");
+                let head_before = f.run(&["rev-parse", "HEAD"]);
+                let index_before = fs::read(f.repository.join(".git/index")).unwrap();
+                let report = repo
+                    .push(
+                        "origin",
+                        "main",
+                        "main",
+                        PushOptions {
+                            set_upstream: false,
+                        },
+                        &c(),
+                    )
+                    .unwrap();
+                let error = report.result.as_ref().unwrap_err();
+                blocked(error, "credential_detected");
+                assert!(!format!("{error:?}").contains(&candidate));
+                assert_eq!(report.remote_outcome, PushRemoteOutcome::NotAttempted);
+                assert!(refs(&f, &remote).is_empty());
+                assert_eq!(f.run_at(&remote, &["count-objects", "-v"]), remote_objects);
+                assert_eq!(f.run(&["rev-parse", "HEAD"]), head_before);
+                assert_eq!(
+                    fs::read(f.repository.join(".git/index")).unwrap(),
+                    index_before
+                );
+                // Each case starts from a clean fixture so another finding
+                // cannot mask the specific syntax under test.
+                f.run(&["reset", "--hard", safe_head.trim()]);
+            }
+            drop(repo);
+            drop(log);
+            let mut recorded_refusal = false;
+            for entry in fs::read_dir(f.root.join("logs")).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_file() {
+                    let text = fs::read_to_string(path).unwrap();
+                    recorded_refusal |= text.contains("credential_detected");
+                    assert!(!text.contains(&candidate));
+                    assert!(!text.contains("credential-source.txt"));
+                }
+            }
+            assert!(recorded_refusal);
+        },
+    );
+}
+
+#[test]
 fn password_literals_are_blocked_in_messages_staging_and_push_history() {
     isolated(
         "ROCKET_SECRET",
@@ -206,7 +453,26 @@ fn password_literals_are_blocked_in_messages_staging_and_push_history() {
                 format!("{value};[R7]"),
                 format!("%DATABASE_PASSWORD%-{value}"),
             ];
-            candidates.extend(["your_", "example", "placeholder", "changeme", "replace_me", "redacted", "fixture", "dummy", "test-only", "process.env", "std::env", "os.environ", "getenv(", "env(", "#/"].map(|prefix| format!("{prefix}-{value}")));
+            candidates.extend(
+                [
+                    "your_",
+                    "example",
+                    "placeholder",
+                    "changeme",
+                    "replace_me",
+                    "redacted",
+                    "fixture",
+                    "dummy",
+                    "test-only",
+                    "process.env",
+                    "std::env",
+                    "os.environ",
+                    "getenv(",
+                    "env(",
+                    "#/",
+                ]
+                .map(|prefix| format!("{prefix}-{value}")),
+            );
             for candidate in candidates {
                 let (f, remote) = base("sha1");
                 let repo = f.repo();

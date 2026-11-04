@@ -252,6 +252,17 @@ impl Ui {
             "include_nested":self.app.manager.include_nested,"collapsed":self.app.manager.collapsed,
             "open_count":manager_open.as_ref().ok().map(Vec::len),"open_error":manager_open.as_ref().err(),
             "error":self.app.manager.error,"notice":self.app.manager.notice,
+            "scan":self.app.manager.scan.as_ref().map(|s| {
+                let selection = s.selection();
+                json!({"root":s.root,"recursive":s.recursive,"phase":s.phase(),"error":s.error,"notice":s.notice,"folder":s.folder,
+                    "filter":s.filter,"hide_saved":s.hide_saved,"details":s.details,"visible":s.visible(),
+                    "selection":{"eligible":selection.eligible,"shown":selection.selected,"total":selection.total,"hidden":selection.hidden,"checked":selection.checked(),"partial":selection.partial()},
+                    "skipped":s.summary.skipped,"invalid":s.summary.invalid,"limited":s.summary.limited,
+                    "issues":s.summary.issues.iter().map(|i|json!({"path":i.path,"reason":i.reason})).collect::<Vec<_>>(),
+                    "folders_checked":s.progress.folders.load(std::sync::atomic::Ordering::Relaxed),"found":s.progress.found.load(std::sync::atomic::Ordering::Relaxed),
+                    "selection_checked":s.progress.checked.load(std::sync::atomic::Ordering::Relaxed),
+                    "rows":s.rows.iter().map(|r|json!({"path":r.repository.path,"relative_path":r.relative_path,"name":r.name,"kind":r.repository.kind,"selected":r.selected,"saved":r.saved})).collect::<Vec<_>>()})
+            }),
             "folders":self.app.library.folders.iter().map(|f|json!({"id":f.id,"name":f.name})).collect::<Vec<_>>(),
             "repositories":self.app.library.repositories.iter().map(|r|json!({"id":r.id,"name":r.name,"path":r.path,"folder":r.folder})).collect::<Vec<_>>(),
             "workspaces":self.app.library.workspaces.iter().map(|w|json!({"id":w.id,"name":w.name,"repositories":w.repositories,"active":w.active,"parent":w.parent})).collect::<Vec<_>>(),
@@ -290,6 +301,7 @@ impl Ui {
                 "history_more":snapshot.and_then(|s|s.history.as_ref()).is_some_and(|h|h.next.is_some()),
                 "file_history":file_history_state(&tab.file_history),
                 "repository_tree":repository_tree_state(&tab.tree),
+                "repository_map":repository_map_state(&tab.map),
                 "conflict_editor":{"running":tab.conflict.running(),"path":tab.conflict.path.as_ref().map(|p|p.display_lossy()),"dirty":tab.conflict.dirty,"bound":tab.conflict.preview.is_some(),"blocks":tab.conflict.blocks.blocks.len(),"malformed":tab.conflict.blocks.malformed,"selected":tab.conflict.selected,"part":tab.conflict.part,"draft":tab.conflict.draft.chars().take(16000).collect::<String>(),"draft_bytes":tab.conflict.draft.len(),"error":tab.conflict.error,"notice":tab.conflict.notice},
                 "stashes":snapshot.map(|s|s.stashes.iter().map(|e|json!({"index":e.index,"id":e.id.as_str(),"subject":String::from_utf8_lossy(&e.subject)})).collect::<Vec<_>>()),
                 "stash_preview":{"running":tab.stash.running(),"selected":tab.stash.selected.as_ref().map(|e|e.id.as_str()),"part":format!("{:?}",tab.stash.part),"error":tab.stash.error,"notice":tab.stash.notice,"limited":tab.stash.patch.as_ref().is_some_and(|p|p.limited),"files":tab.stash.patch.as_ref().map(|p|p.files.iter().map(|f|json!({"path":f.label,"added":f.added,"removed":f.removed})).collect::<Vec<_>>())},
@@ -398,7 +410,7 @@ impl Ui {
         state["git_settings"]["bundled"] = json!({"version":rocket_git::MANAGED_GIT_VERSION,
             "manifest":rocket_git::MANAGED_GIT_MANIFEST_SHA256,"available":self.app.git_settings.managed_available,
             "verified":self.app.git_settings.managed_verified,"progress":self.app.git_settings.managed_progress.snapshot()});
-        state["preferences"] = json!({"page":self.app.preferences_page().map(|p|p.key()),"sidebar":self.app.show_sidebar,"details":self.app.show_details,"row_height":self.app.row_height,"auto_refresh":self.app.auto_refresh,"secret_protection":self.app.secret_protection,"secret_protection_user_control":self.app.secret_protection_editable});
+        state["preferences"] = json!({"page":self.app.preferences_page().map(|p|p.key()),"sidebar":self.app.show_sidebar,"details":self.app.show_details,"row_height":self.app.row_height,"auto_refresh":self.app.auto_refresh,"secret_protection":self.app.secret_protection,"guard_ai_api_keys":self.app.guard_ai_api_keys,"secret_protection_user_control":self.app.secret_protection_editable});
         state["shortcuts"] = self.app.keybindings.snapshot();
         state["appearance"] = self.app.appearance_snapshot();
         state["dependencies"] = self.app.dependencies.summary(self.app.tab().map(|t| t.id));
@@ -642,6 +654,7 @@ impl Ui {
                     || (target.starts_with("hosting-") && self.app.preferences_page() == Some(rocket_ui::preferences::Page::Accounts))
                     || (target.starts_with("ssh-") && self.app.preferences_page() == Some(rocket_ui::preferences::Page::SshKeys))
                     || (target.starts_with("theme-") && self.app.preferences_page() == Some(rocket_ui::preferences::Page::Appearance))
+                    || (matches!(target, "security-secret-coverage" | "security-ai-key-coverage") && self.app.preferences_page() == Some(rocket_ui::preferences::Page::Security))
             }
             Some(DialogKind::Open) => target.starts_with("open-"),
             Some(DialogKind::Workflows) => target.starts_with("workflow-"),
@@ -739,6 +752,12 @@ impl Ui {
         if target == "manager-open" {
             for path in self.app.manager_open_paths().map_err(str::to_owned)? { self.policy.repository(&path)?; }
         }
+        if target == "manager-scan-start" && let Some(s)=&self.app.manager.scan {
+            rocket_ui::repository_scan::discovery::check_root(Path::new(s.root.trim()),Some(&self.policy.root)).map_err(|_|"Choose a normal folder inside the MCP test root".to_owned())?;
+        }
+        if target == "manager-scan-add" && let Some(s)=&self.app.manager.scan {
+            for path in s.selected() {self.policy.repository(&path)?;}
+        }
         if target == "manager-save" && let Some(f)=&self.app.manager.form
             && matches!(f.kind, rocket_ui::repository_manager::FormKind::Repository(_)) {
             self.policy.repository(Path::new(f.path.trim()))?;
@@ -791,8 +810,8 @@ impl Ui {
         if target.starts_with("pref-auto-fetch") && self.app.auto_fetch.blocked {
             return Err("Automatic fetch through MCP requires the runner's rocket-auto-fetch marker and local fixture remotes".into());
         }
-        if target == "pref-secret-protection" {
-            return Err("Secret protection is a user preference. MCP cannot disable or change it; correct the blocked content before retrying.".into());
+        if matches!(target, "pref-secret-protection" | "pref-ai-key-guard") {
+            return Err("Content guards are user preferences. MCP cannot disable or change them; correct the blocked content before retrying.".into());
         }
         if matches!(target, "pref-dependency-push" | "dependency-push-continue") {
             return Err("Pre-push dependency checks and warning approval are user controls in the normal Rocket application.".into());
@@ -1102,6 +1121,9 @@ impl Ui {
             if self.app.page() != Some(rocket_ui::pages::Page::RepositoryManager) {
                 return Err("Open the repository manager first".into());
             }
+            if self.app.manager.scan.is_some() && !target.starts_with("manager-scan-") {
+                return Err("Finish or cancel the folder scan first".into());
+            }
             if self.app.manager.form.is_some() && !matches!(target,"manager-name"|"manager-path"|"manager-browse"|"manager-folder"|"manager-save"|"manager-cancel"|"manager-form-scroll"|"manager-parent")
                 && !target.starts_with("manager-parent-") && !target.starts_with("manager-folder-choice-") && !target.starts_with("manager-member-") && !target.starts_with("manager-active-") {
                 return Err("Finish or cancel the repository manager form first".into());
@@ -1157,6 +1179,8 @@ impl Ui {
                 | "history-stop"
                 | "file-cancel"
                 | "tree-cancel"
+                | "map-cancel"
+                | "map-export-stop"
                 | "compare-cancel"
                 | "stash-cancel"
                 | "conflict-cancel"
@@ -1898,6 +1922,7 @@ impl Ui {
                         | "file-list-scroll"
                         | "file-source-scroll"
                         | "tree-list-scroll"
+                        | "map-canvas" | "map-details-scroll" | "map-export-scroll"
                         | "compare-files-scroll"
                         | "review-text-scroll"
                         | "review-page-scroll"
@@ -1913,6 +1938,9 @@ impl Ui {
                         | "manager-navigation"
                         | "manager-repositories"
                         | "manager-form-scroll"
+                        | "manager-scan-scroll"
+                        | "manager-scan-results"
+                        | "manager-scan-issues"
                         | "manager-parent-options"
                         | "benchmark-scroll"
                         | "picker-list-scroll"
@@ -1992,7 +2020,7 @@ impl Ui {
                     && !self.app.integrations.text_control(target)
                     && !matches!(
                         target,
-                        "manager-name" | "manager-path" | "manager-filter"
+                        "manager-name" | "manager-path" | "manager-filter" | "manager-scan-root" | "manager-scan-filter"
                             | "commit-link-server" | "commit-link-name"
                             | "dialog-path"
                             | "dialog-merge-target"
@@ -2011,6 +2039,7 @@ impl Ui {
                             | "conflict-ai-instructions"
                             | "file-path"
                             | "tree-revision"
+                            | "map-revision" | "map-search" | "map-base" | "map-path-scope" | "map-export-path"
                             | "compare-base" | "compare-target" | "compare-filter"
                             | "review-base" | "review-target" | "review-program"
                             | "compare-base-pick-filter" | "compare-target-pick-filter"
@@ -3464,6 +3493,23 @@ fn repository_tree_state(state: &rocket_ui::tree::State) -> Value {
         "show_list":state.show_list,"error":state.error,"notice":state.notice,
         "content":state.content.as_ref().map(|c|json!({"kind":format!("{:?}",c.kind),"bytes":c.bytes,"line_count":c.lines.len(),"limited":c.limited,"preview":c.lines.iter().take(30).map(|l|l.chars().take(300).collect::<String>()).collect::<Vec<_>>()}))
     })
+}
+
+fn repository_map_state(state:&rocket_ui::repository_map::State)->Value {
+    let p=state.page();
+    let data=p.data.as_ref().map(|d|json!({"kind":format!("{:?}",d.kind),"tip":d.tip.as_ref().map(|id|id.as_str()),
+        "scanned":d.scanned,"limited":d.limited,"node_count":d.nodes.len(),"link_count":d.links.len(),"notes":d.notes,
+        "has_more":d.has_more,"history_limit":d.history_limit,"boundary_parents":d.boundary_parents,
+        "nodes":d.nodes.iter().enumerate().take(4096).map(|(i,n)|json!({"index":i,"kind":format!("{:?}",n.kind),"label":rocket_ui::tree::path_label(&n.label),"detail":rocket_ui::tree::path_label(&n.detail),"path":n.path.as_ref().map(|v|rocket_ui::tree::path_label(v)),"commit":n.commit.as_ref().map(|v|v.as_str()),"count":n.count,"files":n.files,"evidence":n.evidence.iter().take(24).map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),"refs":n.refs.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>()})).collect::<Vec<_>>(),
+        "links":d.links.iter().take(12000).map(|e|json!({"from":e.from,"to":e.to,"kind":format!("{:?}",e.kind),"weight":e.weight})).collect::<Vec<_>>(),"links_limited":d.links.len()>12000
+    }));
+    json!({"kind":format!("{:?}",state.kind),"running":p.running(),"cancelling":p.cancelling,
+        "revision":p.revision,"query":p.query,"all_branches":p.all_branches,"recent":p.recent,"alternate":p.alternate,
+        "base":p.base,"path_scope":p.path_scope,"can_more":p.can_more(),"collapsed":p.collapsed.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),"neighbor_anchor":p.neighbor_anchor.as_ref().map(|v|rocket_ui::tree::path_label(v)),
+        "projected_links":p.projected_links.iter().take(12000).map(|e|json!({"from":e.from,"to":e.to,"kind":format!("{:?}",e.kind),"weight":e.weight})).collect::<Vec<_>>(),
+        "export":p.export.as_ref().map(|e|json!({"path":e.path,"bytes":e.text.len(),"running":e.running(),"stopping":e.stopping,"error":e.error,"notice":e.notice})),
+        "error":p.error,"notice":p.notice,"stale":p.stale,"selected":p.selected,"show_details":p.show_details,"zoom":p.zoom,
+        "visible":p.visible,"display_offset":p.display_offset,"view_total":p.view_total,"data":data})
 }
 
 fn force_push_state_value(s: &rocket_ui::force_push::DialogState) -> Value {

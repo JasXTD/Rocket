@@ -889,6 +889,7 @@ impl Rocket {
                 (To::View(View::Changes), "Changes", "goto-changes"),
                 (To::View(View::Commits), "Commits", "goto-commits"),
                 (To::View(View::Compare), "Compare", "goto-compare"),
+                (To::View(View::Map), "Repository map", "goto-map"),
                 (To::View(View::BranchReview), "AI Review", "goto-review"),
                 (To::View(View::Tree), "Files", "goto-files"),
                 (To::Line, "", ""),

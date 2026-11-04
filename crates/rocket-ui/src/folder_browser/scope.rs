@@ -91,7 +91,7 @@ pub(crate) fn pin_directory(path: &Path, root: &Path) -> Result<Vec<File>> {
     Ok(guards)
 }
 
-pub(super) fn read_small(path: &Path, root: &Path, limit: u64) -> Option<String> {
+pub(crate) fn read_small(path: &Path, root: &Path, limit: u64) -> Option<String> {
     let _guards = pin_directory(path.parent()?, root).ok()?;
     let mut options = OpenOptions::new();
     options.read(true);

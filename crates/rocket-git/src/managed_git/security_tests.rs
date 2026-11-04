@@ -85,6 +85,7 @@ fn existing_runner_clones_refuse_new_runtime_files_before_starting_a_process() {
         log: None,
         transport_scope: None,
         secret_protection: Arc::new(AtomicBool::new(false)),
+        guard_ai_api_keys: Arc::new(AtomicBool::new(false)),
         push_check: Default::default(),
         git_http_allowed: true,
         managed_git: Some(runtime.clone()),

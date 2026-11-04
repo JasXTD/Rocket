@@ -41,6 +41,14 @@ foreach ($line in [IO.File]::ReadAllLines($manifest)) {
 }
 if (-not $checked.SetEquals($files)) { throw 'Unlisted file in release bundle' }
 
+# The x64 MSVC executables import this runtime even on a machine that has no
+# developer tools. A regenerated manifest alone must not authorize another DLL.
+$vcRuntime = Join-Path $bundleRoot 'vcruntime140.dll'
+if (-not $checked.Contains($vcRuntime)) { throw 'App-local Visual C++ runtime missing from manifest: vcruntime140.dll' }
+if ($hashes[$vcRuntime].ToLowerInvariant() -cne 'd1f4225df2cd877dbf130d5668a021dce3f94118455ff5ec952061c30afc9ce7') { throw 'Unreviewed app-local Visual C++ runtime.' }
+$vcSignature = Get-AuthenticodeSignature -LiteralPath $vcRuntime
+if ($vcSignature.Status -ne 'Valid' -or -not $vcSignature.SignerCertificate -or $vcSignature.SignerCertificate.Subject -notmatch '(?:^|,\s*)O=Microsoft Corporation(?:,|$)' -or -not $vcSignature.TimeStamperCertificate) { throw 'Visual C++ runtime signature/publisher verification failed.' }
+
 # Current bundles must include the worker. Historical bundles retain their own verifier.
 $rocketBinaries = 'rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-lua-host.exe'
 foreach ($name in $rocketBinaries) {
@@ -80,6 +88,7 @@ $runtimeHashes = foreach ($relative in $runtimePaths) {
 if (-not ($runtimePairs | Where-Object { $_[0] -eq $runtimeHashes[0] -and $_[1] -eq $runtimeHashes[1] })) { throw 'Runtime payload is not a reviewed matching architecture pair' }
 $knownBinaries = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 foreach ($relative in ($rocketBinaries + $runtimePaths)) { [void]$knownBinaries.Add([IO.Path]::GetFullPath((Join-Path $bundleRoot $relative))) }
+[void]$knownBinaries.Add($vcRuntime)
 $gitManifest = Join-Path $bundleRoot 'git/manifest.tsv'
 if ($checked.Contains($gitManifest)) {
     $runtimeChecker = Join-Path $bundleRoot 'tools/Git-Runtime.ps1'
