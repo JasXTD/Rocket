@@ -8,6 +8,16 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## 0.91.3 — Structured counter scanner correction
+
+- Secret protection distinguishes narrowly structured source constants made of
+  a namespace, descriptive camel-case label and ordered decimal cycle from
+  opaque credentials. The same pattern applies to current files and old history;
+  no project names, fixture words, file paths or object IDs are allowlisted.
+- Credential-specific fields, unordered digits, appended material and incomplete
+  literals retain their checks. Known provider-key/private-key detection takes
+  precedence. Scan limits, cancellation and redacted diagnostics are unchanged.
+
 ## 0.91.2 — Word-label scanner correction
 
 - Secret protection recognizes complete, low-diversity word labels in explicit

@@ -36,7 +36,7 @@ repository formats and operations. New bundled builds include **Git for Windows
 choices remain available. HTTPS and SSH use your configured credential helpers
 and SSH setup. Rocket itself does not require a .NET runtime.
 
-Current development version: **0.91.2**. See the [changelog](CHANGELOG.md) for
+Current development version: **0.91.3**. See the [changelog](CHANGELOG.md) for
 release history and the [user guide](crates/rocket-ui/src/guide.md) for individual
 workflows.
 

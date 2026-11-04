@@ -4,6 +4,9 @@ use super::{SecretKind, environment_file, safe_path, scan, scan_message};
 #[path = "variation_tests.rs"]
 mod variations;
 
+#[path = "sequence_tests.rs"]
+mod sequences;
+
 #[test]
 fn short_marker_constants_are_not_literal_credentials() {
     for (tag, suffix) in [

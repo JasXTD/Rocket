@@ -302,6 +302,60 @@ fn word_label_identifier(value: &[u8]) -> bool {
         ) < COMPOUND_IDENTIFIER_ENTROPY_THRESHOLD
 }
 
+fn camel_label(value: &[u8]) -> bool {
+    if !value.iter().all(u8::is_ascii_alphabetic) {
+        return false;
+    }
+    let mut start = 0;
+    let mut words = 0;
+    for end in (1..=value.len()).filter(|&at| at == value.len() || value[at].is_ascii_uppercase()) {
+        let word = &value[start..end];
+        if !(3..=24).contains(&word.len())
+            || !word[1..].iter().all(u8::is_ascii_lowercase)
+            || ascii_entropy(word.iter().map(u8::to_ascii_lowercase))
+                >= CREDENTIAL_ENTROPY_THRESHOLD
+        {
+            return false;
+        }
+        words += 1;
+        start = end;
+    }
+    words >= 3
+}
+
+fn counter_identifier(value: &[u8]) -> bool {
+    // Complete namespace + descriptive camel label + decimal cycle. A full
+    // ascending/descending walk through ten digits adds character diversity but
+    // no random payload. Never generalize this to arbitrary numeric suffixes,
+    // placeholder words, provider prefixes or filenames. Constant context and
+    // complete literal boundaries are enforced by the caller; provider checks
+    // remain independent and take precedence over this generic classification.
+    let Some(&separator) = value.iter().find(|b| matches!(b, b'_' | b'-')) else {
+        return false;
+    };
+    let mut parts = value.split(|b| *b == separator);
+    let (Some(namespace), Some(label), Some(cycle), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+    if cycle.len() != 10
+        || !cycle.iter().all(u8::is_ascii_digit)
+        || ![1, 9].iter().any(|step| {
+            cycle
+                .windows(2)
+                .all(|pair| (pair[0] - b'0' + step) % 10 == pair[1] - b'0')
+        })
+    {
+        return false;
+    }
+    namespace.len() >= 2
+        && identifier_words(namespace, &[], namespace[0].is_ascii_uppercase(), 1)
+        && camel_label(label)
+        && ascii_entropy(namespace.iter().chain(label).map(u8::to_ascii_lowercase))
+            < COMPOUND_IDENTIFIER_ENTROPY_THRESHOLD
+}
+
 fn credential_like(value: &[u8], quoted: bool) -> bool {
     // A name such as `token` is not evidence by itself. Reject source syntax,
     // prose/UI labels and references before applying a bounded entropy check.
@@ -489,7 +543,9 @@ fn assignment(
             && !quoted_key
             && !colon_value
             && syntax::constant_binding(&line[..key_start])
-            && (short_marker_identifier(value) || word_label_identifier(value));
+            && (short_marker_identifier(value)
+                || word_label_identifier(value)
+                || counter_identifier(value));
         if quoted
             && full_right.len() == right.len()
             && let Some(end) = literal.end

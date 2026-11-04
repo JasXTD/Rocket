@@ -183,7 +183,15 @@ when they contain one contiguous group of at least two uppercase words, with
 lowercase namespace or annotation words before and/or after it, and use a single
 separator throughout. Their aggregate bound applies to case-folded letters; a mixed-case
 word, numeric component or opaque alphabet does not gain this classification.
-Both marker forms require an explicit
+Structured counters use a third narrow form: a uniformly cased alphabetic
+namespace of 2–24 letters, a camel-case label with at least three 3–24-letter
+words, and exactly one full ascending or descending decimal cycle (ten digits,
+with wraparound). The three components use the same hyphen or underscore.
+The words retain the 3.5-bit bound and combined case-folded letters the 4.0-bit
+bound. Decimal permutations, mixed-case words, partial cycles and extra payload
+do not match. This recognizes structure, not provider validity or words such as
+"fake"; known provider-key checks still take precedence, even for readable labels.
+All three marker forms require an explicit
 line-leading `const` declaration (optionally Rust visibility or `export`), a
 complete quoted literal and a statement boundary within the bounded lookahead.
 Ordinary assignments, configuration fields, password/API-key fields, longer or

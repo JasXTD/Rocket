@@ -92,6 +92,10 @@ fn short_marker_constants_can_commit_and_push_unchanged_history() {
                     " = \"BUILD-SIGNAL-worker-ready\";\r\n",
                     "const TOKEN",
                     ": &str = \"disposable_PUBLISH_TOKEN_never_log\";\r\n",
+                    "const TOKEN",
+                    ": &str = \"gho_rocketFakeToken_0123456789\";\r\n",
+                    "pub const secret",
+                    ": &str = \"build_compilerSessionLabel_9876543210\";\r\n",
                 );
                 f.write("資料/markers.txt", source);
                 f.write("資料/markers-utf16.txt", utf16_fixture(source, true));
@@ -153,6 +157,7 @@ fn short_marker_context_cannot_hide_staged_or_historical_credentials() {
             let opaque = ["N8a4", "fT3pQ7xL9mV2sK5zR0cB6dW1yH"].concat();
             let marker = "EXPORT-CANARY-4b92";
             let word_label = "example-context-NEVER-TRANSMIT";
+            let counter = "svc_transferBatchMarker_0123456789";
             for source in [
                 format!("const SECRET: &str = \"{opaque}\";"),
                 format!("const password: &str = \"{marker}\";"),
@@ -163,6 +168,13 @@ fn short_marker_context_cannot_hide_staged_or_historical_credentials() {
                 format!("const token = \"{word_label}-{opaque}\";"),
                 format!("const TOKEN: &str = \"{word_label}\";\nconst secret = \"{opaque}\";"),
                 format!("const token = \"offline_TRACE_EVENT_ignore_output-{opaque}\";"),
+                format!("const password = \"{counter}\";"),
+                format!("const api_key = \"{counter}\";"),
+                format!("const token = \"{counter}-{opaque}\";"),
+                format!(
+                    "const TOKEN = \"{}{}\";",
+                    "svc_transferBatchMarker_", "0123546789"
+                ),
             ] {
                 f.write("資料/source.txt", &source);
                 repo.stage_all(&c()).unwrap().result.unwrap();
@@ -202,6 +214,7 @@ fn short_marker_context_cannot_hide_staged_or_historical_credentials() {
                     assert!(!text.contains(&opaque));
                     assert!(!text.contains(marker));
                     assert!(!text.contains(word_label));
+                    assert!(!text.contains(counter));
                     assert!(!text.contains("source.txt"));
                 }
             }
