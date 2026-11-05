@@ -1237,6 +1237,7 @@ fn operation_label(value: &str) -> &'static str {
         "revert-abort",
         "branch-create",
         "branch-switch",
+        "branch-checkout-remote",
         "branch-rename",
         "branch-delete",
         "branch-delete-batch",

@@ -96,6 +96,7 @@ const NAMES: &[(&str, &str, &str)] = &[
     ("issue-links-save", "Saving issue links", "Save issue links"),
     ("branch-create", "Creating branch", "Create branch"),
     ("branch-switch", "Switching branch", "Switch branch"),
+    ("branch-checkout-remote", "Checking out branch", "Check out branch"),
     ("submodule-checkout", "Updating submodules", "Update submodules"),
     ("saved-switch", "Saving, switching and restoring", "Save, switch and restore"),
     ("commit-push", "Committing and pushing", "Commit & Push"),

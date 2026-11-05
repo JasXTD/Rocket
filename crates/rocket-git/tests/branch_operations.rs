@@ -69,6 +69,82 @@ fn wait_file(path: &Path) {
 }
 
 #[test]
+fn a_remote_branch_checks_out_as_a_tracking_local_branch_and_never_replaces_one() {
+    let fixture = base();
+    let repo = fixture.repo();
+    let base = oid(&repo);
+    fixture.run(&["switch", "-c", "topic"]);
+    fixture.write("file", "topic\n");
+    fixture.commit("topic");
+    let topic = oid(&repo);
+    fixture.run(&["switch", "-"]);
+    // A remote-tracking ref as a fetch would leave it. Git only tracks refs a remote's
+    // fetch refspec maps, so the remote is configured; nothing contacts it.
+    fixture.run(&["remote", "add", "origin", "https://example.invalid/rocket.git"]);
+    fixture.run(&["update-ref", "refs/remotes/origin/topic", topic.as_str()]);
+    fixture.run(&["branch", "-D", "topic"]);
+    let before = repo.branches(&token()).unwrap();
+    assert!(before.iter().all(|b| b.reference != b"refs/heads/topic"));
+    let (status, branches) = success(repo.check_out_remote_branch("topic", b"refs/remotes/origin/topic", &token()).unwrap());
+    assert_eq!(head_name(&status.head), b"topic");
+    assert_eq!(oid(&repo), topic);
+    let local = branch(&branches, b"topic");
+    assert_eq!(local.upstream.as_deref(), Some(b"refs/remotes/origin/topic".as_slice()));
+    assert_eq!(local.ahead_behind, Some((0, 0)));
+    assert!(local.committed.is_some_and(|t| t > 0));
+    // An existing local branch stays as it was, and so does the checkout.
+    fixture.run(&["switch", "-c", "main-copy", base.as_str()]);
+    let report = repo.check_out_remote_branch("topic", b"refs/remotes/origin/topic", &token());
+    assert!(report.is_err() || report.as_ref().is_ok_and(|r| r.write.result.is_err()), "{report:?}");
+    assert_eq!(oid(&repo), base);
+    // Only remote-tracking refs are checked out this way.
+    assert!(repo.check_out_remote_branch("other", b"refs/heads/topic", &token()).is_err());
+}
+
+/// A refused upstream or switch deletes the new branch again, leaving HEAD, files and
+/// config as they were, so the same name can be tried again.
+#[test]
+fn a_refused_remote_checkout_leaves_no_branch_behind() {
+    let fixture = base();
+    let repo = fixture.repo();
+    let base = oid(&repo);
+    fixture.run(&["switch", "-c", "topic"]);
+    fixture.write("file", "topic\n");
+    fixture.commit("topic");
+    let topic = oid(&repo);
+    fixture.run(&["switch", "-"]);
+    fixture.run(&["branch", "-D", "topic"]);
+    fixture.run(&["remote", "add", "origin", "https://example.invalid/rocket.git"]);
+    fixture.run(&["update-ref", "refs/remotes/origin/topic", topic.as_str()]);
+    let check_out = || rejected(repo.check_out_remote_branch("topic", b"refs/remotes/origin/topic", &token()).unwrap());
+    let unchanged = |(status, branches): (Status, Vec<Branch>), file: &str| {
+        assert!(branches.iter().all(|b| b.reference != b"refs/heads/topic"), "the new branch is gone");
+        assert_ne!(head_name(&status.head), b"topic");
+        assert_eq!(oid(&repo), base);
+        assert_eq!(fs::read_to_string(fixture.repository.join("file")).unwrap(), file);
+        let config = fixture.output(&fixture.repository, &["config", "--get-regexp", r"^branch\.topic\."]);
+        assert!(!config.status.success(), "its upstream is gone too: {:?}", String::from_utf8_lossy(&config.stdout));
+    };
+    // No remote's fetch refspec maps the ref: Git refuses the upstream.
+    fixture.run(&["config", "remote.origin.fetch", "+refs/heads/main:refs/remotes/origin/main"]);
+    unchanged(check_out(), "base\n");
+    // Two remotes map it.
+    fixture.run(&["config", "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"]);
+    fixture.run(&["remote", "add", "mirror", "https://example.invalid/mirror.git"]);
+    fixture.run(&["config", "remote.mirror.fetch", "+refs/heads/*:refs/remotes/origin/*"]);
+    unchanged(check_out(), "base\n");
+    fixture.run(&["config", "--unset", "remote.mirror.fetch"]);
+    // A local change the switch would overwrite: the branch and its upstream go again.
+    fixture.write("file", "local\n");
+    unchanged(check_out(), "local\n");
+    // With the way clear, the same name works.
+    fixture.write("file", "base\n");
+    let (status, branches) = success(repo.check_out_remote_branch("topic", b"refs/remotes/origin/topic", &token()).unwrap());
+    assert_eq!(head_name(&status.head), b"topic");
+    assert_eq!(branch(&branches, b"topic").upstream.as_deref(), Some(b"refs/remotes/origin/topic".as_slice()));
+}
+
+#[test]
 fn create_from_head_or_a_commit_preserves_checkout_index_and_working_files() {
     let fixture = base();
     let repo = fixture.repo();

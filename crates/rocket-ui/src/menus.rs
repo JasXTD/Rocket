@@ -37,6 +37,11 @@ fn dialog_header(dialog: &Dialog) -> (Icon, String, String) {
                 format!("Make a branch from where you are. You stay on {}.", display(&dialog.branch))
             },
         ),
+        DialogKind::TrackBranch { upstream, .. } => (
+            Icon::Branch,
+            "New branch",
+            format!("Make a branch from {} that tracks it, then switch to it.", short_ref(upstream)),
+        ),
         DialogKind::Rename(old) => (
             Icon::Branch,
             "Rename branch",
@@ -1403,7 +1408,7 @@ impl Rocket {
                         | DialogKind::NewRepository => {
                             unreachable!("dedicated dialog")
                         }
-                        DialogKind::NewBranch | DialogKind::Rename(_) => {
+                        DialogKind::NewBranch | DialogKind::TrackBranch { .. } | DialogKind::Rename(_) => {
                             let tab = self.tabs.iter().find(|t| Some(t.id) == dialog.owner);
                             crate::small_dialogs::branch_name_body(ui, &mut dialog, tab, widgets);
                         }
@@ -1510,7 +1515,7 @@ impl Rocket {
                                 && self.write.is_none()
                                 && crate::small_dialogs::identity_ready(&dialog)
                         }
-                        DialogKind::NewBranch | DialogKind::Rename(_) => {
+                        DialogKind::NewBranch | DialogKind::TrackBranch { .. } | DialogKind::Rename(_) => {
                             crate::small_dialogs::branch_name_ready(&dialog, tab)
                         }
                         DialogKind::Open | DialogKind::Merge => !dialog.first.trim().is_empty(),
@@ -1569,6 +1574,7 @@ impl Rocket {
                         DialogKind::Pull => "Pull",
                         DialogKind::Fetch => "Fetch",
                         DialogKind::NewBranch => "Create branch",
+                        DialogKind::TrackBranch { .. } => "Create and switch",
                         DialogKind::Rename(_) => "Rename branch",
                         DialogKind::DeleteBranches => "Delete branches",
                         DialogKind::RunCommand(index) => if self.commands.get(index).is_some_and(|c|c.action==rocket_git::CommandAction::Url) {"Open URL"} else {"Run"},
@@ -1704,6 +1710,12 @@ impl Rocket {
                     dismiss = true;
                 }
                 DialogKind::NewBranch => action = Some(Action::CreateBranch(dialog.first.clone())),
+                DialogKind::TrackBranch { upstream, .. } => {
+                    action = Some(Action::CheckOutRemote {
+                        name: dialog.first.trim().as_bytes().to_vec(),
+                        upstream,
+                    })
+                }
                 DialogKind::Rename(old) => {
                     action = Some(Action::RenameBranch(old, dialog.first.clone()))
                 }

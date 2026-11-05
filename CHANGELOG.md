@@ -8,6 +8,25 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Branch switcher and diff header
+
+- The toolbar's branch list opens with a filter focused. The current branch comes first
+  with a current tag, then local branches newest first, each with when it last changed and
+  how far it is ahead or behind its upstream (↑ ↓). Remote branches stay folded under one
+  row until you type. ↑ ↓ move, Enter switches and Esc closes; New branch and Manage
+  branches sit at the bottom. The list is 340 px wide instead of 192.
+- A remote branch that no local branch tracks offers Check out as local: New branch opens
+  starting from it and tracking it, and Create and switch creates the branch, sets its
+  upstream and switches to it under one write, all or nothing: a refused upstream or
+  switch, or Stop, removes the new branch again. An existing local branch is never
+  replaced. Branch reads ask Git for two more fields (commit date, ahead/behind of the
+  upstream); a value Rocket can't read leaves that label out instead of failing the list.
+- A diff's header follows the pane's width only. A short pane no longer switches it to
+  two cramped rows with Aa and an 80 px Find box: from about 760 px it is one row, with
+  Unified | Side by side as a segmented control and Find taking 200 to 360 px, its count,
+  ↑ ↓ and × inside. Narrower panes use two rows; under 440 px Side by side reads Split
+  and Words moves into the ··· menu. Stage, Stash and Discard selected get their own row.
+
 ## Unreleased — AI review, redesigned
 
 - AI review has the frame of Compare: Base and Target fields with the branch list inside,

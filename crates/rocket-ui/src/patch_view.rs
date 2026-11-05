@@ -201,7 +201,7 @@ pub(crate) fn patch_view(
                 tab.diff_tools.invalidate();
                 header_strip(ui, |ui| {
                     ui.horizontal(|ui| {
-                        if !tab.review_window { action = external_menu(ui, tab.view == crate::app::View::Changes, widgets); }
+                        if !tab.review_window { action = external_menu(ui, tab.view == crate::app::View::Changes, None, widgets); }
                         ui.add(Label::new(RichText::new(&file.label).strong()).truncate())
                             .on_hover_text(&file.label);
                     });
@@ -214,54 +214,103 @@ pub(crate) fn patch_view(
                 return;
             }
             tab.image.clear();
-            let compact = ui.available_width() < 440.0 || ui.available_height() < 300.0;
+            // The layout follows the pane's width only, so a short pane keeps one row and
+            // its full names: one row from 760 px, two below that, and under 440 px Split
+            // for Side by side, with Words in the ··· menu.
+            let pane = ui.available_width();
+            let one_row = pane >= 760.0;
+            let narrow = pane < 440.0;
+            let words_in_menu = narrow && !tab.review_window;
+            let editor = tab.view == crate::app::View::Changes;
+            let split_label = if narrow { "Split" } else { "Side by side" };
             header_strip(ui, |ui| {
-                if compact {
-                    ui.spacing_mut().interact_size.y = 22.0;
-                    ui.spacing_mut().button_padding = vec2(6.0, 2.0);
-                    ui.spacing_mut().item_spacing = vec2(4.0, 3.0);
+                // Rows take their height from interact_size when they start.
+                ui.spacing_mut().interact_size.y = CONTROL;
+                ui.spacing_mut().item_spacing = vec2(8.0, 6.0);
+                if one_row {
+                    // Everything but the path and Find, as laid out last pass: Find takes
+                    // the free width, 200 to 360 px, and the path what is left after it.
+                    let fixed_id = Id::new(("diff-header-fixed", tab.id));
+                    let fixed = ui.ctx().data(|d| d.get_temp::<f32>(fixed_id)).unwrap_or(440.0);
+                    let path_width = ui
+                        .painter()
+                        .layout_no_wrap(file.label.clone(), TextStyle::Body.resolve(ui.style()), TEXT())
+                        .size()
+                        .x
+                        .ceil()
+                        + 1.0;
+                    let room = ui.available_width() - fixed;
+                    let find_width = (room - path_width).clamp(200.0, 360.0);
+                    let path_room = (room - find_width).max(40.0).min(path_width);
                     ui.horizontal(|ui| {
-                        ui.add_sized(
-                            [(ui.available_width() - 112.0).max(40.0), 18.0],
-                            Label::new(&file.label).truncate(),
-                        )
-                        .on_hover_text(&file.label);
-                        ui.colored_label(GREEN(), format!("+{}", file.added));
-                        ui.colored_label(RED(), format!("−{}", file.removed));
-                        if !tab.review_window { action = external_menu(ui, tab.view == crate::app::View::Changes, widgets); }
-                    });
-                }
-                ui.horizontal_wrapped(|ui| {
-                    if !compact {
-                        if !tab.review_window { action = external_menu(ui, tab.view == crate::app::View::Changes, widgets); }
-                        ui.label(&file.label);
+                        if !tab.review_window {
+                            action = external_menu(ui, editor, None, widgets);
+                        }
+                        let path = ui
+                            .allocate_ui_with_layout(vec2(path_room, CONTROL), Layout::left_to_right(Align::Center), |ui| {
+                                ui.add(Label::new(&file.label).truncate()).on_hover_text(&file.label);
+                            })
+                            .response;
                         ui.colored_label(GREEN(), format!("+{}", file.added));
                         ui.colored_label(RED(), format!("−{}", file.removed));
                         ui.separator();
-                    }
-                    for (split, label, key) in [
-                        (false, "Unified", "diff-unified"),
-                        (
-                            true,
-                            if compact { "Split" } else { "Side by side" },
-                            "diff-split",
-                        ),
-                    ] {
-                        let r = ui.selectable_label(tab.split_diff == split, label);
-                        widgets.insert(key.into(), (&r).into());
-                        if r.clicked() {
-                            tab.split_diff = split;
+                        layout_toggle(ui, &mut tab.split_diff, split_label, widgets);
+                        ui.separator();
+                        find_field(ui, &mut tab.diff_tools, find_width, widgets);
+                        toggles(ui, &mut tab.diff_tools, file, true, widgets);
+                        let measured = ui.min_rect().width() - path.rect.width() - find_width;
+                        if (measured - fixed).abs() > 0.5 {
+                            ui.ctx().data_mut(|d| d.insert_temp(fixed_id, measured));
+                            ui.ctx().request_discard("Diff header measurement");
                         }
+                    });
+                } else {
+                    // The file first, its counts at the right end.
+                    ui.horizontal(|ui| {
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.colored_label(RED(), format!("−{}", file.removed));
+                            ui.colored_label(GREEN(), format!("+{}", file.added));
+                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                if !tab.review_window {
+                                    let words = words_in_menu.then_some(&mut tab.diff_tools);
+                                    action = external_menu(ui, editor, words, widgets);
+                                }
+                                ui.add(Label::new(&file.label).truncate()).on_hover_text(&file.label);
+                            });
+                        });
+                    });
+                    // Then the controls, Find taking what is left; in a pane too narrow
+                    // for that, Find gets a row of its own instead of covering Syntax.
+                    let mut find_below = false;
+                    ui.horizontal(|ui| {
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            toggles(ui, &mut tab.diff_tools, file, !words_in_menu, widgets);
+                            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
+                                layout_toggle(ui, &mut tab.split_diff, split_label, widgets);
+                                let width = ui.available_width();
+                                if width >= FIND_LEAST {
+                                    find_field(ui, &mut tab.diff_tools, width, widgets);
+                                } else {
+                                    find_below = true;
+                                }
+                            });
+                        });
+                    });
+                    if find_below {
+                        ui.horizontal(|ui| {
+                            let width = ui.available_width();
+                            find_field(ui, &mut tab.diff_tools, width, widgets);
+                        });
                     }
-                    if let Some(review) = &patch.review {
-                        let label = if review.staged() {
-                            if compact {
-                                "Unstage"
-                            } else {
-                                "Unstage selected"
-                            }
-                        } else {
-                            if compact { "Stage" } else { "Stage selected" }
+                }
+                // Selecting lines: its own row, so the controls above keep their places.
+                if let Some(review) = &patch.review {
+                    ui.horizontal_wrapped(|ui| {
+                        let label = match (review.staged(), narrow) {
+                            (true, true) => "Unstage",
+                            (true, false) => "Unstage selected",
+                            (false, true) => "Stage",
+                            (false, false) => "Stage selected",
                         };
                         let r = ui.add_enabled(
                             selectable && !patch.selected.is_empty(),
@@ -283,11 +332,7 @@ pub(crate) fn patch_view(
                             if r.clicked(){action=Some(Intent::Dialog(DialogKind::Patch(crate::patches::Mode::Stash(review.clone(),patch.selected.iter().copied().collect()))));}
                             let r = ui.add_enabled(
                                 selectable && !patch.selected.is_empty(),
-                                Button::new(if compact {
-                                    "Discard"
-                                } else {
-                                    "Discard selected"
-                                }),
+                                Button::new(if narrow { "Discard" } else { "Discard selected" }),
                             );
                             widgets.insert("diff-discard-selection".into(), (&r).into());
                             if r.clicked() {
@@ -299,92 +344,21 @@ pub(crate) fn patch_view(
                                 )));
                             }
                         }
-                        if selectable && !compact {
-                            ui.small("Click lines or a hunk to select.");
+                        // Only where it fits: wrapped, it would push the patch down a line.
+                        let tip = "Click lines or a hunk to select.";
+                        // What is left on this line; available_width() is the whole row here.
+                        let fits = ui.available_size_before_wrap().x
+                            >= ui.painter().layout_no_wrap(tip.into(), TextStyle::Small.resolve(ui.style()), TEXT()).size().x;
+                        if selectable && fits {
+                            ui.small(tip);
                         }
-                    }
-                });
-                ui.horizontal_wrapped(|ui| {
-                    let r = ui.add(
-                        TextEdit::singleline(&mut tab.diff_tools.query)
-                            .hint_text(if compact {
-                                "Find…"
-                            } else {
-                                "Find in this diff…"
-                            })
-                            .char_limit(512)
-                            .desired_width(if compact { 80.0 } else { 180.0 }),
-                    );
-                    widgets.insert("diff-search".into(), (&r).into());
-                    if !ui.ctx().egui_wants_keyboard_input()
-                        && ui.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::F))
-                    {
-                        r.request_focus();
-                    }
-                    let r = ui
-                        .add(checkbox(
-                            &mut tab.diff_tools.syntax,
-                            if compact { "Aa" } else { "Syntax" },
-                        ))
-                        .on_hover_text(format!("{} · lexical colors from available diff context.{}",
-                            file.syntax_language.unwrap_or("Plain text"),
-                            if file.syntax_limited { " Highlighting limit reached; remaining lines use plain colors." } else { "" }));
-                    widgets.insert("diff-syntax".into(), (&r).into());
-                    if tab.diff_tools.words_running() {
-                        // Reuse the toggle's row so background work cannot push the
-                        // patch out of a short pane while its highlights load.
-                        let r = ui.button("Words ×").on_hover_text("Stop word highlights");
-                        widgets.insert("diff-words-cancel".into(), (&r).into());
-                        if r.clicked() {
-                            tab.diff_tools.stop_words();
-                        }
-                    } else {
-                        let r = ui
-                            .add(checkbox(&mut tab.diff_tools.words, "Words"))
-                            .on_hover_text("Highlight changed words within paired lines");
-                        widgets.insert("diff-words".into(), (&r).into());
-                    }
-                    for (forward, label, key) in [
-                        (false, "↑", "diff-search-prev"),
-                        (true, "↓", "diff-search-next"),
-                    ] {
-                        let r = ui.add_enabled(!tab.diff_tools.hits.is_empty(), Button::new(label));
-                        widgets.insert(key.into(), (&r).into());
-                        if r.clicked() {
-                            tab.diff_tools.navigate(forward);
-                        }
-                    }
-                    let r = ui
-                        .button(if compact { "×" } else { "Clear" })
-                        .on_hover_text("Clear search");
-                    widgets.insert("diff-search-clear".into(), (&r).into());
-                    if r.clicked() {
-                        tab.diff_tools.query.clear();
-                    }
-                    if !tab.diff_tools.query.is_empty() {
-                        ui.small(if tab.diff_tools.running() {
-                            "Searching…".into()
-                        } else if tab.diff_tools.hits.is_empty() {
-                            "No matches".into()
-                        } else {
-                            format!(
-                                "{} / {}{}",
-                                tab.diff_tools.current + 1,
-                                tab.diff_tools.hits.len(),
-                                if tab.diff_tools.limited {
-                                    "+ (limit)"
-                                } else {
-                                    ""
-                                }
-                            )
-                        });
-                    }
-                    if ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F3)) {
-                        tab.diff_tools.navigate(false);
-                    } else if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F3)) {
-                        tab.diff_tools.navigate(true);
-                    }
-                });
+                    });
+                }
+                if ui.input_mut(|i| i.consume_key(Modifiers::SHIFT, Key::F3)) {
+                    tab.diff_tools.navigate(false);
+                } else if ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::F3)) {
+                    tab.diff_tools.navigate(true);
+                }
                 tab.diff_tools.update(file, ui.ctx());
                 if tab.diff_tools.syntax && file.syntax_limited {
                     ui.small("Syntax limit reached; remaining lines use plain colors.");
@@ -808,9 +782,173 @@ fn header_strip(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
     );
 }
 
+/// Unified | Side by side (Split in a narrow pane), one segmented control.
+fn layout_toggle(ui: &mut Ui, split: &mut bool, split_label: &str, widgets: &mut HashMap<String, UiControl>) {
+    let responses = crate::pages::segments(ui, &[("Unified", !*split), (split_label, *split)]);
+    for ((value, key), r) in [(false, "diff-unified"), (true, "diff-split")].into_iter().zip(&responses) {
+        widgets.insert(key.into(), r.into());
+        if r.clicked() {
+            *split = value;
+        }
+    }
+}
+
+/// The narrowest Find beside other controls: its icon, ↑ ↓ and × with a few letters
+/// between them. Narrower panes give Find a row of its own.
+const FIND_LEAST: f32 = 120.0;
+
+/// Find in this diff: a field with its match count, ↑ ↓ and × inside it. Ctrl+F
+/// focuses it; F3 and Shift+F3 move between matches. MCP: `diff-find` is the field,
+/// `diff-search` its text.
+fn find_field(
+    ui: &mut Ui,
+    tools: &mut crate::diff_tools::State,
+    width: f32,
+    widgets: &mut HashMap<String, UiControl>,
+) {
+    let (rect, field) = ui.allocate_exact_size(vec2(width, CONTROL), Sense::click());
+    widgets.insert("diff-find".into(), (&field).into());
+    // The frame goes under the text and buttons, in the colour of the focus known after them.
+    let back = ui.painter().add(Shape::Noop);
+    let inner = Rect::from_min_max(pos2(rect.left() + 26.0, rect.top()), pos2(rect.right() - 4.0, rect.bottom()));
+    // Right to left inside: ×, ↓, ↑, then the count.
+    let mut right = ui.new_child(UiBuilder::new().max_rect(inner).layout(Layout::right_to_left(Align::Center)));
+    right.spacing_mut().item_spacing.x = 2.0;
+    right.spacing_mut().interact_size.y = 20.0;
+    if !tools.query.is_empty() {
+        let r = mini(&mut right, Icon::Close, true, "Clear search");
+        widgets.insert("diff-search-clear".into(), (&r).into());
+        if r.clicked() {
+            tools.query.clear();
+        }
+    }
+    for (forward, image, key, tip) in [
+        (true, Icon::Chevron, "diff-search-next", "Next match (F3)"),
+        (false, Icon::ChevronUp, "diff-search-prev", "Previous match (Shift+F3)"),
+    ] {
+        let r = mini(&mut right, image, !tools.hits.is_empty(), tip);
+        widgets.insert(key.into(), (&r).into());
+        if r.clicked() {
+            tools.navigate(forward);
+        }
+    }
+    if !tools.query.is_empty() {
+        let count = if tools.running() {
+            "Searching…".into()
+        } else if tools.hits.is_empty() {
+            "No matches".into()
+        } else {
+            format!("{} / {}{}", tools.current + 1, tools.hits.len(), if tools.limited { "+ (limit)" } else { "" })
+        };
+        let count = RichText::new(count).size(11.5).color(FAINT());
+        let wide = right
+            .painter()
+            .layout_no_wrap(count.text().to_owned(), FontId::proportional(11.5), FAINT())
+            .size()
+            .x;
+        // The count goes first when room runs out, so the text keeps a few letters.
+        if right.available_width() - wide - 4.0 >= 40.0 {
+            right.add_space(4.0);
+            right.label(count);
+        }
+    }
+    let rest = right.available_rect_before_wrap();
+    let text_rect = Rect::from_min_max(inner.min, pos2(rest.right().max(inner.left()), inner.bottom()));
+    let mut text = ui.new_child(UiBuilder::new().max_rect(text_rect).layout(Layout::left_to_right(Align::Center)));
+    // The short hint where the long one would be cut.
+    let hint = if text_rect.width() >= 120.0 { "Find in this diff" } else { "Find" };
+    let r = text.add(
+        TextEdit::singleline(&mut tools.query)
+            .frame(Frame::NONE)
+            .margin(Margin::ZERO)
+            .hint_text(hint)
+            .char_limit(512)
+            .desired_width(text_rect.width()),
+    );
+    widgets.insert("diff-search".into(), (&r).into());
+    if field.clicked()
+        || (!ui.ctx().egui_wants_keyboard_input() && ui.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::F)))
+    {
+        r.request_focus();
+    }
+    let visuals = ui.visuals();
+    let stroke = if r.has_focus() {
+        visuals.selection.stroke
+    } else if field.hovered() || r.hovered() {
+        visuals.widgets.hovered.bg_stroke
+    } else {
+        visuals.widgets.inactive.bg_stroke
+    };
+    let corner = visuals.widgets.inactive.corner_radius;
+    let fill = visuals.text_edit_bg_color();
+    ui.painter().set(back, Shape::Rect(epaint::RectShape::new(rect, corner, fill, stroke, StrokeKind::Inside)));
+    icon(
+        ui.painter(),
+        Rect::from_center_size(pos2(rect.left() + 14.0, rect.center().y), vec2(13.0, 13.0)),
+        Icon::Search,
+        FAINT(),
+    );
+}
+
+/// A 20 px icon button inside a field.
+fn mini(ui: &mut Ui, image: Icon, enabled: bool, tip: &str) -> Response {
+    let r = ui.add_enabled(enabled, Button::new("").frame(false).min_size(vec2(20.0, 20.0))).on_hover_text(tip);
+    if enabled && (r.hovered() || r.has_focus()) {
+        ui.painter().rect_filled(r.rect, 4.0, HOVER());
+    }
+    let color = if !enabled { FAINT().gamma_multiply(0.6) } else if r.hovered() { TEXT() } else { MUTED() };
+    icon(ui.painter(), Rect::from_center_size(r.rect.center(), vec2(12.0, 12.0)), image, color);
+    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, tip));
+    r
+}
+
+/// Syntax, then Words when `words` (otherwise it is in the ··· menu), in reading order
+/// whichever way `ui` lays out.
+fn toggles(
+    ui: &mut Ui,
+    tools: &mut crate::diff_tools::State,
+    file: &FilePatch,
+    words: bool,
+    widgets: &mut HashMap<String, UiControl>,
+) {
+    let reversed = ui.layout().prefer_right_to_left();
+    if reversed && words {
+        words_toggle(ui, tools, widgets);
+    }
+    let r = ui
+        .add(checkbox(&mut tools.syntax, "Syntax"))
+        .on_hover_text(format!("{} · lexical colors from available diff context.{}",
+            file.syntax_language.unwrap_or("Plain text"),
+            if file.syntax_limited { " Highlighting limit reached; remaining lines use plain colors." } else { "" }));
+    widgets.insert("diff-syntax".into(), (&r).into());
+    if !reversed && words {
+        words_toggle(ui, tools, widgets);
+    }
+}
+
+/// Word highlights, or while they load, a button that stops them.
+fn words_toggle(ui: &mut Ui, tools: &mut crate::diff_tools::State, widgets: &mut HashMap<String, UiControl>) {
+    if tools.words_running() {
+        // Reuse the toggle's place so background work cannot push the patch out of a
+        // short pane while its highlights load.
+        let r = ui.button("Words ×").on_hover_text("Stop word highlights");
+        widgets.insert("diff-words-cancel".into(), (&r).into());
+        if r.clicked() {
+            tools.stop_words();
+        }
+    } else {
+        let r = ui
+            .add(checkbox(&mut tools.words, "Words"))
+            .on_hover_text("Highlight changed words within paired lines");
+        widgets.insert("diff-words".into(), (&r).into());
+    }
+}
+
+/// The file's ··· menu: external tools, and in a narrow pane the Words toggle.
 fn external_menu(
     ui: &mut Ui,
     editor: bool,
+    words: Option<&mut crate::diff_tools::State>,
     widgets: &mut HashMap<String, UiControl>,
 ) -> Option<Intent> {
     let mut action = None;
@@ -837,6 +975,10 @@ fn external_menu(
                 )));
                 ui.close();
             }
+        }
+        if let Some(tools) = words {
+            ui.separator();
+            words_toggle(ui, tools, widgets);
         }
     });
     widgets.insert("diff-tools-menu".into(), (&menu.response).into());
@@ -930,5 +1072,128 @@ mod performance_tests {
         }
         times.sort_unstable();
         println!("large_diff_frame_median_us={}", times[times.len()/2]);
+    }
+}
+
+#[cfg(test)]
+mod header_tests {
+    use super::*;
+
+    fn tab() -> Tab {
+        tab_for("net/src/retry.rs")
+    }
+
+    fn tab_for(path: &str) -> Tab {
+        let mut tab = Tab::new("header-fixture".into(), None);
+        // Word highlights would load in the background and show their Stop button.
+        tab.diff_tools.words = false;
+        let bytes = format!("diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n-fn old() {{}}\n+fn backoff() {{}}\n");
+        tab.patch = Some(crate::diff::Patch::parse(bytes.as_bytes()));
+        tab
+    }
+
+    #[test]
+    fn a_very_short_or_very_long_file_name_still_fits_the_one_row() {
+        let long = format!("{}/retry.rs", "deeply/nested/folder".repeat(12));
+        for path in ["a", long.as_str()] {
+            let ctx = Context::default();
+            let mut tab = tab_for(path);
+            let size = vec2(800.0, 300.0);
+            frame(&ctx, &mut tab, size);
+            let widgets = frame(&ctx, &mut tab, size);
+            assert!(same_row(&widgets, "diff-unified", "diff-words"), "{path}: one row");
+            assert!(widgets["diff-find"].rect.width() >= 200.0, "{path}: Find keeps its least width");
+            assert!(widgets["diff-words"].rect.right() <= size.x - 12.0 + 0.5, "{path}: the path gives way");
+        }
+    }
+
+    /// The header alone: no file list, so the pane is the window's width.
+    fn frame(ctx: &Context, tab: &mut Tab, size: Vec2) -> HashMap<String, UiControl> {
+        let mut widgets = HashMap::new();
+        let mut output = ctx.run_ui(
+            RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() },
+            |ui| {
+                patch_view(ui, tab, false, false, &mut widgets);
+            },
+        );
+        output.textures_delta.clear();
+        widgets
+    }
+
+    fn same_row(widgets: &HashMap<String, UiControl>, a: &str, b: &str) -> bool {
+        (widgets[a].rect.center().y - widgets[b].rect.center().y).abs() < 2.0
+    }
+
+    #[test]
+    fn a_short_wide_pane_keeps_one_row_with_full_names_and_a_wide_find_field() {
+        // 200 px tall: height used to switch the header to two short rows.
+        let ctx = Context::default();
+        let mut tab = tab();
+        let size = vec2(884.0, 200.0);
+        frame(&ctx, &mut tab, size);
+        let widgets = frame(&ctx, &mut tab, size);
+        for key in ["diff-tools-menu", "diff-split", "diff-find", "diff-search", "diff-syntax", "diff-words"] {
+            assert!(same_row(&widgets, "diff-unified", key), "{key} is on the one row");
+        }
+        let find = widgets["diff-find"].rect;
+        assert!((200.0..=360.0).contains(&find.width()), "Find is {} px", find.width());
+        assert!(find.left() > widgets["diff-split"].rect.right(), "Find follows the layout toggle");
+        assert!(widgets["diff-syntax"].rect.left() >= find.right(), "Syntax follows Find");
+        assert!(widgets["diff-words"].rect.right() <= size.x - 12.0 + 0.5, "nothing spills out of the strip");
+        // Side by side keeps its name: wider than Unified, as Split would not be.
+        assert!(widgets["diff-split"].rect.width() > widgets["diff-unified"].rect.width());
+        // The arrows sit inside the field, after its text.
+        for key in ["diff-search-prev", "diff-search-next"] {
+            assert!(find.contains_rect(widgets[key].rect), "{key} is inside Find");
+            assert!(widgets[key].rect.left() >= widgets["diff-search"].rect.right());
+        }
+    }
+
+    #[test]
+    fn narrower_panes_put_the_controls_on_a_second_row_and_the_narrowest_moves_words_into_the_menu() {
+        for (width, words) in [(600.0, true), (420.0, false)] {
+            let ctx = Context::default();
+            let mut tab = tab();
+            let size = vec2(width, 600.0);
+            frame(&ctx, &mut tab, size);
+            let widgets = frame(&ctx, &mut tab, size);
+            assert!(
+                widgets["diff-unified"].rect.top() >= widgets["diff-tools-menu"].rect.bottom(),
+                "{width}: the controls are below the file"
+            );
+            for key in ["diff-split", "diff-find", "diff-syntax"] {
+                assert!(same_row(&widgets, "diff-unified", key), "{width}: {key} is on the controls row");
+            }
+            assert_eq!(widgets.contains_key("diff-words"), words, "{width}: Words in the row");
+            let find = widgets["diff-find"].rect;
+            assert!(find.left() > widgets["diff-split"].rect.right());
+            assert!(widgets["diff-syntax"].rect.left() >= find.right(), "{width}: Find stops before Syntax");
+            let last = if words { "diff-words" } else { "diff-syntax" };
+            assert!(widgets[last].rect.right() <= width - 12.0 + 0.5, "{width}: nothing spills out of the strip");
+        }
+    }
+
+    #[test]
+    fn a_very_narrow_pane_gives_find_its_own_row_with_its_buttons_inside() {
+        for query in ["", "backoff"] {
+            let ctx = Context::default();
+            let mut tab = tab();
+            tab.diff_tools.query = query.into();
+            let size = vec2(260.0, 600.0);
+            frame(&ctx, &mut tab, size);
+            let widgets = frame(&ctx, &mut tab, size);
+            let (find, syntax) = (widgets["diff-find"].rect, widgets["diff-syntax"].rect);
+            assert!(find.top() >= widgets["diff-unified"].rect.bottom(), "{query:?}: Find is below the controls");
+            assert!(!find.intersects(syntax) && !find.intersects(widgets["diff-split"].rect), "{query:?}: nothing overlaps");
+            assert!(find.right() <= size.x - 12.0 + 0.5 && syntax.right() <= size.x - 12.0 + 0.5, "{query:?}: inside the strip");
+            let buttons: &[&str] = if query.is_empty() {
+                &["diff-search-prev", "diff-search-next"]
+            } else {
+                &["diff-search-prev", "diff-search-next", "diff-search-clear"]
+            };
+            for key in buttons {
+                assert!(find.contains_rect(widgets[*key].rect), "{query:?}: {key} is inside Find");
+            }
+        }
     }
 }

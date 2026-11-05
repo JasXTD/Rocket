@@ -610,6 +610,8 @@ mod tests {
             upstream: None,
             symbolic_target: None,
             checked_out_at: None,
+            committed: None,
+            ahead_behind: None,
         };
         let branches = [
             branch("main", true),

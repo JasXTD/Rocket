@@ -431,6 +431,9 @@ pub enum DialogKind {
     Signing(Option<SignatureTarget>),
     Clone,
     NewBranch,
+    /// New branch from a remote-tracking branch (`upstream`, a refs/remotes/ ref): it
+    /// starts there, tracks it, and you switch to it. `name` is the suggested name.
+    TrackBranch { upstream: Vec<u8>, name: String },
     Rename(Vec<u8>),
     /// Delete several local branches; `Dialog::first` filters the checklist.
     DeleteBranches,
@@ -1520,6 +1523,8 @@ impl Rocket {
                     .unwrap_or_default(),
                 *direction == RemoteUrlKind::Push && values.is_empty(),
             )
+        } else if let DialogKind::TrackBranch { name, .. } = &kind {
+            (name.clone(), false)
         } else {
             (String::new(), false)
         };
@@ -2671,7 +2676,7 @@ impl Rocket {
                 else if write.label != "undo-commit" { tab.undo_commit = None; }
                 tab.submodule_update |= self.general.submodules_on_checkout
                     && outcome.command_succeeded
-                    && matches!(write.label.as_str(), "branch-switch" | "saved-switch");
+                    && matches!(write.label.as_str(), "branch-switch" | "branch-checkout-remote" | "saved-switch");
             }
             self.finish_undo(write.owner, &outcome);
             self.finish_commit_dialog(write.owner, &outcome);
@@ -2731,7 +2736,11 @@ impl Rocket {
                 self.open(path);
             }
             // With the setting on, the page this session asked for waits for the update.
-            let reviewed = write.label == if self.general.submodules_on_checkout { "submodule-checkout" } else { "branch-switch" };
+            let reviewed = if self.general.submodules_on_checkout {
+                write.label == "submodule-checkout"
+            } else {
+                matches!(write.label.as_str(), "branch-switch" | "branch-checkout-remote")
+            };
             if !self.quitting && outcome.command_succeeded && reviewed && self.review_submodules_after_switch && self.tab().map(|t|t.id)==write.owner && self.dialog.is_none() {
                 self.show_dialog(DialogKind::Submodules);
             }

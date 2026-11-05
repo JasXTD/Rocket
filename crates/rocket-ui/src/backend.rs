@@ -92,6 +92,8 @@ pub enum Action {
     },
     CreateBranch(String),
     SwitchBranch(Vec<u8>),
+    /// A new local branch `name` tracking the remote-tracking ref `upstream`, switched to.
+    CheckOutRemote { name: Vec<u8>, upstream: Vec<u8> },
     /// After a branch switch; the path limits sources to the MCP fixture folder.
     UpdateSubmodules(Option<PathBuf>),
     RenameBranch(Vec<u8>, String),
@@ -193,6 +195,7 @@ impl Action {
             Self::SetIssueLinks { .. } => "issue-links-save",
             Self::CreateBranch(_) => "branch-create",
             Self::SwitchBranch(_) => "branch-switch",
+            Self::CheckOutRemote { .. } => "branch-checkout-remote",
             Self::UpdateSubmodules(_) => "submodule-checkout",
             Self::RenameBranch(..) => "branch-rename",
             Self::DeleteBranch(_) => "branch-delete",
@@ -2428,6 +2431,9 @@ impl Backend {
                     }
                     Action::CreateBranch(name) => out.branch(repo.create_branch(name, None, cancel)?),
                     Action::SwitchBranch(name) => out.branch(repo.switch_branch(name, cancel)?),
+                    Action::CheckOutRemote { name, upstream } => {
+                        out.branch(repo.check_out_remote_branch(name, upstream, cancel)?)
+                    }
                     Action::UpdateSubmodules(root) => out = crate::general::update_submodules(&repo, root.as_deref(), cancel)?,
                     Action::RenameBranch(old, new) => out.branch(repo.rename_branch(old, new, cancel)?),
                     Action::DeleteBranch(name) => out.branch(repo.delete_branch(name, cancel)?),

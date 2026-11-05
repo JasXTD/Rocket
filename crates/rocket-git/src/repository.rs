@@ -551,7 +551,9 @@ impl Repository {
         let arguments = args(&[
             "for-each-ref",
             "--sort=refname",
-            "--format=%(refname)%00%(objectname)%00%(HEAD)%00%(upstream)%00%(symref)%00%(worktreepath)%00",
+            // The last two fields: the tip's commit time and how far the branch is
+            // from its upstream ("ahead 1, behind 3", "gone" or empty when level).
+            "--format=%(refname)%00%(objectname)%00%(HEAD)%00%(upstream)%00%(symref)%00%(worktreepath)%00%(committerdate:unix)%00%(upstream:track,nobracket)%00",
             "refs/heads/",
             "refs/remotes/",
         ]);

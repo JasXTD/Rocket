@@ -1475,6 +1475,14 @@ impl Ui {
                         }
                         return Ok(());
                     }
+                    // Creates a local branch and switches to it: the same namespace, for the
+                    // trimmed name the action uses.
+                    DialogKind::TrackBranch { .. } => {
+                        if !dialog.first.trim().starts_with(&format!("{branch}-")) {
+                            return Err("New branch must stay in the fixture's marked branch namespace (marker followed by a hyphen).".into());
+                        }
+                        return Ok(());
+                    }
                     DialogKind::Worktrees => {
                         let state = dialog
                             .worktrees
@@ -2030,6 +2038,8 @@ impl Ui {
                             | "dialog-commands-filter"
                             | "dialog-commands-share-path"
                             | "sidebar-branch-filter"
+                            // Only filters the branch switcher; choosing a row is a click.
+                            | "branch-switch-filter"
                             | "conflict-result"
                             | "conflict-ai-instructions"
                             | "file-path"
@@ -3370,6 +3380,7 @@ fn dialog_name(kind: &DialogKind) -> &'static str {
         DialogKind::Open => "open",
         DialogKind::NewRepository => "init",
         DialogKind::NewBranch => "new-branch",
+        DialogKind::TrackBranch { .. } => "track-branch",
         DialogKind::RepositorySettings => "identity",
         DialogKind::Signing(_) => "signing",
         DialogKind::CommitAction(request) => request.label(),

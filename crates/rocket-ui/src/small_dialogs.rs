@@ -249,14 +249,19 @@ pub(crate) fn branch_name_problem(
     Some(problem.into())
 }
 
-/// New branch and Rename branch can go ahead.
+/// New branch and Rename branch can go ahead; a tracking branch also needs its
+/// remote branch to still be there.
 pub(crate) fn branch_name_ready(dialog: &Dialog, tab: Option<&Tab>) -> bool {
     let name = dialog.first.trim();
     let old = match &dialog.kind {
         DialogKind::Rename(old) => Some(old.as_slice()),
         _ => None,
     };
-    !name.is_empty() && branch_name_problem(name, branches(tab), old).is_none()
+    let start = match &dialog.kind {
+        DialogKind::TrackBranch { upstream, .. } => branches(tab).iter().any(|b| b.reference == *upstream),
+        _ => true,
+    };
+    start && !name.is_empty() && branch_name_problem(name, branches(tab), old).is_none()
 }
 
 /// New branch and Rename branch: the name with its live check, then where the new
@@ -286,6 +291,25 @@ pub(crate) fn branch_name_body(
         }
     }
     ui.add_space(4.0);
+    if let DialogKind::TrackBranch { upstream, .. } = &dialog.kind {
+        card(ui, "Starts at", |ui| {
+            match branches(tab).iter().find(|b| b.reference == *upstream) {
+                Some(b) => {
+                    let commit = commit_in(tab, &b.target);
+                    pages::key_value(ui, "Commit", KEY, |ui| commit_ref(ui, &b.target, commit, ""));
+                    if let Some(c) = commit {
+                        pages::key_value(ui, "Made by", KEY, |ui| {
+                            value_tail(ui, &display(&c.author.name), &format!(" · {}", age(c.author.timestamp)));
+                        });
+                    }
+                }
+                None => pages::note(ui, "This remote branch is gone. Fetch, then try again."),
+            }
+            pages::key_value(ui, "Tracks", KEY, |ui| value(ui, &short_ref(upstream)));
+            pages::key_value(ui, "Then", KEY, |ui| value(ui, "You switch to it"));
+        });
+        return;
+    }
     match old {
         None => card(ui, "Starts at", |ui| match snapshot(tab).and_then(|s| s.head.as_ref()) {
             Some(Head::Branch { name, target }) => {
@@ -1549,6 +1573,21 @@ pub(crate) fn status(dialog: &Dialog, tab: Option<&Tab>) -> String {
                 "Choose another name".into()
             }
         }
+        DialogKind::TrackBranch { upstream, .. } if !branches(tab).iter().any(|b| b.reference == *upstream) => {
+            // As the card says; the name may be fine.
+            "The remote branch is gone".into()
+        }
+        DialogKind::TrackBranch { .. } => {
+            let name = dialog.first.trim();
+            if name.is_empty() {
+                "Name the branch".into()
+            } else if branch_name_ready(dialog, tab) {
+                // The card above names the upstream; with it, a long name cut this line.
+                format!("Creates {name} and switches to it")
+            } else {
+                "Choose another name".into()
+            }
+        }
         DialogKind::Rename(_) => {
             if branch_name_ready(dialog, tab) {
                 "Renames the local branch only".into()
@@ -1651,6 +1690,8 @@ mod tests {
             upstream: None,
             symbolic_target: None,
             checked_out_at: None,
+            committed: None,
+            ahead_behind: None,
         }
     }
 
@@ -1701,6 +1742,61 @@ mod tests {
                 assert!(enabled(&ctx, &mut app, "dialog-submit"));
                 click(&ctx, &mut app, "dialog-remote-which-push");
                 assert!(!enabled(&ctx, &mut app, "dialog-submit"), "it pushes to the fetch URL already");
+            },
+        );
+    }
+
+    /// A remote branch no local branch tracks opens New branch, starting from and
+    /// tracking it. A taken name is refused; Create and switch checks it out.
+    #[test]
+    fn a_remote_branch_reviews_a_new_tracking_branch_and_switches_to_it() {
+        use crate::{
+            batch::flow_tests::{click, enabled, open, wait},
+            branch_switcher::{Pick, listing},
+            test_common as common,
+        };
+        common::isolated(
+            "ROCKET_SMALL_DIALOGS_UI_CASE",
+            "small_dialogs::tests::a_remote_branch_reviews_a_new_tracking_branch_and_switches_to_it",
+            || {
+                let f = common::Fixture::new();
+                f.write("a.txt", "1\n");
+                f.commit("base");
+                let home = String::from_utf8(f.run(&["branch", "--show-current"])).unwrap().trim().to_owned();
+                f.run(&["switch", "-c", "topic"]);
+                f.write("a.txt", "2\n");
+                f.commit("topic work");
+                let topic = String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap().trim().to_owned();
+                f.run(&["switch", home.as_str()]);
+                // As a fetch leaves it; nothing contacts the remote.
+                f.run(&["remote", "add", "origin", "https://example.invalid/rocket.git"]);
+                f.run(&["update-ref", "refs/remotes/origin/topic", topic.as_str()]);
+                f.run(&["branch", "-D", "topic"]);
+                let ctx = Context::default();
+                let mut app = open(&ctx, &f);
+                let snapshot = app.tab().unwrap().snapshot.as_ref().unwrap();
+                let remotes: Vec<Vec<u8>> = snapshot.remotes.iter().map(|r| r.name.clone()).collect();
+                let list = listing(&snapshot.branches, &remotes, "topic");
+                let Pick::Track { upstream, name } = list.remote[0].pick.clone() else {
+                    panic!("no local branch tracks origin/topic: {:?}", list.remote[0].pick)
+                };
+                assert_eq!((upstream.as_slice(), name.as_str()), (&b"refs/remotes/origin/topic"[..], "topic"));
+                app.dispatch(Intent::Dialog(DialogKind::TrackBranch { upstream, name }));
+                wait(&ctx, &mut app);
+                assert_eq!(app.dialog.as_ref().unwrap().first, "topic", "the name is suggested");
+                assert!(enabled(&ctx, &mut app, "dialog-submit"));
+                app.dialog.as_mut().unwrap().first = home.clone();
+                assert!(!enabled(&ctx, &mut app, "dialog-submit"), "an existing branch is never replaced");
+                app.dialog.as_mut().unwrap().first = "topic".into();
+                click(&ctx, &mut app, "dialog-submit");
+                wait(&ctx, &mut app);
+                let git = |args: &[&str]| String::from_utf8(f.run(args)).unwrap().trim().to_owned();
+                assert_eq!(git(&["branch", "--show-current"]), "topic");
+                assert_eq!(git(&["rev-parse", "HEAD"]), topic);
+                assert_eq!(git(&["rev-parse", "--abbrev-ref", "topic@{upstream}"]), "origin/topic");
+                // Now a local branch tracks it, so the switcher's remote row is that branch.
+                let snapshot = app.tab().unwrap().snapshot.as_ref().unwrap();
+                assert_eq!(listing(&snapshot.branches, &remotes, "topic").remote[0].pick, Pick::Stay);
             },
         );
     }

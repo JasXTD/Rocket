@@ -34,6 +34,86 @@ impl Repository {
         self.execute_branch_write(WriteOperation::CreateBranch, &arguments, cancel)
     }
 
+    /// Check out a remote-tracking branch as a new local branch: create `name` at the
+    /// commit `upstream` (a `refs/remotes/` ref) points to, set `upstream` as its
+    /// upstream, then switch to it, all under one write gate. All or nothing: when Git
+    /// refuses the upstream (no remote's fetch refspec maps it, or two do) or the switch
+    /// (local changes in the way), or a step is stopped, the new branch is deleted again
+    /// and that step's failure is reported. An existing local branch is never replaced,
+    /// and the switch keeps `switch_branch`'s protections.
+    ///
+    /// The steps stay separate on purpose: Git's own `switch -c <name> --track` updates
+    /// the working tree before it checks the upstream, so a refused upstream left HEAD
+    /// on the old branch over the new branch's files.
+    pub fn check_out_remote_branch(
+        &self,
+        name: impl AsRef<[u8]>,
+        upstream: &[u8],
+        cancel: &CancellationToken,
+    ) -> Result<BranchWriteReport> {
+        self.require_worktree(cancel)?;
+        let upstream = std::str::from_utf8(upstream)
+            .ok()
+            .filter(|u| u.starts_with("refs/remotes/") && !u.contains(['\0', '\n']))
+            .ok_or_else(|| Error::InvalidInput("Choose a remote-tracking branch to check out.".into()))?;
+        let name = self.branch_argument(name.as_ref(), cancel)?;
+        let _permit = self.acquire_write(cancel)?;
+        let start = self.resolve_commit(upstream, cancel)?;
+        let created = self.create_branch_at(name.clone(), &start, cancel)?;
+        if created.write.result.is_err() {
+            // Refused (the name is taken) or stopped while Git ran: nothing of ours to undo.
+            return Ok(created);
+        }
+        let mut arguments = args(&["branch"]);
+        arguments.push(format!("--set-upstream-to={upstream}").into());
+        arguments.push("--".into());
+        arguments.push(name.clone());
+        match self.execute_branch_write(WriteOperation::CreateBranch, &arguments, cancel) {
+            Ok(tracked) if tracked.write.result.is_ok() => {}
+            failed => return self.remove_created_branch(name, WriteOperation::CreateBranch, failed),
+        }
+        match self.switch_branch_to(name.clone(), cancel) {
+            Ok(switched) if switched.write.result.is_ok() => Ok(switched),
+            failed => self.remove_created_branch(name, WriteOperation::SwitchBranch, failed),
+        }
+    }
+
+    /// [`Repository::check_out_remote_branch`] after a later step failed: delete the
+    /// branch it created (and the upstream it may have set), then report the failed
+    /// step with the state read after the removal. Git refuses to delete a branch that
+    /// is checked out, so a stopped switch that got as far as HEAD keeps it, and the
+    /// branch list then shows it. The caller holds the write gate.
+    fn remove_created_branch(
+        &self,
+        name: OsString,
+        operation: WriteOperation,
+        failed: Result<BranchWriteReport>,
+    ) -> Result<BranchWriteReport> {
+        let failure = match failed {
+            Ok(report) => match report.write.result {
+                Err(error) => error,
+                Ok(_) => return Ok(report),
+            },
+            Err(error) => error,
+        };
+        let mut arguments = args(&["branch", "--delete", "--force", "--"]);
+        arguments.push(name);
+        // A fresh token: the Stop that ended the step must not also stop the removal.
+        let removed = self.execute_branch_write(
+            WriteOperation::DeleteBranch,
+            &arguments,
+            &CancellationToken::new(),
+        )?;
+        Ok(BranchWriteReport {
+            write: WriteReport {
+                operation,
+                result: Err(failure),
+                status: removed.write.status,
+            },
+            branches: removed.branches,
+        })
+    }
+
     /// Switch to an existing local branch. Git rejects a switch that would overwrite
     /// local changes or a branch checked out in another worktree. Ignored files are
     /// also protected from overwrite. No remote guessing, forced discard, automatic

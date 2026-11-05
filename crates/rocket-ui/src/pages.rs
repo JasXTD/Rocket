@@ -1696,9 +1696,14 @@ pub(crate) fn segments(ui: &mut Ui, items: &[(&str, bool)]) -> Vec<Response> {
         .corner_radius(7)
         .inner_margin(2)
         .show(ui, |ui| {
+            // 22-point options in a 2-point frame: the group is a control's height
+            // (CONTROL), so it lines up with the fields beside it. The row takes its
+            // height from interact_size when it starts, so set it first.
+            ui.spacing_mut().interact_size.y = 22.0;
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
-                ui.spacing_mut().button_padding = vec2(10.0, 3.0);
+                // With 3 points of padding, 12.5-point labels would make them 23.
+                ui.spacing_mut().button_padding = vec2(10.0, 2.0);
                 let mut add = |(label, selected): &(&str, bool)| {
                     let text = RichText::new(*label).size(12.5).color(if *selected {
                         TEXT()

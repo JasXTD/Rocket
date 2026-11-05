@@ -3331,6 +3331,8 @@ mod tests {
             upstream: upstream.map(|u| u.as_bytes().to_vec()),
             symbolic_target: None,
             checked_out_at: None,
+            committed: None,
+            ahead_behind: None,
         }
     }
     fn remote(name: &str) -> Remote {

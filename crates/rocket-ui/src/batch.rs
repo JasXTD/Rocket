@@ -967,6 +967,8 @@ mod tests {
             upstream: None,
             symbolic_target: None,
             checked_out_at: elsewhere.then(|| "C:/elsewhere".into()),
+            committed: None,
+            ahead_behind: None,
         }
     }
 

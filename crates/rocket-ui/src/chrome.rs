@@ -1335,50 +1335,7 @@ impl Rocket {
             WidgetInfo::labeled(WidgetType::Button, true, format!("Switch branch: {head}"))
         });
         let writable = self.can_write();
-        Popup::menu(&response).show(|ui| {
-            ui.label(RichText::new("SWITCH BRANCH").size(11.0).color(FAINT()));
-            if let Some(snapshot) = &tab.snapshot {
-                for branch in snapshot
-                    .branches
-                    .iter()
-                    .filter(|b| b.kind == BranchKind::Local)
-                {
-                    let label = short_ref(&branch.reference);
-                    let text = if branch.is_head {
-                        format!("✓  {label}")
-                    } else {
-                        format!("     {label}")
-                    };
-                    if ui
-                        .add_enabled(
-                            self.write.is_none() && !tab.loading() && !branch.is_head,
-                            Button::new(text),
-                        )
-                        .clicked()
-                    {
-                        intents.push(Intent::Execute(
-                            tab.id,
-                            Action::SwitchBranch(
-                                branch
-                                    .reference
-                                    .strip_prefix(b"refs/heads/")
-                                    .unwrap_or(&branch.reference)
-                                    .to_vec(),
-                            ),
-                        ));
-                        ui.close();
-                    }
-                }
-            }
-            ui.separator();
-            if ui
-                .add_enabled(writable, Button::new("New branch"))
-                .clicked()
-            {
-                intents.push(Intent::Dialog(DialogKind::NewBranch));
-                ui.close();
-            }
-        });
+        crate::branch_switcher::popup(&response, tab, writable, intents, &mut self.frame_widgets);
     }
 
     fn sidebar(&mut self, ui: &mut Ui, intents: &mut Vec<Intent>, rail: bool) {

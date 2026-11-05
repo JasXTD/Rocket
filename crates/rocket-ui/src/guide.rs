@@ -414,7 +414,7 @@ impl Rocket {
             }
             DialogKind::RepositorySettings => Topic::Repositories,
             DialogKind::Signing(_) => Topic::Signing,
-            DialogKind::NewBranch | DialogKind::Rename(_) | DialogKind::DeleteBranches => {
+            DialogKind::NewBranch | DialogKind::TrackBranch { .. } | DialogKind::Rename(_) | DialogKind::DeleteBranches => {
                 Topic::Branches
             }
             DialogKind::RunCommand(_) => Topic::CustomCommands,

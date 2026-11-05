@@ -183,8 +183,8 @@ pub(crate) fn branches(mut input: &[u8]) -> Result<Vec<Branch>> {
     while !input.is_empty() {
         // Fixed fields terminated by NUL; the final LF is Git's format record separator.
         // This also permits a checked-out worktree directory containing newlines on Unix.
-        let mut values = Vec::with_capacity(6);
-        for _ in 0..6 {
+        let mut values = Vec::with_capacity(8);
+        for _ in 0..8 {
             values.push(nul(&mut input, "branches")?);
         }
         input = input
@@ -212,9 +212,36 @@ pub(crate) fn branches(mut input: &[u8]) -> Result<Vec<Branch>> {
             } else {
                 Some(path(values[5])?)
             },
+            // These two only label the branch: a value Rocket can't read leaves the label
+            // out rather than failing the whole list (and the clones checked with it).
+            // Git keeps dates unsigned, so a bogus negative date reads as a huge number.
+            committed: std::str::from_utf8(values[6]).ok().and_then(|t| t.parse().ok()),
+            ahead_behind: if values[3].is_empty() {
+                None
+            } else {
+                track(values[7])
+            },
         });
     }
     Ok(result)
+}
+
+/// Git's `upstream:track,nobracket`: empty when level, "gone", or "ahead N",
+/// "behind M" or "ahead N, behind M". None for gone and for anything else, which a
+/// later Git could print: the distance is a label, never worth failing the list.
+fn track(value: &[u8]) -> Option<(u32, u32)> {
+    let text = std::str::from_utf8(value).ok()?;
+    let (mut ahead, mut behind) = (0, 0);
+    for part in text.split(", ").filter(|p| !p.is_empty()) {
+        let (word, count) = part.split_once(' ')?;
+        let count = count.parse().ok()?;
+        match word {
+            "ahead" => ahead = count,
+            "behind" => behind = count,
+            _ => return None,
+        }
+    }
+    Some((ahead, behind))
 }
 
 fn optional(bytes: &[u8]) -> Option<Vec<u8>> {
@@ -341,6 +368,43 @@ pub(crate) fn signature(value: &[u8]) -> Result<Signature> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn branches_carry_their_commit_time_and_distance_from_upstream() {
+        let id = "a".repeat(40);
+        let record = |name: &str, upstream: &str, time: &str, track: &str| {
+            format!("{name}\0{id}\0 \0{upstream}\0\0\0{time}\0{track}\0\n")
+        };
+        let input = [
+            record("refs/heads/level", "refs/remotes/origin/level", "1762300000", ""),
+            record("refs/heads/both", "refs/remotes/origin/both", "1762300001", "ahead 1, behind 3"),
+            record("refs/heads/ahead", "refs/remotes/origin/ahead", "1762300002", "ahead 2"),
+            record("refs/heads/gone", "refs/remotes/origin/gone", "1762300003", "gone"),
+            record("refs/heads/local", "", "", ""),
+        ]
+        .concat();
+        let parsed = branches(input.as_bytes()).unwrap();
+        let found: Vec<_> = parsed.iter().map(|b| (b.committed, b.ahead_behind)).collect();
+        assert_eq!(
+            found,
+            [
+                (Some(1_762_300_000), Some((0, 0))),
+                (Some(1_762_300_001), Some((1, 3))),
+                (Some(1_762_300_002), Some((2, 0))),
+                (Some(1_762_300_003), None),
+                (None, None),
+            ]
+        );
+        // What Rocket can't read leaves the label out; the list still reads. Git prints
+        // a bogus negative date unsigned, past what an i64 holds.
+        for unknown in ["sideways 1", "ahead x", "ahead", "gone, ahead 1"] {
+            let parsed = branches(record("refs/heads/x", "refs/remotes/origin/x", "1", unknown).as_bytes()).unwrap();
+            assert_eq!(parsed[0].ahead_behind, None, "{unknown}");
+        }
+        for time in ["soon", "18446744073709551611"] {
+            assert_eq!(branches(record("refs/heads/x", "", time, "").as_bytes()).unwrap()[0].committed, None, "{time}");
+        }
+    }
 
     #[test]
     fn preserves_unusual_status_path_bytes_and_ignores_new_headers() {

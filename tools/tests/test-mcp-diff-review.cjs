@@ -34,6 +34,8 @@ async function until(predicate,label='UI state'){
 async function settle(){return until(s=>!s.busy&&!s.input_pending&&!(s.tabs||[]).some(t=>t.loading||t.search.running));}
 function active(){return state.tabs.find(t=>t.id===state.active_tab);}
 function control(id){return state.controls.find(c=>c.id===id);}
+// Under 440 px the diff header keeps Words in its ··· menu; then the menu button is where it is reached.
+function wordsControl(){const c=control('diff-words')??control('diff-tools-menu');assert(c,'Words or the ··· menu that holds it');return c;}
 async function stable(){let last='',count=0;await until(s=>{const now=JSON.stringify(s.controls);count=now===last?count+1:0;last=now;return count>=3;},'Stable widget geometry');}
 async function click(target){await stable();assert(control(target)?.enabled,'Missing/disabled '+target);await client.tool('rocket_click',{target,expected_tab:state.active_tab});await settle();if(target==='image-reload')await waitForImage(active().patch_files[active().patch_file].path);}
 async function type(target,text){await stable();assert(control(target)?.enabled,'Missing/disabled input '+target);await client.tool('rocket_type',{target,text,expected_tab:state.active_tab});await settle();}
@@ -84,7 +86,7 @@ async function run(){try{
    assert.equal(imageState().after.width,320);await capture('final-commit-reload');passed('Commit image Reload retains the exact selected Unicode path rather than returning to the first file');
    await change(IMAGE);await click('menu-terminal');await click('terminal-new');await until(s=>s.terminal?.running&&s.terminal.tail.includes('PS '),'Ready PowerShell');await resize(780,620);await capture('final-image-terminal');
    const top=control('terminal-hide').rect[1]-5;for(const id of ['image-fit','image-checker','image-reload','image-side-0','image-side-1']){const c=control(id);assert(c&&c.rect[3]<=top+2,'Clipped image control '+id);}
-   await change(TEXT);await capture('final-words-terminal');assert(control('diff-words').rect[3]<control('terminal-hide').rect[1]);assert.deepEqual(snapshot(f),original);
+   await change(TEXT);await capture('final-words-terminal');assert(wordsControl().rect[3]<control('terminal-hide').rect[1]&&control('diff-syntax').rect[3]<control('terminal-hide').rect[1]);assert.deepEqual(snapshot(f),original);
    passed('Final-binary Unicode text/image rendering and 780x620 terminal layout preserve HEAD, index, config and working files');
    await closeWindow();await client.raw('POST','/shutdown');report.passed=true;return;
  }
@@ -107,7 +109,7 @@ async function run(){try{
  pids=await pauseImage();const textControl='change-unstaged-'+Buffer.from(TEXT).toString('hex');for(let n=0;!control(textControl)&&n<20;n++)await scroll('changes-scroll','up',350);await client.tool('rocket_click',{target:textControl,expected_tab:state.active_tab});await settle();await processesGone(pids);fs.unlinkSync(gate);assert(!imageState().loaded);assert.equal(words().lines,4);
  passed('Native cancellation stops the owned Git process tree; switching files drops stale image results and preserves typing/navigation responsiveness');
  await change(IMAGE);f.write(IMAGE,asset('after.png'));await until(s=>!s.busy&&imageState().loaded&&imageState().after.width===400,'Automatic refresh after external image edit');assert.equal(imageState().before.width,320);const updated=snapshot(f);assert.equal(updated.head,original.head);assert.equal(updated.index,original.index);assert.equal(updated.config,original.config);original.files[IMAGE]=updated.files[IMAGE];assert.deepEqual(updated,original);passed('External image edits refresh the working version without changing HEAD, index, config or unrelated files');
- await click('menu-terminal');await click('terminal-new');await resize(780,620);await capture('image-small-terminal');const terminalTop=control('terminal-hide').rect[1]-5;for(const c of state.controls.filter(c=>c.id.startsWith('image-')))assert(c.rect[3]<=terminalTop+2,'Image control overlaps terminal '+c.id);await change(TEXT);await capture('words-small-terminal');assert(control('diff-words').rect[3]<=control('terminal-hide').rect[1]);await click('terminal-hide');await resize(1480,920);
+ await click('menu-terminal');await click('terminal-new');await resize(780,620);await capture('image-small-terminal');const terminalTop=control('terminal-hide').rect[1]-5;for(const c of state.controls.filter(c=>c.id.startsWith('image-')))assert(c.rect[3]<=terminalTop+2,'Image control overlaps terminal '+c.id);await change(TEXT);await capture('words-small-terminal');assert(wordsControl().rect[3]<=control('terminal-hide').rect[1]&&control('diff-syntax').rect[3]<=control('terminal-hide').rect[1]);await click('terminal-hide');await resize(1480,920);
  assert.deepEqual(snapshot(f),original);passed('Compact 780×620 layout with terminal open, text/image switching and preserved original files');
  await closeWindow();await client.raw('POST','/shutdown');
  const records=fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).flatMap(n=>fs.readdirSync(path.join(root,n)).filter(f=>/^rocket(?:\.\d+)?\.jsonl$/.test(f)).flatMap(f=>fs.readFileSync(path.join(root,n,f),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));

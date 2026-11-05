@@ -59,6 +59,7 @@ Operations that change a repository open a review first. The dialog shows what w
 
 - Long text diffs have a narrow overview at the right: green for added rows, red for removed rows, and a blue outline for the current viewport. It describes the loaded diff, not omitted context or content beyond a preview limit. Unified and side-by-side views use their own row positions.
 - Click or drag the overview to scroll. With it focused, use arrows, Page Up/Down, Home or End. It never selects lines for staging or changes files. It hides when the diff fits; image and binary previews keep their existing controls.
+- A diff's header follows the pane's width, not its height: one row from about 760 px, two rows below that. Find (Ctrl+F) shows its match count, ↑ ↓ (F3 and Shift+F3) and × inside the box. Under 440 px Side by side reads Split and Words moves into the ··· menu.
 
 ### Compare local contents
 
@@ -161,6 +162,8 @@ Every operation that writes follows the same rules, so dialogs do not repeat the
 - Presentation settings are retained for up to 256 worktrees, with active, open and recently opened repositories preferred. Evicting an older view does not remove its draft or its saved repository shortcut.
 
 - New branch starts at the current commit. Creating a branch does not switch to it.
+- The branch button in the toolbar lists the current branch first, then local branches newest first, each with when it last changed and how far it is ahead (↑) or behind (↓) its upstream. Type to find a branch; ↑ ↓ move, Enter switches and Esc closes. Manage branches opens the Branches page.
+- Remote branches stay folded under one row until you type or open it. Choosing one that a local branch tracks switches to that branch. For one that none tracks, Check out as local opens New branch starting from it and tracking it, and Create and switch checks it out. It happens all at once or not at all: when Git refuses the upstream (no remote's fetch settings cover it, or two do) or the switch (local changes in the way), the new branch is removed again and the reason is shown. A local branch with the same name is never replaced; choose another name.
 - Delete branches: Git deletes a branch only when it is merged into its upstream, or into the current branch when it has none, and keeps the others. Remote branches are unaffected. The result lists each deleted branch's last commit.
 - Delete branches marks each branch Merged, or says how many of its commits are not merged, by that same rule. Select merged picks the merged ones; Git still checks each again when it deletes.
 - Dragging a commit onto another offers to move it above or below, or to squash or fix it up into the target. Each choice opens the interactive rebase review first.

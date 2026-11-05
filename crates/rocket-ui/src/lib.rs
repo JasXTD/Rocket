@@ -14,6 +14,7 @@ pub mod batch;
 pub mod change_drag;
 pub mod bisect;
 mod branch_picker;
+mod branch_switcher;
 #[cfg(test)]
 mod changes_tests;
 mod chrome;

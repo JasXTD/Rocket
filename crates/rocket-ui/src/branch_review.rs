@@ -1850,6 +1850,8 @@ mod tests {
             upstream: None,
             symbolic_target: name.ends_with("/HEAD").then(|| b"refs/remotes/origin/main".to_vec()),
             checked_out_at: None,
+            committed: None,
+            ahead_behind: None,
         };
         let on = |current: &str| {
             [

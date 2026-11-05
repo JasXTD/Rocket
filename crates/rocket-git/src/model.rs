@@ -179,6 +179,11 @@ pub struct Branch {
     pub upstream: Option<Vec<u8>>,
     pub symbolic_target: Option<Vec<u8>>,
     pub checked_out_at: Option<PathBuf>,
+    /// When its commit was committed, in Unix seconds; None when Git reports none.
+    pub committed: Option<i64>,
+    /// Commits ahead of and behind its upstream; None without an upstream, or when
+    /// the upstream is gone.
+    pub ahead_behind: Option<(u32, u32)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
