@@ -355,7 +355,7 @@ fn button(
 }
 
 /// Letters as the Changes list shows them.
-fn letter(change: Change) -> char {
+pub(crate) fn letter(change: Change) -> char {
     match change {
         Change::Added => 'A',
         Change::Deleted => 'D',
@@ -366,7 +366,7 @@ fn letter(change: Change) -> char {
 }
 
 /// The result line's counts: each kind present, in a fixed order, with its letter.
-fn kinds(files: &[ComparedFile]) -> Vec<(usize, &'static str, char)> {
+pub(crate) fn kinds(files: &[ComparedFile]) -> Vec<(usize, &'static str, char)> {
     const ORDER: [(Change, &str); 6] = [
         (Change::Added, "added"),
         (Change::Modified, "modified"),
@@ -567,7 +567,8 @@ fn fields(
         ui.spacing_mut().item_spacing.x = 8.0;
         let action = 84.0;
         let field = ((ui.available_width() - action - 30.0 - 3.0 * 8.0) / 2.0).max(110.0);
-        ref_field(ui, widgets, "base", &mut s.base, &s.branch_choices, field, &mut enter);
+        let base = RefField { key: "compare-base", label: "BASE", hint: "Branch, tag or commit", invalid: false };
+        ref_field(ui, widgets, base, &mut s.base, &s.branch_choices, field, &mut enter);
         match local {
             Some(staged) => {
                 let (rect, _) = ui.allocate_exact_size(vec2(30.0, 30.0), Sense::hover());
@@ -575,10 +576,11 @@ fn fields(
                 fixed_target(ui, staged, field);
             }
             None => {
-                if swap_button(ui, widgets, !s.cancelling) {
+                if swap_button(ui, widgets, "compare-swap", !s.cancelling) {
                     emit(intents, CompareIntent::Swap);
                 }
-                ref_field(ui, widgets, "target", &mut s.target, &s.branch_choices, field, &mut enter);
+                let target = RefField { key: "compare-target", label: "TARGET", hint: "Branch, tag or commit", invalid: false };
+                ref_field(ui, widgets, target, &mut s.target, &s.branch_choices, field, &mut enter);
             }
         }
         if s.running() {
@@ -602,23 +604,32 @@ fn fields(
     });
 }
 
+/// What a Base or Target field shows besides its text: its MCP key, its label, the hint
+/// while empty, and whether its name was found.
+pub(crate) struct RefField<'a> {
+    pub key: &'a str,
+    pub label: &'a str,
+    pub hint: &'a str,
+    pub invalid: bool,
+}
+
 /// Base or Target as one field: its label, the name and a bare ▾ for the branch list.
-fn ref_field(
+/// Returns whether a name was chosen from the list; typing shows in the text's response.
+pub(crate) fn ref_field(
     ui: &mut Ui,
     widgets: &mut HashMap<String, UiControl>,
-    side: &str,
+    field: RefField<'_>,
     value: &mut String,
     choices: &[String],
     width: f32,
     enter: &mut bool,
-) {
-    let key = format!("compare-{side}");
+) -> bool {
+    let RefField { key, label, hint, invalid } = field;
     let (rect, _) = ui.allocate_exact_size(vec2(width, 30.0), Sense::hover());
     ui.painter().rect_filled(rect, 7.0, BG());
     let inside = Rect::from_min_max(rect.min + vec2(10.0, 0.0), rect.max - vec2(3.0, 0.0));
     let mut field = ui.new_child(UiBuilder::new().max_rect(inside).layout(Layout::left_to_right(Align::Center)));
     field.spacing_mut().item_spacing.x = 6.0;
-    let label = if side == "base" { "BASE" } else { "TARGET" };
     field.label(RichText::new(label).font(semibold(10.5)).extra_letter_spacing(0.7).color(FAINT()));
     let picker = 24.0;
     let r = field.add_sized(
@@ -626,10 +637,11 @@ fn ref_field(
         TextEdit::singleline(value)
             .char_limit(4096)
             .frame(Frame::NONE)
-            .hint_text("Branch, tag or commit"),
+            .hint_text(hint),
     );
     *enter |= r.lost_focus() && field.input(|i| i.key_pressed(Key::Enter));
-    pages::control(widgets, &key, &r, ui.clip_rect());
+    pages::control(widgets, key, &r, ui.clip_rect());
+    let mut picked = false;
     field.scope(|ui| {
         // The list opens from a bare ▾ inside the field, framed only while hovered.
         let visuals = &mut ui.visuals_mut().widgets;
@@ -640,10 +652,12 @@ fn ref_field(
         ui.spacing_mut().combo_width = picker;
         if let Some(chosen) = crate::branch_picker::pick(ui, widgets, &format!("{key}-pick"), "", choices, true) {
             *value = chosen;
+            picked = true;
         }
     });
-    let edge = if r.has_focus() { BLUE() } else { BORDER() };
+    let edge = if invalid { RED() } else if r.has_focus() { BLUE() } else { BORDER() };
     ui.painter().rect_stroke(rect, 7.0, Stroke::new(1.0, edge), StrokeKind::Inside);
+    picked
 }
 
 /// The local target, which can't be typed: the staging area or the working tree.
@@ -682,7 +696,7 @@ fn arrow(painter: &Painter, at: Pos2, back: bool, color: Color32) {
 }
 
 /// Swap as two arrows between the fields.
-fn swap_button(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, enabled: bool) -> bool {
+pub(crate) fn swap_button(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, key: &str, enabled: bool) -> bool {
     let r = ui
         .add_enabled(enabled, Button::new("").min_size(vec2(30.0, 30.0)))
         .on_hover_text("Swap base and target");
@@ -691,7 +705,7 @@ fn swap_button(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, enabled: b
     let c = r.rect.center();
     arrow(ui.painter(), c - vec2(0.0, 3.5), false, color);
     arrow(ui.painter(), c + vec2(0.0, 3.5), true, color);
-    pages::control(widgets, "compare-swap", &r, ui.clip_rect());
+    pages::control(widgets, key, &r, ui.clip_rect());
     r.clicked()
 }
 
@@ -770,7 +784,7 @@ fn summary(ui: &mut Ui, loaded: &Loaded, widgets: &mut HashMap<String, UiControl
 }
 
 /// A commit's short ID; clicking it copies the full one.
-fn sha(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, key: &str, id: &ObjectId, name: &str) {
+pub(crate) fn sha(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, key: &str, id: &ObjectId, name: &str) {
     let text = RichText::new(&id.as_str()[..7]).monospace().size(12.0).color(BLUE());
     let chip = Button::new(text)
         .small()
@@ -787,7 +801,7 @@ fn sha(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, key: &str, id: &Ob
 
 /// A message centered in the rest of the pane: an optional icon, a title, a hint and
 /// whatever `below` adds.
-fn message(ui: &mut Ui, image: Option<(Icon, Color32)>, title: &str, hint: &str, below: impl FnOnce(&mut Ui)) {
+pub(crate) fn message(ui: &mut Ui, image: Option<(Icon, Color32)>, title: &str, hint: &str, below: impl FnOnce(&mut Ui)) {
     let size = ui.available_size();
     let height = if size.y.is_finite() && size.y < 4000.0 { size.y.max(140.0) } else { 200.0 };
     let group = image.map_or(0.0, |_| 50.0) + 20.0 + if hint.is_empty() { 0.0 } else { 22.0 };
@@ -869,7 +883,7 @@ fn diff_side(
 }
 
 /// A rename or copy with no content change: where the file moved, not Git's headers.
-fn rename_card(ui: &mut Ui, file: &ComparedFile) {
+pub(crate) fn rename_card(ui: &mut Ui, file: &ComparedFile) {
     let copied = file.change == Change::Copied;
     let from = file
         .original_path

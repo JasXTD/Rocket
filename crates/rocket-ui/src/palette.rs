@@ -538,7 +538,7 @@ impl Rocket {
             ("Remotes", View::Remotes, Icon::Remote),
             ("Stashes", View::Stashes, Icon::Stash),
             ("File history", View::FileHistory, Icon::Clock),
-            ("AI branch review", View::BranchReview, Icon::Search),
+            ("AI review", View::BranchReview, Icon::Sparkle),
         ] {
             list.push(entry("Go to", image, label, "", "", go(Intent::View(view))).key(format!("view:{label}")));
         }

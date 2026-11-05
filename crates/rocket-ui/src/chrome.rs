@@ -1410,7 +1410,7 @@ impl Rocket {
                         (View::Commits, "Commits", Icon::Commit, "view-commits"),
                         (View::Compare, "Compare", Icon::Branch, "view-compare"),
                         (View::Map, "Map", Icon::Branch, "view-map"),
-                        (View::BranchReview, "AI review", Icon::Search, "view-review"),
+                        (View::BranchReview, "AI review", Icon::Sparkle, "view-review"),
                         (View::Tree, "Files", Icon::Folder, "view-tree"),
                     ] {
                         let response = nav_row(

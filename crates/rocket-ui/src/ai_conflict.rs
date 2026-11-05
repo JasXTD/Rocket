@@ -456,7 +456,7 @@ pub(crate) fn resolve_button(ui: &mut Ui, enabled: bool) -> Response {
     out.response
 }
 /// A link in the page's text, tall enough to hit.
-fn link(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, id: &str, label: &str, color: Color32) -> bool {
+pub(crate) fn link(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, id: &str, label: &str, color: Color32) -> bool {
     let r = ui.add(Button::new(RichText::new(label).size(12.5).color(color)).frame(false).min_size(vec2(0.0, 22.0)));
     pages::control(widgets, id, &r, ui.clip_rect());
     r.clicked()
@@ -588,7 +588,7 @@ fn pane(ui: &mut Ui, p: Pane<'_>, height: f32) {
         });
 }
 /// A pill with a check, for what was found.
-fn found(ui: &mut Ui, text: &str) {
+pub(crate) fn found(ui: &mut Ui, text: &str) {
     let galley = ui.painter().layout_no_wrap(text.into(), semibold(11.0), GREEN());
     let (rect, _) = ui.allocate_exact_size(vec2(galley.size().x + 30.0, 20.0), Sense::hover());
     ui.painter().rect_filled(rect, 10.0, GREEN().gamma_multiply(0.14));
@@ -596,7 +596,7 @@ fn found(ui: &mut Ui, text: &str) {
     ui.painter().galley(pos2(rect.left() + 22.0, rect.center().y - galley.size().y / 2.0), galley, GREEN());
 }
 /// One field of the request card: its label, `side` from the right edge, then its body.
-fn field(ui: &mut Ui, label: &str, last: bool, side: impl FnOnce(&mut Ui), body: impl FnOnce(&mut Ui)) {
+pub(crate) fn field(ui: &mut Ui, label: &str, last: bool, side: impl FnOnce(&mut Ui), body: impl FnOnce(&mut Ui)) {
     Frame::new().inner_margin(Margin::symmetric(14, 11)).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.spacing_mut().item_spacing.y = 5.0;
@@ -612,7 +612,7 @@ fn field(ui: &mut Ui, label: &str, last: bool, side: impl FnOnce(&mut Ui), body:
     }
 }
 /// A fix the page can offer: what to do and the button that does it.
-fn fix(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, text: &str, id: &str, label: &str) -> bool {
+pub(crate) fn fix(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, text: &str, id: &str, label: &str) -> bool {
     let mut clicked = false;
     Frame::new()
         .fill(AMBER().gamma_multiply(0.10))
@@ -748,7 +748,7 @@ fn goes_to(
         }
     });
 }
-fn elapsed(started: Option<Instant>) -> String {
+pub(crate) fn elapsed(started: Option<Instant>) -> String {
     let seconds = started.map_or(0, |s| s.elapsed().as_secs());
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
@@ -815,7 +815,7 @@ fn sends(ui: &mut Ui, s: &mut State, last: bool, widgets: &mut HashMap<String, U
     s.show_exact = show;
 }
 /// Sizes as the page reads them.
-fn pages_size(bytes: usize) -> String {
+pub(crate) fn pages_size(bytes: usize) -> String {
     if bytes < 1024 {
         format!("{bytes} bytes")
     } else {

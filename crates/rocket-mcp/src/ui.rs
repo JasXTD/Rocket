@@ -366,15 +366,7 @@ impl Ui {
             value["conflict_editor"]["scroll_y"]=json!(tab.conflict.scroll_y);
             value["conflict_editor"]["scroll_max"]=json!(tab.conflict.scroll_max);
             value["conflict_editor"]["overview"]=overview_state(&tab.conflict.overview_probe);
-            let review=&tab.branch_review;
-            value["branch_review"]=json!({"base":review.base,"target":review.target,"provider":review.provider.code(),
-                "running":review.running(),"preparing":review.preparing(),"cancelling":review.cancelling,
-                "changed_inputs":review.changed_inputs(),"failure":review.failure,"error":review.error,"notice":review.notice,
-                "result":review.result,"result_ids":review.result_ids.as_ref().map(|(a,b)|json!([a.as_str(),b.as_str()])),
-                "show_result":review.show_result,"payload":review.preview.as_ref().map(|p|p.payload()),
-                "preview":review.preview.as_ref().map(|p|json!({"base":p.base.as_str(),"target":p.target.as_str(),"merge_base":p.merge_base.as_str(),
-                    "commits":p.commits,"files":p.scope.files,"binary_files":p.scope.binary_files,"omitted_files":p.scope.omitted_files,
-                    "diff_bytes":p.scope.diff_bytes,"sent_bytes":p.scope.sent_bytes}))});
+            value["branch_review"]=tab.branch_review.snapshot();
             value
         }).collect();
         let mut controls:Vec<_> = self.app.frame_widgets.iter().map(|(id, widget)| json!({"id":id,"enabled":widget.enabled,"rect":[widget.rect.min.x,widget.rect.min.y,widget.rect.max.x,widget.rect.max.y]})).collect();
@@ -847,7 +839,7 @@ impl Ui {
         if target == "mcp-save" {
             self.policy.remote_url(self.app.mcp.root.as_bytes())?;
         }
-        if request.name == "rocket_type" && matches!(target, "pref-ai-executable" | "review-program") {
+        if request.name == "rocket_type" && target == "pref-ai-executable" {
             let text = request.args["text"].as_str().unwrap_or("").trim();
             if !text.is_empty() {
                 self.policy.external_executable(Path::new(text))?;
@@ -866,9 +858,8 @@ impl Ui {
         // A draft runs Claude Code: under MCP only the fixture's stub inside the root.
         if target == "review-send" {
             let review = &self.app.tab().ok_or("Open a fixture repository first")?.branch_review;
-            let program = if review.program.trim().is_empty() {review.provider.default_program()} else {Some(review.program.trim().into())}
-                .ok_or("No AI CLI program is configured")?;
-            self.policy.external_executable(&program).map_err(|_| "AI branch review under MCP requires a fixture stub executable inside the fixture root".to_owned())?;
+            let program = self.app.drafting.program_for(review.provider).ok_or("No AI CLI program is configured")?;
+            self.policy.external_executable(&program).map_err(|_| "AI review under MCP requires a fixture stub executable inside the fixture root".to_owned())?;
         }
         // A conflict proposal starts Claude Code or Codex too: the same stub-only rule.
         let proposer = match target {
@@ -1928,7 +1919,7 @@ impl Ui {
                         | "tree-list-scroll"
                         | "map-canvas" | "map-details-scroll" | "map-export-scroll"
                         | "compare-files-scroll"
-                        | "review-text-scroll"
+                        | "review-files-scroll" | "review-diff-scroll" | "review-findings-scroll" | "review-exact-scroll"
                         | "review-page-scroll"
                         | "conflict-ours-scroll"
                         | "conflict-theirs-scroll"
@@ -2045,7 +2036,7 @@ impl Ui {
                             | "tree-revision"
                             | "map-revision" | "map-search" | "map-base" | "map-path-scope" | "map-export-path" | "crash-export-path"
                             | "compare-base" | "compare-target" | "compare-filter"
-                            | "review-base" | "review-target" | "review-program"
+                            | "review-base" | "review-target" | "review-base-pick-filter" | "review-target-pick-filter" | "review-choose-filter"
                             | "compare-base-pick-filter" | "compare-target-pick-filter"
                             | "dialog-file-path"
                             | "open-filter"

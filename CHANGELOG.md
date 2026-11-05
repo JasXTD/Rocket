@@ -8,6 +8,31 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — AI review, redesigned
+
+- AI review has the frame of Compare: Base and Target fields with the branch list inside,
+  Swap, Read again, one result line, and the main button at the top right (Send to Claude
+  Code or Send to Codex, Stop while reviewing, then Send again). It has the AI mark in the
+  sidebar and is called AI review in View → Go to and the command palette.
+- No Prepare preview step: the page reads the changes when it opens and when Base or Target
+  change. Opened on a branch it reviews it against main or master; opened on main it asks
+  which branch to review instead of comparing main with itself and showing
+  `review_no_changes`. A name that matches nothing is marked on its field.
+- Changes shows the files and each diff exactly as sent, with binary files and files left
+  out to fit marked as named only; Show exact data still shows the whole text.
+- The Send for review card says who reviews, where the code goes and whether its program is
+  there, with Browse when it isn't. The page's CLI program field is gone: it uses the
+  program commit drafts and AI resolve use. While reviewing it shows the time and the
+  2-minute limit.
+- Findings come back as cards (Bug or Check, file and line, why, and a fix), asked for as
+  one JSON object; a click opens the place in Changes, and Copy findings copies them. A
+  reply in another shape shows as written, with its file:line places linked. A reply may
+  now be 32 KiB instead of 8 KiB.
+- Errors say what happened and what to do, with the code under Details. If Base or Target
+  moved, Send reads the changes again instead of sending.
+- MCP: `review-program`, `review-prepare`, `review-show-preview` and `review-show-result` are
+  gone; see UI.md for the new ids and `branch_review` state fields.
+
 ## 0.92.0 — Local crash reports
 
 - Desktop, CLI and MCP hosts record bounded local metadata for Rust panics and

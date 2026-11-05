@@ -83,17 +83,19 @@ Operations that change a repository open a review first. The dialog shows what w
 
 - Rocket has three AI tools. Each one runs only when you ask, and none of them commits, pushes or saves for you.
 - AI drafts write a commit message from your staged changes. Turn them on in Edit → Preferences → Commit messages; Draft with Claude or Draft with Codex then shows in the commit box in Changes. See Commit message drafts under Commits.
-- AI review checks the commits between two revisions. Open AI review in the sidebar, View → Go to → AI Review, or AI branch review in the command palette.
+- AI review checks the commits on a branch. Open AI review in the sidebar, View → Go to → AI review, or AI review in the command palette.
 - AI resolve proposes how to solve the conflicts in one file. It shows in Changes and in the conflict editor, only while a text conflict is open. See Conflicts.
 - AI drafts and AI review need Claude Code or Codex on this computer. AI resolve can also ask an AI app connected through the MCP server. Rocket stores no AI API key: the program you choose sends your code under its own account.
 
 ### AI review
 
-- Base and Target choose what to review. Base starts at main, or HEAD~1 when there is no main, and Target at HEAD. Choose Claude Code or Codex, then Prepare preview. No AI request is made yet.
-- The preview counts the commits, files and diff size, and the Preview tab shows exactly what will be sent. Changing Base or Target asks you to prepare it again.
-- Send preview sends that committed diff and the file names through the program you chose, under its account and its data and usage policies. Its tools are off. Codex can also include your global AGENTS instructions.
-- Stop ends the program, and a request stops after two minutes. A request already sent may still be processed by the provider.
-- Findings are suggestions to check. They aren't saved, and they change no files.
+- Base and Target choose what to review: the commits on Target since it split from Base. Opened on a branch, the page reviews it against main, or master. Opened on main itself, it asks which branch to review.
+- Rocket reads the changes by itself when the page opens and when Base or Target change; a typed name is read once you stop typing. A name that matches no branch, tag or commit is marked on its field, and the last preview stays until a name is found. Nothing is sent yet.
+- Changes lists the files and shows each diff exactly as it will be sent. Binary files are named only. A diff over 128 KiB is shortened to fit, and the files left out are named only. Show exact data shows the whole text that goes out.
+- Send to Claude Code or Send to Codex sends that text through the program on this computer, under its account and its data and usage policies. Its tools are off, and Codex may add your global AGENTS instructions. When the program isn't found, Browse chooses it; commit drafts and AI resolve use the same program.
+- Send checks Base and Target again first. If one moved, Rocket reads the changes again instead, and nothing is sent.
+- Stop ends the program, and a review stops after two minutes. A request already sent may still be processed by the provider.
+- Findings shows each one as Bug or Check with its file and line; click the place to see it in Changes. A reply that doesn't come as a list shows as written. Findings are suggestions to check: they aren't saved and change no files, and no findings is not proof the code is right. Copy findings copies them as text.
 
 ## Reviews and safety
 

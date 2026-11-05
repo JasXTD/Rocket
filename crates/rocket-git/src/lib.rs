@@ -34,7 +34,9 @@ mod commit_message;
 mod commit_prediction;
 mod comparison;
 mod branch_review;
-pub use branch_review::{BranchReviewFailure, BranchReviewPreview};
+pub use branch_review::{
+    BranchReviewFailure, BranchReviewPreview, FindingKind, ReviewFinding, ReviewFindings, ReviewReply,
+};
 mod conflict;
 mod custom_commands;
 mod diagnostics;

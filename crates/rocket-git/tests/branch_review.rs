@@ -113,6 +113,18 @@ fn preview_is_pinned_uses_merge_base_and_protects_local_state() {
                 assert!(!p.payload().contains(secret));
             }
             assert_ne!(p.base, p.merge_base);
+            assert!(p.diff().starts_with("diff --git ") && p.payload().contains(p.diff()));
+            assert!(p.diff().contains("changed()") && !p.diff().contains("<repository-diff>"));
+            assert_eq!((p.base_input(), p.target_input()), ("review-base", "review-target"));
+            // Which field names nothing: each is said on its own.
+            assert!(matches!(
+                repo.prepare_branch_review("review-bsae", "review-target", &token()),
+                Err(Error::BranchReview(BranchReviewFailure::BaseNotFound))
+            ));
+            assert!(matches!(
+                repo.prepare_branch_review("review-base", "review-trget", &token()),
+                Err(Error::BranchReview(BranchReviewFailure::TargetNotFound))
+            ));
             assert!(matches!(
                 repo.prepare_branch_review("review-target", "review-target", &token()),
                 Err(Error::BranchReview(BranchReviewFailure::NoChanges))
@@ -166,6 +178,8 @@ fn both_cli_reviews_use_preview_reject_moved_refs_and_cancel_owned_processes() {
                     fs::read_to_string(folder.join(format!("request-{}.txt", n + 1))).unwrap();
                 assert!(prompt.contains(p.payload()));
                 assert!(prompt.contains("introduced bugs"));
+                assert!(prompt.contains(r#""findings":[{"kind":"bug""#), "the reply format is asked for");
+                assert!(prompt.find("Reply with one JSON object") < prompt.find(p.payload()), "before the repository data");
                 for private in ["PRIVATE_STAGED", "PRIVATE_UNSTAGED", "PRIVATE_UNTRACKED"] {
                     assert!(!prompt.contains(private));
                 }
@@ -189,6 +203,14 @@ fn both_cli_reviews_use_preview_reject_moved_refs_and_cancel_owned_processes() {
                     p.target.as_str(),
                     p.base.as_str(),
                 ]);
+                // A deleted name moved too.
+                f.run(&["update-ref", "-d", "refs/heads/review-target"]);
+                assert!(matches!(
+                    repo.review_branch(&p, &req, &token()),
+                    Err(Error::BranchReview(BranchReviewFailure::Changed))
+                ));
+                assert_eq!(count(exe), n + 1);
+                f.run(&["update-ref", "refs/heads/review-target", p.target.as_str()]);
                 fs::write(folder.join("mode"), "garbage").unwrap();
                 assert!(matches!(
                     repo.review_branch(&p, &req, &token()),
