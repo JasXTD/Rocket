@@ -16,6 +16,8 @@ pub mod app_update;
 pub mod crash_reports;
 #[cfg(not(windows))]
 pub mod local_storage;
+mod system_languages;
+pub use system_languages::{SystemLanguages, system_languages};
 mod advisory_tool;
 mod managed_git;
 pub use managed_git::{MANAGED_GIT_VERSION, MANAGED_GIT_MANIFEST_SHA256, ManagedGitProgress, ManagedGitRuntime, managed_git_path, verify_managed_git};

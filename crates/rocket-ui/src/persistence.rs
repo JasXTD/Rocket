@@ -35,6 +35,10 @@ const AI_KEYS_MAGIC: &[u8] = b"ROCKET-STATE\0\x19";
 // v26 appends the commit message area's height after its handle was dragged. Without
 // one the earlier layout is kept, so only a dragged height makes older binaries refuse.
 const COMMIT_HEIGHT_MAGIC: &[u8] = b"ROCKET-STATE\0\x1a";
+// v27 appends the interface language picked on Preferences → General, after a flag for
+// v26's commit height, which a v27 state may leave out. Only a picked language writes it;
+// a language this binary lacks reads as "match the system" rather than refusing the state.
+const LANGUAGE_MAGIC: &[u8] = b"ROCKET-STATE\0\x1b";
 /// Heights the commit message area can be dragged to and saved at.
 pub const COMMIT_HEIGHTS: std::ops::RangeInclusive<f32> = 120.0..=2000.0;
 // v15 uses the v14 layout and version-2 definitions for context-specific commands.
@@ -98,6 +102,8 @@ pub struct Preferences {
     pub shell: crate::terminal_settings::Settings,
     /// The commit message area's height once its handle is dragged; None follows the text.
     pub commit_height: Option<f32>,
+    /// The interface language picked in Preferences; None matches the system's.
+    pub language: Option<crate::i18n::Language>,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -122,6 +128,7 @@ impl Default for Preferences {
             general: Default::default(),
             shell: Default::default(),
             commit_height: None,
+            language: None,
         }
     }
 }
@@ -338,7 +345,8 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     if p.commit_height.is_some_and(|h| !COMMIT_HEIGHTS.contains(&h)) {
         return Err(invalid());
     }
-    let commit_height = p.commit_height.is_some();
+    let language = p.language.is_some();
+    let commit_height = language || p.commit_height.is_some();
     let ai_keys = commit_height || !p.guard_ai_api_keys;
     let push_check = ai_keys || p.dependency_before_push;
     let shell = push_check || p.shell != crate::terminal_settings::Settings::default();
@@ -349,7 +357,7 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     let orders = shortcuts || state.worktree_views.values().any(|v| v.history_order != rocket_git::HistoryOrder::default());
     let urls = orders || state.commands.iter().any(|c| c.action == rocket_git::CommandAction::Url);
     let scoped = urls || state.commands.iter().any(|c| c.scope != rocket_git::CommandScope::Repository);
-    let mut bytes = if commit_height { COMMIT_HEIGHT_MAGIC } else if ai_keys { AI_KEYS_MAGIC } else if push_check { PUSH_CHECK_MAGIC } else if shell { SHELL_MAGIC } else if general { GENERAL_MAGIC } else if nested_workspaces { WORKSPACES_MAGIC } else if themes { THEME_MAGIC } else if shortcuts { SHORTCUT_MAGIC } else if orders { ORDER_MAGIC } else if urls { URL_MAGIC } else if scoped { SCOPED_MAGIC } else if state.hosting_searches.is_empty() { DEPENDENCIES_MAGIC } else { SEARCH_MAGIC }.to_vec();
+    let mut bytes = if language { LANGUAGE_MAGIC } else if commit_height { COMMIT_HEIGHT_MAGIC } else if ai_keys { AI_KEYS_MAGIC } else if push_check { PUSH_CHECK_MAGIC } else if shell { SHELL_MAGIC } else if general { GENERAL_MAGIC } else if nested_workspaces { WORKSPACES_MAGIC } else if themes { THEME_MAGIC } else if shortcuts { SHORTCUT_MAGIC } else if orders { ORDER_MAGIC } else if urls { URL_MAGIC } else if scoped { SCOPED_MAGIC } else if state.hosting_searches.is_empty() { DEPENDENCIES_MAGIC } else { SEARCH_MAGIC }.to_vec();
     bytes.extend([
         u8::from(p.sidebar),
         u8::from(p.details),
@@ -491,7 +499,9 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     }
     if push_check { bytes.push(u8::from(p.dependency_before_push)); }
     if ai_keys { bytes.push(u8::from(p.guard_ai_api_keys)); }
+    if language { bytes.push(u8::from(p.commit_height.is_some())); }
     if let Some(height) = p.commit_height { bytes.extend(height.to_le_bytes()); }
+    if let Some(chosen) = p.language { put(&mut bytes, chosen.tag().as_bytes())?; }
     if bytes.len() as u64 > MAX_BYTES {
         return Err(invalid());
     }
@@ -632,7 +642,8 @@ impl<'a> Reader<'a> {
 fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     let mut r = Reader(bytes);
     let magic = r.take(MAGIC.len())?;
-    let commit_height = magic == COMMIT_HEIGHT_MAGIC;
+    let language = magic == LANGUAGE_MAGIC;
+    let commit_height = language || magic == COMMIT_HEIGHT_MAGIC;
     let ai_keys = commit_height || magic == AI_KEYS_MAGIC;
     let push_check = ai_keys || magic == PUSH_CHECK_MAGIC;
     let shell = push_check || magic == SHELL_MAGIC;
@@ -686,6 +697,7 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
         general: Default::default(),
         shell: Default::default(),
         commit_height: None,
+        language: None,
     };
     let mut state = SavedState {
         preferences,
@@ -914,7 +926,13 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     }
     if push_check { state.preferences.dependency_before_push = r.boolean()?; }
     if ai_keys { state.preferences.guard_ai_api_keys = r.boolean()?; }
-    if commit_height { state.preferences.commit_height = Some(f32::from_bits(r.u32()?)); }
+    if commit_height && (!language || r.boolean()?) {
+        state.preferences.commit_height = Some(f32::from_bits(r.u32()?));
+    }
+    if language {
+        let tag = std::str::from_utf8(r.bytes()?).map_err(|_| invalid())?;
+        state.preferences.language = crate::i18n::Language::from_tag(tag).filter(|l| *l != crate::i18n::Language::Pseudo);
+    }
     if !r.0.is_empty() {
         return Err(invalid());
     }
@@ -1053,6 +1071,34 @@ mod tests {
         assert!(super::encode(&state).is_err(), "a partial path must not be saved");
         state.preferences.general = Settings::default();
         assert_eq!(super::encode(&state).unwrap(), old, "the defaults keep writing the earlier format");
+    }
+    #[test]
+    fn language_roundtrips_and_one_this_build_lacks_matches_the_system() {
+        use crate::i18n::Language;
+        let mut state = super::SavedState::default();
+        let old = super::encode(&state).unwrap();
+        assert_eq!(super::decode(&old).unwrap().preferences.language, None);
+        for height in [None, Some(240.0)] {
+            state.preferences.commit_height = height;
+            state.preferences.language = Some(Language::Japanese);
+            let bytes = super::encode(&state).unwrap();
+            assert!(bytes.starts_with(super::LANGUAGE_MAGIC));
+            assert!(bytes.ends_with(b"ja"), "the tag comes last");
+            assert_eq!(super::decode(&bytes).unwrap(), state, "commit height {height:?}");
+            // A newer build's language reads as matching the system; the rest still loads.
+            let mut newer = bytes[..bytes.len() - 2].to_vec();
+            newer.truncate(newer.len() - 4);
+            newer.extend(2u32.to_le_bytes());
+            newer.extend(b"ko");
+            let loaded = super::decode(&newer).unwrap();
+            assert_eq!(loaded.preferences.language, None);
+            assert_eq!(loaded.preferences.commit_height, height);
+        }
+        state.preferences.language = Some(Language::ChineseSimplified);
+        assert_eq!(super::decode(&super::encode(&state).unwrap()).unwrap().preferences.language, Some(Language::ChineseSimplified));
+        state.preferences.language = None;
+        state.preferences.commit_height = None;
+        assert_eq!(super::encode(&state).unwrap(), old, "matching the system keeps writing the earlier format");
     }
     #[test]
     fn shell_setting_roundtrips_and_the_default_keeps_the_earlier_format() {

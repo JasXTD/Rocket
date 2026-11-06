@@ -476,6 +476,8 @@ impl Ui {
         state["preferences"] = json!({"page":self.app.preferences_page().map(|p|p.key()),"sidebar":self.app.show_sidebar,"details":self.app.show_details,"row_height":self.app.row_height,"auto_refresh":self.app.auto_refresh,"secret_protection":self.app.secret_protection,"guard_ai_api_keys":self.app.guard_ai_api_keys,"secret_protection_user_control":self.app.secret_protection_editable});
         state["shortcuts"] = self.app.keybindings.snapshot();
         state["appearance"] = self.app.appearance_snapshot();
+        state["language"] = json!({"shown":rocket_ui::i18n::current().tag(),"choice":self.app.language.map(|l|l.tag()),
+            "system":rocket_ui::i18n::system().tag(),"offered":rocket_ui::i18n::offered().iter().map(|l|l.tag()).collect::<Vec<_>>()});
         state["dependencies"] = self.app.dependencies.summary(self.app.tab().map(|t| t.id));
         state["state_pending"] = json!(self.app.state_pending());
         let drafting = &self.app.drafting;

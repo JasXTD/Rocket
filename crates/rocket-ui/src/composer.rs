@@ -1,6 +1,6 @@
 //! Commit message helpers for the Changes composer: the repository's
 //! `commit.template` and the messages of recent commits made in Rocket.
-use crate::{app::*, backend::user_error, style::*};
+use crate::{app::*, backend::user_error, i18n::{tr, trf}, style::*};
 use eframe::egui::*;
 use rocket_git::*;
 use std::collections::HashMap;
@@ -43,7 +43,7 @@ impl Composer {
     /// Reject an over-limit edit as a whole; never silently truncate pasted text.
     pub(crate) fn edit_message(&mut self, current: &mut String, next: String) {
         if next.len() > MAX_COMMIT_MESSAGE_BYTES {
-            self.message_error = Some("Edit exceeds the 1 MiB commit-message limit. The previous draft is unchanged; keep the pasted text in its source document.".into());
+            self.message_error = Some(tr("Edit exceeds the 1 MiB commit-message limit. The previous draft is unchanged; keep the pasted text in its source document.").into());
         } else {
             *current = next;
             self.message_error = None;
@@ -134,8 +134,8 @@ pub(crate) fn message_menu(
     widgets: &mut HashMap<String, UiControl>,
 ) {
     let menu = ui
-        .add(quiet(Button::new(RichText::new("Messages").size(12.5))))
-        .on_hover_text("Start from the commit template or a recent commit message");
+        .add(quiet(Button::new(RichText::new(tr("Messages")).size(12.5))))
+        .on_hover_text(tr("Start from the commit template or a recent commit message"));
     widgets.insert("composer-messages".into(), (&menu).into());
     Popup::menu(&menu).show(|ui| {
         ui.set_min_width(280.0);
@@ -145,13 +145,13 @@ pub(crate) fn message_menu(
                 let r = ui
                     .add_enabled(
                         !template.message.is_empty(),
-                        Button::new("Use commit template"),
+                        Button::new(tr("Use commit template")),
                     )
-                    .on_hover_text(format!(
-                        "Replace the message with the text of {}",
-                        template.path.display()
+                    .on_hover_text(trf!(
+                        "Replace the message with the text of {path}",
+                        path = template.path.display()
                     ))
-                    .on_disabled_hover_text("The commit template has only comment lines.");
+                    .on_disabled_hover_text(tr("The commit template has only comment lines."));
                 widgets.insert("composer-template".into(), (&r).into());
                 if r.clicked() {
                     chosen = Some(template.message.clone());
@@ -159,16 +159,16 @@ pub(crate) fn message_menu(
             }
             (None, Some(error)) => {
                 let r = ui
-                    .add_enabled(false, Button::new("Commit template unavailable"))
+                    .add_enabled(false, Button::new(tr("Commit template unavailable")))
                     .on_disabled_hover_text(error.as_str());
                 widgets.insert("composer-template".into(), (&r).into());
             }
             (None, None) => {}
         }
-        ui.label(RichText::new("RECENT MESSAGES").size(11.0).color(FAINT()));
+        ui.label(RichText::new(tr("RECENT MESSAGES")).size(11.0).color(FAINT()));
         if composer.recent.is_empty() {
             ui.label(
-                RichText::new("Messages of commits made here are listed here.")
+                RichText::new(tr("Messages of commits made here are listed here."))
                     .size(12.0)
                     .color(FAINT()),
             );
@@ -188,7 +188,7 @@ pub(crate) fn message_menu(
         }
         if !composer.recent.is_empty() {
             ui.separator();
-            let clear = ui.button("Clear recent messages");
+            let clear = ui.button(tr("Clear recent messages"));
             widgets.insert("composer-recent-clear".into(), (&clear).into());
             if clear.clicked() {
                 composer.recent.clear();

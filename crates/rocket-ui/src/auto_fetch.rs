@@ -1,7 +1,7 @@
 //! Automatic fetch: every remote of every open repository, every few minutes, when
 //! turned on in Preferences. It never prompts, prunes or merges, and steps aside
 //! when a write starts. A failure is shown quietly and retried at the next interval.
-use crate::{app::*, backend::user_error, pages, style::*};
+use crate::{app::*, backend::user_error, i18n::{tr, trf}, pages, style::*};
 use eframe::egui::*;
 use rocket_git::*;
 use std::{
@@ -68,8 +68,8 @@ pub(crate) fn preferences(
         widgets,
         "pref-auto-fetch",
         &mut on,
-        "Fetch remotes automatically",
-        "All remotes of open repositories",
+        tr("Fetch remotes automatically"),
+        tr("All remotes of open repositories"),
         "",
     );
     if r.changed() {
@@ -86,9 +86,9 @@ pub(crate) fn preferences(
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 10.0;
-                    ui.label(RichText::new("Every").color(MUTED()));
+                    ui.label(RichText::new(tr("Every")).color(MUTED()));
                     let choices = &crate::persistence::AUTO_FETCH_MINUTES[1..];
-                    let labels: Vec<String> = choices.iter().map(|c| format!("{c} min")).collect();
+                    let labels: Vec<String> = choices.iter().map(|c| trf!("{c} min", c)).collect();
                     let items: Vec<(&str, bool)> = choices
                         .iter()
                         .zip(&labels)
@@ -177,11 +177,11 @@ impl Rocket {
             return;
         };
         if state.running() {
-            ui.label(RichText::new("Fetching…").size(11.5).color(FAINT()))
+            ui.label(RichText::new(tr("Fetching…")).size(11.5).color(FAINT()))
                 .on_hover_text(
-                    "Automatic fetch of every remote. It never prompts, prunes or merges.",
+                    tr("Automatic fetch of every remote. It never prompts, prunes or merges."),
                 );
-            let r = ui.add(Button::new(RichText::new("Stop").size(11.5)).frame(false));
+            let r = ui.add(Button::new(RichText::new(tr("Stop")).size(11.5)).frame(false));
             pages::control(
                 &mut self.frame_widgets,
                 "auto-fetch-stop",
@@ -196,13 +196,14 @@ impl Rocket {
         {
             let r = ui
                 .label(
-                    RichText::new("Automatic fetch failed")
+                    RichText::new(tr("Automatic fetch failed"))
                         .size(11.5)
                         .color(AMBER()),
                 )
                 .on_hover_text(format!(
-                    "{}\nRetried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.",
-                    failures.join("\n")
+                    "{}\n{}",
+                    failures.join("\n"),
+                    tr("Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.")
                 ));
             pages::control(
                 &mut self.frame_widgets,

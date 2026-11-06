@@ -7,6 +7,7 @@ use crate::pages::Page;
 use crate::{
     app::*,
     backend::Action,
+    i18n::{tr, trf, trn},
     style::{self, *},
     views,
 };
@@ -69,13 +70,13 @@ fn repository_menu(
             .as_ref()
             .and_then(|s| s.info.worktree.clone())
             .unwrap_or_else(|| tab.path.clone());
-        let explorer = ui.button("Open in File Explorer");
+        let explorer = ui.button(tr("Open in File Explorer"));
         widgets.insert("tab-menu-explorer".into(), (&explorer).into());
         if explorer.clicked() {
             intents.push(Intent::ShowFolder(folder));
             ui.close();
         }
-        let terminal = ui.button("Open in Terminal");
+        let terminal = ui.button(tr("Open in Terminal"));
         widgets.insert("tab-menu-terminal".into(), (&terminal).into());
         if terminal.clicked() {
             intents.push(Intent::TerminalFor(tab.id));
@@ -83,7 +84,7 @@ fn repository_menu(
         }
         ui.separator();
         // Ctrl+W closes the active tab, which this one may not be.
-        let close = ui.button("Close repository");
+        let close = ui.button(tr("Close repository"));
         widgets.insert("tab-menu-close".into(), (&close).into());
         if close.clicked() {
             intents.push(Intent::CloseTab(tab.id));
@@ -153,39 +154,39 @@ impl Rocket {
     /// appears, and the running operation has its own indicator; none of those is here.
     fn background_reading(&self) -> Option<&'static str> {
         if self.quitting {
-            return self.working().then_some("Closing");
+            return self.working().then_some(tr("Closing"));
         }
         // The active repository's first read is the content area's spinner.
         let refreshing = self.tabs.iter().enumerate().any(|(index, tab)| {
             tab.refresh.is_some() && (index != self.active || tab.snapshot.is_some())
         });
         if self.saving() {
-            Some("Saving drafts and settings")
+            Some(tr("Saving drafts and settings"))
         } else if self.mcp.busy()
             && self.preferences_page() != Some(crate::preferences::Page::Mcp)
         {
-            Some("Checking local server")
+            Some(tr("Checking local server"))
         } else if refreshing {
-            Some("Refreshing")
+            Some(tr("Refreshing"))
         } else if self.tabs.iter().any(|t| t.more.is_some()) {
-            Some("Loading history")
+            Some(tr("Loading history"))
         } else if self.recent_heads.running() {
-            Some("Reading recent repositories")
+            Some(tr("Reading recent repositories"))
         } else if self.paste_patch.is_some() {
-            Some("Reading the clipboard")
+            Some(tr("Reading the clipboard"))
         } else if self.forge.running() && self.page() != Some(Page::Hosting) {
-            Some("Waiting for the hosting service")
+            Some(tr("Waiting for the hosting service"))
         } else if self.ssh.running() && self.preferences_page() != Some(crate::preferences::Page::SshKeys) {
-            Some("Working with SSH keys")
+            Some(tr("Working with SSH keys"))
         } else if self.manager.running() && self.page() != Some(Page::RepositoryManager) {
-            Some("Opening repositories")
+            Some(tr("Opening repositories"))
         } else if let Some(preview) = self
             .tabs
             .iter()
             .filter_map(|t| t.preview.as_deref())
             .find(|p| p.opening() || p.meter.status().running)
         {
-            Some(if preview.opening() { "Opening a preview" } else { "Downloading for a preview" })
+            Some(if preview.opening() { tr("Opening a preview") } else { tr("Downloading for a preview") })
         } else {
             None
         }
@@ -363,8 +364,8 @@ impl Rocket {
                 for warning in &snapshot.warnings { banner(ui, AMBER(), warning); }
                 if let Some(state) = &snapshot.state && !state.is_idle() {
                     if tab.view == View::Conflict && ui.available_height() < 300.0 {
-                        ui.add(Label::new(RichText::new("Git operation in progress · recovery controls in Changes").color(AMBER())).truncate())
-                            .on_hover_text("Save and stage the resolution, then return to Changes to continue, skip or abort the current operation.");
+                        ui.add(Label::new(RichText::new(tr("Git operation in progress · recovery controls in Changes")).color(AMBER())).truncate())
+                            .on_hover_text(tr("Save and stage the resolution, then return to Changes to continue, skip or abort the current operation."));
                     } else {
                         operation_banner(ui, state, snapshot.status.as_ref(), snapshot.sequence.as_ref(), enabled, intents, &mut self.frame_widgets);
                     }
@@ -373,7 +374,7 @@ impl Rocket {
             if tab.snapshot.is_none() {
                 ui.centered_and_justified(|ui| {
                     if tab.loading() { ui.spinner(); }
-                    else { ui.label("Repository unavailable. Check the path and refresh, or open another repository."); }
+                    else { ui.label(tr("Repository unavailable. Check the path and refresh, or open another repository.")); }
                 });
                 return;
             }
@@ -428,8 +429,8 @@ impl Rocket {
         let mut x = rect.left() + 6.0;
         let needs_review = self.needs_review();
         for (is_activity, label, image, key) in [
-            (false, "Terminal", Icon::Console, "drawer-terminal"),
-            (true, "Activity", Icon::Activity, "drawer-activity"),
+            (false, tr("Terminal"), Icon::Console, "drawer-terminal"),
+            (true, tr("Activity"), Icon::Activity, "drawer-activity"),
         ] {
             let width = ui
                 .painter()
@@ -466,7 +467,7 @@ impl Rocket {
             let response = if is_activity && needs_review {
                 ui.painter()
                     .circle_filled(pos2(tab.right() - 8.0, tab.center().y), 3.5, AMBER());
-                response.on_hover_text("The last operation needs review")
+                response.on_hover_text(tr("The last operation needs review"))
             } else {
                 response
             };
@@ -507,9 +508,9 @@ impl Rocket {
             |ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 let (image, hover, name, key) = if collapsed {
-                    (Icon::ChevronUp, "Expand", "Expand drawer", "drawer-expand")
+                    (Icon::ChevronUp, tr("Expand"), tr("Expand drawer"), "drawer-expand")
                 } else {
-                    (Icon::Chevron, "Collapse", "Collapse drawer", "drawer-collapse")
+                    (Icon::Chevron, tr("Collapse"), tr("Collapse drawer"), "drawer-collapse")
                 };
                 let arrow = icon_button(ui, image, true, false, 26.0).on_hover_text(hover);
                 arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name));
@@ -568,14 +569,14 @@ impl Rocket {
                     format!("{} · {when}", outcome.summary),
                 )
             } else {
-                (None, String::new(), "No operations yet".to_owned())
+                (None, String::new(), tr("No operations yet").to_owned())
             }
         } else {
             match self.terminal_state() {
                 Some((running, state)) => {
                     (Some(if running { GREEN() } else { FAINT() }), self.terminal_session_name(), state)
                 }
-                None => (None, String::new(), "No terminal session".to_owned()),
+                None => (None, String::new(), tr("No terminal session").to_owned()),
             }
         };
         let (area, response) =
@@ -633,12 +634,12 @@ impl Rocket {
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             if let Some(preview) = self.tab().and_then(|t| t.preview.as_deref()).filter(|p| !p.ready()) {
-                ui.label(RichText::new(format!("Previewing {}", preview.request.name)).size(12.0).color(MUTED()));
+                ui.label(RichText::new(trf!("Previewing {name}", name = preview.request.name)).size(12.0).color(MUTED()));
             } else if let Some(tab) = self.tab() {
                 small_icon(ui, Icon::Branch, FAINT());
                 ui.label(RichText::new(tab.branch_label()).size(12.0).color(MUTED()));
                 if tab.is_preview() {
-                    ui.label(RichText::new("Preview · read-only").size(12.0).color(MUTED()));
+                    ui.label(RichText::new(tr("Preview · read-only")).size(12.0).color(MUTED()));
                 }
                 if let Some((ahead, behind)) = tab
                     .snapshot
@@ -726,7 +727,7 @@ impl Rocket {
                     .add(crate::style::quiet(Button::new(
                         RichText::new("×").size(12.0).color(FAINT()),
                     )))
-                    .on_hover_text("Dismiss status message")
+                    .on_hover_text(tr("Dismiss status message"))
                     .clicked();
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -763,9 +764,9 @@ impl Rocket {
                             .request_repaint_after(std::time::Duration::from_millis(50));
                     } else if self.write.is_none() {
                         let state = if self.tab().is_some_and(|t| t.snapshot.is_some()) {
-                            "Repository ready"
+                            tr("Repository ready")
                         } else {
-                            "Ready"
+                            tr("Ready")
                         };
                         ui.label(RichText::new(state).size(12.0).color(MUTED()))
                             .on_hover_text(&backend.version);
@@ -775,9 +776,9 @@ impl Rocket {
                 self.ci_status(ui);
                 let running = self.mcp.status.running;
                 let mcp = chip(ui, Icon::Plug, "MCP", false, None).on_hover_text(if running {
-                    "MCP server running · open its settings"
+                    tr("MCP server running · open its settings")
                 } else {
-                    "MCP server settings"
+                    tr("MCP server settings")
                 });
                 if running {
                     ui.painter()
@@ -792,18 +793,18 @@ impl Rocket {
                 }
                 // A hidden external tool keeps running; this brings its dialog back.
                 if !self.external.open && (self.external.running() || self.external.report.is_some()) {
-                    let label = if self.external.running() { "Tool running" } else { "Tool finished" };
+                    let label = if self.external.running() { tr("Tool running") } else { tr("Tool finished") };
                     let tool = chip(ui, Icon::External, label, false, Some(BLUE()))
-                        .on_hover_text("Show the external tool");
+                        .on_hover_text(tr("Show the external tool"));
                     self.frame_widgets.insert("status-tool".into(), (&tool).into());
                     if tool.clicked() {
                         self.external.open = true;
                     }
                 }
                 if self.needs_review() {
-                    let review = chip(ui, Icon::Activity, "Needs review", false, Some(AMBER()))
+                    let review = chip(ui, Icon::Activity, tr("Needs review"), false, Some(AMBER()))
                         .on_hover_text(
-                            "The last operation needs attention. Open Activity for details.",
+                            tr("The last operation needs attention. Open Activity for details."),
                         );
                     self.frame_widgets
                         .insert("status-review".into(), (&review).into());
@@ -813,13 +814,13 @@ impl Rocket {
                 }
                 if let Some(error) = &self.state_error {
                     ui.label(
-                        RichText::new("Drafts/settings not saved")
+                        RichText::new(tr("Drafts/settings not saved"))
                             .size(12.0)
                             .color(AMBER()),
                     )
                     .on_hover_text(error);
                     if self.can_retry_state_save() {
-                        let retry = chip(ui, Icon::Refresh, "Retry save", false, Some(AMBER()));
+                        let retry = chip(ui, Icon::Refresh, tr("Retry save"), false, Some(AMBER()));
                         self.frame_widgets.insert("status-retry-save".into(), (&retry).into());
                         if retry.clicked() {
                             self.retry_state_save();
@@ -832,7 +833,7 @@ impl Rocket {
                     .is_some_and(|b| b.log.health().dropped_events > 0)
                 {
                     ui.label(
-                        RichText::new("Diagnostic events dropped")
+                        RichText::new(tr("Diagnostic events dropped"))
                             .size(12.0)
                             .color(AMBER()),
                     );
@@ -932,7 +933,7 @@ impl Rocket {
                             pos2(text_right - branch_width - pill_width, rect.bottom()),
                         );
                         if preview {
-                            let galley = ui.painter().layout_no_wrap("Preview".into(), semibold(11.0), VIOLET());
+                            let galley = ui.painter().layout_no_wrap(tr("Preview").into(), semibold(11.0), VIOLET());
                             let left = (rect.left() + lead + name_width + 8.0).min(text_right - pill_width + 4.0);
                             let pill = Rect::from_min_size(pos2(left, rect.center().y - 9.0), vec2(galley.size().x + 14.0, 18.0));
                             ui.painter().rect_filled(pill, 9.0, VIOLET().gamma_multiply(0.16));
@@ -986,7 +987,7 @@ impl Rocket {
                             WidgetInfo::labeled(
                                 WidgetType::Button,
                                 true,
-                                format!("Close {}", tab.title),
+                                trf!("Close {repository}", repository = tab.title),
                             )
                         });
                         if response.clicked() {
@@ -1003,11 +1004,11 @@ impl Rocket {
                         self.frame_widgets
                             .insert(format!("close-tab-{}", tab.id), (&close).into());
                         response.on_hover_text(tab.path.to_string_lossy());
-                        close.on_hover_text("Close repository (Ctrl+W)");
+                        close.on_hover_text(tr("Close repository (Ctrl+W)"));
                     }
                     ui.add_space(4.0);
                     let add = icon_button(ui, Icon::Plus, true, false, 28.0)
-                        .on_hover_text("Open or clone a repository (Ctrl+O)");
+                        .on_hover_text(tr("Open or clone a repository (Ctrl+O)"));
                     self.frame_widgets.insert("tab-add".into(), (&add).into());
                     Popup::menu(&add).show(|ui| self.open_menu(ui, intents));
                 });
@@ -1016,23 +1017,23 @@ impl Rocket {
 
     /// Open, clone, create or reopen a repository: the menu of each + for repositories.
     fn open_menu(&mut self, ui: &mut Ui, intents: &mut Vec<Intent>) {
-        if ui.button("Open repository").clicked() {
+        if ui.button(tr("Open repository")).clicked() {
             intents.push(Intent::Dialog(DialogKind::Open));
         }
         if ui
-            .add_enabled(self.write.is_none(), Button::new("Clone repository"))
+            .add_enabled(self.write.is_none(), Button::new(tr("Clone repository")))
             .clicked()
         {
             intents.push(Intent::Dialog(DialogKind::Clone));
         }
-        let explore = ui.add_enabled(self.backend.is_some(), Button::new("Explore repositories"));
+        let explore = ui.add_enabled(self.backend.is_some(), Button::new(tr("Explore repositories")));
         self.frame_widgets.insert("tab-add-explore".into(), (&explore).into());
         if explore.clicked() {
             intents.push(Intent::Explore(None));
         }
         let create = ui.add_enabled(
             self.backend.is_some() && self.write.is_none(),
-            Button::new("New repository"),
+            Button::new(tr("New repository")),
         );
         self.frame_widgets
             .insert("toolbar-new-repository".into(), (&create).into());
@@ -1041,7 +1042,7 @@ impl Rocket {
         }
         let reopen = ui.add_enabled(
             !self.closed_tabs.is_empty(),
-            Button::new("Reopen closed repository").shortcut_text(crate::shortcuts::hint(ui.ctx(), "Ctrl+Shift+T")),
+            Button::new(tr("Reopen closed repository")).shortcut_text(crate::shortcuts::hint(ui.ctx(), "Ctrl+Shift+T")),
         );
         self.frame_widgets
             .insert("tab-reopen".into(), (&reopen).into());
@@ -1064,11 +1065,11 @@ impl Rocket {
                 ui.spacing_mut().item_spacing.y = 1.0;
                 let header = section_header(
                     ui,
-                    "Repositories",
+                    tr("Repositories"),
                     Some(self.tabs.len()),
                     "repositories",
                     false,
-                    Some("Open or clone a repository"),
+                    Some(tr("Open or clone a repository")),
                     None,
                 );
                 if let Some(add) = &header.add {
@@ -1130,9 +1131,9 @@ impl Rocket {
             self.branch_picker(ui, intents, compact);
             let enabled = self.write.is_none() && self.tab().is_some_and(|t| !t.loading());
             let refresh = icon_button(ui, Icon::Refresh, enabled, false, 32.0)
-                .on_hover_text("Refresh local state (F5)");
+                .on_hover_text(tr("Refresh local state (F5)"));
             refresh.widget_info(|| {
-                WidgetInfo::labeled(WidgetType::Button, enabled, "Refresh local repository")
+                WidgetInfo::labeled(WidgetType::Button, enabled, tr("Refresh local repository"))
             });
             self.frame_widgets
                 .insert("refresh".into(), (&refresh).into());
@@ -1144,32 +1145,32 @@ impl Rocket {
                 (
                     "toolbar-fetch",
                     Icon::Fetch,
-                    "Fetch",
+                    tr("Fetch"),
                     remote_ready,
                     DialogKind::Fetch,
                     0,
                     "fetch",
-                    "Download new commits from remotes",
+                    tr("Download new commits from remotes"),
                 ),
                 (
                     "toolbar-pull",
                     Icon::Pull,
-                    "Pull",
+                    tr("Pull"),
                     writable,
                     DialogKind::Pull,
                     behind,
                     "pull",
-                    "Bring remote commits into this branch",
+                    tr("Bring remote commits into this branch"),
                 ),
                 (
                     "toolbar-push",
                     Icon::Push,
-                    "Push",
+                    tr("Push"),
                     writable && remote_ready,
                     DialogKind::Push,
                     ahead,
                     "push",
-                    "Upload this branch's commits",
+                    tr("Upload this branch's commits"),
                 ),
             ] {
                 let busy = running.as_deref() == Some(op);
@@ -1187,7 +1188,7 @@ impl Rocket {
                 )
                 .on_hover_text(match count {
                     0 => hint.to_string(),
-                    n => format!("{hint} · {n} commit{}", if n == 1 { "" } else { "s" }),
+                    n => format!("{hint} · {}", trn!(n, "{n} commit", "{n} commits")),
                 });
                 self.frame_widgets.insert(key.into(), (&response).into());
                 if response.clicked() {
@@ -1198,7 +1199,7 @@ impl Rocket {
             let stash = tool_button(
                 ui,
                 Icon::Stash,
-                "Stash",
+                tr("Stash"),
                 ToolOptions {
                     enabled: true,
                     label: !compact,
@@ -1210,14 +1211,14 @@ impl Rocket {
                 .insert("toolbar-stash".into(), (&stash).into());
             Popup::menu(&stash).show(|ui| {
                 if ui
-                    .add_enabled(writable, Button::new("Save changes to stash"))
+                    .add_enabled(writable, Button::new(tr("Save changes to stash")))
                     .clicked()
                 {
                     intents.push(Intent::Dialog(DialogKind::Stash));
                     ui.close();
                 }
                 if ui
-                    .add_enabled(self.tab().is_some(), Button::new("View stashes"))
+                    .add_enabled(self.tab().is_some(), Button::new(tr("View stashes")))
                     .clicked()
                 {
                     intents.push(Intent::View(View::Stashes));
@@ -1227,7 +1228,7 @@ impl Rocket {
             let branch = tool_button(
                 ui,
                 Icon::Branch,
-                "Branch",
+                tr("Branch"),
                 ToolOptions {
                     enabled: writable,
                     label: !compact,
@@ -1235,11 +1236,11 @@ impl Rocket {
                     ..Default::default()
                 },
             )
-            .on_hover_text("Branch actions: New, Sync and Finish");
+            .on_hover_text(tr("Branch actions: New, Sync and Finish"));
             self.frame_widgets
                 .insert("toolbar-branch".into(), (&branch).into());
             Popup::menu(&branch).show(|ui| {
-                let new = crate::menus::item_response(ui, "New Branch", "Ctrl+Shift+B", writable);
+                let new = crate::menus::item_response(ui, tr("New Branch"), "Ctrl+Shift+B", writable);
                 crate::pages::control(&mut self.frame_widgets, "toolbar-branch-new", &new, ui.clip_rect());
                 if new.clicked() {
                     intents.push(Intent::Dialog(DialogKind::NewBranch));
@@ -1247,14 +1248,14 @@ impl Rocket {
                 ui.separator();
                 let ready = self.can_branch_workflow();
                 for (id, label, kind, hint) in [
-                    ("toolbar-branch-sync", "Sync Branch", BranchWorkflowKind::Sync,
-                        "Put this branch on top of a local base. Review saving and restoring your changes first."),
-                    ("toolbar-branch-finish", "Finish Branch", BranchWorkflowKind::Finish,
-                        "Merge into a local base. Review a merge commit or allow fast-forward."),
+                    ("toolbar-branch-sync", tr("Sync Branch"), BranchWorkflowKind::Sync,
+                        tr("Put this branch on top of a local base. Review saving and restoring your changes first.")),
+                    ("toolbar-branch-finish", tr("Finish Branch"), BranchWorkflowKind::Finish,
+                        tr("Merge into a local base. Review a merge commit or allow fast-forward.")),
                 ] {
                     let response = crate::menus::item_response(ui, label, "", ready)
                         .on_hover_text(hint)
-                        .on_disabled_hover_text("Requires a local branch and no paused Git operation. Check recovery in Changes.");
+                        .on_disabled_hover_text(tr("Requires a local branch and no paused Git operation. Check recovery in Changes."));
                     crate::pages::control(&mut self.frame_widgets, id, &response, ui.clip_rect());
                     if response.clicked() {
                         intents.push(Intent::BranchWorkflow(kind));
@@ -1269,9 +1270,9 @@ impl Rocket {
                 let open = !self.drawer_collapsed;
                 let activity = icon_button(ui, Icon::Activity, true, self.show_console && open, 32.0)
                     .on_hover_text(if review {
-                        "Activity · the last operation needs review (Ctrl+`)"
+                        tr("Activity · the last operation needs review (Ctrl+`)")
                     } else {
-                        "Activity (Ctrl+`)"
+                        tr("Activity (Ctrl+`)")
                     });
                 if review {
                     ui.painter().circle(
@@ -1293,7 +1294,7 @@ impl Rocket {
                     self.show_terminal && open,
                     32.0,
                 )
-                .on_hover_text("Terminal (Ctrl+Shift+`)");
+                .on_hover_text(tr("Terminal (Ctrl+Shift+`)"));
                 self.frame_widgets
                     .insert("toolbar-terminal".into(), (&terminal).into());
                 if terminal.clicked() {
@@ -1331,7 +1332,7 @@ impl Rocket {
         };
         let response = ui
             .add(Button::new("").frame(false).min_size(vec2(width, 38.0)))
-            .on_hover_text(format!("Switch branch: {head}"));
+            .on_hover_text(trf!("Switch branch: {head}", head));
         self.frame_widgets
             .insert("branch-switch".into(), (&response).into());
         let rect = response.rect;
@@ -1363,7 +1364,7 @@ impl Rocket {
             painter.text(
                 pos2(text_left, rect.center().y - 1.0),
                 Align2::LEFT_BOTTOM,
-                "Current branch",
+                tr("Current branch"),
                 FontId::proportional(10.5),
                 FAINT(),
             );
@@ -1382,7 +1383,7 @@ impl Rocket {
             FAINT(),
         );
         response.widget_info(|| {
-            WidgetInfo::labeled(WidgetType::Button, true, format!("Switch branch: {head}"))
+            WidgetInfo::labeled(WidgetType::Button, true, trf!("Switch branch: {head}", head))
         });
         let writable = self.can_write();
         crate::branch_switcher::popup(&response, tab, writable, intents, &mut self.frame_widgets);
@@ -1415,14 +1416,14 @@ impl Rocket {
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 1.0;
                     for (view, label, image, key) in [
-                        (View::Summary, "Summary", Icon::Folder, "view-summary"),
-                        (View::Changes, "Changes", Icon::File, "view-changes"),
-                        (View::Commits, "Commits", Icon::Commit, "view-commits"),
-                        (View::Compare, "Compare", Icon::Branch, "view-compare"),
-                        (View::Map, "Map", Icon::Map, "view-map"),
-                        (View::BranchReview, "AI review", Icon::Sparkle, "view-review"),
-                        (View::Actions, "Actions", Icon::Actions, "view-actions"),
-                        (View::Tree, "Files", Icon::Folder, "view-tree"),
+                        (View::Summary, tr("Summary"), Icon::Folder, "view-summary"),
+                        (View::Changes, tr("Changes"), Icon::File, "view-changes"),
+                        (View::Commits, tr("Commits"), Icon::Commit, "view-commits"),
+                        (View::Compare, tr("Compare"), Icon::Branch, "view-compare"),
+                        (View::Map, tr("Map"), Icon::Map, "view-map"),
+                        (View::BranchReview, tr("AI review"), Icon::Sparkle, "view-review"),
+                        (View::Actions, tr("Actions"), Icon::Actions, "view-actions"),
+                        (View::Tree, tr("Files"), Icon::Folder, "view-tree"),
                     ] {
                         if preview && matches!(view, View::Summary | View::Changes | View::BranchReview | View::Actions) {
                             continue;
@@ -1440,9 +1441,9 @@ impl Rocket {
                         );
                         let response = match marked {
                             Some((state, branch)) => response.on_hover_text(if *state == rocket_git::ForgeCiState::Failed {
-                                format!("The newest run on {branch} failed")
+                                trf!("The newest run on {branch} failed", branch)
                             } else {
-                                format!("A run on {branch} is running")
+                                trf!("A run on {branch} is running", branch)
                             }),
                             None => response,
                         };
@@ -1453,7 +1454,7 @@ impl Rocket {
                     }
                 });
         };
-        let toggle_label = if rail { "Show labels" } else { "Hide labels" };
+        let toggle_label = if rail { tr("Show labels") } else { tr("Hide labels") };
         if rail {
             nav(ui, &mut self.frame_widgets);
             let line = ui
@@ -1480,7 +1481,7 @@ impl Rocket {
                             current == Some(View::Branches),
                             36.0,
                         )
-                        .on_hover_text("Branches");
+                        .on_hover_text(tr("Branches"));
                         insert_visible(
                             &mut self.frame_widgets,
                             "view-branches",
@@ -1488,7 +1489,7 @@ impl Rocket {
                             ui.clip_rect(),
                         );
                         Popup::menu(&branches).show(|ui| {
-                            ui.label(RichText::new("BRANCHES").size(11.0).color(FAINT()));
+                            ui.label(RichText::new(tr("BRANCHES")).size(11.0).color(FAINT()));
                             if let Some(snapshot) = &tab.snapshot {
                                 for branch in snapshot
                                     .branches
@@ -1513,7 +1514,7 @@ impl Rocket {
                                 }
                             }
                             ui.separator();
-                            if ui.button("Manage branches").clicked() {
+                            if ui.button(tr("Manage branches")).clicked() {
                                 intents.push(Intent::View(View::Branches));
                                 ui.close();
                             }
@@ -1521,56 +1522,56 @@ impl Rocket {
                         for (image, label, key, selected, target) in [
                             (
                                 Icon::Remote,
-                                "Remotes",
+                                tr("Remotes"),
                                 "view-remotes",
                                 current == Some(View::Remotes),
                                 Target::View(View::Remotes),
                             ),
                             (
                                 Icon::Stash,
-                                "Stashes",
+                                tr("Stashes"),
                                 "view-stashes",
                                 current == Some(View::Stashes),
                                 Target::View(View::Stashes),
                             ),
                             (
                                 Icon::Tag,
-                                "Tags",
+                                tr("Tags"),
                                 "view-tags",
                                 page == Some(Page::Tags),
                                 Target::Page(Page::Tags),
                             ),
                             (
                                 Icon::Worktree,
-                                "Worktrees",
+                                tr("Worktrees"),
                                 "view-worktrees",
                                 page == Some(Page::Worktrees),
                                 Target::Page(Page::Worktrees),
                             ),
                             (
                                 Icon::Modules,
-                                "Submodules",
+                                tr("Submodules"),
                                 "view-submodules",
                                 page == Some(Page::Submodules),
                                 Target::Page(Page::Submodules),
                             ),
                             (
                                 Icon::Database,
-                                "Git LFS",
+                                tr("Git LFS"),
                                 "view-lfs",
                                 page == Some(Page::Lfs),
                                 Target::Page(Page::Lfs),
                             ),
                             (
                                 Icon::File,
-                                "Path history",
+                                tr("Path history"),
                                 "view-filehistory",
                                 current == Some(View::FileHistory),
                                 Target::View(View::FileHistory),
                             ),
                             (
                                 Icon::Activity,
-                                "Statistics",
+                                tr("Statistics"),
                                 "view-statistics",
                                 page == Some(Page::Statistics),
                                 Target::Page(Page::Statistics),
@@ -1624,7 +1625,7 @@ impl Rocket {
                 })
                 .show(ui, |ui| {
                     let width = ui.available_width();
-                    let r = search_field(ui, &mut tab.branch_filter, "Filter branches…", width);
+                    let r = search_field(ui, &mut tab.branch_filter, tr("Filter branches…"), width);
                     self.frame_widgets.insert("sidebar-branch-filter".into(), (&r).into());
                 });
             let filter = tab.branch_filter.to_lowercase();
@@ -1640,7 +1641,7 @@ impl Rocket {
                         let mut local: Vec<_> = snapshot.branches.iter().filter(|b| b.kind == BranchKind::Local).collect();
                         local.sort_by_key(|b| !b.is_head);
                         let ahead_behind = snapshot.status.as_ref().and_then(|s| s.ahead_behind);
-                        let header = section_header(ui, "Branches", Some(local.len()), "view-branches", current == Some(View::Branches), Some("New branch"), Some(&mut tab.worktree_view.sections[0]));
+                        let header = section_header(ui, tr("Branches"), Some(local.len()), "view-branches", current == Some(View::Branches), Some(tr("New branch")), Some(&mut tab.worktree_view.sections[0]));
                         self.frame_widgets.insert("collapse-branches".into(), (&header.chevron).into());
                         self.frame_widgets.insert("view-branches".into(), (&header.open).into());
                         if header.open.clicked() { intents.push(Intent::View(View::Branches)); }
@@ -1671,46 +1672,46 @@ impl Rocket {
                                     crate::custom_commands::context_menu(ui, &self.commands, rocket_git::CommandScope::Branch, &context, intents, &mut self.frame_widgets);
                                     let target = crate::integrations::CommandTarget::branch(&tab.path, &branch.reference);
                                     crate::integrations::context_rows(ui, &target, crate::integrations::Divider::After, intents, &mut self.frame_widgets);
-                                    if ui.add_enabled(writable && !branch.is_head, Button::new("Switch to branch")).clicked() {
+                                    if ui.add_enabled(writable && !branch.is_head, Button::new(tr("Switch to branch"))).clicked() {
                                         intents.push(Intent::Execute(tab.id, Action::SwitchBranch(name.clone())));
                                         ui.close();
                                     }
-                                    if ui.button("Show history").clicked() && let Ok(reference) = String::from_utf8(branch.reference.clone()) {
+                                    if ui.button(tr("Show history")).clicked() && let Ok(reference) = String::from_utf8(branch.reference.clone()) {
                                         intents.push(Intent::History(Some(reference)));
                                         intents.push(Intent::View(View::Commits));
                                         ui.close();
                                     }
                                     ui.separator();
-                                    if ui.add_enabled(writable && !branch.is_head, Button::new(format!("Merge into {}", tab.branch_label()))).clicked() {
+                                    if ui.add_enabled(writable && !branch.is_head, Button::new(trf!("Merge into {branch}", branch = tab.branch_label()))).clicked() {
                                         if let Ok(reference) = String::from_utf8(branch.reference.clone()) {
                                             intents.push(Intent::MergeBranch(reference));
                                         }
                                         ui.close();
                                     }
-                                    if ui.add_enabled(writable && !branch.is_head, Button::new(format!("Rebase {} on top of {label}", tab.branch_label()))).clicked() {
+                                    if ui.add_enabled(writable && !branch.is_head, Button::new(trf!("Rebase {branch} on top of {label}", branch = tab.branch_label(), label))).clicked() {
                                         if let Ok(reference) = String::from_utf8(branch.reference.clone()) {
                                             intents.push(Intent::RebaseOnto(reference));
                                         }
                                         ui.close();
                                     }
-                                    if ui.add_enabled(writable, Button::new("Rename")).clicked() {
+                                    if ui.add_enabled(writable, Button::new(tr("Rename"))).clicked() {
                                         intents.push(Intent::Dialog(DialogKind::Rename(name.clone())));
                                         ui.close();
                                     }
                                     ui.separator();
-                                    if ui.add_enabled(writable && !branch.is_head, Button::new(RichText::new("Delete branch").color(RED()))).clicked() {
+                                    if ui.add_enabled(writable && !branch.is_head, Button::new(RichText::new(tr("Delete branch")).color(RED()))).clicked() {
                                         intents.push(Intent::Dialog(DialogKind::Confirm(
                                             Action::DeleteBranch(name.clone()),
-                                            format!("Delete local branch {label}? Git will refuse unmerged branches."),
+                                            trf!("Delete local branch {label}? Git will refuse unmerged branches.", label),
                                         )));
                                         ui.close();
                                     }
                                 });
-                                response.on_hover_text(format!("{label}\nClick to show its history · right-click for actions"));
+                                response.on_hover_text(format!("{label}\n{}", tr("Click to show its history · right-click for actions")));
                             }
                         }
                         ui.add_space(4.0);
-                        let header = section_header(ui, "Remotes", Some(snapshot.remotes.len()), "view-remotes", current == Some(View::Remotes), Some("Add remote"), Some(&mut tab.worktree_view.sections[1]));
+                        let header = section_header(ui, tr("Remotes"), Some(snapshot.remotes.len()), "view-remotes", current == Some(View::Remotes), Some(tr("Add remote")), Some(&mut tab.worktree_view.sections[1]));
                         self.frame_widgets.insert("collapse-remotes".into(), (&header.chevron).into());
                         self.frame_widgets.insert("view-remotes".into(), (&header.open).into());
                         if header.open.clicked() { intents.push(Intent::View(View::Remotes)); }
@@ -1748,7 +1749,7 @@ impl Rocket {
                         }
                         ui.add_space(4.0);
                         if !tab.worktree_view.hide_stashes && !preview {
-                        let header = section_header(ui, "Stashes", Some(snapshot.stashes.len()), "view-stashes", current == Some(View::Stashes), Some("Stash changes"), Some(&mut tab.worktree_view.sections[2]));
+                        let header = section_header(ui, tr("Stashes"), Some(snapshot.stashes.len()), "view-stashes", current == Some(View::Stashes), Some(tr("Stash changes")), Some(&mut tab.worktree_view.sections[2]));
                         self.frame_widgets.insert("collapse-stashes".into(), (&header.chevron).into());
                         self.frame_widgets.insert("view-stashes".into(), (&header.open).into());
                         if header.open.clicked() { intents.push(Intent::View(View::Stashes)); }
@@ -1762,19 +1763,19 @@ impl Rocket {
                         }
                         ui.add_space(4.0);
                         }
-                        let header = section_header(ui, "Repository", None, "sidebar-repository", false, None, Some(&mut tab.worktree_view.sections[3]));
+                        let header = section_header(ui, tr("Repository"), None, "sidebar-repository", false, None, Some(&mut tab.worktree_view.sections[3]));
                         self.frame_widgets.insert("collapse-repository".into(), (&header.chevron).into());
                         if header.open.clicked() {
                             tab.worktree_view.sections[3] = !tab.worktree_view.sections[3];
                         }
                         if header.expanded {
                             for (image, label, key, selected, target) in [
-                                (Icon::Tag, "Tags", "view-tags", page == Some(Page::Tags), Target::Page(Page::Tags)),
-                                (Icon::Worktree, "Worktrees", "view-worktrees", page == Some(Page::Worktrees), Target::Page(Page::Worktrees)),
-                                (Icon::Modules, "Submodules", "view-submodules", page == Some(Page::Submodules), Target::Page(Page::Submodules)),
-                                (Icon::Database, "Git LFS", "view-lfs", page == Some(Page::Lfs), Target::Page(Page::Lfs)),
-                                (Icon::File, "Path history", "view-filehistory", current == Some(View::FileHistory), Target::View(View::FileHistory)),
-                                (Icon::Activity, "Statistics", "view-statistics", page == Some(Page::Statistics), Target::Page(Page::Statistics)),
+                                (Icon::Tag, tr("Tags"), "view-tags", page == Some(Page::Tags), Target::Page(Page::Tags)),
+                                (Icon::Worktree, tr("Worktrees"), "view-worktrees", page == Some(Page::Worktrees), Target::Page(Page::Worktrees)),
+                                (Icon::Modules, tr("Submodules"), "view-submodules", page == Some(Page::Submodules), Target::Page(Page::Submodules)),
+                                (Icon::Database, tr("Git LFS"), "view-lfs", page == Some(Page::Lfs), Target::Page(Page::Lfs)),
+                                (Icon::File, tr("Path history"), "view-filehistory", current == Some(View::FileHistory), Target::View(View::FileHistory)),
+                                (Icon::Activity, tr("Statistics"), "view-statistics", page == Some(Page::Statistics), Target::Page(Page::Statistics)),
                             ] {
                                 if key == "view-tags" && tab.worktree_view.hide_tags { continue; }
                                 if preview && preview_hides(key) { continue; }
@@ -1793,7 +1794,7 @@ impl Rocket {
                         let entries = self.integrations.entries().to_vec();
                         if !entries.is_empty() {
                             ui.add_space(4.0);
-                            let header = section_header(ui, "Extensions", None, "sidebar-extensions", false, None, None);
+                            let header = section_header(ui, tr("Extensions"), None, "sidebar-extensions", false, None, None);
                             self.frame_widgets.insert("collapse-extensions".into(), (&header.chevron).into());
                             if header.expanded {
                                 for entry in entries.into_iter().filter(|_| !preview) {
@@ -1857,9 +1858,9 @@ impl Rocket {
             .insert("sidebar-labels".into(), (&response).into());
         let clicked = response.clicked();
         response.on_hover_text(if rail {
-            "Show sidebar labels"
+            tr("Show sidebar labels")
         } else {
-            "Hide labels and show icons only"
+            tr("Hide labels and show icons only")
         });
         if clicked {
             let ctx = ui.ctx().clone();
@@ -1947,21 +1948,26 @@ impl Recover {
             }),
         })
     }
-    /// The banner's name for what's paused, and for one step of it.
-    fn names(self) -> (&'static str, &'static str) {
-        match self {
-            Self::Import => ("Import", "patch"),
-            Self::Rebase => ("Rebase", "commit"),
-            Self::Commit { operation: CommitOperation::CherryPick, .. } => ("Cherry-pick", "commit"),
-            Self::Commit { .. } => ("Revert", "commit"),
+    /// The banner's title: what is paused and, when it has steps, which one.
+    fn paused(self, step: Option<(usize, usize)>) -> String {
+        use CommitOperation::CherryPick;
+        match (self, step) {
+            (Self::Import, Some((at, total))) => trf!("Import paused at patch {at} of {total}", at, total),
+            (Self::Rebase, Some((at, total))) => trf!("Rebase paused at commit {at} of {total}", at, total),
+            (Self::Commit { operation: CherryPick, .. }, Some((at, total))) => trf!("Cherry-pick paused at commit {at} of {total}", at, total),
+            (Self::Commit { .. }, Some((at, total))) => trf!("Revert paused at commit {at} of {total}", at, total),
+            (Self::Import, None) => tr("Import paused").into(),
+            (Self::Rebase, None) => tr("Rebase paused").into(),
+            (Self::Commit { operation: CherryPick, .. }, None) => tr("Cherry-pick paused").into(),
+            (Self::Commit { .. }, None) => tr("Revert paused").into(),
         }
     }
     fn abort_label(self) -> &'static str {
         match self {
-            Self::Import => "Abort import",
-            Self::Rebase => "Abort rebase",
-            Self::Commit { operation: CommitOperation::CherryPick, .. } => "Abort cherry-pick",
-            Self::Commit { .. } => "Abort revert",
+            Self::Import => tr("Abort import"),
+            Self::Rebase => tr("Abort rebase"),
+            Self::Commit { operation: CommitOperation::CherryPick, .. } => tr("Abort cherry-pick"),
+            Self::Commit { .. } => tr("Abort revert"),
         }
     }
 }
@@ -1974,12 +1980,8 @@ pub(crate) struct Pause {
 }
 
 pub(crate) fn pause_text(state: &OperationState, status: Option<&Status>, recover: Recover) -> Pause {
-    let (what, noun) = recover.names();
     let lone = matches!(recover, Recover::Commit { skip: None, .. });
-    let title = match state.step.as_ref().filter(|_| !lone) {
-        Some(step) => format!("{what} paused at {noun} {} of {}", step.at, step.total),
-        None => format!("{what} paused"),
-    };
+    let title = recover.paused(state.step.as_ref().filter(|_| !lone).map(|step| (step.at, step.total)));
     let kind = state.step.as_ref().map_or(StepKind::Commit, |s| s.kind);
     let tracked: Vec<&StatusEntry> = status
         .map(|s| s.entries.iter().filter(|e| !matches!(e.kind, EntryKind::Untracked | EntryKind::Ignored)).collect())
@@ -1989,31 +1991,32 @@ pub(crate) fn pause_text(state: &OperationState, status: Option<&Status>, recove
     let staged = tracked.iter().any(|e| e.index != Change::Unchanged);
     let between = matches!(recover, Recover::Commit { .. }) && kind == StepKind::Between;
     // Only what the review will accept may promise a Continue.
-    let moved = ("the branch has moved, so finish this rebase with Git.".to_owned(), false);
+    let moved = (tr("the branch has moved, so finish this rebase with Git.").to_owned(), false);
     let (next, ready) = match conflicts.as_slice() {
         _ if kind == StepKind::BranchMoved => moved,
-        _ if status.is_none() => ("check Changes, then Continue.".to_owned(), false),
+        _ if status.is_none() => (tr("check Changes, then Continue.").to_owned(), false),
         [one] => {
             let path = one.path.display_lossy();
             let name = path.rsplit('/').next().unwrap_or_default().to_owned();
-            (format!("fix the conflict in {name}, stage it, then Continue."), false)
+            (trf!("fix the conflict in {name}, stage it, then Continue.", name), false)
         }
-        [_, ..] => (format!("fix the {} conflicts, stage them, then Continue.", conflicts.len()), false),
-        [] if between && (staged || unstaged) => ("between commits, with changes that aren't committed. Commit or stash them, or Abort.".to_owned(), false),
-        [] if unstaged => ("stage your changes, then Continue.".to_owned(), false),
+        [_, ..] => (trf!("fix the {n} conflicts, stage them, then Continue.", n = conflicts.len()), false),
+        [] if between && (staged || unstaged) => (tr("between commits, with changes that aren't committed. Commit or stash them, or Abort.").to_owned(), false),
+        [] if unstaged => (tr("stage your changes, then Continue.").to_owned(), false),
         [] => match kind {
-            StepKind::Message => ("your changes are in, so Continue saves the message.".to_owned(), true),
-            StepKind::Between if between => ("between commits. Continue does the rest, or Abort ends it.".to_owned(), true),
-            StepKind::Between if staged => ("stopped as planned. Unstage your changes, or Skip to discard them.".to_owned(), false),
+            StepKind::Message => (tr("your changes are in, so Continue saves the message.").to_owned(), true),
+            StepKind::Between if between => (tr("between commits. Continue does the rest, or Abort ends it.").to_owned(), true),
+            StepKind::Between if staged => (tr("stopped as planned. Unstage your changes, or Skip to discard them.").to_owned(), false),
             StepKind::BranchMoved => moved,
-            StepKind::Between => ("stopped as planned. Continue when you're ready.".to_owned(), true),
-            StepKind::Edit if staged => ("stopped as planned. Continue adds what's staged to this commit.".to_owned(), true),
-            StepKind::Edit => ("stopped as planned. Change it, or Continue to keep it.".to_owned(), true),
-            StepKind::Commit if staged => ("your fix is staged, so you can Continue.".to_owned(), true),
-            StepKind::Commit if lone => ("no changes are left here. Stage a fix, or Abort.".to_owned(), false),
+            StepKind::Between => (tr("stopped as planned. Continue when you're ready.").to_owned(), true),
+            StepKind::Edit if staged => (tr("stopped as planned. Continue adds what's staged to this commit.").to_owned(), true),
+            StepKind::Edit => (tr("stopped as planned. Change it, or Continue to keep it.").to_owned(), true),
+            StepKind::Commit if staged => (tr("your fix is staged, so you can Continue.").to_owned(), true),
+            StepKind::Commit if lone => (tr("no changes are left here. Stage a fix, or Abort.").to_owned(), false),
             // The patch may be in already, or Git may have failed to apply it at all.
-            StepKind::Commit if recover == Recover::Import => ("nothing is staged for this patch. Stage what it should change, or Skip it.".to_owned(), false),
-            StepKind::Commit => (format!("no changes are left here. Stage a fix, or Skip this {noun}."), false),
+            StepKind::Commit if recover == Recover::Import => (tr("nothing is staged for this patch. Stage what it should change, or Skip it.").to_owned(), false),
+            // An import's step is a patch, caught above; the others' steps are commits.
+            StepKind::Commit => (tr("no changes are left here. Stage a fix, or Skip this commit.").to_owned(), false),
         },
     };
     let detail = match state.step.as_ref().filter(|s| !s.subject.is_empty()) {
@@ -2180,16 +2183,16 @@ fn paused_banner(
                 _ => Some(true),
             };
             if let Some(can_skip) = can_skip {
-                let skip = ui.add_enabled(enabled && can_skip, Button::new(if recover == Recover::Import { "Skip patch" } else { "Skip commit" }));
+                let skip = ui.add_enabled(enabled && can_skip, Button::new(if recover == Recover::Import { tr("Skip patch") } else { tr("Skip commit") }));
                 crate::pages::control(widgets, "operation-skip", &skip, ui.clip_rect());
                 if skip.clicked() {
                     intents.push(recover.intent(CommitRecovery::Skip));
                 }
             }
             let next = if pause.ready {
-                crate::pages::primary(ui, enabled, "Continue")
+                crate::pages::primary(ui, enabled, tr("Continue"))
             } else {
-                ui.add_enabled(enabled, Button::new("Continue"))
+                ui.add_enabled(enabled, Button::new(tr("Continue")))
             };
             crate::pages::control(widgets, "operation-continue", &next, ui.clip_rect());
             if next.clicked() {
@@ -2232,31 +2235,31 @@ fn operation_banner(
                 icon(ui.painter(), rect.shrink(7.0), Icon::Branch, VIOLET());
                 ui.add_space(4.0);
                 if state.bisect {
-                    ui.label(RichText::new("Bisect in progress").font(semibold(13.0)));
-                    ui.label(RichText::new("Test the checkout, mark the result, or restore your original checkout.").color(MUTED()));
-                    let r = ui.add_enabled(enabled, Button::new("Open bisect"));
+                    ui.label(RichText::new(tr("Bisect in progress")).font(semibold(13.0)));
+                    ui.label(RichText::new(tr("Test the checkout, mark the result, or restore your original checkout.")).color(MUTED()));
+                    let r = ui.add_enabled(enabled, Button::new(tr("Open bisect")));
                     crate::pages::control(widgets, "operation-bisect", &r, ui.clip_rect());
                     if r.clicked() { intents.push(Intent::Dialog(DialogKind::Bisect)); }
                 } else if state.merge_committed {
-                    ui.label(RichText::new("Merge commit exists").font(semibold(13.0)));
-                    ui.label(RichText::new("Clear leftover state before another operation. Your commit and files stay in place.").color(MUTED()));
-                    let finish = ui.add_enabled(enabled, Button::new("Clear merge state"));
+                    ui.label(RichText::new(tr("Merge commit exists")).font(semibold(13.0)));
+                    ui.label(RichText::new(tr("Clear leftover state before another operation. Your commit and files stay in place.")).color(MUTED()));
+                    let finish = ui.add_enabled(enabled, Button::new(tr("Clear merge state")));
                     crate::pages::control(widgets, "operation-finish-merge", &finish, ui.clip_rect());
                     if finish.clicked() {
-                        intents.push(Intent::Dialog(DialogKind::Confirm(Action::FinishMerge, "HEAD already contains this merge commit. Clear Git's leftover merge state?".into())));
+                        intents.push(Intent::Dialog(DialogKind::Confirm(Action::FinishMerge, tr("HEAD already contains this merge commit. Clear Git's leftover merge state?").into())));
                     }
                 } else if !state.merge_heads.is_empty() {
-                    ui.label(RichText::new("Merge in progress").font(semibold(13.0)));
-                    ui.label(RichText::new("Resolve conflicts, stage resolutions, then continue from Changes.").color(MUTED()));
-                    let abort = ui.add_enabled(enabled, Button::new("Abort merge"));
+                    ui.label(RichText::new(tr("Merge in progress")).font(semibold(13.0)));
+                    ui.label(RichText::new(tr("Resolve conflicts, stage resolutions, then continue from Changes.")).color(MUTED()));
+                    let abort = ui.add_enabled(enabled, Button::new(tr("Abort merge")));
                     crate::pages::control(widgets, "operation-abort", &abort, ui.clip_rect());
                     if abort.clicked() {
-                        intents.push(Intent::Dialog(DialogKind::Confirm(Action::AbortMerge, "Abort the current merge and discard its conflict resolutions?".into())));
+                        intents.push(Intent::Dialog(DialogKind::Confirm(Action::AbortMerge, tr("Abort the current merge and discard its conflict resolutions?").into())));
                     }
                 } else if state.sequencer && (state.cherry_pick || state.revert || sequence.is_some()) {
-                    ui.label(RichText::new("A cherry-pick or revert sequence is in progress that does not match a Rocket review. Finish it with Git before starting new operations.").color(AMBER()));
+                    ui.label(RichText::new(tr("A cherry-pick or revert sequence is in progress that does not match a Rocket review. Finish it with Git before starting new operations.")).color(AMBER()));
                 } else {
-                    ui.label(RichText::new("Another Git operation is in progress. Finish it in Git before starting new operations.").color(AMBER()));
+                    ui.label(RichText::new(tr("Another Git operation is in progress. Finish it in Git before starting new operations.")).color(AMBER()));
                 }
             });
         });
@@ -2417,7 +2420,7 @@ fn tool_button(ui: &mut Ui, image: Icon, label: &str, options: ToolOptions) -> R
 /// The toolbar search field; it opens the command palette rather than filtering in place.
 pub(crate) fn command_field(ui: &mut Ui, compact: bool) -> Response {
     let binding = crate::shortcuts::hint(ui.ctx(), "Ctrl+K");
-    let tooltip = if binding.is_empty() { "Search or run a command".into() } else { format!("Search or run a command ({binding})") };
+    let tooltip = if binding.is_empty() { tr("Search or run a command").into() } else { format!("{} ({binding})", tr("Search or run a command")) };
     if compact {
         return icon_button(ui, Icon::Search, true, false, 32.0)
             .on_hover_text(tooltip);
@@ -2426,7 +2429,7 @@ pub(crate) fn command_field(ui: &mut Ui, compact: bool) -> Response {
         .add(Button::new("").frame(false).min_size(vec2(290.0, 32.0)))
         .on_hover_text(tooltip);
     response
-        .widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, "Search or run a command"));
+        .widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tr("Search or run a command")));
     let rect = response.rect;
     let painter = ui.painter();
     painter.rect(
@@ -2452,7 +2455,7 @@ pub(crate) fn command_field(ui: &mut Ui, compact: bool) -> Response {
     painter.text(
         pos2(rect.left() + 32.0, rect.center().y),
         Align2::LEFT_CENTER,
-        "Search commands, branches…",
+        tr("Search commands, branches…"),
         FontId::proportional(12.5),
         FAINT(),
     );
@@ -2609,10 +2612,10 @@ fn repository_row(ui: &mut Ui, tab: &Tab, selected: bool) -> (Response, Response
     }
     let title = tab.title.clone();
     row.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &title));
-    close.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("Close {title}")));
+    close.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, trf!("Close {repository}", repository = title)));
     (
         row.on_hover_text(crate::views::display_path(&tab.path)),
-        close.on_hover_text("Close repository"),
+        close.on_hover_text(tr("Close repository")),
     )
 }
 
@@ -2722,12 +2725,13 @@ fn section_header(
     ui: &mut Ui,
     label: &str,
     count: Option<usize>,
-    _key: &str,
+    key: &str,
     selected: bool,
     add: Option<&str>,
     state: Option<&mut bool>,
 ) -> SectionHeader {
-    let id = Id::new(("sidebar-section", label));
+    // Keyed, not labelled, so a section keeps its state when the language changes.
+    let id = Id::new(("sidebar-section", key));
     let mut expanded = state.as_deref().copied().unwrap_or_else(|| ui.ctx().data_mut(|d| *d.get_persisted_mut_or(id, true)));
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::hover());
     let chevron_rect = Rect::from_min_size(rect.min, vec2(20.0, rect.height()));
@@ -2814,7 +2818,7 @@ fn section_header(
         WidgetInfo::labeled(
             WidgetType::Button,
             true,
-            format!("{} {label}", if expanded { "Collapse" } else { "Expand" }),
+            if expanded { trf!("Collapse {group}", group = label) } else { trf!("Expand {group}", group = label) },
         )
     });
     SectionHeader {

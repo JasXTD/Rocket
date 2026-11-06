@@ -1,4 +1,4 @@
-use crate::{app::*, backend::Action, pages, style::*, terminal::TerminalAction};
+use crate::{app::*, backend::Action, i18n::{tr, trf}, pages, style::*, terminal::TerminalAction};
 use eframe::egui::*;
 use std::path::PathBuf;
 /// Icon, title and subtitle of a generic dialog's review header.
@@ -6,115 +6,112 @@ fn dialog_header(dialog: &Dialog) -> (Icon, String, String) {
     let (image, title, subtitle): (Icon, &str, String) = match &dialog.kind {
         DialogKind::Open => (
             Icon::Folder,
-            "Open repository",
-            "Paste a folder path, or drop a folder into the main window.".into(),
+            tr("Open repository"),
+            tr("Paste a folder path, or drop a folder into the main window.").into(),
         ),
         DialogKind::NewRepository => (
             Icon::Plus,
-            "New repository",
-            "Start tracking a new or existing project with Git.".into(),
+            tr("New repository"),
+            tr("Start tracking a new or existing project with Git.").into(),
         ),
-        DialogKind::Signing(_) => (Icon::Tag, "Signing", "".into()),
-        DialogKind::AtomicPush => (Icon::Push, "Push branches together", "".into()),
-        DialogKind::Ignore(_) => (Icon::File, "Manage .gitignore", "".into()),
-        DialogKind::Workflows => (Icon::Branch, "Branch workflows & cleanup", "".into()),
+        DialogKind::Signing(_) => (Icon::Tag, tr("Signing"), "".into()),
+        DialogKind::AtomicPush => (Icon::Push, tr("Push branches together"), "".into()),
+        DialogKind::Ignore(_) => (Icon::File, tr("Manage .gitignore"), "".into()),
+        DialogKind::Workflows => (Icon::Branch, tr("Branch workflows & cleanup"), "".into()),
         DialogKind::RepositorySettings => (
             Icon::Commit,
-            "Repository settings",
-            "Saved in this repository only. Your global Git settings don't change.".into(),
+            tr("Repository settings"),
+            tr("Saved in this repository only. Your global Git settings don't change.").into(),
         ),
         DialogKind::Clone => (
             Icon::Fetch,
-            "Clone repository",
-            "Download a repository into a new folder.".into(),
+            tr("Clone repository"),
+            tr("Download a repository into a new folder.").into(),
         ),
         DialogKind::NewBranch => (
             Icon::Branch,
-            "New branch",
+            tr("New branch"),
             if dialog.branch.is_empty() {
-                "Make a branch from where you are.".into()
+                tr("Make a branch from where you are.").into()
             } else {
-                format!("Make a branch from where you are. You stay on {}.", display(&dialog.branch))
+                trf!("Make a branch from where you are. You stay on {branch}.", branch = display(&dialog.branch))
             },
         ),
         DialogKind::TrackBranch { upstream, .. } => (
             Icon::Branch,
-            "New branch",
-            format!("Make a branch from {} that tracks it, then switch to it.", short_ref(upstream)),
+            tr("New branch"),
+            trf!("Make a branch from {upstream} that tracks it, then switch to it.", upstream = short_ref(upstream)),
         ),
         DialogKind::Rename(old) => (
             Icon::Branch,
-            "Rename branch",
+            tr("Rename branch"),
             display(old),
         ),
         DialogKind::DeleteBranches => (
             Icon::Branch,
-            "Delete branches",
-            "Local branches only. Branches on remotes stay.".into(),
+            tr("Delete branches"),
+            tr("Local branches only. Branches on remotes stay.").into(),
         ),
         // The generic dialog names it after the command and its repository.
         DialogKind::RunCommand(_) => (
             Icon::Console,
-            "Run custom command",
-            "Review the captured selection and exact action before continuing.".into(),
+            tr("Run custom command"),
+            tr("Review the captured selection and exact action before continuing.").into(),
         ),
         DialogKind::AddRemote => (
             Icon::Remote,
-            "Add remote",
-            "Connect another copy of this repository, such as the project you forked.".into(),
+            tr("Add remote"),
+            tr("Connect another copy of this repository, such as the project you forked.").into(),
         ),
         DialogKind::EditRemote(remote, _) => (
             Icon::Remote,
-            "Edit remote URL",
+            tr("Edit remote URL"),
             display(&remote.name),
         ),
         DialogKind::Fetch => (
             Icon::Fetch,
-            "Fetch",
-            "Download what's new without touching your branches or files.".into(),
+            tr("Fetch"),
+            tr("Download what's new without touching your branches or files.").into(),
         ),
         DialogKind::Pull => (
             Icon::Pull,
-            "Pull",
-            format!(
-                "Pull the configured upstream into {}?",
-                display(&dialog.branch)
-            ),
+            tr("Pull"),
+            trf!("Pull the configured upstream into {branch}?", branch = display(&dialog.branch)),
         ),
         DialogKind::Push => (
             Icon::Push,
-            "Push",
-            "Publish your commits to a branch on a remote.".into(),
+            tr("Push"),
+            tr("Publish your commits to a branch on a remote.").into(),
         ),
         DialogKind::Stash => (
             Icon::Stash,
-            "Save changes to stash",
-            "Set your changes aside and get a clean working folder.".into(),
+            tr("Save changes to stash"),
+            tr("Set your changes aside and get a clean working folder.").into(),
         ),
         DialogKind::Merge => (
             Icon::Branch,
-            "Merge branch",
-            "Merges another branch into the current branch.".into(),
+            tr("Merge branch"),
+            tr("Merges another branch into the current branch.").into(),
         ),
         DialogKind::Confirm(action, message) => {
             let (image, title) = match action {
-                Action::DeleteBranch(_) => (Icon::Branch, "Delete branch"),
-                Action::RemoveRemote(_) => (Icon::Remote, "Remove remote"),
-                Action::AbortMerge => (Icon::Branch, "Abort merge"),
-                Action::FinishMerge => (Icon::Branch, "Clear completed merge state"),
-                Action::DropStash(_) => (Icon::Stash, "Drop stash"),
-                Action::ApplyStash { .. } => (Icon::Stash, "Apply stash"),
-                Action::SaveConflict { stage: true, .. } => (Icon::File, "Save and stage resolution"),
-                Action::SaveConflict { .. } => (Icon::File, "Save resolution"),
+                Action::DeleteBranch(_) => (Icon::Branch, tr("Delete branch")),
+                Action::RemoveRemote(_) => (Icon::Remote, tr("Remove remote")),
+                Action::AbortMerge => (Icon::Branch, tr("Abort merge")),
+                Action::FinishMerge => (Icon::Branch, tr("Clear completed merge state")),
+                Action::DropStash(_) => (Icon::Stash, tr("Drop stash")),
+                Action::ApplyStash { .. } => (Icon::Stash, tr("Apply stash")),
+                Action::SaveConflict { stage: true, .. } => (Icon::File, tr("Save and stage resolution")),
+                Action::SaveConflict { .. } => (Icon::File, tr("Save resolution")),
                 Action::KeepConflictSide { keep, .. } => (
                     Icon::File,
                     match keep {
-                        rocket_git::ConflictKeep::Ours => "Keep our version",
-                        rocket_git::ConflictKeep::Theirs => "Keep their version",
-                        rocket_git::ConflictKeep::Deletion => "Keep the deletion",
+                        rocket_git::ConflictKeep::Ours => tr("Keep our version"),
+                        rocket_git::ConflictKeep::Theirs => tr("Keep their version"),
+                        rocket_git::ConflictKeep::Deletion => tr("Keep the deletion"),
                     },
                 ),
-                _ => (Icon::Check, "Confirm operation"),
+                _ => (Icon::Check, tr("Confirm operation")),
             };
             // The conflict-save message has several paragraphs; it goes in the body.
             let subtitle = if matches!(
@@ -129,41 +126,38 @@ fn dialog_header(dialog: &Dialog) -> (Icon, String, String) {
         }
         DialogKind::ConflictReload(path) => (
             Icon::Refresh,
-            "Reload conflict",
-            format!(
-                "Reload {} from the current working file and Git conflict stages?",
-                path.display_lossy()
-            ),
+            tr("Reload conflict"),
+            trf!("Reload {path} from the current working file and Git conflict stages?", path = path.display_lossy()),
         ),
         DialogKind::Preferences => (
             Icon::Layout,
-            "Preferences",
-            "Drafts, recent repositories and preferences are saved locally.".into(),
+            tr("Preferences"),
+            tr("Drafts, recent repositories and preferences are saved locally.").into(),
         ),
         DialogKind::Legal => (
             Icon::File,
-            "Legal",
-            "Licenses for Rocket and the open-source software it includes.".into(),
+            tr("Legal"),
+            tr("Licenses for Rocket and the open-source software it includes.").into(),
         ),
         DialogKind::About => (
             Icon::Rocket,
-            "About Rocket",
-            "A native Rust Git workspace.".into(),
+            tr("About Rocket"),
+            tr("A native Rust Git workspace.").into(),
         ),
         DialogKind::Changelog => (
             Icon::File,
-            "Release notes",
-            "Changes in each Rocket development build.".into(),
+            tr("Release notes"),
+            tr("Changes in each Rocket development build.").into(),
         ),
         DialogKind::CloseTab(_) => (
             Icon::Folder,
-            "Close repository",
-            "Its message draft is saved for next time.".into(),
+            tr("Close repository"),
+            tr("Its message draft is saved for next time.").into(),
         ),
         DialogKind::Quit => (
             Icon::Rocket,
-            "Exit Rocket",
-            "Commit drafts and settings will be saved before exit.".into(),
+            tr("Exit Rocket"),
+            tr("Commit drafts and settings will be saved before exit.").into(),
         ),
         DialogKind::RepositoryManager
         | DialogKind::Explore
@@ -191,22 +185,22 @@ fn dialog_header(dialog: &Dialog) -> (Icon, String, String) {
     // Confirmations name what they act on.
     let (title, subtitle) = match &dialog.kind {
         DialogKind::Confirm(Action::DropStash(entry), _) => (
-            format!("Drop stash@{{{}}}?", entry.index),
+            trf!("Drop {stash}?", stash = format!("stash@{{{}}}", entry.index)),
             display(&entry.subject),
         ),
         DialogKind::Confirm(Action::ApplyStash { entry, .. }, _) => (
-            format!("Apply stash@{{{}}}?", entry.index),
+            trf!("Apply {stash}?", stash = format!("stash@{{{}}}", entry.index)),
             display(&entry.subject),
         ),
         DialogKind::Confirm(Action::DeleteBranch(name), _) => (
-            format!("Delete {}?", display(name)),
-            "Local branch only. Branches on remotes stay.".into(),
+            trf!("Delete {branch}?", branch = display(name)),
+            tr("Local branch only. Branches on remotes stay.").into(),
         ),
         DialogKind::Confirm(Action::RemoveRemote(remote), _) => (
-            format!("Remove remote {}?", display(&remote.name)),
-            "Its address and remote branches leave this repository.".into(),
+            trf!("Remove remote {remote}?", remote = display(&remote.name)),
+            tr("Its address and remote branches leave this repository.").into(),
         ),
-        DialogKind::Quit => ("Exit Rocket?".into(), "Commit drafts and settings are saved first.".into()),
+        DialogKind::Quit => (tr("Exit Rocket?").into(), tr("Commit drafts and settings are saved first.").into()),
         _ => (title.into(), subtitle),
     };
     (image, title, subtitle)
@@ -215,11 +209,14 @@ fn item(ui: &mut Ui, label: &str, shortcut: &str, enabled: bool) -> bool {
     item_response(ui, label, shortcut, enabled).clicked()
 }
 pub(crate) fn item_response(ui: &mut Ui, label: &str, shortcut: &str, enabled: bool) -> Response {
-    // These optional review bindings are already resolved by their callers.
-    let hint = if matches!(label, "Fetch…" | "Pull…" | "Push…") { shortcut.into() } else { crate::shortcuts::hint(ui.ctx(), shortcut) };
-    let response = menu_row(ui, label, &hint, enabled);
-    let clicked = response.clicked();
-    if clicked {
+    let hint = crate::shortcuts::hint(ui.ctx(), shortcut);
+    hinted_item(ui, label, &hint, enabled)
+}
+/// A row whose shortcut text its caller already resolved, as for the optional review
+/// bindings of Fetch, Pull and Push.
+fn hinted_item(ui: &mut Ui, label: &str, hint: &str, enabled: bool) -> Response {
+    let response = menu_row(ui, label, hint, enabled);
+    if response.clicked() {
         ui.close();
     }
     response
@@ -393,7 +390,7 @@ fn extensions_menu(ui: &mut Ui, widgets: &mut Widgets, opened: bool, intents: &m
     if !menu.entries.iter().any(|e| e.commands_for(None).next().is_some()) {
         return;
     }
-    keyed_submenu(ui, widgets, "repository-extensions", "Extensions", opened, |ui, widgets| {
+    keyed_submenu(ui, widgets, "repository-extensions", tr("Extensions"), opened, |ui, widgets| {
         for entry in menu.entries.iter().filter(|e| e.commands_for(None).next().is_some()) {
             menu_caption(ui, &entry.name);
             if let Some(fix) = entry.fix_for(None) {
@@ -409,7 +406,7 @@ fn extensions_menu(ui: &mut Ui, widgets: &mut Widgets, opened: bool, intents: &m
             }
         }
         ui.separator();
-        if keyed_item(ui, widgets, "extensions-manage", "Manage Extensions", "", true) {
+        if keyed_item(ui, widgets, "extensions-manage", tr("Manage Extensions"), "", true) {
             intents.push(Intent::Preferences(crate::preferences::Page::Integrations));
         }
     });
@@ -476,7 +473,7 @@ impl Rocket {
     /// View → Appearance: its row and the submenu of themes and row densities.
     pub(crate) fn appearance_menu(&mut self, ui: &mut Ui) {
         let (theme, row_height) = (&mut self.theme, &mut self.row_height);
-        keyed_submenu(ui, &mut self.frame_widgets, "view-appearance", "Appearance", true, |ui, widgets| {
+        keyed_submenu(ui, &mut self.frame_widgets, "view-appearance", tr("Appearance"), true, |ui, widgets| {
             for choice in crate::theme::Choice::ALL {
                 let r = check_row(ui, choice.label(), theme.choice == choice, true);
                 pages::control(widgets, format!("view-theme-{}", choice.key()), &r, ui.clip_rect());
@@ -486,7 +483,7 @@ impl Rocket {
             }
             ui.separator();
             for (key, value, label) in crate::preferences::ROW_DENSITIES {
-                let r = check_row(ui, &format!("{label} rows"), *row_height == value, true);
+                let r = check_row(ui, &trf!("{label} rows", label = tr(label)), *row_height == value, true);
                 pages::control(widgets, key, &r, ui.clip_rect());
                 if r.clicked() {
                     *row_height = value;
@@ -527,10 +524,10 @@ impl Rocket {
         MenuBar::new().ui(ui, |ui| {
             ui.spacing_mut().button_padding.x = 7.0;
             ui.spacing_mut().item_spacing.x = 9.0;
-            let response = menu_title(ui, "File", |ui| {
+            let response = menu_title(ui, tr("File"), |ui| {
                 let new = item_response(
                     ui,
-                    "New Repository…",
+                    tr("New Repository…"),
                     "Ctrl+N",
                     self.backend.is_some() && idle,
                 );
@@ -539,14 +536,14 @@ impl Rocket {
                 if new.clicked() {
                     intents.push(Intent::Dialog(DialogKind::NewRepository));
                 }
-                let open = item_response(ui, "Open Repository…", "Ctrl+O", self.backend.is_some());
+                let open = item_response(ui, tr("Open Repository…"), "Ctrl+O", self.backend.is_some());
                 self.frame_widgets.insert("file-open".into(), (&open).into());
                 if open.clicked() {
                     intents.push(Intent::Dialog(DialogKind::Open));
                 }
                 let clone = item_response(
                     ui,
-                    "Clone Repository…",
+                    tr("Clone Repository…"),
                     "Ctrl+Shift+O",
                     self.backend.is_some() && idle,
                 );
@@ -555,17 +552,17 @@ impl Rocket {
                 if clone.clicked() {
                     intents.push(Intent::Dialog(DialogKind::Clone));
                 }
-                let explore = item_response(ui, "Explore Repositories", "Ctrl+Shift+E", self.backend.is_some());
+                let explore = item_response(ui, tr("Explore Repositories"), "Ctrl+Shift+E", self.backend.is_some());
                 self.frame_widgets.insert("file-explore".into(), (&explore).into());
                 if explore.clicked() {
                     intents.push(Intent::Explore(None));
                 }
-                let manager = item_response(ui, "Repository Manager…", "Ctrl+Shift+M", self.backend.is_some() && idle);
+                let manager = item_response(ui, tr("Repository Manager…"), "Ctrl+Shift+M", self.backend.is_some() && idle);
                 self.frame_widgets.insert("repository-manager".into(), (&manager).into());
                 if manager.clicked() { intents.push(Intent::Dialog(DialogKind::RepositoryManager)); }
-                submenu(ui, "Open Recent", true, |ui| {
+                submenu(ui, tr("Open Recent"), true, |ui| {
                     if self.recent.is_empty() {
-                        item(ui, "No repositories this session", "", false);
+                        item(ui, tr("No repositories this session"), "", false);
                     }
                     for path in &self.recent {
                         if item(ui, &crate::views::display_path(path), "", true) {
@@ -574,14 +571,14 @@ impl Rocket {
                     }
                 });
                 ui.separator();
-                if item(ui, "Close Repository", "Ctrl+W", opened)
+                if item(ui, tr("Close Repository"), "Ctrl+W", opened)
                     && let Some(tab) = self.tab()
                 {
                     intents.push(Intent::CloseTab(tab.id));
                 }
                 if item(
                     ui,
-                    "Close All Repositories",
+                    tr("Close All Repositories"),
                     "",
                     opened && idle && self.tabs.iter().all(|t| t.draft.is_empty()),
                 ) {
@@ -591,7 +588,7 @@ impl Rocket {
                 }
                 // Accounts and SSH keys are in Preferences (Connections).
                 ui.separator();
-                if item(ui, "Exit", "Alt+F4", true) {
+                if item(ui, tr("Exit"), "Alt+F4", true) {
                     intents.push(Intent::Exit);
                 }
             });
@@ -599,14 +596,14 @@ impl Rocket {
                 .insert("menu-file".into(), (&response.response).into());
             // Opening the Edit menu takes focus from the text field it acts on, so the
             // field focused when it opened is kept while the menu shows.
-            if !menu_was_open(ui, "Edit") {
+            if !menu_was_open(ui, tr("Edit")) {
                 self.edit_target = focused_text_field(ui.ctx());
             }
-            let response = menu_title(ui, "Edit", |ui| self.edit_menu(ui, intents));
+            let response = menu_title(ui, tr("Edit"), |ui| self.edit_menu(ui, intents));
             self.frame_widgets
                 .insert("menu-edit".into(), (&response.response).into());
-            let view = menu_title(ui, "View", |ui| {
-                let palette = item_response(ui, "Command Palette…", "Ctrl+K", true);
+            let view = menu_title(ui, tr("View"), |ui| {
+                let palette = item_response(ui, tr("Command Palette…"), "Ctrl+K", true);
                 self.frame_widgets
                     .insert("menu-palette".into(), (&palette).into());
                 if palette.clicked() {
@@ -614,10 +611,10 @@ impl Rocket {
                 }
                 self.go_to_menu(ui, intents);
                 ui.separator();
-                if check_row(ui, "Show Sidebar", self.show_sidebar, true).clicked() {
+                if check_row(ui, tr("Show Sidebar"), self.show_sidebar, true).clicked() {
                     self.show_sidebar = !self.show_sidebar;
                 }
-                let response = check_row(ui, "Show Sidebar Labels", self.sidebar_labels, true);
+                let response = check_row(ui, tr("Show Sidebar Labels"), self.sidebar_labels, true);
                 self.frame_widgets
                     .insert("menu-sidebar-labels".into(), (&response).into());
                 if response.clicked() {
@@ -630,32 +627,32 @@ impl Rocket {
                         self.sidebar_labels = labels;
                     }
                 }
-                let response = check_row(ui, "Repositories in Sidebar", self.repository_list, true);
+                let response = check_row(ui, tr("Repositories in Sidebar"), self.repository_list, true);
                 self.frame_widgets
                     .insert("menu-repository-list".into(), (&response).into());
                 if response.clicked() {
                     self.repository_list = !self.repository_list;
                 }
-                if check_row(ui, "Show Commit Details", self.show_details, true).clicked() {
+                if check_row(ui, tr("Show Commit Details"), self.show_details, true).clicked() {
                     self.show_details = !self.show_details;
                 }
                 // Unchecked while the drawer is collapsed: choosing it opens the drawer.
                 let shown = self.show_console && !self.drawer_collapsed;
-                if check_row(ui, "Show Activity", shown, true).clicked() {
+                if check_row(ui, tr("Show Activity"), shown, true).clicked() {
                     if shown {
                         self.show_console = false;
                     } else {
                         self.show_activity();
                     }
                 }
-                let history = item_response(ui, "Activity & Diagnostics…", "", true);
+                let history = item_response(ui, tr("Activity & Diagnostics…"), "", true);
                 self.frame_widgets
                     .insert("activity-open-menu".into(), (&history).into());
                 if history.clicked() {
                     self.activity_history.show();
                     self.external.open = false;
                 }
-                let benchmark = item_response(ui, "Repository Benchmark", "", opened && !self.interaction_busy());
+                let benchmark = item_response(ui, tr("Repository Benchmark"), "", opened && !self.interaction_busy());
                 self.frame_widgets.insert("benchmark-open".into(), (&benchmark).into());
                 if benchmark.clicked() {
                     self.activity_history.close();
@@ -663,8 +660,8 @@ impl Rocket {
                 }
                 ui.separator();
                 for (collapse, label, key) in [
-                    (true, "Collapse All Merges", "view-collapse-merges"),
-                    (false, "Expand All Merges", "view-expand-merges"),
+                    (true, tr("Collapse All Merges"), "view-collapse-merges"),
+                    (false, tr("Expand All Merges"), "view-expand-merges"),
                 ] {
                     let response = item_response(ui, label, "", opened);
                     self.frame_widgets.insert(key.into(), (&response).into());
@@ -673,9 +670,9 @@ impl Rocket {
                         ui.close();
                     }
                 }
-                submenu(ui, "Diff Layout", opened, |ui| {
+                submenu(ui, tr("Diff Layout"), opened, |ui| {
                     if let Some(tab) = self.tabs.get_mut(self.active) {
-                        for (split, label) in [(false, "Unified"), (true, "Side by side")] {
+                        for (split, label) in [(false, tr("Unified")), (true, tr("Side by side"))] {
                             if check_row(ui, label, tab.split_diff == split, true).clicked() {
                                 tab.split_diff = split;
                             }
@@ -685,14 +682,14 @@ impl Rocket {
                 if let Some(tab) = self.tabs.get_mut(self.active) {
                     ui.separator();
                     for (label, key, hidden) in [
-                        ("Hide Tags in Sidebar", "view-hide-tags", &mut tab.worktree_view.hide_tags),
-                        ("Hide Stashes in Sidebar", "view-hide-stashes", &mut tab.worktree_view.hide_stashes),
+                        (tr("Hide Tags in Sidebar"), "view-hide-tags", &mut tab.worktree_view.hide_tags),
+                        (tr("Hide Stashes in Sidebar"), "view-hide-stashes", &mut tab.worktree_view.hide_stashes),
                     ] {
                         let r = check_row(ui, label, *hidden, true);
                         self.frame_widgets.insert(key.into(), (&r).into());
                         if r.clicked() { *hidden = !*hidden; }
                     }
-                    let r = item_response(ui, "Reset This Worktree’s View", "", true);
+                    let r = item_response(ui, tr("Reset This Worktree’s View"), "", true);
                     self.frame_widgets.insert("view-reset-worktree".into(), (&r).into());
                     if r.clicked() {
                         crate::worktree_view::Settings::default().restore(tab);
@@ -702,47 +699,47 @@ impl Rocket {
                 }
                 self.appearance_menu(ui);
                 ui.separator();
-                if item(ui, "Zoom In", "Ctrl++", true) {
+                if item(ui, tr("Zoom In"), "Ctrl++", true) {
                     ui.ctx()
                         .set_zoom_factor((ui.ctx().zoom_factor() + 0.1).min(1.5));
                 }
-                if item(ui, "Zoom Out", "Ctrl+−", true) {
+                if item(ui, tr("Zoom Out"), "Ctrl+−", true) {
                     ui.ctx()
                         .set_zoom_factor((ui.ctx().zoom_factor() - 0.1).max(0.75));
                 }
-                if item(ui, "Reset Zoom", "Ctrl+0", true) {
+                if item(ui, tr("Reset Zoom"), "Ctrl+0", true) {
                     ui.ctx().set_zoom_factor(1.0);
                 }
-                if item(ui, "Refresh Repository", "F5", opened && idle) {
+                if item(ui, tr("Refresh Repository"), "F5", opened && idle) {
                     intents.push(Intent::Refresh);
                 }
                 // Compare itself is in Go to.
-                let r = item_response(ui, "Compare Selected Commits", "", self.tab().is_some_and(|t|t.selected_commits.len() == 2));
+                let r = item_response(ui, tr("Compare Selected Commits"), "", self.tab().is_some_and(|t|t.selected_commits.len() == 2));
                 pages::control(&mut self.frame_widgets, "menu-compare-selected", &r, ui.clip_rect());
                 if r.clicked() { intents.push(Intent::Compare(crate::compare::CompareIntent::Selected)); }
             });
             self.frame_widgets
                 .insert("menu-view".into(), (&view.response).into());
-            let response = menu_title(ui, "Repository", |ui| self.repository_menu(ui, intents));
+            let response = menu_title(ui, tr("Repository"), |ui| self.repository_menu(ui, intents));
             self.frame_widgets
                 .insert("menu-repository".into(), (&response.response).into());
-            let response = menu_title(ui, "Terminal", |ui| {
+            let response = menu_title(ui, tr("Terminal"), |ui| {
                 // The active repository's shell, the same actions as the drawer strip.
                 let shell = self.terminal_state();
                 let session = shell.is_some();
                 let running = shell.is_some_and(|(running, _)| running) && !self.quitting;
                 for (key, label, shortcut, enabled, action) in [
-                    ("terminal-new", "New Terminal", "Ctrl+Shift+`", opened, None),
-                    ("terminal-console", "Show Activity", "Ctrl+`", true, None),
-                    ("terminal-interrupt-menu", "Interrupt", "Ctrl+C", running, Some(TerminalAction::Interrupt)),
+                    ("terminal-new", tr("New Terminal"), "Ctrl+Shift+`", opened, None),
+                    ("terminal-console", tr("Show Activity"), "Ctrl+`", true, None),
+                    ("terminal-interrupt-menu", tr("Interrupt"), "Ctrl+C", running, Some(TerminalAction::Interrupt)),
                     (
                         "terminal-clear-scrollback-menu",
-                        "Clear scrollback",
+                        tr("Clear scrollback"),
                         "",
                         session,
                         Some(TerminalAction::ClearScrollback),
                     ),
-                    ("terminal-end-menu", "End session", "", running, Some(TerminalAction::End)),
+                    ("terminal-end-menu", tr("End session"), "", running, Some(TerminalAction::End)),
                 ] {
                     if key == "terminal-interrupt-menu" {
                         ui.separator();
@@ -761,14 +758,14 @@ impl Rocket {
             });
             self.frame_widgets
                 .insert("menu-terminal".into(), (&response.response).into());
-            let response = menu_title(ui, "Window", |ui| {
-                let next = item_response(ui, "Next Repository", "Ctrl+Tab", self.tabs.len() > 1);
+            let response = menu_title(ui, tr("Window"), |ui| {
+                let next = item_response(ui, tr("Next Repository"), "Ctrl+Tab", self.tabs.len() > 1);
                 self.frame_widgets.insert("window-next".into(), (&next).into());
                 if next.clicked() {
                     self.active = (self.active + 1) % self.tabs.len();
                 }
                 let previous =
-                    item_response(ui, "Previous Repository", "Ctrl+Shift+Tab", self.tabs.len() > 1);
+                    item_response(ui, tr("Previous Repository"), "Ctrl+Shift+Tab", self.tabs.len() > 1);
                 self.frame_widgets
                     .insert("window-previous".into(), (&previous).into());
                 if previous.clicked() {
@@ -777,7 +774,7 @@ impl Rocket {
                 // MCP server settings are in Preferences (and the status-bar MCP chip).
                 if !self.tabs.is_empty() {
                     ui.separator();
-                    menu_caption(ui, "OPEN REPOSITORIES");
+                    menu_caption(ui, tr("OPEN REPOSITORIES"));
                 }
                 for (i, tab) in self.tabs.iter().enumerate() {
                     if check_row(ui, &tab.title, i == self.active, true).clicked() {
@@ -787,30 +784,30 @@ impl Rocket {
             });
             self.frame_widgets
                 .insert("menu-window".into(), (&response.response).into());
-            let response = menu_title(ui, "Help", |ui| {
-                let setup = item_response(ui, "Setup Guide", "", self.write.is_none());
+            let response = menu_title(ui, tr("Help"), |ui| {
+                let setup = item_response(ui, tr("Setup Guide"), "", self.write.is_none());
                 self.frame_widgets.insert("help-setup".into(), (&setup).into());
                 if setup.clicked() { intents.push(Intent::GuidedSetup); }
-                let r = item_response(ui, "Guide", "F1", true);
+                let r = item_response(ui, tr("Guide"), "F1", true);
                 self.frame_widgets.insert("help-guide".into(), (&r).into());
                 if r.clicked() {
                     crate::guide::request(ui.ctx());
                 }
                 ui.separator();
-                let r = item_response(ui, "View Release Notes…", "", true);
+                let r = item_response(ui, tr("View Release Notes…"), "", true);
                 self.frame_widgets
                     .insert("help-changelog".into(), (&r).into());
                 if r.clicked() {
                     intents.push(Intent::Dialog(DialogKind::Changelog));
                 }
-                let r=item_response(ui,"Check for Updates","",true);
+                let r=item_response(ui,tr("Check for Updates"),"",true);
                 self.frame_widgets.insert("help-updates".into(),(&r).into());
                 if r.clicked(){self.updates.open();}
-                let r=item_response(ui,"Crash Reports","",true);
+                let r=item_response(ui,tr("Crash Reports"),"",true);
                 self.frame_widgets.insert("help-crash-reports".into(),(&r).into());
                 if r.clicked(){self.crash_reports.open=true;self.crash_reports.refresh_requested=true;}
                 ui.separator();
-                let r = item_response(ui, "About", "", true);
+                let r = item_response(ui, tr("About"), "", true);
                 self.frame_widgets.insert("help-about".into(), (&r).into());
                 if r.clicked() {
                     intents.push(Intent::Dialog(DialogKind::About));
@@ -826,12 +823,12 @@ impl Rocket {
         let target = self.edit_target;
         let selected = target.and_then(|t| t.selection).is_some_and(|range| !range.is_empty());
         for (key, label, shortcut, command, enabled) in [
-            ("edit-undo", "Undo", "Ctrl+Z", TextCommand::Undo, target.is_some()),
-            ("edit-redo", "Redo", "Ctrl+Y", TextCommand::Redo, target.is_some()),
-            ("edit-cut", "Cut", "Ctrl+X", TextCommand::Cut, selected),
-            ("edit-copy", "Copy", "Ctrl+C", TextCommand::Copy, selected),
-            ("edit-paste", "Paste", "Ctrl+V", TextCommand::Paste, target.is_some()),
-            ("edit-select-all", "Select All", "Ctrl+A", TextCommand::SelectAll, target.is_some()),
+            ("edit-undo", tr("Undo"), "Ctrl+Z", TextCommand::Undo, target.is_some()),
+            ("edit-redo", tr("Redo"), "Ctrl+Y", TextCommand::Redo, target.is_some()),
+            ("edit-cut", tr("Cut"), "Ctrl+X", TextCommand::Cut, selected),
+            ("edit-copy", tr("Copy"), "Ctrl+C", TextCommand::Copy, selected),
+            ("edit-paste", tr("Paste"), "Ctrl+V", TextCommand::Paste, target.is_some()),
+            ("edit-select-all", tr("Select All"), "Ctrl+A", TextCommand::SelectAll, target.is_some()),
         ] {
             if command == TextCommand::Cut {
                 ui.separator();
@@ -850,13 +847,13 @@ impl Rocket {
             }
         }
         ui.separator();
-        let undo = item_response(ui, "Undo Last Commit", "", self.write.is_none() && self.tab().is_some_and(|t| t.undo_commit.is_some() && !t.loading()));
+        let undo = item_response(ui, tr("Undo Last Commit"), "", self.write.is_none() && self.tab().is_some_and(|t| t.undo_commit.is_some() && !t.loading()));
         self.frame_widgets.insert("edit-undo-commit".into(), (&undo).into());
         if undo.clicked() {
             intents.push(Intent::Dialog(DialogKind::UndoCommit));
         }
         ui.separator();
-        let response = item_response(ui, "Preferences…", "Ctrl+,", true);
+        let response = item_response(ui, tr("Preferences…"), "Ctrl+,", true);
         self.frame_widgets
             .insert("preferences".into(), (&response).into());
         if response.clicked() {
@@ -898,28 +895,28 @@ impl Rocket {
         let current = self.tab().filter(|_| page.is_none()).map(|t| t.view);
         let entries = self.integrations.entries().to_vec();
         let open = self.integrations.open_entry().filter(|_| page == Some(Page::Integrations)).map(|e| e.id.clone());
-        keyed_submenu(ui, &mut self.frame_widgets, "view-goto", "Go to", true, |ui, widgets| {
+        keyed_submenu(ui, &mut self.frame_widgets, "view-goto", tr("Go to"), true, |ui, widgets| {
             for (to, label, key) in [
-                (To::View(View::Summary), "Summary", "goto-summary"),
-                (To::View(View::Changes), "Changes", "goto-changes"),
-                (To::View(View::Commits), "Commits", "goto-commits"),
-                (To::View(View::Compare), "Compare", "goto-compare"),
-                (To::View(View::Map), "Repository map", "goto-map"),
-                (To::View(View::BranchReview), "AI review", "goto-review"),
-                (To::View(View::Actions), "Actions", "goto-actions"),
-                (To::View(View::Tree), "Files", "goto-files"),
+                (To::View(View::Summary), tr("Summary"), "goto-summary"),
+                (To::View(View::Changes), tr("Changes"), "goto-changes"),
+                (To::View(View::Commits), tr("Commits"), "goto-commits"),
+                (To::View(View::Compare), tr("Compare"), "goto-compare"),
+                (To::View(View::Map), tr("Repository map"), "goto-map"),
+                (To::View(View::BranchReview), tr("AI review"), "goto-review"),
+                (To::View(View::Actions), tr("Actions"), "goto-actions"),
+                (To::View(View::Tree), tr("Files"), "goto-files"),
                 (To::Line, "", ""),
-                (To::View(View::Branches), "Branches", "goto-branches"),
-                (To::View(View::Remotes), "Remotes", "goto-remotes"),
-                (To::View(View::Stashes), "Stashes", "goto-stashes"),
+                (To::View(View::Branches), tr("Branches"), "goto-branches"),
+                (To::View(View::Remotes), tr("Remotes"), "goto-remotes"),
+                (To::View(View::Stashes), tr("Stashes"), "goto-stashes"),
                 (To::Line, "", ""),
-                (To::Page(Page::Tags), "Tags", "goto-tags"),
-                (To::Page(Page::Worktrees), "Worktrees", "goto-worktrees"),
-                (To::Page(Page::Submodules), "Submodules", "goto-submodules"),
-                (To::Page(Page::Lfs), "Git LFS", "goto-lfs"),
-                (To::View(View::FileHistory), "Path History", "goto-history"),
-                (To::Page(Page::Statistics), "Statistics", "goto-statistics"),
-                (To::Page(Page::Benchmark), "Repository Benchmark", "goto-benchmark"),
+                (To::Page(Page::Tags), tr("Tags"), "goto-tags"),
+                (To::Page(Page::Worktrees), tr("Worktrees"), "goto-worktrees"),
+                (To::Page(Page::Submodules), tr("Submodules"), "goto-submodules"),
+                (To::Page(Page::Lfs), tr("Git LFS"), "goto-lfs"),
+                (To::View(View::FileHistory), tr("Path History"), "goto-history"),
+                (To::Page(Page::Statistics), tr("Statistics"), "goto-statistics"),
+                (To::Page(Page::Benchmark), tr("Repository Benchmark"), "goto-benchmark"),
             ] {
                 let (checked, enabled, intent) = match to {
                     To::Line => {
@@ -944,7 +941,7 @@ impl Rocket {
                     intents.push(Intent::Extension(entry.id));
                 }
             }
-            let response = check_row(ui, "Extensions", false, backend);
+            let response = check_row(ui, tr("Extensions"), false, backend);
             pages::control(widgets, "goto-integrations", &response, ui.clip_rect());
             if response.clicked() {
                 intents.push(Intent::Preferences(crate::preferences::Page::Integrations));
@@ -980,21 +977,21 @@ impl Rocket {
             .max_height(height)
             .min_scrolled_height(height)
             .show(ui, |ui| {
-                if item(ui, "Fetch…", &fetch, opened && idle) {
+                if hinted_item(ui, tr("Fetch…"), &fetch, opened && idle).clicked() {
                     intents.push(Intent::Dialog(DialogKind::Fetch));
                 }
-                if item(ui, "Pull…", &pull, writable) {
+                if hinted_item(ui, tr("Pull…"), &pull, writable).clicked() {
                     intents.push(Intent::Dialog(DialogKind::Pull));
                 }
-                if item(ui, "Push…", &push, writable) {
+                if hinted_item(ui, tr("Push…"), &push, writable).clicked() {
                     intents.push(Intent::Dialog(DialogKind::Push));
                 }
-                if keyed_item(ui, widgets, "repository-atomic-push", "Push Branches Together…", "", writable) {
+                if keyed_item(ui, widgets, "repository-atomic-push", tr("Push Branches Together…"), "", writable) {
                     intents.push(Intent::Dialog(DialogKind::AtomicPush));
                 }
                 ui.separator();
-                keyed_submenu(ui, widgets, "repository-commit-menu", "Commit", opened, |ui, widgets| {
-                    if item(ui, "Commit…", "Ctrl+Enter", writable) {
+                keyed_submenu(ui, widgets, "repository-commit-menu", tr("Commit"), opened, |ui, widgets| {
+                    if item(ui, tr("Commit…"), "Ctrl+Enter", writable) {
                         intents.push(Intent::View(View::Changes));
                     }
                     for (operation, key, targets) in [
@@ -1006,11 +1003,11 @@ impl Rocket {
                             ui.separator();
                         }
                         let label = match (operation, targets.len()) {
-                            (Operation::Amend, _) => "Amend Latest Commit…".to_owned(),
-                            (Operation::CherryPick, 0 | 1) => "Cherry-pick Selected Commit…".into(),
-                            (Operation::CherryPick, n) => format!("Cherry-pick {n} Selected Commits…"),
-                            (_, 0 | 1) => "Revert Selected Commit…".into(),
-                            (_, n) => format!("Revert {n} Selected Commits…"),
+                            (Operation::Amend, _) => tr("Amend Latest Commit…").to_owned(),
+                            (Operation::CherryPick, 0 | 1) => tr("Cherry-pick Selected Commit…").into(),
+                            (Operation::CherryPick, n) => trf!("Cherry-pick {n} Selected Commits…", n),
+                            (_, 0 | 1) => tr("Revert Selected Commit…").into(),
+                            (_, n) => trf!("Revert {n} Selected Commits…", n),
                         };
                         let ready = operation == Operation::Amend || !targets.is_empty();
                         if keyed_item(ui, widgets, key, &label, "", writable && !operating && ready) {
@@ -1020,40 +1017,40 @@ impl Rocket {
                         }
                     }
                 });
-                keyed_submenu(ui, widgets, "repository-branch-menu", "Branch", opened, |ui, widgets| {
-                    if item(ui, "New Branch…", "Ctrl+Shift+B", writable) {
+                keyed_submenu(ui, widgets, "repository-branch-menu", tr("Branch"), opened, |ui, widgets| {
+                    if item(ui, tr("New Branch…"), "Ctrl+Shift+B", writable) {
                         intents.push(Intent::Dialog(DialogKind::NewBranch));
                     }
                     ui.separator();
-                    if keyed_item(ui, widgets, "repository-merge", "Merge Branch…", "", writable) {
+                    if keyed_item(ui, widgets, "repository-merge", tr("Merge Branch…"), "", writable) {
                         intents.push(Intent::Dialog(DialogKind::Merge));
                     }
                     for (key, label, action) in [
-                        ("repository-rebase", "Rebase…", RebaseAction::Start),
-                        ("repository-interactive-rebase", "Interactive Rebase…", RebaseAction::Interactive),
+                        ("repository-rebase", tr("Rebase…"), RebaseAction::Start),
+                        ("repository-interactive-rebase", tr("Interactive Rebase…"), RebaseAction::Interactive),
                     ] {
                         if keyed_item(ui, widgets, key, label, "", writable && settled) {
                             intents.push(Intent::Dialog(DialogKind::Rebase(action)));
                         }
                     }
                     ui.separator();
-                    if keyed_item(ui, widgets, "repository-delete-branches", "Delete Branches…", "", writable) {
+                    if keyed_item(ui, widgets, "repository-delete-branches", tr("Delete Branches…"), "", writable) {
                         intents.push(Intent::Dialog(DialogKind::DeleteBranches));
                     }
-                    if keyed_item(ui, widgets, "repository-workflows", "Workflows & Cleanup…", "", writable) {
+                    if keyed_item(ui, widgets, "repository-workflows", tr("Workflows & Cleanup…"), "", writable) {
                         intents.push(Intent::Dialog(DialogKind::Workflows));
                     }
                 });
-                keyed_submenu(ui, widgets, "repository-gitflow", "Git Flow", opened, |ui, widgets| {
+                keyed_submenu(ui, widgets, "repository-gitflow", tr("Git Flow"), opened, |ui, widgets| {
                     use crate::gitflow::Request;
                     use rocket_git::GitFlowKind as Kind;
                     for (label, key, request) in [
-                        ("Initialize…", "gitflow-init", Request::Init),
-                        ("Start Feature…", "gitflow-start-feature", Request::Start(Kind::Feature)),
-                        ("Start Release…", "gitflow-start-release", Request::Start(Kind::Release)),
-                        ("Start Hotfix…", "gitflow-start-hotfix", Request::Start(Kind::Hotfix)),
-                        ("Start Support…", "gitflow-start-support", Request::Start(Kind::Support)),
-                        ("Finish…", "gitflow-finish", Request::Finish),
+                        (tr("Initialize…"), "gitflow-init", Request::Init),
+                        (tr("Start Feature…"), "gitflow-start-feature", Request::Start(Kind::Feature)),
+                        (tr("Start Release…"), "gitflow-start-release", Request::Start(Kind::Release)),
+                        (tr("Start Hotfix…"), "gitflow-start-hotfix", Request::Start(Kind::Hotfix)),
+                        (tr("Start Support…"), "gitflow-start-support", Request::Start(Kind::Support)),
+                        (tr("Finish…"), "gitflow-finish", Request::Finish),
                     ] {
                         if matches!(key, "gitflow-start-feature" | "gitflow-finish") {
                             ui.separator();
@@ -1063,90 +1060,90 @@ impl Rocket {
                         }
                     }
                 });
-                keyed_submenu(ui, widgets, "repository-stash-menu", "Stash", opened, |ui, _| {
-                    if item(ui, "Save Changes…", "", writable) {
+                keyed_submenu(ui, widgets, "repository-stash-menu", tr("Stash"), opened, |ui, _| {
+                    if item(ui, tr("Save Changes…"), "", writable) {
                         intents.push(Intent::Dialog(DialogKind::Stash));
                     }
-                    if item(ui, "Save Snapshot (Keep Local Changes)…", "", writable) {
+                    if item(ui, tr("Save Snapshot (Keep Local Changes)…"), "", writable) {
                         intents.push(Intent::KeepLocal { snapshot: true, paths: Vec::new() });
                     }
                     ui.separator();
-                    if item(ui, "View Stashes", "", opened) {
+                    if item(ui, tr("View Stashes"), "", opened) {
                         intents.push(Intent::View(View::Stashes));
                     }
                 });
-                keyed_submenu(ui, widgets, "repository-patches-menu", "Patches", opened, |ui, widgets| {
+                keyed_submenu(ui, widgets, "repository-patches-menu", tr("Patches"), opened, |ui, widgets| {
                     use crate::patches::Mode;
-                    if keyed_item(ui, widgets, "repository-patch-import", "Import Patch…", "", opened && !busy) {
+                    if keyed_item(ui, widgets, "repository-patch-import", tr("Import Patch…"), "", opened && !busy) {
                         intents.push(Intent::Dialog(DialogKind::Patch(Mode::Import)));
                     }
-                    if keyed_item(ui, widgets, "repository-series-import", "Import Commit Series…", "", writable && !busy) {
+                    if keyed_item(ui, widgets, "repository-series-import", tr("Import Commit Series…"), "", writable && !busy) {
                         intents.push(Intent::Dialog(DialogKind::MailImport(rocket_git::MailImportAction::Start)));
                     }
-                    if keyed_item(ui, widgets, "repository-patch-clipboard", "Apply Patch from Clipboard…", "Ctrl+V", opened && !busy) {
+                    if keyed_item(ui, widgets, "repository-patch-clipboard", tr("Apply Patch from Clipboard…"), "Ctrl+V", opened && !busy) {
                         intents.push(Intent::PastePatch);
                     }
                     ui.separator();
-                    if keyed_item(ui, widgets, "repository-patch-export", "Export Patch…", "", opened && !busy) {
+                    if keyed_item(ui, widgets, "repository-patch-export", tr("Export Patch…"), "", opened && !busy) {
                         intents.push(Intent::Dialog(DialogKind::Patch(Mode::Export)));
                     }
-                    if keyed_item(ui, widgets, "repository-series-export", "Export Commit Series…", "", opened && !busy) {
+                    if keyed_item(ui, widgets, "repository-series-export", tr("Export Commit Series…"), "", opened && !busy) {
                         intents.push(Intent::ExportSeries(None));
                     }
                 });
                 ui.separator();
-                keyed_submenu(ui, widgets, "repository-history-menu", "History & Recovery", opened, |ui, widgets| {
-                    if keyed_item(ui, widgets, "repository-recovery", "Reflog & Recovery…", "", opened && !busy) {
+                keyed_submenu(ui, widgets, "repository-history-menu", tr("History & Recovery"), opened, |ui, widgets| {
+                    if keyed_item(ui, widgets, "repository-recovery", tr("Reflog & Recovery…"), "", opened && !busy) {
                         intents.push(Intent::Dialog(DialogKind::Recovery));
                     }
-                    if keyed_item(ui, widgets, "repository-file-backups", "File Backups & Restore…", "", opened && !busy) {
+                    if keyed_item(ui, widgets, "repository-file-backups", tr("File Backups & Restore…"), "", opened && !busy) {
                         intents.push(Intent::Dialog(DialogKind::FileEdit(None)));
                     }
                     ui.separator();
-                    if keyed_item(ui, widgets, "repository-tree", "Browse Files at Commit…", "", opened && !interaction_busy) {
+                    if keyed_item(ui, widgets, "repository-tree", tr("Browse Files at Commit…"), "", opened && !interaction_busy) {
                         intents.push(Intent::Tree(crate::tree::TreeIntent::OpenSelected));
                     }
-                    if keyed_item(ui, widgets, "repository-search-files", "Search in Files", "", opened && !interaction_busy) {
+                    if keyed_item(ui, widgets, "repository-search-files", tr("Search in Files"), "", opened && !interaction_busy) {
                         intents.push(Intent::Tree(crate::tree::TreeIntent::FocusSearch));
                     }
-                    if keyed_item(ui, widgets, "repository-bisect", "Bisect…", "", opened && !interaction_busy) {
+                    if keyed_item(ui, widgets, "repository-bisect", tr("Bisect…"), "", opened && !interaction_busy) {
                         intents.push(Intent::Dialog(DialogKind::Bisect));
                     }
                 });
-                keyed_submenu(ui, widgets, "repository-custom-commands", "Custom Commands", opened, |ui, widgets| {
+                keyed_submenu(ui, widgets, "repository-custom-commands", tr("Custom Commands"), opened, |ui, widgets| {
                     crate::custom_commands::menu_entries(ui, commands, rocket_git::CommandScope::Repository, None, writable, intents, widgets);
                     if !commands.is_empty() {
                         ui.separator();
                     }
-                    if keyed_item(ui, widgets, "command-edit", "Edit Custom Commands…", "", idle) {
+                    if keyed_item(ui, widgets, "command-edit", tr("Edit Custom Commands…"), "", idle) {
                         intents.push(Intent::Preferences(crate::preferences::Page::Commands));
                     }
                 });
                 extensions_menu(ui, widgets, opened, intents);
                 ui.separator();
-                keyed_submenu(ui, widgets, "repository-remotes-menu", "Remotes & Hosting", opened, |ui, widgets| {
-                    if keyed_item(ui, widgets, "repository-manage-remotes", "Manage Remotes…", "", opened) {
+                keyed_submenu(ui, widgets, "repository-remotes-menu", tr("Remotes & Hosting"), opened, |ui, widgets| {
+                    if keyed_item(ui, widgets, "repository-manage-remotes", tr("Manage Remotes…"), "", opened) {
                         intents.push(Intent::View(View::Remotes));
                     }
                     ui.separator();
-                    if keyed_item(ui, widgets, "repository-hosting", "Hosting", "", opened) {
+                    if keyed_item(ui, widgets, "repository-hosting", tr("Hosting"), "", opened) {
                         intents.push(Intent::Dialog(DialogKind::Hosting));
                     }
-                    if keyed_item(ui, widgets, "repository-github", "GitHub Repositories & Notifications…", "", opened) {
+                    if keyed_item(ui, widgets, "repository-github", tr("GitHub Repositories & Notifications…"), "", opened) {
                         intents.push(Intent::Dialog(DialogKind::GitHub));
                     }
                 });
-                keyed_submenu(ui, widgets, "repository-settings-menu", "Settings", opened, |ui, widgets| {
-                    if keyed_item(ui, widgets, "repository-settings", "Repository Settings…", "", opened && idle) {
+                keyed_submenu(ui, widgets, "repository-settings-menu", tr("Settings"), opened, |ui, widgets| {
+                    if keyed_item(ui, widgets, "repository-settings", tr("Repository Settings…"), "", opened && idle) {
                         intents.push(Intent::Dialog(DialogKind::RepositorySettings));
                     }
-                    if keyed_item(ui, widgets, "repository-signing", "Signing & Verification…", "", opened && idle) {
+                    if keyed_item(ui, widgets, "repository-signing", tr("Signing & Verification…"), "", opened && idle) {
                         intents.push(Intent::Dialog(DialogKind::Signing(None)));
                     }
-                    if keyed_item(ui, widgets, "repository-ignore", "Ignored Files (.gitignore)…", "", writable) {
+                    if keyed_item(ui, widgets, "repository-ignore", tr("Ignored Files (.gitignore)…"), "", writable) {
                         intents.push(Intent::Dialog(DialogKind::Ignore(Vec::new())));
                     }
-                    if keyed_item(ui, widgets, "repository-dependencies", "Dependency Security…", "", opened) {
+                    if keyed_item(ui, widgets, "repository-dependencies", tr("Dependency Security…"), "", opened) {
                         intents.push(Intent::Preferences(crate::preferences::Page::Security));
                     }
                 });
@@ -1353,15 +1350,16 @@ impl Rocket {
         if let DialogKind::RunCommand(index) = dialog.kind
             && let Some(command) = self.commands.get(index)
         {
-            title = format!("{} {}", if command.action==rocket_git::CommandAction::Url {"Open"} else {"Run"}, rocket_git::custom_command_display(command.name.trim()));
+            let name = rocket_git::custom_command_display(command.name.trim());
+            title = if command.action==rocket_git::CommandAction::Url {trf!("Open {command}", command = name)} else {trf!("Run {command}", command = name)};
             if let Some(tab) = self.tabs.iter().find(|t| Some(t.id) == dialog.owner) {
-                subtitle = if command.action==rocket_git::CommandAction::Url {format!("From {}. Review the full address before opening your browser.",tab.title)} else {format!("In {}, without a shell. Output goes to Activity.", tab.title)};
+                subtitle = if command.action==rocket_git::CommandAction::Url {trf!("From {repository}. Review the full address before opening your browser.", repository = tab.title)} else {trf!("In {repository}, without a shell. Output goes to Activity.", repository = tab.title)};
             }
         }
         if let DialogKind::CloseTab(id) = dialog.kind
             && let Some(tab) = self.tabs.iter().find(|t| t.id == id)
         {
-            title = format!("Close {}?", tab.title);
+            title = trf!("Close {repository}?", repository = tab.title);
             subtitle = crate::views::display_path(&tab.path);
         }
         let danger = self.dialog_danger(&dialog);
@@ -1413,7 +1411,7 @@ impl Rocket {
                         DialogKind::RepositorySettings => {
                             crate::issue_links::pages(ui, &mut dialog.issue_links, widgets);
                             if dialog.identity_task.is_some() {
-                                pages::busy_line(ui, "Loading Git identity settings…");
+                                pages::busy_line(ui, tr("Loading Git identity settings…"));
                             }
                             crate::small_dialogs::identity_body(ui, &mut dialog, widgets);
                         }
@@ -1491,7 +1489,7 @@ impl Rocket {
                         }
                         DialogKind::Confirm(..) => {}
                         DialogKind::ConflictReload(_) => {
-                            pages::callout(ui, AMBER(), "This replaces your editor draft.");
+                            pages::callout(ui, AMBER(), tr("This replaces your editor draft."));
                         }
                         DialogKind::CloseTab(id) => {
                             let tab = self.tabs.iter().find(|t| t.id == *id);
@@ -1578,53 +1576,53 @@ impl Rocket {
                         _ => self.write.is_none(),
                     };
                     let label = match dialog.kind {
-                        DialogKind::Open => "Open",
+                        DialogKind::Open => tr("Open"),
                         DialogKind::RepositorySettings
                             if dialog.issue_links.as_ref().is_some_and(|e| e.shown) =>
                         {
-                            "Save issue links"
+                            tr("Save issue links")
                         }
-                        DialogKind::RepositorySettings => "Save identity",
-                        DialogKind::Push => "Push",
-                        DialogKind::Pull => "Pull",
-                        DialogKind::Fetch => "Fetch",
-                        DialogKind::NewBranch => "Create branch",
-                        DialogKind::TrackBranch { .. } => "Create and switch",
-                        DialogKind::Rename(_) => "Rename branch",
-                        DialogKind::DeleteBranches => "Delete branches",
-                        DialogKind::RunCommand(index) => if self.commands.get(index).is_some_and(|c|c.action==rocket_git::CommandAction::Url) {"Open URL"} else {"Run"},
-                        DialogKind::Stash => "Save stash",
-                        DialogKind::Merge => "Merge branch",
-                        DialogKind::CloseTab(_) => "Close repository",
-                        DialogKind::Confirm(Action::DeleteBranch(_), _) => "Delete branch",
-                        DialogKind::Confirm(Action::DropStash(_), _) => "Drop stash",
-                        DialogKind::Confirm(Action::ApplyStash { .. }, _) => "Apply stash",
+                        DialogKind::RepositorySettings => tr("Save identity"),
+                        DialogKind::Push => tr("Push"),
+                        DialogKind::Pull => tr("Pull"),
+                        DialogKind::Fetch => tr("Fetch"),
+                        DialogKind::NewBranch => tr("Create branch"),
+                        DialogKind::TrackBranch { .. } => tr("Create and switch"),
+                        DialogKind::Rename(_) => tr("Rename branch"),
+                        DialogKind::DeleteBranches => tr("Delete branches"),
+                        DialogKind::RunCommand(index) => if self.commands.get(index).is_some_and(|c|c.action==rocket_git::CommandAction::Url) {tr("Open URL")} else {tr("Run")},
+                        DialogKind::Stash => tr("Save stash"),
+                        DialogKind::Merge => tr("Merge branch"),
+                        DialogKind::CloseTab(_) => tr("Close repository"),
+                        DialogKind::Confirm(Action::DeleteBranch(_), _) => tr("Delete branch"),
+                        DialogKind::Confirm(Action::DropStash(_), _) => tr("Drop stash"),
+                        DialogKind::Confirm(Action::ApplyStash { .. }, _) => tr("Apply stash"),
                         DialogKind::Confirm(Action::SaveConflict { stage, .. }, _) => {
                             if stage {
-                                "Save and stage"
+                                tr("Save and stage")
                             } else {
-                                "Save file"
+                                tr("Save file")
                             }
                         }
-                        DialogKind::ConflictReload(_) => "Reload",
+                        DialogKind::ConflictReload(_) => tr("Reload"),
                         DialogKind::Confirm(Action::KeepConflictSide { keep, .. }, _) => {
                             match keep {
-                                rocket_git::ConflictKeep::Ours => "Keep ours",
-                                rocket_git::ConflictKeep::Theirs => "Keep theirs",
-                                rocket_git::ConflictKeep::Deletion => "Keep deletion",
+                                rocket_git::ConflictKeep::Ours => tr("Keep ours"),
+                                rocket_git::ConflictKeep::Theirs => tr("Keep theirs"),
+                                rocket_git::ConflictKeep::Deletion => tr("Keep deletion"),
                             }
                         }
-                        DialogKind::Confirm(Action::AbortMerge, _) => "Abort merge",
-                        DialogKind::Confirm(Action::FinishMerge, _) => "Clear merge state",
-                        DialogKind::Confirm(Action::RemoveRemote(_), _) => "Remove remote",
-                        DialogKind::AddRemote => "Add remote",
-                        DialogKind::EditRemote(..) => "Save URL",
-                        DialogKind::Quit => "Exit",
-                        _ => "Confirm",
+                        DialogKind::Confirm(Action::AbortMerge, _) => tr("Abort merge"),
+                        DialogKind::Confirm(Action::FinishMerge, _) => tr("Clear merge state"),
+                        DialogKind::Confirm(Action::RemoveRemote(_), _) => tr("Remove remote"),
+                        DialogKind::AddRemote => tr("Add remote"),
+                        DialogKind::EditRemote(..) => tr("Save URL"),
+                        DialogKind::Quit => tr("Exit"),
+                        _ => tr("Confirm"),
                     };
                     let label = match dialog.kind {
                         DialogKind::DeleteBranches => crate::small_dialogs::delete_footer(&dialog).0,
-                        DialogKind::Quit if self.write.is_some() => "Stop and exit".into(),
+                        DialogKind::Quit if self.write.is_some() => tr("Stop and exit").into(),
                         _ => label.to_owned(),
                     };
                     let button = if danger {
@@ -1644,7 +1642,7 @@ impl Rocket {
                     // Run custom command says where the run stands, left of its buttons.
                     if let DialogKind::RunCommand(index) = dialog.kind {
                         let status = if self.write.is_some() {
-                            "Wait for the current operation to finish".to_owned()
+                            tr("Wait for the current operation to finish").to_owned()
                         } else {
                             let context = self
                                 .tabs
@@ -1837,7 +1835,7 @@ impl Rocket {
                     }
                     dismiss = true;
                 } else {
-                    dialog.error = Some("Open a repository first.".into());
+                    dialog.error = Some(tr("Open a repository first.").into());
                 }
             }
         }

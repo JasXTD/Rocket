@@ -1,3 +1,4 @@
+use crate::i18n::{tr, trf};
 use eframe::egui::{self, *};
 mod tokens;
 pub use tokens::*;
@@ -200,11 +201,11 @@ pub fn switch(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
 /// zone, so recent times stay relative rather than showing UTC clock times.
 pub fn ago(age_seconds: u64, unix_seconds: i64) -> String {
     match age_seconds {
-        0..45 => "just now".into(),
-        45..3_600 => format!("{} min ago", (age_seconds / 60).max(1)),
-        3_600..86_400 => format!("{} h ago", age_seconds / 3_600),
-        86_400..172_800 => "1 day ago".into(),
-        172_800..604_800 => format!("{} days ago", age_seconds / 86_400),
+        0..45 => tr("just now").into(),
+        45..3_600 => trf!("{n} min ago", n = (age_seconds / 60).max(1)),
+        3_600..86_400 => trf!("{n} h ago", n = age_seconds / 3_600),
+        86_400..172_800 => tr("1 day ago").into(),
+        172_800..604_800 => trf!("{n} days ago", n = age_seconds / 86_400),
         _ => date(unix_seconds, 0)[..10].to_owned(),
     }
 }
@@ -1023,11 +1024,11 @@ pub fn short_ref(bytes: &[u8]) -> String {
 pub fn head_name(head: Option<&rocket_git::Head>) -> String {
     match head {
         Some(rocket_git::Head::Branch { name, .. }) => display(name),
-        Some(rocket_git::Head::Unborn { branch }) => format!("{} · unborn", display(branch)),
+        Some(rocket_git::Head::Unborn { branch }) => format!("{} · {}", display(branch), tr("unborn")),
         Some(rocket_git::Head::Detached { target }) => {
-            format!("{} · detached", &target.as_str()[..8])
+            format!("{} · {}", &target.as_str()[..8], tr("detached"))
         }
-        None => "Unavailable".into(),
+        None => tr("Unavailable").into(),
     }
 }
 

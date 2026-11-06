@@ -5,6 +5,7 @@ use crate::{
     app::{DialogKind, Intent, Rocket, UiControl},
     external_tools::ToolIntent,
     folder_browser::PickTarget,
+    i18n::{mark, tr, trf},
     pages,
     style::*,
 };
@@ -13,9 +14,9 @@ use std::collections::HashMap;
 
 /// Row heights of the density choices, as in View → Appearance.
 pub(crate) const ROW_DENSITIES: [(&str, f32, &str); 3] = [
-    ("rows-compact", 29.0, "Compact"),
-    ("rows-comfortable", 33.0, "Comfortable"),
-    ("rows-spacious", 38.0, "Spacious"),
+    ("rows-compact", 29.0, mark("Compact")),
+    ("rows-comfortable", 33.0, mark("Comfortable")),
+    ("rows-spacious", 38.0, mark("Spacious")),
 ];
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -58,47 +59,51 @@ impl Page {
     /// The sidebar heading the page is listed under.
     fn group(self) -> &'static str {
         match self {
-            Page::General | Page::Appearance | Page::Shortcuts | Page::Terminal => "WORKSPACE",
-            Page::Git | Page::Commit | Page::Commands | Page::Tools => "GIT",
-            Page::Accounts | Page::SshKeys | Page::Mcp => "CONNECTIONS",
-            Page::Integrations => "EXTENSIONS",
-            Page::Security | Page::Storage => "SECURITY & DATA",
+            Page::General | Page::Appearance | Page::Shortcuts | Page::Terminal => tr("WORKSPACE"),
+            Page::Git | Page::Commit | Page::Commands | Page::Tools => tr("GIT"),
+            Page::Accounts | Page::SshKeys | Page::Mcp => tr("CONNECTIONS"),
+            Page::Integrations => tr("EXTENSIONS"),
+            Page::Security | Page::Storage => tr("SECURITY & DATA"),
         }
     }
     pub fn label(self) -> &'static str {
+        tr(self.english_label())
+    }
+    /// The page's name in English, which a settings search also reads.
+    fn english_label(self) -> &'static str {
         match self {
-            Page::General => "General",
-            Page::Git => "Git",
-            Page::Commands => "Custom commands",
-            Page::Security => "Security",
-            Page::Appearance => "Appearance",
-            Page::Shortcuts => "Shortcuts",
-            Page::Terminal => "Terminal",
-            Page::Commit => "Commit messages",
-            Page::Tools => "External tools",
-            Page::Accounts => "Accounts",
-            Page::SshKeys => "SSH keys",
-            Page::Integrations => "Extensions",
-            Page::Mcp => "MCP server",
-            Page::Storage => "Storage",
+            Page::General => mark("General"),
+            Page::Git => mark("Git"),
+            Page::Commands => mark("Custom commands"),
+            Page::Security => mark("Security"),
+            Page::Appearance => mark("Appearance"),
+            Page::Shortcuts => mark("Shortcuts"),
+            Page::Terminal => mark("Terminal"),
+            Page::Commit => mark("Commit messages"),
+            Page::Tools => mark("External tools"),
+            Page::Accounts => mark("Accounts"),
+            Page::SshKeys => mark("SSH keys"),
+            Page::Integrations => mark("Extensions"),
+            Page::Mcp => mark("MCP server"),
+            Page::Storage => mark("Storage"),
         }
     }
     fn description(self) -> &'static str {
         match self {
-            Page::General => "Window, updates, repositories and how diffs and commits read.",
-            Page::Git => "The Git program Rocket runs, and your commit identity for every repository.",
-            Page::Commands => "Your own commands in the Repository menu and right-click menus.",
-            Page::Security => "Protect what you publish. Stay aware of dependency risks.",
-            Page::Appearance => "Theme and row density.",
-            Page::Shortcuts => "Customize keyboard shortcuts and mouse gestures for Rocket's commands.",
-            Page::Terminal => "The shell the Terminal drawer runs.",
-            Page::Commit => "Spelling and AI drafts.",
-            Page::Tools => "Programs Rocket opens for files, comparisons and conflicts.",
-            Page::Accounts => "Hosting accounts for pull requests, issues and publishing.",
-            Page::SshKeys => "Choose or create a key, then copy its public key to your Git host.",
-            Page::Integrations => "Sandboxed Lua packages with native panels.",
-            Page::Mcp => "Let local tools connect to Rocket's control server.",
-            Page::Storage => "Where Rocket keeps logs and saved state.",
+            Page::General => tr("Window, updates, repositories and how diffs and commits read."),
+            Page::Git => tr("The Git program Rocket runs, and your commit identity for every repository."),
+            Page::Commands => tr("Your own commands in the Repository menu and right-click menus."),
+            Page::Security => tr("Protect what you publish. Stay aware of dependency risks."),
+            Page::Appearance => tr("Theme and row density."),
+            Page::Shortcuts => tr("Customize keyboard shortcuts and mouse gestures for Rocket's commands."),
+            Page::Terminal => tr("The shell the Terminal drawer runs."),
+            Page::Commit => tr("Spelling and AI drafts."),
+            Page::Tools => tr("Programs Rocket opens for files, comparisons and conflicts."),
+            Page::Accounts => tr("Hosting accounts for pull requests, issues and publishing."),
+            Page::SshKeys => tr("Choose or create a key, then copy its public key to your Git host."),
+            Page::Integrations => tr("Sandboxed Lua packages with native panels."),
+            Page::Mcp => tr("Let local tools connect to Rocket's control server."),
+            Page::Storage => tr("Where Rocket keeps logs and saved state."),
         }
     }
     fn icon(self) -> Icon {
@@ -140,27 +145,30 @@ impl Page {
     }
     /// The name in the sidebar: Extensions' first row sits under a heading of that name.
     fn nav_label(self) -> &'static str {
-        if self == Page::Integrations { "All extensions" } else { self.label() }
+        if self == Page::Integrations { tr("All extensions") } else { self.label() }
     }
     /// Whether a settings search finds this page.
     fn matches(self, query: &str) -> bool {
         let words = match self {
-            Page::General => "sidebar tabs repositories commit details activity drawer refresh fetch automatic window updates source code folder clone new repository tags submodules checkout branch names space hyphen push after commit diff marks font size syntax highlighting compact labels",
-            Page::Git => "git executable instance path program global name email identity",
-            Page::Commands => "custom commands program arguments script scope repository commit file branch submodule",
-            Page::Security => "security secret secrets protection github token tokens private key credentials .env commit push block dependencies dependency advisory advisories vulnerable library osv offline scan warnings database",
-            Page::Appearance => "theme default dark light system custom picture background accent colour color density rows compact comfortable spacious",
-            Page::Shortcuts => "keyboard shortcuts keys keybindings hotkeys mouse buttons wheel gestures",
-            Page::Terminal => "shell bash git bash cmd command prompt powershell pwsh console drawer program arguments",
-            Page::Commit => "spelling spell check ai draft claude codex anthropic openai language style conventional",
-            Page::Tools => "external editor diff merge program arguments profile placeholder beyond compare kdiff3 winmerge vs code visual studio code meld p4merge tortoisegitmerge sublime notepad++ araxis",
-            Page::Accounts => "hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea server profile connect",
-            Page::SshKeys => "ssh keys openssh agent passphrase identity profile ed25519 rsa public key repository unlock fingerprint copy found new add file",
-            Page::Integrations => "lua scripts integrations jira extensions plugins packages install update custom ui panels connections accounts permissions playground",
-            Page::Mcp => "mcp server port token endpoint fixture test repositories automation",
-            Page::Storage => "storage logs diagnostics saved state folder path explorer",
+            Page::General => mark("language sidebar tabs repositories commit details activity drawer refresh fetch automatic window updates source code folder clone new repository tags submodules checkout branch names space hyphen push after commit diff marks font size syntax highlighting compact labels"),
+            Page::Git => mark("git executable instance path program global name email identity"),
+            Page::Commands => mark("custom commands program arguments script scope repository commit file branch submodule"),
+            Page::Security => mark("security secret secrets protection github token tokens private key credentials .env commit push block dependencies dependency advisory advisories vulnerable library osv offline scan warnings database"),
+            Page::Appearance => mark("theme default dark light system custom picture background accent colour color density rows compact comfortable spacious"),
+            Page::Shortcuts => mark("keyboard shortcuts keys keybindings hotkeys mouse buttons wheel gestures"),
+            Page::Terminal => mark("shell bash git bash cmd command prompt powershell pwsh console drawer program arguments"),
+            Page::Commit => mark("spelling spell check ai draft claude codex anthropic openai language style conventional"),
+            Page::Tools => mark("external editor diff merge program arguments profile placeholder beyond compare kdiff3 winmerge vs code visual studio code meld p4merge tortoisegitmerge sublime notepad++ araxis"),
+            Page::Accounts => mark("hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea server profile connect"),
+            Page::SshKeys => mark("ssh keys openssh agent passphrase identity profile ed25519 rsa public key repository unlock fingerprint copy found new add file"),
+            Page::Integrations => mark("lua scripts integrations jira extensions plugins packages install update custom ui panels connections accounts permissions playground"),
+            Page::Mcp => mark("mcp server port token endpoint fixture test repositories automation"),
+            Page::Storage => mark("storage logs diagnostics saved state folder path explorer"),
         };
-        format!("{} {words}", self.label()).to_lowercase().contains(query)
+        // Either language finds a page: the words it shows, or their English.
+        [format!("{} {words}", self.english_label()), format!("{} {}", self.label(), tr(words))]
+            .iter()
+            .any(|text| text.to_lowercase().contains(query))
             // Searching for an action also finds the page that lists its keys.
             || (self == Page::Shortcuts && !shortcut_groups(query).is_empty())
     }
@@ -193,43 +201,43 @@ pub struct State {
 /// chord and ` / ` between alternatives.
 const SHORTCUTS: [(&str, &[(&str, &str)]); 4] = [
     (
-        "Repositories",
+        mark("Repositories"),
         &[
-            ("Ctrl+N", "New repository"),
-            ("Ctrl+O", "Open repository"),
-            ("Ctrl+Shift+O", "Clone repository"),
-            ("Ctrl+W", "Close repository"),
-            ("Ctrl+Shift+T", "Reopen closed repository"),
-            ("Ctrl+Tab", "Next repository"),
-            ("Ctrl+Shift+Tab", "Previous repository"),
+            ("Ctrl+N", mark("New repository")),
+            ("Ctrl+O", mark("Open repository")),
+            ("Ctrl+Shift+O", mark("Clone repository")),
+            ("Ctrl+W", mark("Close repository")),
+            ("Ctrl+Shift+T", mark("Reopen closed repository")),
+            ("Ctrl+Tab", mark("Next repository")),
+            ("Ctrl+Shift+Tab", mark("Previous repository")),
         ],
     ),
     (
-        "Panels",
+        mark("Panels"),
         &[
-            ("Ctrl+K", "Command palette"),
-            ("Ctrl+B", "Sidebar"),
-            ("Ctrl+`", "Activity"),
-            ("Ctrl+Shift+`", "Terminal"),
-            ("Ctrl+,", "Preferences"),
+            ("Ctrl+K", mark("Command palette")),
+            ("Ctrl+B", mark("Sidebar")),
+            ("Ctrl+`", mark("Activity")),
+            ("Ctrl+Shift+`", mark("Terminal")),
+            ("Ctrl+,", mark("Preferences")),
         ],
     ),
     (
-        "Working",
+        mark("Working"),
         &[
-            ("Ctrl+Enter", "Commit staged changes"),
-            ("Ctrl+Shift+B", "New branch"),
-            ("F5", "Refresh"),
+            ("Ctrl+Enter", mark("Commit staged changes")),
+            ("Ctrl+Shift+B", mark("New branch")),
+            ("F5", mark("Refresh")),
         ],
     ),
     (
-        "Lists and dialogs",
+        mark("Lists and dialogs"),
         &[
-            ("Up / Down", "Previous / next commit"),
-            ("Space", "Commit details"),
-            ("Tab / Shift+Tab", "Next / previous pane"),
-            ("Enter / Space", "Activate the focused control"),
-            ("Esc", "Close a menu or dialog"),
+            ("Up / Down", mark("Previous / next commit")),
+            ("Space", mark("Commit details")),
+            ("Tab / Shift+Tab", mark("Next / previous pane")),
+            ("Enter / Space", mark("Activate the focused control")),
+            ("Esc", mark("Close a menu or dialog")),
         ],
     ),
 ];
@@ -246,6 +254,7 @@ fn shortcut_groups(filter: &str) -> Vec<(&'static str, Vec<(&'static str, &'stat
                 .filter(|(keys, action)| {
                     needle.is_empty()
                         || action.to_lowercase().contains(&needle)
+                        || tr(action).to_lowercase().contains(&needle)
                         || keys.to_lowercase().contains(&needle)
                 })
                 .copied()
@@ -701,13 +710,13 @@ impl Rocket {
                 // Git keeps its Save and Stop on its cards; Custom commands always has a
                 // footer for Save commands.
                 let note = match page {
-                    Page::Tools => "Profiles are saved on this computer.",
-                    Page::Terminal => "Applies to the next terminal.",
+                    Page::Tools => tr("Profiles are saved on this computer."),
+                    Page::Terminal => tr("Applies to the next terminal."),
                     Page::Commands => "",
-                    Page::Accounts => "Remembered accounts are protected for your Windows user.",
-                    Page::SshKeys => "Key files and your own SSH config are never overwritten.",
+                    Page::Accounts => tr("Remembered accounts are protected for your Windows user."),
+                    Page::SshKeys => tr("Key files and your own SSH config are never overwritten."),
                     Page::Git | Page::Mcp | Page::Storage | Page::Shortcuts | Page::Integrations => "",
-                    _ => "Changes apply right away.",
+                    _ => tr("Changes apply right away."),
                 };
                 let unsaved = self.external.editing != self.external.profiles;
                 let extension_form = page == Page::Integrations && self.integrations.form_open();
@@ -725,7 +734,7 @@ impl Rocket {
                         .layout(Layout::right_to_left(Align::Min)),
                     |ui| {
                         let close = crate::chrome::icon_button(ui, Icon::Close, true, false, 30.0)
-                            .on_hover_text("Close (Esc)");
+                            .on_hover_text(tr("Close (Esc)"));
                         pages::control(&mut self.frame_widgets, "dialog-close", &close, ui.clip_rect());
                         // Automation left with the Done button, and on these two pages with
                         // their old back buttons; Done was hidden while profiles were unsaved.
@@ -851,14 +860,14 @@ impl Rocket {
                             let busy = self.external.running();
                             // Accounts and SSH keys keep their pages' automation names for Stop.
                             if page == Page::SshKeys && self.ssh.running() {
-                                let r = ui.add_enabled(!self.ssh.stopping, Button::new(if self.ssh.stopping { "Stopping" } else { "Stop" }));
+                                let r = ui.add_enabled(!self.ssh.stopping, Button::new(if self.ssh.stopping { tr("Stopping") } else { tr("Stop") }));
                                 pages::control(&mut self.frame_widgets, "ssh-cancel", &r, ui.clip_rect());
                                 if r.clicked() {
                                     self.ssh.cancel();
                                 }
                             }
                             if page == Page::Accounts && self.forge.running() {
-                                let r = ui.add_enabled(!self.forge.stopping, Button::new(if self.forge.stopping { "Stopping" } else { "Stop" }));
+                                let r = ui.add_enabled(!self.forge.stopping, Button::new(if self.forge.stopping { tr("Stopping") } else { tr("Stop") }));
                                 pages::control(&mut self.frame_widgets, "hosting-cancel", &r, ui.clip_rect());
                                 if r.clicked() {
                                     self.forge.cancel();
@@ -878,18 +887,18 @@ impl Rocket {
                                 return;
                             }
                             if dirty && page == Page::Tools {
-                                let r = pages::primary(ui, !busy, "Save profiles");
+                                let r = pages::primary(ui, !busy, tr("Save profiles"));
                                 pages::control(&mut self.frame_widgets, "tools-save-settings", &r, ui.clip_rect());
                                 save = r.clicked();
-                                let r = ui.add_enabled(!busy, Button::new("Discard"));
+                                let r = ui.add_enabled(!busy, Button::new(tr("Discard")));
                                 pages::control(&mut self.frame_widgets, "tools-discard-settings", &r, ui.clip_rect());
                                 discard = r.clicked();
                             }
                             if shell_dirty {
-                                let r = pages::primary(ui, self.terminal_shell.savable, "Save");
+                                let r = pages::primary(ui, self.terminal_shell.savable, tr("Save"));
                                 pages::control(&mut self.frame_widgets, "shell-save", &r, ui.clip_rect());
                                 shell_save = r.clicked();
-                                let r = ui.add(Button::new("Discard"));
+                                let r = ui.add(Button::new(tr("Discard")));
                                 pages::control(&mut self.frame_widgets, "shell-discard", &r, ui.clip_rect());
                                 shell_discard = r.clicked();
                             }
@@ -898,19 +907,19 @@ impl Rocket {
                                     let (rect, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
                                     ui.painter().circle_filled(rect.center(), 3.5, AMBER());
                                     let text = match (shell_dirty, self.preferences.unsaved_warning) {
-                                        (true, true) => "Save or discard the shell change first.",
-                                        (true, false) => "Unsaved shell change",
-                                        (false, true) => "Save or discard the tool profile changes first.",
-                                        (false, false) => "Unsaved tool profile changes",
+                                        (true, true) => tr("Save or discard the shell change first."),
+                                        (true, false) => tr("Unsaved shell change"),
+                                        (false, true) => tr("Save or discard the tool profile changes first."),
+                                        (false, false) => tr("Unsaved tool profile changes"),
                                     };
                                     ui.add(Label::new(RichText::new(text).size(12.5).color(AMBER())).truncate());
                                 } else if (page == Page::SshKeys && self.ssh.running()) || (page == Page::Accounts && self.forge.running()) {
                                     let stopping = if page == Page::SshKeys { self.ssh.stopping } else { self.forge.stopping };
                                     ui.spinner();
                                     let text = match (page, stopping) {
-                                        (_, true) => "Stopping; checking the result",
-                                        (Page::SshKeys, false) => "Working with OpenSSH",
-                                        _ => "Waiting for the hosting service",
+                                        (_, true) => tr("Stopping; checking the result"),
+                                        (Page::SshKeys, false) => tr("Working with OpenSSH"),
+                                        _ => tr("Waiting for the hosting service"),
                                     };
                                     ui.label(RichText::new(text).size(12.0).color(HINT()));
                                 } else {
@@ -929,7 +938,7 @@ impl Rocket {
         if discard {
             self.external.reset_edits();
             self.external.error = None;
-            self.external.notice = Some("Unsaved profile edits discarded.".into());
+            self.external.notice = Some(tr("Unsaved profile edits discarded.").into());
             self.preferences.unsaved_warning = false;
         }
         if shell_save {
@@ -977,7 +986,7 @@ impl Rocket {
             } else if self.ssh.running() {
                 // OpenSSH may be waiting for a passphrase that only this page can send.
                 self.preferences.page = Page::SshKeys;
-                self.ssh.notice = Some("Wait for OpenSSH to finish, or cancel it, before closing.".into());
+                self.ssh.notice = Some(tr("Wait for OpenSSH to finish, or cancel it, before closing.").into());
             } else {
                 self.dialog = None;
                 self.preferences.started = None;
@@ -1042,9 +1051,9 @@ impl Rocket {
     fn preferences_nav(&mut self, ui: &mut Ui, rail: bool) {
         ui.spacing_mut().item_spacing.y = 2.0;
         if !rail {
-            ui.label(RichText::new("Preferences").font(semibold(15.0)));
+            ui.label(RichText::new(tr("Preferences")).font(semibold(15.0)));
             ui.add_space(8.0);
-            let search = search_field(ui, &mut self.preferences.search, "Search settings", ui.available_width());
+            let search = search_field(ui, &mut self.preferences.search, tr("Search settings"), ui.available_width());
             pages::control(&mut self.frame_widgets, "pref-search", &search, ui.clip_rect());
             ui.add_space(4.0);
         }
@@ -1121,7 +1130,7 @@ impl Rocket {
                 }
                 if visible.is_empty() && !rail {
                     ui.add_space(6.0);
-                    ui.label(RichText::new("No settings match.").size(12.0).color(HINT()));
+                    ui.label(RichText::new(tr("No settings match.")).size(12.0).color(HINT()));
                 }
             });
     }
@@ -1130,36 +1139,40 @@ impl Rocket {
     fn general_page(&mut self, ui: &mut Ui) -> bool {
         let widgets = &mut self.frame_widgets;
         card_frame(ui, |ui| {
-            card_header(ui, "Window", |_| {});
-            bar_switch_row(ui, widgets, "pref-sidebar", &mut self.show_sidebar, "Show sidebar", "", "Ctrl+B");
+            card_header(ui, tr("Window"), |_| {});
+            if crate::i18n::offered().len() > 1 {
+                crate::general::language_row(ui, widgets, &mut self.language);
+                divider(ui);
+            }
+            bar_switch_row(ui, widgets, "pref-sidebar", &mut self.show_sidebar, tr("Show sidebar"), "", "Ctrl+B");
             divider(ui);
             bar_switch_row(
                 ui,
                 widgets,
                 "pref-repository-list",
                 &mut self.repository_list,
-                "List open repositories in the sidebar",
-                "Instead of tabs across the top",
+                tr("List open repositories in the sidebar"),
+                tr("Instead of tabs across the top"),
                 "",
             );
             divider(ui);
-            bar_switch_row(ui, widgets, "pref-details", &mut self.show_details, "Show commit details", "", "");
+            bar_switch_row(ui, widgets, "pref-details", &mut self.show_details, tr("Show commit details"), "", "");
             divider(ui);
-            let r = bar_switch_row(ui, widgets, "pref-console", &mut self.show_console, "Show the Activity drawer", "", "Ctrl+`");
+            let r = bar_switch_row(ui, widgets, "pref-console", &mut self.show_console, tr("Show the Activity drawer"), "", "Ctrl+`");
             // Turning it on asks for Activity: the whole drawer, not a collapsed strip.
             if r.changed() && self.show_console {
                 self.drawer_collapsed = false;
             }
         });
         card_frame(ui, |ui| {
-            card_header(ui, "Updates", |_| {});
+            card_header(ui, tr("Updates"), |_| {});
             bar_switch_row(
                 ui,
                 widgets,
                 "pref-auto-refresh",
                 &mut self.auto_refresh,
-                "Refresh local changes automatically",
-                "Picks up edits made outside Rocket",
+                tr("Refresh local changes automatically"),
+                tr("Picks up edits made outside Rocket"),
                 "",
             );
             divider(ui);
@@ -1176,37 +1189,37 @@ impl Rocket {
     fn commit_page(&mut self, ui: &mut Ui) -> bool {
         if crate::spell::Spelling::supported() {
             let hint = if !self.spell_check {
-                "Uses the Windows spell checker.".to_owned()
+                tr("Uses the Windows spell checker.").to_owned()
             } else {
                 match (&self.spelling.problem, self.spelling.language()) {
-                    (Some(problem), _) => format!("Off: {problem}"),
-                    (None, Some(language)) => format!("Windows spell checker · {language}"),
-                    (None, None) => "Starting the spell checker…".to_owned(),
+                    (Some(problem), _) => trf!("Off: {problem}", problem),
+                    (None, Some(language)) => trf!("Windows spell checker · {language}", language),
+                    (None, None) => tr("Starting the spell checker…").to_owned(),
                 }
             };
             let widgets = &mut self.frame_widgets;
             let spell_check = &mut self.spell_check;
-            card(ui, "Spelling", |ui| {
-                switch_row(ui, widgets, "pref-spell-check", spell_check, "Check spelling as you type", &hint, "");
+            card(ui, tr("Spelling"), |ui| {
+                switch_row(ui, widgets, "pref-spell-check", spell_check, tr("Check spelling as you type"), &hint, "");
             });
         }
         let widgets = &mut self.frame_widgets;
         let drafting = &mut self.drafting;
-        card(ui, "AI drafts", |ui| crate::commit_draft::preferences(ui, drafting, widgets))
+        card(ui, tr("AI drafts"), |ui| crate::commit_draft::preferences(ui, drafting, widgets))
     }
 
     fn storage_page(&mut self, ui: &mut Ui, intents: &mut Vec<Intent>) {
         let rows = [
             (
-                "Diagnostic logs",
+                tr("Diagnostic logs"),
                 self.log_path.clone(),
-                "Five files of up to 1 MiB; the oldest records go first.",
+                tr("Five files of up to 1 MiB; the oldest records go first."),
                 "logs",
             ),
             (
-                "Saved state",
+                tr("Saved state"),
                 self.state_directory.clone(),
-                "Window layout, recent repositories and these preferences.",
+                tr("Window layout, recent repositories and these preferences."),
                 "state",
             ),
         ];
@@ -1227,12 +1240,12 @@ impl Rocket {
                             ui.label(RichText::new(*hint).size(12.0).color(HINT()));
                         });
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let show = pages::tool(ui, Icon::Folder, "Show in Explorer", true);
+                            let show = pages::tool(ui, Icon::Folder, tr("Show in Explorer"), true);
                             pages::control(widgets, format!("pref-show-{key}"), &show, ui.clip_rect());
                             if show.clicked() {
                                 intents.push(Intent::ShowFolder(path.clone()));
                             }
-                            let copy = pages::tool(ui, Icon::Copy, "Copy path", true);
+                            let copy = pages::tool(ui, Icon::Copy, tr("Copy path"), true);
                             pages::control(widgets, format!("pref-copy-{key}"), &copy, ui.clip_rect());
                             if copy.clicked() {
                                 ui.ctx().copy_text(path.display().to_string());

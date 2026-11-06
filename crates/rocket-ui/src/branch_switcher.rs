@@ -5,6 +5,7 @@
 use crate::{
     app::{DialogKind, Intent, Tab, UiControl, View},
     backend::Action,
+    i18n::{tr, trf},
     pages,
     style::*,
 };
@@ -192,7 +193,7 @@ pub(crate) fn popup(
             });
             ui.spacing_mut().item_spacing.y = 2.0;
             let width = ui.available_width();
-            let field = pages::search_box(ui, &mut state.filter, "branch-switch-filter", "Find a branch", width);
+            let field = pages::search_box(ui, &mut state.filter, "branch-switch-filter", tr("Find a branch"), width);
             pages::control(widgets, "branch-switch-filter", &field, ui.clip_rect());
             if opening {
                 field.request_focus();
@@ -262,7 +263,7 @@ pub(crate) fn popup(
                         None => {}
                     }
                     if !list.local.is_empty() {
-                        group(ui, &format!("LOCAL · {}", list.local.len()));
+                        group(ui, &format!("{} · {}", tr("LOCAL"), list.local.len()));
                         for row in list.local.iter().take(SHOWN) {
                             row_ui(ui, row, widgets, &mut chosen, &mut state.highlight);
                         }
@@ -270,7 +271,7 @@ pub(crate) fn popup(
                     }
                     if typing {
                         if !list.remote.is_empty() {
-                            group(ui, &format!("REMOTE · {}", list.remote.len()));
+                            group(ui, &format!("{} · {}", tr("REMOTE"), list.remote.len()));
                         }
                     } else if list.remote_total > 0 {
                         let r = fold_row(ui, list.remote_total, state.remote_open);
@@ -286,7 +287,7 @@ pub(crate) fn popup(
                     if typing && rows.is_empty() {
                         ui.add_space(6.0);
                         ui.label(
-                            RichText::new(format!("No branch matches “{}”.", state.filter.trim()))
+                            RichText::new(trf!("No branch matches “{filter}”.", filter = state.filter.trim()))
                                 .size(12.5)
                                 .color(FAINT()),
                         );
@@ -299,9 +300,9 @@ pub(crate) fn popup(
                 field.request_focus();
             }
             let hint = match rows.get(state.highlight).map(|r| &r.pick) {
-                _ if !typing => "↑ ↓ Enter",
-                Some(Pick::Track { .. }) => "Enter reviews",
-                Some(Pick::Switch(_)) => "Enter switches",
+                _ if !typing => tr("↑ ↓ Enter"),
+                Some(Pick::Track { .. }) => tr("Enter reviews"),
+                Some(Pick::Switch(_)) => tr("Enter switches"),
                 _ => "",
             };
             footer(ui, writable, hint, intents, widgets);
@@ -358,9 +359,9 @@ fn draw_row(ui: &mut Ui, row: &Row, on: bool, enabled: bool) -> Response {
     let detail = match (&row.pick, row.branch.kind) {
         (_, BranchKind::Local) if current => String::new(),
         (_, BranchKind::Local) => row.branch.committed.map(crate::tags::age).unwrap_or_default(),
-        (Pick::Track { .. }, _) => "Check out as local".into(),
+        (Pick::Track { .. }, _) => tr("Check out as local").into(),
         (Pick::Switch(_), _) => "tracked".into(),
-        (Pick::Stay, _) => "checked out".into(),
+        (Pick::Stay, _) => tr("checked out").into(),
     };
     if current {
         right = tag(&painter, right, y, "current") - 8.0;
@@ -439,7 +440,7 @@ fn group(ui: &mut Ui, title: &str) {
 fn more(ui: &mut Ui, total: usize) {
     if total > SHOWN {
         ui.label(
-            RichText::new(format!("{} more; type to narrow the list.", total - SHOWN))
+            RichText::new(trf!("{n} more; type to narrow the list.", n = total - SHOWN))
                 .size(12.0)
                 .color(FAINT()),
         );
@@ -455,7 +456,7 @@ fn fold_row(ui: &mut Ui, count: usize, open: bool) -> Response {
     }
     let chevron = if open { Icon::Chevron } else { Icon::ChevronRight };
     icon(&painter, Rect::from_center_size(pos2(rect.left() + 15.0, rect.center().y), vec2(12.0, 12.0)), chevron, MUTED());
-    let label = format!("Remote branches · {count}");
+    let label = format!("{} · {count}", tr("Remote branches"));
     painter.text(pos2(rect.left() + 30.0, rect.center().y), Align2::LEFT_CENTER, &label, FontId::proportional(13.0), MUTED());
     response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
     response
@@ -473,14 +474,14 @@ fn footer(ui: &mut Ui, writable: bool, hint: &str, intents: &mut Vec<Intent>, wi
         // Menus draw idle buttons without a frame; this one keeps its frame, as on the board.
         let new = ui.add_enabled(
             writable,
-            Button::new("New branch").fill(RAISED()).stroke(Stroke::new(1.0, BORDER())).min_size(vec2(0.0, 28.0)),
+            Button::new(tr("New branch")).fill(RAISED()).stroke(Stroke::new(1.0, BORDER())).min_size(vec2(0.0, 28.0)),
         );
         pages::control(widgets, "branch-switch-new", &new, ui.clip_rect());
         if new.clicked() {
             intents.push(Intent::Dialog(DialogKind::NewBranch));
             ui.close();
         }
-        let manage = ui.add(Button::new(RichText::new("Manage branches").color(MUTED())).frame(false).min_size(vec2(0.0, 28.0)));
+        let manage = ui.add(Button::new(RichText::new(tr("Manage branches")).color(MUTED())).frame(false).min_size(vec2(0.0, 28.0)));
         pages::control(widgets, "branch-switch-manage", &manage, ui.clip_rect());
         if manage.clicked() {
             intents.push(Intent::View(View::Branches));

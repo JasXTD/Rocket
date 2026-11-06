@@ -7,7 +7,7 @@ mod push_tests;
 pub mod scan;
 mod setup;
 mod setup_page;
-use crate::{app::Rocket, pages, style::*};
+use crate::{app::Rocket, i18n::{tr, trf}, pages, style::*};
 use eframe::egui::*;
 use rocket_git::{Error, ReadTask};
 use std::{
@@ -264,15 +264,15 @@ impl Rocket {
         let summary = self.dependencies.summary(owner);
         let count = summary["findings"].as_u64().unwrap_or(0);
         let text = if self.dependencies.running() {
-            "Dependencies: checking".into()
+            tr("Dependencies: checking").into()
         } else if !self.dependencies.setup.ready {
-            "Dependencies: setup required".into()
+            tr("Dependencies: setup required").into()
         } else if summary["status"] != "scanned" {
-            "Dependencies: not scanned".into()
+            tr("Dependencies: not scanned").into()
         } else if count > 0 {
-            format!("Dependencies: {count} warnings")
+            trf!("Dependencies: {count} warnings", count)
         } else {
-            "Dependencies".into()
+            tr("Dependencies").into()
         };
         let color = if count > 0
             || summary["status"] == "incomplete"

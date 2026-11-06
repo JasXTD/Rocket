@@ -835,6 +835,9 @@ pub struct Rocket {
     /// Persisted: the commit message area's height after its handle was dragged;
     /// None follows the message's length.
     pub commit_height: Option<f32>,
+    /// Persisted: the interface language picked on Preferences → General; None matches
+    /// the system's. [`Rocket::update_language`] shows it.
+    pub language: Option<crate::i18n::Language>,
     /// Persisted: the theme chosen in Preferences → Appearance.
     pub theme: crate::theme::Settings,
     /// The Custom theme's picture behind the main window's panes.
@@ -979,6 +982,7 @@ impl Rocket {
             show_details: true,
             row_height: 33.0,
             commit_height: None,
+            language: None,
             theme: Default::default(),
             backdrop: Default::default(),
             look: None,
@@ -2483,6 +2487,7 @@ impl Rocket {
                             self.previous_auto_refresh = p.auto_refresh;
                             self.row_height = p.row_height;
                             self.commit_height = p.commit_height;
+                            self.language = p.language;
                             self.theme = p.theme.clone();
                             self.sidebar_labels = p.sidebar_labels;
                             self.repository_list = p.repository_list;
@@ -3075,6 +3080,7 @@ impl Rocket {
             general: self.general.clone(),
             shell: self.terminal_shell.saved.clone(),
             commit_height: self.commit_height,
+            language: self.language,
         };
         let mut changed = self.saved.preferences != preferences
             || self.saved.recent != self.recent
@@ -3250,6 +3256,7 @@ impl eframe::App for Rocket {
         );
         self.activity_history.poll(directory, ctx);
         self.update_theme(ctx);
+        self.update_language(ctx);
     }
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();

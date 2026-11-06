@@ -4,6 +4,7 @@
 use crate::{
     app::{Rocket, UiControl},
     backend::{Outcome, user_error},
+    i18n::{Language, tr},
     pages,
     preferences::{bar_switch_row, card_frame, card_header, choices, divider, status_line, text_row},
     repository_forms::Status,
@@ -170,6 +171,24 @@ fn field(ui: &mut Ui, label: &str, content: impl FnOnce(&mut Ui)) {
     ui.add_space(4.0);
 }
 
+/// Language: Match Windows, or one of the languages offered, each by its own name so
+/// anyone finds theirs. Preferences shows it once a language besides English is offered.
+pub(crate) fn language_row(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, choice: &mut Option<Language>) {
+    let system = if cfg!(windows) { tr("Match Windows") } else { tr("Match system") };
+    let mut options: Vec<(Option<Language>, &str, &str)> = vec![(None, "system", system)];
+    for language in crate::i18n::offered() {
+        let id = if *language == Language::ChineseSimplified { "zh-hans" } else { language.tag() };
+        options.push((Some(*language), id, language.name()));
+    }
+    field(ui, tr("Language"), |ui| {
+        ui.spacing_mut().item_spacing.x = 14.0;
+        segmented(ui, widgets, "pref-language", choice, &options);
+        if choice.is_none() {
+            ui.label(RichText::new(format!("→ {}", crate::i18n::system().name())).size(12.0).color(HINT()));
+        }
+    });
+}
+
 /// One segmented row: `picked` is the option clicked.
 fn segmented<T: Copy + PartialEq>(
     ui: &mut Ui,
@@ -186,6 +205,18 @@ fn segmented<T: Copy + PartialEq>(
 }
 
 impl Rocket {
+    /// Shows the language Preferences picked, or the system's. A change applies from the
+    /// next frame in every window; messages already shown keep the language they had.
+    pub(crate) fn update_language(&mut self, ctx: &Context) {
+        let wanted = crate::i18n::resolve(self.language);
+        if wanted != crate::i18n::current() {
+            crate::i18n::set(wanted);
+            // Han characters take the new language's forms.
+            ctx.set_fonts(crate::fonts::definitions());
+            ctx.request_repaint();
+        }
+    }
+
     /// The page opened: its field shows the saved folder, checked afresh.
     pub(crate) fn start_general_page(&mut self) {
         self.preferences.source_text = self
@@ -217,16 +248,16 @@ impl Rocket {
     pub(crate) fn general_cards(&mut self, ui: &mut Ui) -> bool {
         let mut browse = false;
         card_frame(ui, |ui| {
-            card_header(ui, "Repositories", |_| {});
+            card_header(ui, tr("Repositories"), |_| {});
             browse = self.source_row(ui);
             divider(ui);
             let widgets = &mut self.frame_widgets;
             let general = &mut self.general;
-            field(ui, "Tags in fetch", |ui| {
+            field(ui, tr("Tags in fetch"), |ui| {
                 segmented(ui, widgets, "pref-fetch-tags", &mut general.fetch_tags, &TAGS);
             });
             divider(ui);
-            field(ui, "Space in branch names", |ui| {
+            field(ui, tr("Space in branch names"), |ui| {
                 ui.spacing_mut().item_spacing.x = 14.0;
                 segmented(ui, widgets, "pref-branch-space", &mut general.branch_space, &SPACES);
                 let mut example = "fix login".to_owned();
@@ -236,12 +267,12 @@ impl Rocket {
                 }
             });
             divider(ui);
-            bar_switch_row(ui, widgets, "pref-submodules-on-checkout", &mut general.submodules_on_checkout, "Update submodules on checkout", "", "");
+            bar_switch_row(ui, widgets, "pref-submodules-on-checkout", &mut general.submodules_on_checkout, tr("Update submodules on checkout"), "", "");
             divider(ui);
-            bar_switch_row(ui, widgets, "pref-push-after-commit", &mut general.push_after_commit, "Push after commit", "", "");
+            bar_switch_row(ui, widgets, "pref-push-after-commit", &mut general.push_after_commit, tr("Push after commit"), "", "");
         });
         card_frame(ui, |ui| {
-            card_header(ui, "Diff view", |_| {});
+            card_header(ui, tr("Diff view"), |_| {});
             let general = &mut self.general;
             Frame::new().inner_margin(Margin::symmetric(14, 12)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -252,7 +283,7 @@ impl Rocket {
             });
             divider(ui);
             let widgets = &mut self.frame_widgets;
-            field(ui, "Font size", |ui| {
+            field(ui, tr("Font size"), |ui| {
                 let labels = DIFF_FONTS.map(|size| size.to_string());
                 let ids = DIFF_FONTS.map(|size| size.to_string());
                 let options: Vec<(u8, &str, &str)> = DIFF_FONTS
@@ -263,12 +294,12 @@ impl Rocket {
                 segmented(ui, widgets, "pref-diff-font", &mut general.diff_font, &options);
             });
             divider(ui);
-            bar_switch_row(ui, widgets, "pref-diff-marks", &mut general.diff_marks, "Show − and + marks", "", "");
+            bar_switch_row(ui, widgets, "pref-diff-marks", &mut general.diff_marks, tr("Show − and + marks"), "", "");
             divider(ui);
-            bar_switch_row(ui, widgets, "pref-diff-syntax", &mut general.diff_syntax, "Syntax highlighting", "", "");
+            bar_switch_row(ui, widgets, "pref-diff-syntax", &mut general.diff_syntax, tr("Syntax highlighting"), "", "");
         });
         card_frame(ui, |ui| {
-            card_header(ui, "Commit list", |_| {});
+            card_header(ui, tr("Commit list"), |_| {});
             let general = &mut self.general;
             Frame::new().inner_margin(Margin::symmetric(14, 12)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -276,7 +307,7 @@ impl Rocket {
             });
             divider(ui);
             let widgets = &mut self.frame_widgets;
-            bar_switch_row(ui, widgets, "pref-compact-labels", &mut general.compact_labels, "Compact branch labels", "", "");
+            bar_switch_row(ui, widgets, "pref-compact-labels", &mut general.compact_labels, tr("Compact branch labels"), "", "");
         });
         browse
     }
@@ -292,13 +323,13 @@ impl Rocket {
         let check = &mut self.preferences.source_check;
         let general = &mut self.general;
         let mut problem: Option<String> = None;
-        field(ui, "Source code folder", |ui| {
+        field(ui, tr("Source code folder"), |ui| {
             let width = (ui.available_width() - 86.0 - ui.spacing().item_spacing.x).max(80.0);
             let set = !text.is_empty();
             let r = ui.add_sized(
                 [width, CONTROL],
                 TextEdit::singleline(text)
-                    .hint_text(RichText::new("Next to the latest repository").font(FontId::proportional(13.0)).color(FAINT()))
+                    .hint_text(RichText::new(tr("Next to the latest repository")).font(FontId::proportional(13.0)).color(FAINT()))
                     .font(FontId::monospace(12.0))
                     .vertical_align(Align::Center)
                     .margin(Margin { left: 8, right: if set { 52 } else { 8 }, top: 2, bottom: 2 }),
@@ -318,11 +349,11 @@ impl Rocket {
             problem = if typed.is_empty() {
                 None
             } else if !full {
-                Some("Enter a full path, such as C:\\Code.".into())
+                Some(tr("Enter a full path, such as C:\\Code.").into())
             } else {
                 match status {
-                    Some(Status::MissingParent) => Some("Folder not found. Clone starts next to the latest repository.".into()),
-                    Some(Status::Exists) => Some("This is a file. Clone starts next to the latest repository.".into()),
+                    Some(Status::MissingParent) => Some(tr("Folder not found. Clone starts next to the latest repository.").into()),
+                    Some(Status::Exists) => Some(tr("This is a file. Clone starts next to the latest repository.").into()),
                     Some(Status::Refused(reason)) => Some(reason),
                     _ => None,
                 }
@@ -336,11 +367,11 @@ impl Rocket {
                 let spot = Rect::from_center_size(pos2(r.rect.right() - 14.0, r.rect.center().y), vec2(CLEAR, CLEAR));
                 let mut over = ui.new_child(UiBuilder::new().max_rect(spot));
                 let close = crate::chrome::icon_button(&mut over, Icon::Close, true, false, CLEAR)
-                    .on_hover_text("Clear the folder");
+                    .on_hover_text(tr("Clear the folder"));
                 pages::control(widgets, "pref-source-clear", &close, ui.clip_rect());
                 clear = close.clicked();
             }
-            let r = ui.add_sized([86.0, CONTROL], Button::new("Browse"));
+            let r = ui.add_sized([86.0, CONTROL], Button::new(tr("Browse")));
             pages::control(widgets, "pref-source-browse", &r, ui.clip_rect());
             browse = r.clicked();
         });

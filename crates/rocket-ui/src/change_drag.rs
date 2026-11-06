@@ -3,6 +3,7 @@
 use crate::{
     app::{Intent, Tab, UiControl, View},
     backend::Action,
+    i18n::{tr, trn},
     style::*,
 };
 use eframe::egui::*;
@@ -113,10 +114,10 @@ impl Payload {
         writable: bool,
     ) -> Result<Vec<RepoPath>, &'static str> {
         if !writable || self.tab != tab.id || tab.view != View::Changes {
-            return Err("Drop cancelled: this repository is busy or the active view changed.");
+            return Err(tr("Drop cancelled: this repository is busy or the active view changed."));
         }
         if self.staged == target_staged || self.entries.is_empty() {
-            return Err("Drop onto the opposite group to stage or unstage files.");
+            return Err(tr("Drop onto the opposite group to stage or unstage files."));
         }
         let current: HashMap<_, _> = status.entries.iter().map(|e| (&e.path, e)).collect();
         if self.refresh != tab.refresh_count
@@ -126,7 +127,7 @@ impl Payload {
             })
         {
             return Err(
-                "Repository changes were refreshed during the drag. Nothing was queued; select the files and drag again.",
+                tr("Repository changes were refreshed during the drag. Nothing was queued; select the files and drag again."),
             );
         }
         Ok(literal_paths(&self.entries))
@@ -201,12 +202,11 @@ pub(crate) fn source(
         && let Some(payload) = DragAndDrop::payload::<Payload>(ui.ctx())
         && let Some(pos) = ui.ctx().pointer_latest_pos()
     {
-        let label = format!(
-            "{} file{} · drop to {}",
-            payload.entries.len(),
-            if payload.entries.len() == 1 { "" } else { "s" },
-            if staged { "unstage" } else { "stage" }
-        );
+        let label = if staged {
+            trn!(payload.entries.len(), "{n} file · drop to unstage", "{n} files · drop to unstage")
+        } else {
+            trn!(payload.entries.len(), "{n} file · drop to stage", "{n} files · drop to stage")
+        };
         let painter = ui
             .ctx()
             .layer_painter(LayerId::new(Order::Tooltip, Id::new("stage-drag-label")));

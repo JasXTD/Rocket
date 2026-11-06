@@ -8,6 +8,26 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Interface languages (groundwork)
+
+- Rocket can show its interface in Simplified Chinese and Japanese. For now that covers
+  the menus, sidebar, toolbar, status bar, Changes, Commits, Branches, Remotes, the diff
+  view and Preferences → General and Appearance; the rest stays English until it is
+  translated. Until then the languages are a preview: start Rocket with
+  `ROCKET_LANG=zh-Hans` or `ROCKET_LANG=ja`, and Preferences → General gains a Language
+  row (Match Windows, English, 简体中文, 日本語) that switches at once.
+- Once released, Rocket follows the Windows display language: Chinese (China, Singapore)
+  shows 简体中文, Japanese shows 日本語, and Traditional Chinese and every other language
+  show English. On Linux the locale variables decide.
+- Chinese and Japanese draw the same characters in different forms. A Japanese interface
+  now puts Yu Gothic UI before Microsoft YaHei, and so does an English one on a Windows
+  whose languages list Japanese before Chinese, so commit messages and file names in
+  Japanese read in Japanese forms. Japanese text now uses Yu Gothic UI, the face Windows
+  pairs with Segoe UI, instead of Yu Gothic, whose kana sat apart and above the line.
+- Git's own output, repository content, shortcut names, logs and the MCP and command-line
+  interfaces stay English. Saved state gains version 27, written only once a language is
+  picked; older builds refuse that state, as with other new settings.
+
 ## Unreleased — Linux everyday Git (preview)
 
 - New repository, Clone, new and moved worktrees, the conflict editor's Save and Keep,

@@ -1,6 +1,7 @@
 use crate::{
     app::*,
     backend::Action,
+    i18n::{tr, trf, trn},
     pages::{self, Side},
     patch_view::patch_view,
     style::{self, *},
@@ -25,15 +26,15 @@ impl Rocket {
                     ui.vertical(|ui| {
                         ui.set_width(width);
                         ui.spacing_mut().item_spacing.y = 4.0;
-                        ui.label(RichText::new("Open a repository").font(semibold(22.0)));
+                        ui.label(RichText::new(tr("Open a repository")).font(semibold(22.0)));
                         ui.label(
                             RichText::new(
-                                "Each repository opens in its own tab. Nothing changes until you act.",
+                                tr("Each repository opens in its own tab. Nothing changes until you act."),
                             )
                             .color(MUTED()),
                         );
                         ui.add_space(18.0);
-                        let guided = ui.button("New to Rocket? Setup Guide");
+                        let guided = ui.button(tr("New to Rocket? Setup Guide"));
                         pages::control(&mut self.frame_widgets, "welcome-setup", &guided, ui.clip_rect());
                         if guided.clicked() { intents.push(Intent::GuidedSetup); }
                         ui.add_space(10.0);
@@ -44,8 +45,8 @@ impl Rocket {
                             for (image, title, detail, shortcut, key, enabled, kind) in [
                                 (
                                     Icon::Folder,
-                                    "Open folder",
-                                    "Existing repository",
+                                    tr("Open folder"),
+                                    tr("Existing repository"),
                                     "Ctrl+O",
                                     "open",
                                     ready,
@@ -53,8 +54,8 @@ impl Rocket {
                                 ),
                                 (
                                     Icon::Fetch,
-                                    "Clone",
-                                    "From a URL or path",
+                                    tr("Clone"),
+                                    tr("From a URL or path"),
                                     "Ctrl+Shift+O",
                                     "repository-clone-welcome",
                                     ready,
@@ -62,8 +63,8 @@ impl Rocket {
                                 ),
                                 (
                                     Icon::Plus,
-                                    "New repository",
-                                    "Start tracking a project",
+                                    tr("New repository"),
+                                    tr("Start tracking a project"),
                                     "Ctrl+N",
                                     "repository-new-welcome",
                                     ready && self.write.is_none(),
@@ -78,13 +79,13 @@ impl Rocket {
                             }
                         });
                         ui.add_space(16.0);
-                        pages::caption(ui, "Explore");
+                        pages::caption(ui, tr("Explore"));
                         ui.add_space(4.0);
                         // Enter opens Explore with this search or address.
                         let explore = ui.add_enabled(
                             ready,
                             TextEdit::singleline(&mut self.explore.query)
-                                .hint_text("Search GitHub or paste a repository address")
+                                .hint_text(tr("Search GitHub or paste a repository address"))
                                 .desired_width(width)
                                 .margin(Margin::symmetric(10, 7)),
                         );
@@ -113,9 +114,9 @@ impl Rocket {
                             zone.center(),
                             Align2::CENTER_CENTER,
                             if dropping {
-                                "Release to open this folder"
+                                tr("Release to open this folder")
                             } else {
-                                "or drop a repository folder anywhere in this window"
+                                tr("or drop a repository folder anywhere in this window")
                             },
                             FontId::proportional(12.5),
                             if dropping { BLUE() } else { FAINT() },
@@ -123,10 +124,10 @@ impl Rocket {
                         if !self.recent.is_empty() {
                             ui.add_space(22.0);
                             ui.horizontal(|ui| {
-                                pages::caption(ui, "Recent");
+                                pages::caption(ui, tr("Recent"));
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                     ui.label(
-                                        RichText::new("Click to open").size(11.5).color(FAINT()),
+                                        RichText::new(tr("Click to open")).size(11.5).color(FAINT()),
                                     );
                                 });
                             });
@@ -149,7 +150,7 @@ impl Rocket {
                         if let Some(error) = &self.startup_error {
                             pages::callout(ui, RED(), error);
                             ui.add_space(4.0);
-                            let retry = ui.button("Retry Git discovery");
+                            let retry = ui.button(tr("Retry Git discovery"));
                             pages::control(
                                 &mut self.frame_widgets,
                                 "welcome-git-retry",
@@ -169,7 +170,7 @@ impl Rocket {
                                     .strip_prefix("git version ")
                                     .unwrap_or(&backend.version);
                                 ui.label(
-                                    RichText::new(format!("Git {version} found"))
+                                    RichText::new(trf!("Git {version} found", version))
                                         .size(12.0)
                                         .color(FAINT()),
                                 )
@@ -178,7 +179,7 @@ impl Rocket {
                         } else {
                             ui.horizontal(|ui| {
                                 ui.spinner();
-                                ui.label(RichText::new("Finding Git…").size(12.0).color(MUTED()));
+                                ui.label(RichText::new(tr("Finding Git…")).size(12.0).color(MUTED()));
                             });
                         }
                     });
@@ -192,15 +193,15 @@ impl Rocket {
     /// Activity's actions in the drawer header, added right to left.
     pub(crate) fn activity_actions(&mut self, ui: &mut Ui) {
         if self.write.is_none() {
-            let clear = pages::tool(ui, Icon::Trash, "Clear", !self.activities.is_empty())
-                .on_hover_text("Clear this list; diagnostics keep the records");
+            let clear = pages::tool(ui, Icon::Trash, tr("Clear"), !self.activities.is_empty())
+                .on_hover_text(tr("Clear this list; diagnostics keep the records"));
             self.frame_widgets
                 .insert("console-clear".into(), (&clear).into());
             if clear.clicked() {
                 self.activities.clear();
             }
         }
-        let history = pages::tool(ui, Icon::External, "All diagnostics", true);
+        let history = pages::tool(ui, Icon::External, tr("All diagnostics"), true);
         self.frame_widgets
             .insert("activity-open".into(), (&history).into());
         if history.clicked() {
@@ -233,7 +234,7 @@ impl Rocket {
                         ui.painter().text(
                             when.left_center(),
                             Align2::LEFT_CENTER,
-                            "now",
+                            tr("now"),
                             FontId::proportional(11.5),
                             HINT(),
                         );
@@ -254,7 +255,7 @@ impl Rocket {
                             }
                             let progress = match write.fraction {
                                 Some(f) => {
-                                    format!("{} · current phase {:.0}%", write.progress, f * 100.0)
+                                    trf!("{progress} · current phase {percent}%", progress = write.progress, percent = format!("{:.0}", f * 100.0))
                                 }
                                 None => write.progress.clone(),
                             };
@@ -300,9 +301,9 @@ impl Rocket {
                         let (rect, _) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::hover());
                         icon(ui.painter(), rect, Icon::Activity, HINT());
                         ui.add_space(6.0);
-                        ui.label(RichText::new("No operations yet").font(semibold(13.0)));
+                        ui.label(RichText::new(tr("No operations yet")).font(semibold(13.0)));
                         ui.label(
-                            RichText::new("Git operations appear here as you run them. F5 refreshes.")
+                            RichText::new(tr("Git operations appear here as you run them. F5 refreshes."))
                                 .size(12.0)
                                 .color(HINT()),
                         );
@@ -388,9 +389,9 @@ fn activity_row(
         let area = Rect::from_center_size(pos2(right - 13.0, rect.center().y), vec2(26.0, 26.0));
         let toggle = ui
             .interact(area, ui.id().with("activity-toggle"), Sense::click())
-            .on_hover_text(if open { "Hide details" } else { "Details" });
+            .on_hover_text(if open { tr("Hide details") } else { tr("Details") });
         toggle.widget_info(|| {
-            WidgetInfo::selected(WidgetType::Button, true, open, if open { "Hide details" } else { "Details" })
+            WidgetInfo::selected(WidgetType::Button, true, open, if open { tr("Hide details") } else { tr("Details") })
         });
         if toggle.hovered() || toggle.has_focus() {
             ui.painter().rect(
@@ -490,7 +491,7 @@ fn activity_row(
                         if let Some(path) = &outcome.retained_workspace {
                             ui.add(
                                 Label::new(
-                                    RichText::new(format!("Temporary workspace: {}", path.display()))
+                                    RichText::new(trf!("Temporary workspace: {path}", path = path.display()))
                                         .size(12.5)
                                         .color(MUTED()),
                                 )
@@ -502,17 +503,17 @@ fn activity_row(
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
                             if !outcome.raw_output.is_empty() {
-                                let label = if raw { "Hide Git output" } else { "Show Git output" };
+                                let label = if raw { tr("Hide Git output") } else { tr("Show Git output") };
                                 let r = pages::tool(ui, Icon::Eye, label, true)
-                                    .on_hover_text("Local Git output; it may contain private repository data");
+                                    .on_hover_text(tr("Local Git output; it may contain private repository data"));
                                 pages::control(widgets, format!("console-output-{index}"), &r, ui.clip_rect());
                                 if r.clicked() {
                                     raw = !raw;
                                     ui.data_mut(|d| d.insert_temp(raw_fold, raw));
                                 }
                             }
-                            let copy = pages::tool(ui, Icon::Copy, "Copy details", true)
-                                .on_hover_text("Copies the summary and details, not Git output");
+                            let copy = pages::tool(ui, Icon::Copy, tr("Copy details"), true)
+                                .on_hover_text(tr("Copies the summary and details, not Git output"));
                             pages::control(widgets, format!("console-copy-{index}"), &copy, ui.clip_rect());
                             if copy.clicked() {
                                 let mut text = format!("{name}: {}", outcome.summary);
@@ -521,7 +522,7 @@ fn activity_row(
                                     text.push_str(detail);
                                 }
                                 if let Some(path) = &outcome.retained_workspace {
-                                    text.push_str(&format!("\nTemporary workspace: {}", path.display()));
+                                    text.push_str(&format!("\n{}", trf!("Temporary workspace: {path}", path = path.display())));
                                 }
                                 ui.ctx().copy_text(text);
                             }
@@ -529,7 +530,7 @@ fn activity_row(
                         if raw && !outcome.raw_output.is_empty() {
                             ui.add_space(4.0);
                             ui.label(
-                                RichText::new("Local Git output. It may contain private repository data.")
+                                RichText::new(tr("Local Git output. It may contain private repository data."))
                                     .size(12.0)
                                     .color(HINT()),
                             );
@@ -755,14 +756,14 @@ pub(crate) fn commits(
     let width = ui.available_width();
     let searching = !tab.search.trim().is_empty();
     let found = tab.commits().len();
-    let noun = if found == 1 { "commit" } else { "commits" };
     let state = &tab.search_state;
     let count = if searching && state.stopped {
-        format!("Stopped · {} commits checked", pages::number_text(state.scanned))
+        trf!("Stopped · {checked} commits checked", checked = pages::number_text(state.scanned))
     } else if searching && !state.complete && !state.scanning() && state.error.is_none() {
-        format!("{} {noun} · {} checked", pages::number_text(found), pages::number_text(state.scanned))
+        trn!(found, "{found} commit · {checked} checked", "{found} commits · {checked} checked",
+            found = pages::number_text(found), checked = pages::number_text(state.scanned))
     } else {
-        format!("{} {noun}", pages::number_text(found))
+        trn!(found, "{found} commit", "{found} commits", found = pages::number_text(found))
     };
     let more = if searching {
         !tab.search_state.complete
@@ -780,11 +781,11 @@ pub(crate) fn commits(
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 let label = if tab.history_all {
-                    "All branches".into()
+                    tr("All branches").into()
                 } else {
                     tab.history_ref
                         .as_ref()
-                        .map_or_else(|| "Current branch".into(), |s| short_ref(s.as_bytes()))
+                        .map_or_else(|| tr("Current branch").into(), |s| short_ref(s.as_bytes()))
                 };
                 let scope_width = (width * 0.24).clamp(150.0, 230.0);
                 let selector = ui.add(Button::new("").frame(false).min_size(vec2(scope_width, 30.0)));
@@ -800,7 +801,7 @@ pub(crate) fn commits(
                 ui.painter().text(
                     pos2(rect.left() + 10.0, rect.center().y),
                     Align2::LEFT_CENTER,
-                    "History",
+                    tr("History"),
                     FontId::proportional(12.0),
                     FAINT(),
                 );
@@ -821,16 +822,16 @@ pub(crate) fn commits(
                     FAINT(),
                 );
                 selector.widget_info(|| {
-                    WidgetInfo::labeled(WidgetType::Button, true, format!("History: {label}"))
+                    WidgetInfo::labeled(WidgetType::Button, true, trf!("History: {label}", label))
                 });
                 Popup::menu(&selector).show(|ui| {
-                    let head = ui.button("Current branch (HEAD)");
+                    let head = ui.button(tr("Current branch (HEAD)"));
                     widgets.insert("history-head".into(), (&head).into());
                     if head.clicked() {
                         intents.push(Intent::History(None));
                         ui.close();
                     }
-                    let all = ui.button("All branches");
+                    let all = ui.button(tr("All branches"));
                     widgets.insert("history-all".into(), (&all).into());
                     if all.clicked() {
                         intents.push(Intent::AllBranches);
@@ -838,7 +839,7 @@ pub(crate) fn commits(
                     }
                     if let Some(snapshot) = &tab.snapshot {
                         ui.separator();
-                        ui.label(RichText::new("ONE BRANCH").size(11.0).color(FAINT()));
+                        ui.label(RichText::new(tr("ONE BRANCH")).size(11.0).color(FAINT()));
                         for (i, branch) in snapshot.branches.iter().enumerate() {
                             if branch.symbolic_target.is_some() {
                                 continue;
@@ -854,16 +855,16 @@ pub(crate) fn commits(
                         }
                     }
                 });
-                let order = ui.button(tab.history_order.label())
-                    .on_hover_text("History order. Parents remain below their children in every order.");
+                let order = ui.button(order_label(tab.history_order))
+                    .on_hover_text(tr("History order. Parents remain below their children in every order."));
                 widgets.insert("history-order".into(), (&order).into());
                 Popup::menu(&order).show(|ui| {
                     for value in [rocket_git::HistoryOrder::Topological, rocket_git::HistoryOrder::CommitDate, rocket_git::HistoryOrder::AuthorDate] {
-                        let row = ui.selectable_label(tab.history_order == value, value.label());
+                        let row = ui.selectable_label(tab.history_order == value, order_label(value));
                         widgets.insert(format!("history-order-{}", value.key()), (&row).into());
                         if row.clicked() { intents.push(Intent::HistoryOrder(value)); ui.close(); }
                     }
-                    ui.label(RichText::new("Parents follow their children.").small().color(FAINT()));
+                    ui.label(RichText::new(tr("Parents follow their children.")).small().color(FAINT()));
                 });
             });
             // Give scope/order their own row. In a wrapping row available_width
@@ -876,16 +877,16 @@ pub(crate) fn commits(
                 search_kind_selector(ui, tab, width, intents, widgets);
                 let (hint, hover) = match tab.search_kind {
                     HistorySearchKind::Text => (
-                        "Search messages, authors, IDs…",
-                        "Search messages, authors, email addresses or commit ID prefixes across the selected history.",
+                        tr("Search messages, authors, IDs…"),
+                        tr("Search messages, authors, email addresses or commit ID prefixes across the selected history."),
                     ),
                     HistorySearchKind::Path => (
-                        "Search changed file paths…",
-                        "Find commits that changed a file whose path contains this text, ignoring case. Renames count as both paths; merges are not included.",
+                        tr("Search changed file paths…"),
+                        tr("Find commits that changed a file whose path contains this text, ignoring case. Renames count as both paths; merges are not included."),
                     ),
                     HistorySearchKind::Content => (
-                        "Search changed code",
-                        "Find commits that add or remove this text (git log -S), or with .* change a line matching it (git log -G). Reads file changes, so it checks 200 commits per step.",
+                        tr("Search changed code"),
+                        tr("Find commits that add or remove this text (git log -S), or with .* change a line matching it (git log -G). Reads file changes, so it checks 200 commits per step."),
                     ),
                 };
                 let search_width = if path_row {
@@ -1020,7 +1021,7 @@ fn commit_peek(
                         });
                     ui.add_space(6.0);
                     ui.label(
-                        RichText::new("Space or Esc closes this popup")
+                        RichText::new(tr("Space or Esc closes this popup"))
                             .size(11.5)
                             .color(FAINT()),
                     );
@@ -1135,45 +1136,51 @@ fn commit_list_keys(
 fn empty_search(tab: &Tab) -> (String, Option<&'static str>) {
     let state = &tab.search_state;
     if state.bad_pattern {
-        return ("Fix the expression, or turn off .* to search for the text as written.".into(), None);
+        return (tr("Fix the expression, or turn off .* to search for the text as written.").into(), None);
     }
     if state.refused {
-        return ("Nothing was searched. Fix the path, or clear it to search everywhere.".into(), None);
+        return (tr("Nothing was searched. Fix the path, or clear it to search everywhere.").into(), None);
     }
     if state.scanning() {
-        return ("Still searching older commits.".into(), None);
+        return (tr("Still searching older commits.").into(), None);
     }
     if state.stopped {
         return (
-            format!("Nothing found in the {} commits checked.", pages::number_text(state.scanned)),
-            Some("Resume continues with older commits."),
+            trf!("Nothing found in the {checked} commits checked.", checked = pages::number_text(state.scanned)),
+            Some(tr("Resume continues with older commits.")),
         );
     }
     if !state.complete {
-        return ("No matches yet. The history search is not complete.".into(), None);
+        return (tr("No matches yet. The history search is not complete.").into(), None);
     }
     if state.kind != HistorySearchKind::Content {
-        return ("No commits match this search in the selected history.".into(), None);
+        return (tr("No commits match this search in the selected history.").into(), None);
     }
     let scope = if tab.history_all {
-        "all branches".to_owned()
+        tr("all branches").to_owned()
     } else {
         tab.history_ref
             .as_ref()
-            .map_or_else(|| "the current branch".into(), |r| short_ref(r.as_bytes()))
+            .map_or_else(|| tr("the current branch").into(), |r| short_ref(r.as_bytes()))
     };
     let under = state
         .content
         .path
         .as_ref()
-        .map(|p| format!(" under {}", crate::tree::path_label(p.as_bytes())))
-        .unwrap_or_default();
+        .map(|p| crate::tree::path_label(p.as_bytes()));
     if state.content.regex {
-        (format!("No commits in {scope} change a line matching this{under}."), None)
+        let text = match &under {
+            Some(path) => trf!("No commits in {scope} change a line matching this under {path}.", scope, path),
+            None => trf!("No commits in {scope} change a line matching this.", scope),
+        };
+        (text, None)
     } else {
         (
-            format!("No commits in {scope} add or remove this text{under}."),
-            Some("Exact text finds a change in how often it appears. Turn on .* to include edited lines."),
+            match &under {
+                Some(path) => trf!("No commits in {scope} add or remove this text under {path}.", scope, path),
+                None => trf!("No commits in {scope} add or remove this text.", scope),
+            },
+            Some(tr("Exact text finds a change in how often it appears. Turn on .* to include edited lines.")),
         )
     }
 }
@@ -1193,21 +1200,21 @@ fn search_status(
     let browse = ui
         .add_enabled(
             tab.selected_commit.is_some(),
-            quiet(Button::new(RichText::new("Browse files").size(12.5))),
+            quiet(Button::new(RichText::new(tr("Browse files")).size(12.5))),
         )
-        .on_hover_text("Browse the repository files at the selected commit");
+        .on_hover_text(tr("Browse the repository files at the selected commit"));
     widgets.insert("commit-browse-files".into(), (&browse).into());
     if browse.clicked() {
         intents.push(Intent::Tree(crate::tree::TreeIntent::OpenSelected));
     }
     if searching && tab.search_state.scanning() {
-        let stop = ui.button("Stop");
+        let stop = ui.button(tr("Stop"));
         widgets.insert("history-stop".into(), (&stop).into());
         if stop.clicked() {
             intents.push(Intent::StopSearch);
         }
         ui.label(
-            RichText::new(format!("{} commits checked", pages::number_text(tab.search_state.scanned)))
+            RichText::new(trf!("{checked} commits checked", checked = pages::number_text(tab.search_state.scanned)))
                 .size(12.0)
                 .color(FAINT()),
         );
@@ -1218,7 +1225,7 @@ fn search_status(
         let resume = searching && tab.search_state.paused;
         let load = ui.add_enabled(
             tab.more.is_none() && !tab.loading(),
-            Button::new(RichText::new(if resume { "Resume" } else { "Load more" }).size(12.5)),
+            Button::new(RichText::new(if resume { tr("Resume") } else { tr("Load more") }).size(12.5)),
         );
         widgets.insert("history-more".into(), (&load).into());
         if load.clicked() {
@@ -1228,12 +1235,12 @@ fn search_status(
     ui.label(RichText::new(count).size(12.0).color(FAINT()))
         .on_hover_text(if searching {
             format!(
-                "{} commits checked{}",
-                pages::number_text(tab.search_state.scanned),
-                if tab.search_state.complete { " · complete" } else { " · more history remains" }
+                "{} · {}",
+                trf!("{checked} commits checked", checked = pages::number_text(tab.search_state.scanned)),
+                if tab.search_state.complete { tr("complete") } else { tr("more history remains") }
             )
         } else {
-            format!("{} order: parents follow their children. All branches combines local and remote-tracking branches, plus HEAD.",tab.history_order.label())
+            trf!("{order} order: parents follow their children. All branches combines local and remote-tracking branches, plus HEAD.", order = order_label(tab.history_order))
         });
 }
 
@@ -1298,13 +1305,13 @@ pub(crate) fn query_field(
                         .desired_width((ui.available_width() - room).max(20.0)),
                 );
                 if let Some((case, regex)) = toggles {
-                    let r = field_toggle(ui, "Aa", *case, "Match case");
+                    let r = field_toggle(ui, "Aa", *case, tr("Match case"));
                     widgets.insert(ids[1].into(), (&r).into());
                     if r.clicked() {
                         *case = !*case;
                         toggled = true;
                     }
-                    let r = field_toggle(ui, ".*", *regex, "Regular expression, as git log -G and git grep -E read it");
+                    let r = field_toggle(ui, ".*", *regex, tr("Regular expression, as git log -G and git grep -E read it"));
                     widgets.insert(ids[2].into(), (&r).into());
                     if r.clicked() {
                         *regex = !*regex;
@@ -1349,15 +1356,15 @@ pub(crate) fn path_field(
                             .frame(Frame::NONE)
                             .char_limit(4096)
                             .min_size(vec2(0.0, 22.0))
-                            .hint_text("In path")
+                            .hint_text(tr("In path"))
                             .desired_width((ui.available_width() - room).max(20.0)),
                     )
-                    .on_hover_text("Only this file or folder, as written in the repository: case matters, \\ reads as /");
+                    .on_hover_text(tr("Only this file or folder, as written in the repository: case matters, \\ reads as /"));
                 widgets.insert(id.into(), (&edit).into());
                 changed |= edit.changed();
                 if !value.is_empty() {
                     let clear = crate::chrome::icon_button(ui, Icon::Close, true, false, 22.0)
-                        .on_hover_text("Clear the path");
+                        .on_hover_text(tr("Clear the path"));
                     widgets.insert(format!("{id}-clear"), (&clear).into());
                     if clear.clicked() {
                         value.clear();
@@ -1379,9 +1386,9 @@ fn search_kind_selector(
     widgets: &mut std::collections::HashMap<String, UiControl>,
 ) {
     let label = match tab.search_kind {
-        HistorySearchKind::Text => "Text",
-        HistorySearchKind::Path => "Path",
-        HistorySearchKind::Content => "Code",
+        HistorySearchKind::Text => tr("Text"),
+        HistorySearchKind::Path => tr("Path"),
+        HistorySearchKind::Content => tr("Code"),
     };
     let selector_width = if width < 900.0 { 86.0 } else { 100.0 };
     let selector = ui.add(
@@ -1415,27 +1422,27 @@ fn search_kind_selector(
         FAINT(),
     );
     selector.widget_info(|| {
-        WidgetInfo::labeled(WidgetType::Button, true, format!("Search in: {label}"))
+        WidgetInfo::labeled(WidgetType::Button, true, trf!("Search in: {label}", label))
     });
-    let selector = selector.on_hover_text("Choose what the commit search looks at");
+    let selector = selector.on_hover_text(tr("Choose what the commit search looks at"));
     Popup::menu(&selector).show(|ui| {
         for (kind, key, text, detail) in [
             (
                 HistorySearchKind::Text,
                 "search-kind-text",
-                "Messages, authors and IDs",
+                tr("Messages, authors and IDs"),
                 "",
             ),
             (
                 HistorySearchKind::Path,
                 "search-kind-path",
-                "Changed file paths",
+                tr("Changed file paths"),
                 "",
             ),
             (
                 HistorySearchKind::Content,
                 "search-kind-content",
-                "Changed code",
+                tr("Changed code"),
                 "   git log -S / -G",
             ),
         ] {
@@ -1446,7 +1453,7 @@ fn search_kind_selector(
             let enabled = !(kind == HistorySearchKind::Content && tab.is_preview());
             let choice = ui
                 .add_enabled(enabled, Button::selectable(tab.search_kind == kind, job))
-                .on_disabled_hover_text("Needs every file version: keep this preview to search changed code");
+                .on_disabled_hover_text(tr("Needs every file version: keep this preview to search changed code"));
             widgets.insert(key.into(), (&choice).into());
             if choice.clicked() {
                 if tab.search_kind != kind {
@@ -1630,12 +1637,12 @@ fn history_table(
     let compact = crate::general::options(ui.ctx()).compact_labels;
     if tab.snapshot.as_ref().is_some_and(|s| s.history.is_none()) {
         Frame::new().inner_margin(14).show(ui, |ui| {
-            ui.colored_label(AMBER(), "History is unavailable. Review the read error above, then refresh or choose another branch.");
+            ui.colored_label(AMBER(), tr("History is unavailable. Review the read error above, then refresh or choose another branch."));
         });
         return;
     }
     if tab.graph.iter().any(|row| row.limited) {
-        ui.colored_label(AMBER(), "Graph simplified: some ancestry exceeds the display limit.");
+        ui.colored_label(AMBER(), tr("Graph simplified: some ancestry exceeds the display limit."));
     }
     let graph_width = (tab.graph.iter().map(|r| r.lane).max().unwrap_or(0) as f32 * 16.0 + 34.0)
         .clamp(72.0, 190.0);
@@ -1654,12 +1661,12 @@ fn history_table(
         Stroke::new(1.0, HAIRLINE()),
     );
     for (x, label) in [
-        (14.0, "GRAPH"),
-        (graph_width + 2.0, "MESSAGE"),
-        (message_end + 8.0, if show_author { "AUTHOR" } else { "" }),
+        (14.0, tr("GRAPH")),
+        (graph_width + 2.0, tr("MESSAGE")),
+        (message_end + 8.0, if show_author { tr("AUTHOR") } else { "" }),
         (
             width - date_width - sha_width + 8.0,
-            if date_width > 0.0 { "DATE" } else { "" },
+            if date_width > 0.0 { tr("DATE") } else { "" },
         ),
         (
             width - sha_width + 8.0,
@@ -1681,7 +1688,7 @@ fn history_table(
         Frame::new().inner_margin(16).show(ui, |ui| {
             if query.is_empty() {
                 ui.label(
-                    RichText::new("No commits yet. Stage files in Changes and create your first commit.")
+                    RichText::new(tr("No commits yet. Stage files in Changes and create your first commit."))
                         .color(MUTED()),
                 );
                 return;
@@ -1851,8 +1858,9 @@ fn history_table(
                     if expand.clicked() {
                         intents.push(Intent::FoldMerge(commit.id.clone(), false));
                     }
-                    expand.on_hover_text(format!(
-                        "{hidden} commits of this merge are hidden. Click, or press → on the row, to show them."
+                    expand.on_hover_text(trf!(
+                        "{hidden} commits of this merge are hidden. Click, or press → on the row, to show them.",
+                        hidden
                     ));
                     x += size.x + 6.0;
                 }
@@ -1944,13 +1952,14 @@ fn history_table(
                     });
                 }
                 response.on_hover_text(format!(
-                    "{}\n{}\nCtrl-click or Shift-click to select several commits{}",
+                    "{}\n{}\n{}{}",
                     subject(commit),
                     commit.id,
+                    tr("Ctrl-click or Shift-click to select several commits"),
                     if commit.parents.len() > 1 && query.is_empty() {
-                        "\n← collapses this merge, → expands it (also in its right-click menu)"
+                        format!("\n{}", tr("← collapses this merge, → expands it (also in its right-click menu)"))
                     } else {
-                        ""
+                        String::new()
                     }
                 ));
             }
@@ -1966,7 +1975,7 @@ fn fold_menu(
     intents: &mut Vec<Intent>,
     widgets: &mut std::collections::HashMap<String, UiControl>,
 ) {
-    let r = ui.add_enabled(tab.selected_commits.len() == 2, Button::new("Compare selected commits"));
+    let r = ui.add_enabled(tab.selected_commits.len() == 2, Button::new(tr("Compare selected commits")));
     pages::control(widgets, "commit-menu-compare", &r, ui.clip_rect());
     if r.clicked() {
         intents.push(Intent::Compare(crate::compare::CompareIntent::Selected));
@@ -1975,14 +1984,14 @@ fn fold_menu(
     // A preview's menu has only what reads; changes come with Keep.
     let preview = tab.is_preview();
     if !preview {
-        let r = ui.button("Export as commit series");
+        let r = ui.button(tr("Export as commit series"));
         pages::control(widgets, "commit-menu-series", &r, ui.clip_rect());
         if r.clicked() {
             intents.push(Intent::ExportSeries(Some(series_range(tab, commit))));
             ui.close();
         }
     }
-    let r = ui.button("Search files at this commit");
+    let r = ui.button(tr("Search files at this commit"));
     pages::control(widgets, "commit-menu-search-files", &r, ui.clip_rect());
     if r.clicked() {
         intents.push(Intent::Tree(crate::tree::TreeIntent::SearchAt(commit.id.clone())));
@@ -1992,17 +2001,22 @@ fn fold_menu(
     // The selection when the row is part of it, otherwise the row.
     let selected = tab.selected_commits.contains(&commit.id) || tab.selected_commit.as_ref() == Some(&commit.id);
     let free = tab.snapshot.as_ref().and_then(|s| s.state.as_ref()).is_some_and(OperationState::is_idle) && !tab.loading();
-    let actions: &[(CommitOperation, &str, &str)] = if preview {
+    let actions: &[(CommitOperation, &str)] = if preview {
         &[]
     } else {
         &[
-            (CommitOperation::CherryPick, "Cherry-pick", "commit-menu-cherry-pick"),
-            (CommitOperation::Revert, "Revert", "commit-menu-revert"),
+            (CommitOperation::CherryPick, "commit-menu-cherry-pick"),
+            (CommitOperation::Revert, "commit-menu-revert"),
         ]
     };
-    for &(operation, word, key) in actions {
+    for &(operation, key) in actions {
         let targets = if selected { tab.commit_targets(operation) } else { vec![commit.id.clone()] };
-        let label = if targets.len() > 1 { format!("{word} {} commits", targets.len()) } else { format!("{word} commit") };
+        let label = match (operation, targets.len()) {
+            (CommitOperation::CherryPick, n @ 2..) => trf!("Cherry-pick {n} commits", n),
+            (CommitOperation::CherryPick, _) => tr("Cherry-pick commit").to_owned(),
+            (_, n @ 2..) => trf!("Revert {n} commits", n),
+            _ => tr("Revert commit").to_owned(),
+        };
         let r = ui.add_enabled(free, Button::new(label));
         pages::control(widgets, key, &r, ui.clip_rect());
         if r.clicked() {
@@ -2016,9 +2030,9 @@ fn fold_menu(
     if commit.parents.len() > 1 {
         let collapsed = tab.folding.collapsed(commit);
         let r = ui.button(if collapsed {
-            "Expand merge"
+            tr("Expand merge")
         } else {
-            "Collapse merge"
+            tr("Collapse merge")
         });
         widgets.insert("commit-menu-fold".into(), (&r).into());
         if r.clicked() {
@@ -2028,8 +2042,8 @@ fn fold_menu(
         ui.separator();
     }
     for (collapse, label, key) in [
-        (true, "Collapse all merges", "commit-menu-collapse-all"),
-        (false, "Expand all merges", "commit-menu-expand-all"),
+        (true, tr("Collapse all merges"), "commit-menu-collapse-all"),
+        (false, tr("Expand all merges"), "commit-menu-expand-all"),
     ] {
         let r = ui.button(label);
         widgets.insert(key.into(), (&r).into());
@@ -2069,7 +2083,7 @@ pub(crate) fn changes(
         .cloned();
     let Some(status) = status else {
         Frame::new().inner_margin(14).show(ui, |ui| {
-            ui.label("Changes require an available working tree.");
+            ui.label(tr("Changes require an available working tree."));
         });
         return;
     };
@@ -2082,11 +2096,8 @@ pub(crate) fn changes(
         .show(ui, |ui| {
             pane_header(
                 ui,
-                "Changes",
-                &match status.entries.len() {
-                    1 => "1 file".into(),
-                    n => format!("{n} files"),
-                },
+                tr("Changes"),
+                &trn!(status.entries.len(), "{n} file", "{n} files"),
             );
             if ui.available_height() < 300.0 {
                 // Short panes cannot fit the file groups and a pinned form.
@@ -2164,22 +2175,22 @@ pub(crate) fn changes(
         if let Some((path, staged)) = &tab.selected_change {
             let mut actions = |ui: &mut Ui, popup: bool| {
                 let untracked=status.entries.iter().any(|e|e.path==*path&&e.kind==EntryKind::Untracked);
-                let r=ui.add_enabled(writable&&(untracked||!*staged),quiet_unless(popup,Button::new("Ignore…")))
-                    .on_hover_text(if untracked{"Append an exact ignore rule"}else{"Review stopping tracking while keeping the local file. Unstage selected changes first."});
+                let r=ui.add_enabled(writable&&(untracked||!*staged),quiet_unless(popup,Button::new(tr("Ignore…"))))
+                    .on_hover_text(if untracked{tr("Append an exact ignore rule")}else{tr("Review stopping tracking while keeping the local file. Unstage selected changes first.")});
                 widgets.insert("change-ignore".into(),(&r).into());if r.clicked(){intents.push(if untracked{Intent::Dialog(DialogKind::Ignore(vec![path.clone()]))}else{Intent::KeepLocal{snapshot:false,paths:vec![path.clone()]}});if popup{ui.close();}}
-                let r = ui.add_enabled(writable && !*staged, quiet_unless(popup, Button::new("Discard unstaged")));
+                let r = ui.add_enabled(writable && !*staged, quiet_unless(popup, Button::new(tr("Discard unstaged"))));
                 widgets.insert("change-discard".into(), (&r).into());
                 if r.clicked() {
                     intents.push(Intent::Dialog(DialogKind::FileEdit(Some((path.clone(), FileEditSource::Index)))));
                     if popup { ui.close(); }
                 }
-                let r = ui.add_enabled(writable, quiet_unless(popup, Button::new("Restore from commit")));
+                let r = ui.add_enabled(writable, quiet_unless(popup, Button::new(tr("Restore from commit"))));
                 widgets.insert("change-restore".into(), (&r).into());
                 if r.clicked() {
                     intents.push(Intent::Dialog(DialogKind::FileEdit(Some((path.clone(), FileEditSource::Commit("HEAD".into()))))));
                     if popup { ui.close(); }
                 }
-                let r = ui.add(quiet_unless(popup, Button::new("History & blame")));
+                let r = ui.add(quiet_unless(popup, Button::new(tr("History & blame"))));
                 widgets.insert("change-file-history".into(), (&r).into());
                 if r.clicked() {
                     intents.push(Intent::File(crate::file_history::FileIntent::FromChange));
@@ -2195,9 +2206,9 @@ pub(crate) fn changes(
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
                         if narrow {
-                            Some(ui.menu_button("File actions", |ui| actions(ui, true)).response)
+                            Some(ui.menu_button(tr("File actions"), |ui| actions(ui, true)).response)
                         } else {
-                            ui.label(RichText::new("File").size(12.0).color(FAINT()));
+                            ui.label(RichText::new(tr("File")).size(12.0).color(FAINT()));
                             ui.add_space(4.0);
                             actions(ui, false);
                             None
@@ -2226,21 +2237,21 @@ pub(crate) fn changes(
             let text = entry.submodule.is_none() && !matches!(entry.index, Change::Deleted) && !matches!(entry.worktree, Change::Deleted);
             Panel::top(Id::new(("conflict-review",tab.id))).frame(Frame::new().fill(RED().gamma_multiply(0.08)).inner_margin(Margin::symmetric(14, 10))).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("Conflict").font(semibold(13.0)).color(RED()));
-                    let r = ui.add_enabled(writable, Button::new(RichText::new("Open conflict editor").color(ACCENT_INK())).fill(BLUE()));
+                    ui.label(RichText::new(tr("Conflict")).font(semibold(13.0)).color(RED()));
+                    let r = ui.add_enabled(writable, Button::new(RichText::new(tr("Open conflict editor")).color(ACCENT_INK())).fill(BLUE()));
                     widgets.insert("conflict-open".into(), (&r).into());
                     if r.clicked() { intents.push(Intent::Conflict(crate::conflicts::ConflictIntent::Open(path.clone()))); }
-                    let r = crate::ai_conflict::resolve_button(ui, writable && text).on_disabled_hover_text(if text { "AI resolve is not available right now" } else { "AI resolve needs a text conflict" });
+                    let r = crate::ai_conflict::resolve_button(ui, writable && text).on_disabled_hover_text(if text { tr("AI resolve is not available right now") } else { tr("AI resolve needs a text conflict") });
                     widgets.insert("conflict-open-ai".into(), (&r).into());
                     if r.clicked() { intents.push(Intent::Conflict(crate::conflicts::ConflictIntent::OpenAi(path.clone()))); }
                     ui.add_space(6.0);
-                    for (side,label) in [(0,"Working file"),(1,"Base"),(2,"Ours"),(3,"Theirs")] {
+                    for (side,label) in [(0,tr("Working file")),(1,tr("Base")),(2,tr("Ours")),(3,tr("Theirs"))] {
                         let r=ui.selectable_label(tab.conflict_side==side,label);
                         widgets.insert(format!("conflict-side-{side}"),(&r).into());
                         if r.clicked() { intents.push(Intent::ConflictSide(side)); }
                     }
                     ui.add_space(6.0);
-                    let r=ui.add_enabled(writable,Button::new("Mark resolved"));
+                    let r=ui.add_enabled(writable,Button::new(tr("Mark resolved")));
                     widgets.insert("conflict-resolved".into(),(&r).into());
                     if r.clicked() { intents.push(Intent::Execute(tab.id,Action::MarkResolved(path))); }
                 });
@@ -2341,7 +2352,7 @@ fn group_header(
         WidgetInfo::labeled(
             WidgetType::Button,
             true,
-            format!("{} {label}", if expanded { "Collapse" } else { "Expand" }),
+            if expanded { trf!("Collapse {group}", group = label) } else { trf!("Expand {group}", group = label) },
         )
     });
     icon(
@@ -2411,7 +2422,7 @@ fn change_groups(
         ui.label(RichText::new(notice).size(12.0).color(RED()));
     }
     if tab.change_selection.paths.len() > 1 {
-        ui.label(RichText::new(format!("{} selected · drag to the other group", tab.change_selection.paths.len())).size(12.0).color(BLUE()));
+        ui.label(RichText::new(trf!("{n} selected · drag to the other group", n = tab.change_selection.paths.len())).size(12.0).color(BLUE()));
     }
     let conflicts: Vec<_> = status
         .entries
@@ -2435,7 +2446,7 @@ fn change_groups(
         })
         .collect();
     if !conflicts.is_empty() {
-        let (expanded, _) = group_header(ui, tab.id, "Conflicts", conflicts.len(), None);
+        let (expanded, _) = group_header(ui, tab.id, tr("Conflicts"), conflicts.len(), None);
         if expanded {
             for entry in conflicts {
                 change_row(ui, tab, ChangeRow { entry, staged: false }, writable, intents, widgets, commands);
@@ -2447,9 +2458,9 @@ fn change_groups(
         let (expanded, action) = group_header(
             ui,
             tab.id,
-            "Staged",
+            tr("Staged"),
             staged.len(),
-            Some(("Unstage all", writable && !staged.is_empty())),
+            Some((tr("Unstage all"), writable && !staged.is_empty())),
         );
         if let Some(r) = action {
             change_control(widgets, "unstage-all", &r);
@@ -2459,7 +2470,7 @@ fn change_groups(
         }
         if expanded {
             if staged.is_empty() {
-                empty_hint(ui, "No files staged");
+                empty_hint(ui, tr("No files staged"));
             }
             for entry in &staged {
                 change_row(ui, tab, ChangeRow { entry, staged: true }, writable, intents, widgets, commands);
@@ -2477,9 +2488,9 @@ fn change_groups(
         let (expanded, action) = group_header(
             ui,
             tab.id,
-            "Unstaged",
+            tr("Unstaged"),
             unstaged.len(),
-            Some(("Stage all", stage_enabled)),
+            Some((tr("Stage all"), stage_enabled)),
         );
         if let Some(r) = action {
             change_control(widgets, "stage-all", &r);
@@ -2489,7 +2500,7 @@ fn change_groups(
         }
         if expanded {
             if unstaged.is_empty() {
-                empty_hint(ui, "Working tree clean");
+                empty_hint(ui, tr("Working tree clean"));
             }
             for entry in unstaged {
                 change_row(ui, tab, ChangeRow { entry, staged: false }, writable, intents, widgets, commands);
@@ -2595,7 +2606,7 @@ fn commit_grip(
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), COMMIT_GRIP), Sense::click_and_drag());
     let response = response
         .on_hover_cursor(CursorIcon::ResizeVertical)
-        .on_hover_text("Drag to resize the commit message. Double-click for the default height.");
+        .on_hover_text(tr("Drag to resize the commit message. Double-click for the default height."));
     let strong = response.hovered() || response.dragged();
     ui.painter().rect_filled(
         Rect::from_center_size(rect.center(), vec2(36.0, 4.0)),
@@ -2687,7 +2698,7 @@ fn commit_editor(
                     .interactive(!drafting)
                     .frame(Frame::NONE)
                     .font(semibold(14.0))
-                    .hint_text("Summary (required)")
+                    .hint_text(tr("Summary (required)"))
                     .vertical_align(Align::Center)
                     .min_size(vec2(width - 64.0, 36.0))
                     .desired_width(width - 64.0)
@@ -2749,7 +2760,7 @@ fn commit_editor(
                                 .desired_rows(rows)
                                 .frame(Frame::NONE)
                                 .text_color(MUTED())
-                                .hint_text(guidance.unwrap_or("Description (optional)"))
+                                .hint_text(guidance.unwrap_or(tr("Description (optional)")))
                         },
                     );
                     change_control(widgets, "commit-description", &edit);
@@ -2768,9 +2779,9 @@ fn commit_editor(
         let amend = ui
             .add_enabled(
                 writable && idle && !merge && !drafting,
-                quiet(Button::new(RichText::new("Amend last commit").size(12.5))),
+                quiet(Button::new(RichText::new(tr("Amend last commit")).size(12.5))),
             )
-            .on_hover_text("Review an amended latest commit with the staged changes");
+            .on_hover_text(tr("Review an amended latest commit with the staged changes"));
         widgets.insert("composer-amend".into(), (&amend).into());
         if amend.clicked() {
             intents.push(Intent::Dialog(DialogKind::CommitAction(
@@ -2792,33 +2803,37 @@ fn commit_editor(
             widgets,
         );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.add(Label::new(RichText::new(format!("to {branch}")).size(12.0).color(FAINT())).truncate());
+            ui.add(Label::new(RichText::new(trf!("to {branch}", branch)).size(12.0).color(FAINT())).truncate());
         });
     });
     let recover = state.and_then(|s| crate::chrome::Recover::of(s, tab.snapshot.as_ref().and_then(|t| t.sequence.as_ref())));
+    // Push after commit: the reviewed Commit & Push takes the main button and Ctrl+Enter.
+    let pushes = idle && !merge && crate::general::options(ui.ctx()).push_after_commit && tab.commit_pushes();
     let label = if state.is_some_and(|s| s.rebase) {
-        "Continue rebase".to_owned()
+        tr("Continue rebase").to_owned()
     } else if state.is_some_and(|s| s.mail_import) {
-        "Continue import".to_owned()
+        tr("Continue import").to_owned()
     } else if let Some(crate::chrome::Recover::Commit { operation, .. }) = recover {
-        format!("Continue {}", operation.label())
+        match operation {
+            rocket_git::CommitOperation::CherryPick => tr("Continue cherry-pick").to_owned(),
+            rocket_git::CommitOperation::Revert => tr("Continue revert").to_owned(),
+            rocket_git::CommitOperation::Amend => tr("Continue amend").to_owned(),
+        }
     } else if state.is_some_and(|s| s.merge_committed) {
-        "Merge already committed".to_owned()
+        tr("Merge already committed").to_owned()
     } else if merge {
-        "Continue merge".to_owned()
+        tr("Continue merge").to_owned()
+    } else if staged > 0 && pushes {
+        trn!(staged, "Commit & Push {n} staged file", "Commit & Push {n} staged files")
     } else if staged > 0 {
-        format!(
-            "Commit {staged} staged file{}",
-            if staged == 1 { "" } else { "s" }
-        )
+        trn!(staged, "Commit {n} staged file", "Commit {n} staged files")
+    } else if pushes {
+        tr("Commit & Push").to_owned()
     } else {
-        "Commit".to_owned()
+        tr("Commit").to_owned()
     };
     let paused = tab.continue_paused();
     let enabled = writable && (tab.can_commit() || paused.is_some());
-    // Push after commit: the reviewed Commit & Push takes the main button and Ctrl+Enter.
-    let pushes = idle && !merge && crate::general::options(ui.ctx()).push_after_commit && tab.commit_pushes();
-    let label = if pushes { label.replacen("Commit", "Commit & Push", 1) } else { label };
     let main_enabled = enabled && !(pushes && drafting);
     ui.horizontal(|ui| {
     let primary_width=if idle && !merge {(width-144.0).max(76.0)} else {width};
@@ -2842,7 +2857,7 @@ fn commit_editor(
     ui.painter().text(
         rect.center(),
         Align2::CENTER_CENTER,
-        if primary_width<240.0 && idle && !merge {if pushes {"Commit & Push"} else {"Commit"}} else {&label},
+        if primary_width<240.0 && idle && !merge {if pushes {tr("Commit & Push")} else {tr("Commit")}} else {&label},
         semibold(13.0),
         ink,
     );
@@ -2876,7 +2891,7 @@ fn commit_editor(
         });
     }
     if idle && !merge {
-        let other=ui.add_enabled(enabled && !drafting,Button::new(if pushes {"Commit"} else {"Commit & Push"}).min_size(vec2(136.0,36.0)));
+        let other=ui.add_enabled(enabled && !drafting,Button::new(if pushes {tr("Commit")} else {tr("Commit & Push")}).min_size(vec2(136.0,36.0)));
         change_control(widgets,if pushes {"commit"} else {"commit-push"},&other);
         if other.clicked(){intents.push(if pushes {Intent::Execute(tab.id,Action::Commit(tab.draft.clone()))} else {Intent::CommitPush});}
     }
@@ -2887,20 +2902,20 @@ fn commit_editor(
     ui.label(
         RichText::new(if recover.is_some() {
             if enabled {
-                "Shows what happens next before anything changes."
+                tr("Shows what happens next before anything changes.")
             } else if conflicts {
-                "Fix and stage the conflict first."
+                tr("Fix and stage the conflict first.")
             } else {
-                "The banner above says what to do next."
+                tr("The banner above says what to do next.")
             }
         } else if state.is_some_and(|s| s.merge_committed) {
-            "Use Clear merge state above. Your commit, index and files stay in place."
+            tr("Use Clear merge state above. Your commit, index and files stay in place.")
         } else if conflicts {
-            "Resolve conflicts before committing."
+            tr("Resolve conflicts before committing.")
         } else if staged == 0 && !merge {
-            "Stage files to include them in the commit."
+            tr("Stage files to include them in the commit.")
         } else {
-            "Uses this repository's Git identity, hooks and signing."
+            tr("Uses this repository's Git identity, hooks and signing.")
         })
         .size(11.5)
         .color(FAINT()),
@@ -2950,7 +2965,7 @@ fn change_row(
         None => (String::new(), label.to_string()),
     };
     let detail = match &entry.original_path {
-        Some(original) => format!("from {}", original.display_lossy()),
+        Some(original) => trf!("from {path}", path = original.display_lossy()),
         None => dir,
     };
     let rect = response.rect;
@@ -2979,13 +2994,13 @@ fn change_row(
     if conflict {
         actions.push((
             Icon::Check,
-            "Mark resolved after editing the working file",
+            tr("Mark resolved after editing the working file"),
             Action::MarkResolved(entry.path.clone()),
         ));
     } else if staged {
-        actions.push((Icon::Chevron, "Unstage file", Action::Unstage(paths)));
+        actions.push((Icon::Chevron, tr("Unstage file"), Action::Unstage(paths)));
     } else {
-        actions.push((Icon::Plus, "Stage file", Action::Stage(paths)));
+        actions.push((Icon::Plus, tr("Stage file"), Action::Stage(paths)));
     }
     let actions_width = actions.len() as f32 * 26.0 + 4.0;
     style::row_background(
@@ -3089,7 +3104,7 @@ fn change_row(
         let mut context = crate::custom_commands::context(tab);
         context.file = std::str::from_utf8(entry.path.as_bytes()).ok().map(|p| tab.path.join(p));
         crate::custom_commands::context_menu(ui, commands, rocket_git::CommandScope::File, &context, intents, widgets);
-        if ui.button("Show changes").clicked() {
+        if ui.button(tr("Show changes")).clicked() {
             intents.push(Intent::SelectChange(entry.clone(), staged));
             ui.close();
         }
@@ -3102,7 +3117,7 @@ fn change_row(
             if ui
                 .add_enabled(
                     writable,
-                    Button::new(if staged { "Unstage file" } else { "Stage file" }),
+                    Button::new(if staged { tr("Unstage file") } else { tr("Stage file") }),
                 )
                 .clicked()
             {
@@ -3120,7 +3135,7 @@ fn change_row(
         if ui
             .add_enabled(
                 writable && !staged && !conflict,
-                Button::new("Discard unstaged"),
+                Button::new(tr("Discard unstaged")),
             )
             .clicked()
         {
@@ -3131,7 +3146,7 @@ fn change_row(
             ui.close();
         }
         if ui
-            .add_enabled(writable, Button::new("Restore from commit"))
+            .add_enabled(writable, Button::new(tr("Restore from commit")))
             .clicked()
         {
             intents.push(Intent::Dialog(DialogKind::FileEdit(Some((
@@ -3141,15 +3156,15 @@ fn change_row(
             ui.close();
         }
         ui.separator();
-        if ui.button("History & blame").clicked() {
+        if ui.button(tr("History & blame")).clicked() {
             intents.push(Intent::SelectChange(entry.clone(), staged));
             intents.push(Intent::File(crate::file_history::FileIntent::FromChange));
             ui.close();
         }
     });
     response.on_hover_text(format!(
-        "{}\nIndex: {:?} · Working tree: {:?}",
-        label, entry.index, entry.worktree
+        "{}\n{}: {:?} · {}: {:?}",
+        label, tr("Index"), entry.index, tr("Working tree"), entry.worktree
     ));
 }
 /// Branches page: local and remote-tracking branches beside the selection's details.
@@ -3191,15 +3206,15 @@ pub(crate) fn branches(
         ui,
         short,
         Icon::Branch,
-        "Branches",
-        &format!(
-            "{} local · {} remote-tracking · on {}",
-            local.len(),
-            tracking.len(),
-            head_name(snapshot.head.as_ref())
+        tr("Branches"),
+        &trf!(
+            "{local} local · {tracking} remote-tracking · on {head}",
+            local = local.len(),
+            tracking = tracking.len(),
+            head = head_name(snapshot.head.as_ref())
         ),
         |ui| {
-            if pages::primary(ui, writable, "New branch…").clicked() {
+            if pages::primary(ui, writable, tr("New branch…")).clicked() {
                 intents.push(Intent::Dialog(DialogKind::NewBranch));
             }
         },
@@ -3214,9 +3229,9 @@ pub(crate) fn branches(
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 2.0;
                     if snapshot.branches.is_empty() {
-                        pages::empty(ui, "No branches yet. Create the first commit to start one.");
+                        pages::empty(ui, tr("No branches yet. Create the first commit to start one."));
                     }
-                    for (title, group) in [("Local", &local), ("Remote-tracking", &tracking)] {
+                    for (title, group) in [(tr("Local"), &local), (tr("Remote-tracking"), &tracking)] {
                         if group.is_empty() {
                             continue;
                         }
@@ -3244,7 +3259,7 @@ pub(crate) fn branches(
             let Some(branch) = selected else {
                 pages::empty(
                     ui,
-                    "Select a branch to see its commit, upstream and actions.",
+                    tr("Select a branch to see its commit, upstream and actions."),
                 );
                 return;
             };
@@ -3262,12 +3277,20 @@ fn local_name(branch: &Branch) -> Vec<u8> {
         .unwrap_or(&branch.reference)
         .to_vec()
 }
+/// The history order's name, which Git's side of Rocket keeps in English.
+fn order_label(order: HistoryOrder) -> &'static str {
+    match order {
+        HistoryOrder::Topological => tr("Topological"),
+        HistoryOrder::CommitDate => tr("Commit date"),
+        HistoryOrder::AuthorDate => tr("Author date"),
+    }
+}
 fn delete_branch(branch: &Branch) -> Intent {
     Intent::Dialog(DialogKind::Confirm(
         Action::DeleteBranch(local_name(branch)),
-        format!(
-            "Delete local branch {}? Git will refuse unmerged branches.",
-            short_ref(&branch.reference)
+        trf!(
+            "Delete local branch {label}? Git will refuse unmerged branches.",
+            label = short_ref(&branch.reference)
         ),
     ))
 }
@@ -3287,22 +3310,22 @@ fn branch_row(
     let local = branch.kind == BranchKind::Local;
     let mut detail = branch.target.as_str()[..8].to_owned();
     if let Some(target) = &branch.symbolic_target {
-        detail = format!("points to {}", short_ref(target));
+        detail = trf!("points to {target}", target = short_ref(target));
     } else if let Some(upstream) = &branch.upstream {
-        detail.push_str(&format!(" · tracks {}", short_ref(upstream)));
+        detail.push_str(&format!(" · {}", trf!("tracks {upstream}", upstream = short_ref(upstream))));
     } else if local {
-        detail.push_str(" · no upstream");
+        detail.push_str(&format!(" · {}", tr("no upstream")));
     }
     let mut pills = Vec::new();
     if branch.is_head {
-        pills.push(("Current".to_owned(), pages::INFO()));
+        pills.push((tr("Current").to_owned(), pages::INFO()));
         if let Some((ahead, behind)) = ahead_behind
             && ahead + behind > 0
         {
             pills.push((format!("↑{ahead} ↓{behind}"), pages::NEUTRAL()));
         }
     } else if branch.checked_out_at.is_some() {
-        pills.push(("Other worktree".to_owned(), pages::NEUTRAL()));
+        pills.push((tr("Other worktree").to_owned(), pages::NEUTRAL()));
     }
     pages::row(
         ui,
@@ -3321,7 +3344,7 @@ fn branch_row(
         display(&branch.reference),
         branch.target,
         if local {
-            "\nRight-click for actions"
+            tr("\nRight-click for actions")
         } else {
             ""
         }
@@ -3339,7 +3362,7 @@ fn branch_menu(r: &Response, owner: &Tab, branch: &Branch, writable: bool, inten
         crate::integrations::context_rows(ui, &target, crate::integrations::Divider::After, intents, widgets);
         if local
             && ui
-                .add_enabled(writable && !branch.is_head, Button::new("Switch to branch"))
+                .add_enabled(writable && !branch.is_head, Button::new(tr("Switch to branch")))
                 .clicked()
         {
             intents.push(Intent::Execute(
@@ -3348,16 +3371,16 @@ fn branch_menu(r: &Response, owner: &Tab, branch: &Branch, writable: bool, inten
             ));
             ui.close();
         }
-        if local && ui.add_enabled(writable && !branch.is_head && std::str::from_utf8(&branch.reference).is_ok(),Button::new("Save, switch & restore…")).clicked() {
+        if local && ui.add_enabled(writable && !branch.is_head && std::str::from_utf8(&branch.reference).is_ok(),Button::new(tr("Save, switch & restore…"))).clicked() {
             if let Ok(name)=String::from_utf8(local_name(branch)){intents.push(Intent::SavedSwitch(name));}
             ui.close();
         }
-        if ui.button("Show history").clicked() {
+        if ui.button(tr("Show history")).clicked() {
             show_history(branch, intents);
             ui.close();
         }
         if let Ok(reference) = std::str::from_utf8(&branch.reference)
-            && ui.button("Compare with HEAD").clicked() {
+            && ui.button(tr("Compare with HEAD")).clicked() {
             intents.push(Intent::Compare(crate::compare::CompareIntent::Branch(reference.into())));
             ui.close();
         }
@@ -3366,7 +3389,7 @@ fn branch_menu(r: &Response, owner: &Tab, branch: &Branch, writable: bool, inten
             if ui
                 .add_enabled(
                     writable && !branch.is_head,
-                    Button::new("Merge into current branch"),
+                    Button::new(tr("Merge into current branch")),
                 )
                 .clicked()
             {
@@ -3375,7 +3398,7 @@ fn branch_menu(r: &Response, owner: &Tab, branch: &Branch, writable: bool, inten
                 }
                 ui.close();
             }
-            if ui.add_enabled(writable, Button::new("Rename")).clicked() {
+            if ui.add_enabled(writable, Button::new(tr("Rename"))).clicked() {
                 intents.push(Intent::Dialog(DialogKind::Rename(local_name(branch))));
                 ui.close();
             }
@@ -3383,7 +3406,7 @@ fn branch_menu(r: &Response, owner: &Tab, branch: &Branch, writable: bool, inten
             if ui
                 .add_enabled(
                     writable && !branch.is_head,
-                    Button::new(RichText::new("Delete branch").color(RED())),
+                    Button::new(RichText::new(tr("Delete branch")).color(RED())),
                 )
                 .clicked()
             {
@@ -3407,45 +3430,45 @@ fn branch_details(
     pages::note(
         ui,
         if !local {
-            "Remote-tracking branch · moved by fetch, never edited here"
+            tr("Remote-tracking branch · moved by fetch, never edited here")
         } else if branch.is_head {
-            "Current branch"
+            tr("Current branch")
         } else {
-            "Local branch"
+            tr("Local branch")
         },
     );
     ui.add_space(4.0);
-    pages::field(ui, "Reference", &display(&branch.reference), true);
-    pages::field(ui, "Commit", branch.target.as_str(), true);
+    pages::field(ui, tr("Reference"), &display(&branch.reference), true);
+    pages::field(ui, tr("Commit"), branch.target.as_str(), true);
     if let Some(target) = &branch.symbolic_target {
-        pages::field(ui, "Points to", &short_ref(target), false);
+        pages::field(ui, tr("Points to"), &short_ref(target), false);
     }
     if local {
         let upstream = branch
             .upstream
             .as_ref()
-            .map_or_else(|| "None".into(), |u| short_ref(u));
-        pages::field(ui, "Upstream", &upstream, false);
+            .map_or_else(|| tr("None").into(), |u| short_ref(u));
+        pages::field(ui, tr("Upstream"), &upstream, false);
     }
     if branch.is_head
         && let Some((ahead, behind)) = ahead_behind
     {
         pages::field(
             ui,
-            "Upstream sync",
-            &format!("{ahead} ahead · {behind} behind"),
+            tr("Upstream sync"),
+            &trf!("{ahead} ahead · {behind} behind", ahead, behind),
             false,
         );
     }
     if let Some(path) = &branch.checked_out_at {
-        pages::field(ui, "Checked out at", &path.display().to_string(), false);
+        pages::field(ui, tr("Checked out at"), &path.display().to_string(), false);
     }
     ui.add_space(10.0);
     ui.horizontal_wrapped(|ui| {
         if local {
             let r = ui.add_enabled(
                 writable && !branch.is_head && std::str::from_utf8(&branch.reference).is_ok(),
-                Button::new("Merge into current"),
+                Button::new(tr("Merge into current")),
             );
             pages::control(widgets, "branch-merge", &r, ui.clip_rect());
             if r.clicked()
@@ -3453,9 +3476,9 @@ fn branch_details(
             {
                 intents.push(Intent::MergeBranch(reference));
             }
-            let switch=pages::primary(ui, writable && !branch.is_head, "Switch to branch");
+            let switch=pages::primary(ui, writable && !branch.is_head, tr("Switch to branch"));
             pages::control(widgets,"branch-switch",&switch,ui.clip_rect());
-            let saved=ui.add_enabled(writable && !branch.is_head && std::str::from_utf8(&branch.reference).is_ok(),Button::new("Save, switch & restore…"));
+            let saved=ui.add_enabled(writable && !branch.is_head && std::str::from_utf8(&branch.reference).is_ok(),Button::new(tr("Save, switch & restore…")));
             pages::control(widgets,"branch-saved-switch",&saved,ui.clip_rect());
             if saved.clicked() && let Ok(name)=String::from_utf8(local_name(branch)){intents.push(Intent::SavedSwitch(name));}
             if switch.clicked() {
@@ -3464,11 +3487,11 @@ fn branch_details(
                     Action::SwitchBranch(local_name(branch)),
                 ));
             }
-            if ui.add_enabled(writable, Button::new("Rename")).clicked() {
+            if ui.add_enabled(writable, Button::new(tr("Rename"))).clicked() {
                 intents.push(Intent::Dialog(DialogKind::Rename(local_name(branch))));
             }
         }
-        let r = ui.add_enabled(std::str::from_utf8(&branch.reference).is_ok(), Button::new("Compare with HEAD"));
+        let r = ui.add_enabled(std::str::from_utf8(&branch.reference).is_ok(), Button::new(tr("Compare with HEAD")));
         pages::control(widgets, "branch-compare", &r, ui.clip_rect());
         if r.clicked() && let Ok(reference) = std::str::from_utf8(&branch.reference) {
             intents.push(Intent::Compare(crate::compare::CompareIntent::Branch(reference.into())));
@@ -3476,13 +3499,13 @@ fn branch_details(
         if ui
             .add_enabled(
                 std::str::from_utf8(&branch.reference).is_ok(),
-                Button::new("Show history"),
+                Button::new(tr("Show history")),
             )
             .clicked()
         {
             show_history(branch, intents);
         }
-        if local && pages::danger_ghost(ui, writable && !branch.is_head, "Delete…").clicked() {
+        if local && pages::danger_ghost(ui, writable && !branch.is_head, tr("Delete…")).clicked() {
             intents.push(delete_branch(branch));
         }
     });
@@ -3490,9 +3513,9 @@ fn branch_details(
         pages::note(
             ui,
             if branch.is_head {
-                "Switch to another branch before deleting this one."
+                tr("Switch to another branch before deleting this one.")
             } else {
-                "Delete asks first; Git refuses to delete a branch that is not merged."
+                tr("Delete asks first; Git refuses to delete a branch that is not merged.")
             },
         );
     }
@@ -3532,13 +3555,13 @@ pub(crate) fn remotes(
         ui,
         short,
         Icon::Remote,
-        "Remotes",
-        &format!(
-            "{} configured · editing a remote does not contact its server",
-            snapshot.remotes.len()
+        tr("Remotes"),
+        &trf!(
+            "{n} configured · editing a remote does not contact its server",
+            n = snapshot.remotes.len()
         ),
         |ui| {
-            let add = pages::primary(ui, enabled, "Add remote…");
+            let add = pages::primary(ui, enabled, tr("Add remote…"));
             pages::control(widgets, "remote-add", &add, ui.clip_rect());
             if add.clicked() {
                 intents.push(Intent::Dialog(DialogKind::AddRemote));
@@ -3557,19 +3580,19 @@ pub(crate) fn remotes(
                     if snapshot.remotes.is_empty() {
                         pages::empty(
                             ui,
-                            "No remotes configured. Add a remote to connect this repository.",
+                            tr("No remotes configured. Add a remote to connect this repository."),
                         );
                     }
                     for (i, remote) in snapshot.remotes.iter().enumerate() {
                         let name = display(&remote.name);
                         let branches = tracking(remote);
                         let detail = format!(
-                            "{branches} remote-tracking branch{} · {}",
-                            if branches == 1 { "" } else { "es" },
+                            "{} · {}",
+                            trn!(branches, "{n} remote-tracking branch", "{n} remote-tracking branches"),
                             if remote.push_urls.is_empty() {
-                                "push uses the fetch address"
+                                tr("push uses the fetch address")
                             } else {
-                                "separate push address"
+                                tr("separate push address")
                             }
                         );
                         let r = pages::row(
@@ -3595,7 +3618,7 @@ pub(crate) fn remotes(
             let Some(i) = selected else {
                 pages::empty(
                     ui,
-                    "Add a remote to fetch from or push to another repository.",
+                    tr("Add a remote to fetch from or push to another repository."),
                 );
                 return;
             };
@@ -3604,68 +3627,64 @@ pub(crate) fn remotes(
             pages::note(
                 ui,
                 if remote.push_urls.is_empty() {
-                    "Push uses the fetch address"
+                    tr("Push uses the fetch address")
                 } else {
-                    "Separate fetch and push addresses"
+                    tr("Separate fetch and push addresses")
                 },
             );
             ui.add_space(4.0);
-            let count = |n: usize, one: &str, many: &str| match n {
-                0 => "None".to_owned(),
-                1 => format!("1 {one}"),
-                n => format!("{n} {many}"),
-            };
-            pages::field(ui, "Fetch", &count(remote.urls.len(), "URL", "URLs"), false);
+            let urls = |n: usize| if n == 0 { tr("None").to_owned() } else { trn!(n, "{n} URL", "{n} URLs") };
+            pages::field(ui, tr("Fetch"), &urls(remote.urls.len()), false);
             pages::field(
                 ui,
-                "Push",
+                tr("Push"),
                 &if remote.push_urls.is_empty() {
-                    "Fetch URL".to_owned()
+                    tr("Fetch URL").to_owned()
                 } else {
-                    count(remote.push_urls.len(), "URL", "URLs")
+                    urls(remote.push_urls.len())
                 },
                 false,
             );
             pages::field(
                 ui,
-                "Tracking",
-                &count(tracking(remote), "branch", "branches"),
+                tr("Tracking"),
+                &match tracking(remote) { 0 => tr("None").to_owned(), n => trn!(n, "{n} branch", "{n} branches") },
                 false,
             );
             for refspec in &remote.fetch_refspecs {
-                pages::field(ui, "Refspec", &display(refspec), true);
+                pages::field(ui, tr("Refspec"), &display(refspec), true);
             }
             ui.add_space(10.0);
             ui.horizontal_wrapped(|ui| {
-                let fetch = pages::primary(ui, enabled, "Fetch");
+                let fetch = pages::primary(ui, enabled, tr("Fetch"));
                 pages::control(widgets, format!("remote-fetch-{i}"), &fetch, ui.clip_rect());
                 if fetch.clicked() {
                     intents.push(Intent::Execute(tab.id, Action::Fetch(remote.name.clone())));
                 }
                 for (kind, label, key, values) in [
-                    (RemoteUrlKind::Fetch, "Edit fetch URL", "remote-edit-fetch", &remote.urls),
-                    (RemoteUrlKind::Push, "Edit push URL", "remote-edit-push", &remote.push_urls),
+                    (RemoteUrlKind::Fetch, tr("Edit fetch URL"), "remote-edit-fetch", &remote.urls),
+                    (RemoteUrlKind::Push, tr("Edit push URL"), "remote-edit-push", &remote.push_urls),
                 ] {
                     let editable = values.len() <= 1
                         && values.iter().all(|v| std::str::from_utf8(v).is_ok());
                     let edit = ui
                         .add_enabled(enabled && editable, Button::new(label))
                         .on_disabled_hover_text(
-                            "Multiple or non-UTF-8 URLs must be edited with Git so their original values are preserved.",
+                            tr("Multiple or non-UTF-8 URLs must be edited with Git so their original values are preserved."),
                         );
                     pages::control(widgets, format!("{key}-{i}"), &edit, ui.clip_rect());
                     if edit.clicked() {
                         intents.push(Intent::Dialog(DialogKind::EditRemote(remote.clone(), kind)));
                     }
                 }
-                let remove = pages::danger_ghost(ui, enabled, "Remove…");
+                let remove = pages::danger_ghost(ui, enabled, tr("Remove…"));
                 pages::control(widgets, format!("remote-remove-{i}"), &remove, ui.clip_rect());
                 if remove.clicked() {
                     intents.push(Intent::Dialog(DialogKind::Confirm(
                         Action::RemoveRemote(remote.clone()),
-                        format!(
-                            "Remove remote {} and its remote-tracking branches? Nothing is deleted from the server.",
-                            display(&remote.name)
+                        trf!(
+                            "Remove remote {remote} and its remote-tracking branches? Nothing is deleted from the server.",
+                            remote = display(&remote.name)
                         ),
                     )));
                 }
@@ -3673,17 +3692,17 @@ pub(crate) fn remotes(
             ui.add_space(6.0);
             // URLs can contain credentials. Explicit local disclosure only, per remote,
             // so changing the selection never reveals another remote's addresses.
-            CollapsingHeader::new("Show configured URLs (may contain credentials)")
+            CollapsingHeader::new(tr("Show configured URLs (may contain credentials)"))
                 .id_salt(("remote-urls", &remote.name))
                 .show(ui, |ui| {
                     for url in &remote.urls {
-                        pages::field(ui, "Fetch", &display(url), true);
+                        pages::field(ui, tr("Fetch"), &display(url), true);
                     }
                     for url in &remote.push_urls {
-                        pages::field(ui, "Push", &display(url), true);
+                        pages::field(ui, tr("Push"), &display(url), true);
                     }
                     if remote.push_urls.is_empty() {
-                        pages::note(ui, "Push falls back to the fetch URL.");
+                        pages::note(ui, tr("Push falls back to the fetch URL."));
                     }
                 });
         }

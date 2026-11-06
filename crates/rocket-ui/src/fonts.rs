@@ -2,7 +2,17 @@
 use eframe::egui::{FontData, FontDefinitions, FontFamily, FontTweak, epaint::text::VariationCoords};
 use std::{path::PathBuf, sync::OnceLock};
 
+/// The fonts in the order the interface language reads Han characters: the same
+/// character takes different forms in Chinese and Japanese fonts (直, 骨, 角).
 pub(crate) fn definitions() -> FontDefinitions {
+    let mut fonts = loaded();
+    if crate::i18n::japanese_han() {
+        japanese_first(&mut fonts, &PLAN);
+    }
+    fonts
+}
+
+fn loaded() -> FontDefinitions {
     // Reopening an MCP window reuses the same font bytes. FontDefinitions clones
     // Arc<FontData>, not the multi-megabyte CJK files; no font I/O runs per frame.
     static FONTS: OnceLock<FontDefinitions> = OnceLock::new();
@@ -25,14 +35,35 @@ pub(crate) fn definitions() -> FontDefinitions {
         .clone()
 }
 
-/// A font file and, for a variable font, the weight to draw it at.
+/// A font file, the face within it for a collection, and, for a variable font, the
+/// weight to draw it at.
 #[derive(Clone, Copy)]
 struct Face {
     file: &'static str,
     weight: Option<f32>,
+    /// The face in a TTC collection; 0, the first, for every other file.
+    index: u32,
 }
 const fn face(file: &'static str) -> Face {
-    Face { file, weight: None }
+    Face { file, weight: None, index: 0 }
+}
+/// One face of a collection, such as Yu Gothic UI, the second face of YuGothM.ttc.
+#[cfg_attr(not(windows), allow(dead_code))]
+const fn face_in(file: &'static str, index: u32) -> Face {
+    Face { file, weight: None, index }
+}
+impl Face {
+    /// The name the face is loaded under: its file, then its face and weight if any.
+    fn name(self) -> String {
+        let mut name = self.file.to_owned();
+        if self.index > 0 {
+            name.push_str(&format!("#{}", self.index));
+        }
+        if let Some(weight) = self.weight {
+            name.push_str(&format!(" {weight}"));
+        }
+        name
+    }
 }
 
 /// One platform's font files for each role, each list in order of preference.
@@ -40,23 +71,29 @@ struct Plan {
     /// Interface faces, each with the semibold of its own family.
     interface: &'static [(Face, Face)],
     /// One installed family per writing system or symbol set, rather than every font.
-    /// TTC collections use their first face (FontData's default index, 0).
-    fallbacks: &'static [&'static [&'static str]],
+    fallbacks: &'static [&'static [Face]],
     /// The fallback that shapes whole emoji sequences in the terminal.
     emoji: usize,
+    /// The Chinese and the Japanese fallback, which [`japanese_first`] swaps; None when
+    /// one collection covers both.
+    han: Option<(usize, usize)>,
 }
 
 #[cfg(windows)]
 const PLAN: Plan = Plan {
     interface: &[(face("segoeui.ttf"), face("seguisb.ttf"))],
     fallbacks: &[
-        &["msyh.ttc", "msjh.ttc", "simsun.ttc"],
-        &["YuGothM.ttc", "meiryo.ttc", "msgothic.ttc"],
-        &["malgun.ttf"],
-        &["seguiemj.ttf"],
-        &["seguisym.ttf"],
+        &[face("msyh.ttc"), face("msjh.ttc"), face("simsun.ttc")],
+        // Yu Gothic UI, the face Windows' Japanese interface pairs with Segoe UI: its kana
+        // are proportional and its line metrics match. The collection's first face, Yu
+        // Gothic, spaced kana apart and set them above the surrounding Latin text.
+        &[face_in("YuGothM.ttc", 1), face("meiryo.ttc"), face("msgothic.ttc")],
+        &[face("malgun.ttf")],
+        &[face("seguiemj.ttf")],
+        &[face("seguisym.ttf")],
     ],
     emoji: 3,
+    han: Some((0, 1)),
 };
 
 /// Ubuntu Sans ships as one variable file; its weight axis gives both faces.
@@ -66,8 +103,8 @@ const UBUNTU_SANS: &str = "UbuntuSans[wdth,wght].ttf";
 const PLAN: Plan = Plan {
     interface: &[
         (
-            Face { file: UBUNTU_SANS, weight: Some(400.0) },
-            Face { file: UBUNTU_SANS, weight: Some(600.0) },
+            Face { file: UBUNTU_SANS, weight: Some(400.0), index: 0 },
+            Face { file: UBUNTU_SANS, weight: Some(600.0), index: 0 },
         ),
         (face("NotoSans-Regular.ttf"), face("NotoSans-SemiBold.ttf")),
         (face("Ubuntu-R.ttf"), face("Ubuntu-M.ttf")),
@@ -76,13 +113,31 @@ const PLAN: Plan = Plan {
     ],
     fallbacks: &[
         // One collection covers Chinese, Japanese and Korean; its first face is Japanese.
-        &["NotoSansCJK-Regular.ttc", "DroidSansFallbackFull.ttf", "wqy-microhei.ttc", "wqy-zenhei.ttc"],
+        &[face("NotoSansCJK-Regular.ttc"), face("DroidSansFallbackFull.ttf"), face("wqy-microhei.ttc"), face("wqy-zenhei.ttc")],
         // Outline emoji only: colour-bitmap fonts such as Noto Color Emoji would draw blanks.
-        &["NotoEmoji-Regular.ttf", "Symbola.ttf", "Symbola_hint.ttf"],
-        &["NotoSansSymbols2-Regular.ttf", "DejaVuSans.ttf"],
+        &[face("NotoEmoji-Regular.ttf"), face("Symbola.ttf"), face("Symbola_hint.ttf")],
+        &[face("NotoSansSymbols2-Regular.ttf"), face("DejaVuSans.ttf")],
     ],
     emoji: 1,
+    han: None,
 };
+
+/// Moves the loaded Japanese face before the Chinese one in every family, so Han
+/// characters take their Japanese forms. Both stay loaded; only the order changes.
+fn japanese_first(fonts: &mut FontDefinitions, plan: &Plan) {
+    let Some((chinese, japanese)) = plan.han else { return };
+    let loaded = |role: usize| plan.fallbacks[role].iter().map(|f| f.name()).find(|name| fonts.font_data.contains_key(name));
+    let (Some(chinese), Some(japanese)) = (loaded(chinese), loaded(japanese)) else { return };
+    for family in fonts.families.values_mut() {
+        let at = |name: &str| family.iter().position(|n| n == name);
+        if let (Some(c), Some(j)) = (at(&chinese), at(&japanese))
+            && j > c
+        {
+            let name = family.remove(j);
+            family.insert(c, name);
+        }
+    }
+}
 
 fn build(plan: &Plan, find: impl Fn(&str) -> Option<PathBuf>) -> FontDefinitions {
     let mut fonts = FontDefinitions::default();
@@ -106,7 +161,7 @@ fn build(plan: &Plan, find: impl Fn(&str) -> Option<PathBuf>) -> FontDefinitions
     for (role, candidates) in plan.fallbacks.iter().enumerate() {
         let Some(name) = candidates
             .iter()
-            .find_map(|file| load(&mut fonts, &find, face(*file)))
+            .find_map(|candidate| load(&mut fonts, &find, *candidate))
         else {
             continue;
         };
@@ -156,15 +211,17 @@ fn load(
     find: &impl Fn(&str) -> Option<PathBuf>,
     face: Face,
 ) -> Option<String> {
-    let name = match face.weight {
-        Some(weight) => format!("{} {weight}", face.file),
-        None => face.file.to_owned(),
-    };
+    let name = face.name();
     if fonts.font_data.contains_key(&name) {
         return Some(name);
     }
     let bytes = std::fs::read(find(face.file)?).ok()?;
+    // egui refuses to start on a face it cannot open, so a collection must hold the face.
+    if face.index > 0 && !holds_face(&bytes, face.index) {
+        return None;
+    }
     let mut data = FontData::from_owned(bytes);
+    data.index = face.index;
     if let Some(weight) = face.weight {
         data = data.tweak(FontTweak {
             coords: VariationCoords::new([("wght", weight)]),
@@ -173,6 +230,14 @@ fn load(
     }
     fonts.font_data.insert(name.clone(), data.into());
     Some(name)
+}
+
+/// Whether TTC collection bytes hold a face at `index`: the header is "ttcf", a version,
+/// then the face count.
+fn holds_face(bytes: &[u8], index: u32) -> bool {
+    bytes.len() >= 12
+        && &bytes[..4] == b"ttcf"
+        && u32::from_be_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]) > index
 }
 
 /// Font files in the user's and the system's font folders, by file name, so no
@@ -277,20 +342,20 @@ mod tests {
         output.textures_delta.clear();
     }
 
+    /// Bytes that pass for a collection of two faces; past the header nothing is parsed.
+    const TWO_FACES: &[u8] = b"ttcf\x00\x01\x00\x00\x00\x00\x00\x02font bytes";
+
     /// With every candidate present, each role takes its first choice, in role order.
     /// The bytes are never parsed: FontDefinitions only records them.
     #[test]
     fn installed_fonts_fill_each_role_in_order() {
         let file = std::env::temp_dir().join(format!("rocket-font-roles-{}", std::process::id()));
-        std::fs::write(&file, b"font bytes").unwrap();
+        std::fs::write(&file, TWO_FACES).unwrap();
         let fonts = build(&PLAN, |_| Some(file.clone()));
         std::fs::remove_file(&file).unwrap();
-        let name = |face: Face| match face.weight {
-            Some(weight) => format!("{} {weight}", face.file),
-            None => face.file.to_owned(),
-        };
+        let name = Face::name;
         let (regular, semibold) = PLAN.interface[0];
-        let fallbacks: Vec<String> = PLAN.fallbacks.iter().map(|role| role[0].to_owned()).collect();
+        let fallbacks: Vec<String> = PLAN.fallbacks.iter().map(|role| role[0].name()).collect();
         let proportional = names(&fonts, FontFamily::Proportional);
         assert_eq!(proportional[0], name(regular));
         assert!(proportional.ends_with(&fallbacks));
@@ -303,6 +368,50 @@ mod tests {
         let bold = names(&fonts, FontFamily::Name("semibold".into()));
         assert_eq!(bold[0], name(semibold));
         assert_eq!(bold[1..], proportional[..]);
+    }
+
+    /// Japanese Han order puts Yu Gothic UI just before Microsoft YaHei in every family;
+    /// every other face keeps its place.
+    #[cfg(windows)]
+    #[test]
+    fn japanese_han_moves_only_the_japanese_face() {
+        let file = std::env::temp_dir().join(format!("rocket-font-han-{}", std::process::id()));
+        std::fs::write(&file, TWO_FACES).unwrap();
+        let chinese_first = build(&PLAN, |_| Some(file.clone()));
+        std::fs::remove_file(&file).unwrap();
+        let mut japanese = chinese_first.clone();
+        japanese_first(&mut japanese, &PLAN);
+        assert_eq!(chinese_first.families.len(), japanese.families.len());
+        for (family, names) in &chinese_first.families {
+            let chinese = names.iter().position(|n| n == "msyh.ttc").unwrap();
+            let yu_gothic = names.iter().position(|n| n == "YuGothM.ttc#1").unwrap();
+            assert!(chinese < yu_gothic, "{family:?} starts Chinese-first");
+            let mut expected = names.clone();
+            let moved = expected.remove(yu_gothic);
+            expected.insert(chinese, moved);
+            assert_eq!(japanese.families[family], expected, "{family:?}");
+        }
+        let mut again = japanese.clone();
+        japanese_first(&mut again, &PLAN);
+        assert_eq!(again.families, japanese.families, "already Japanese-first stays so");
+        assert_eq!(chinese_first.font_data["YuGothM.ttc#1"].index, 1, "Yu Gothic UI is the collection's second face");
+    }
+
+    /// A collection without the face asked for is passed over for the role's next file:
+    /// egui would refuse to start on a face it cannot open.
+    #[cfg(windows)]
+    #[test]
+    fn a_collection_without_the_face_passes_to_the_next_file() {
+        let one = std::env::temp_dir().join(format!("rocket-font-one-face-{}", std::process::id()));
+        let two = std::env::temp_dir().join(format!("rocket-font-two-faces-{}", std::process::id()));
+        std::fs::write(&one, b"ttcf\x00\x01\x00\x00\x00\x00\x00\x01font bytes").unwrap();
+        std::fs::write(&two, TWO_FACES).unwrap();
+        let fonts = build(&PLAN, |file| Some(if file == "YuGothM.ttc" { one.clone() } else { two.clone() }));
+        std::fs::remove_file(&one).unwrap();
+        std::fs::remove_file(&two).unwrap();
+        assert!(!fonts.font_data.contains_key("YuGothM.ttc#1"));
+        assert!(fonts.font_data.contains_key("meiryo.ttc"), "Meiryo takes Japanese");
+        assert!(!holds_face(b"font bytes", 1) && !holds_face(b"ttcf", 0), "plain or short bytes hold no second face");
     }
 
     /// DejaVu Sans alone fills the interface and symbol roles once, with its own bold.

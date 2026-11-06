@@ -2,6 +2,7 @@
 //! Narrow panes fall back to a Details / Files switch.
 use crate::{
     app::{DetailTab, DialogKind, Intent, Tab, UiControl},
+    i18n::{tr, trf},
     patch_view::patch_view,
     style::*,
 };
@@ -28,16 +29,16 @@ pub(crate) fn commit_details(
         .cloned();
     let Some(commit) = commit else {
         Frame::new().inner_margin(16).show(ui, |ui| {
-            ui.label(RichText::new("Select a commit to inspect it.").color(FAINT()));
+            ui.label(RichText::new(tr("Select a commit to inspect it.")).color(FAINT()));
         });
         return;
     };
     Panel::top(Id::new(("commit-review-actions",tab.id))).frame(Frame::new().fill(VIEW_PANEL()).inner_margin(6)).show(ui,|ui| {
         ui.horizontal_wrapped(|ui| {
             // A preview's review window would outlive the preview and its downloads.
-            let review=ui.add_enabled(!tab.is_preview(),Button::new("Open review window")).on_disabled_hover_text("Keep this preview to open commits in their own window");widgets.insert("commit-open-review".into(),(&review).into());
+            let review=ui.add_enabled(!tab.is_preview(),Button::new(tr("Open review window"))).on_disabled_hover_text(tr("Keep this preview to open commits in their own window"));widgets.insert("commit-open-review".into(),(&review).into());
             if review.clicked(){intents.push(Intent::OpenReview(crate::reviews::Request{commit:commit.id.clone(),path:None,blame:false}));}
-            let link=ui.button("Commit link");widgets.insert("commit-browser-link".into(),(&link).into());
+            let link=ui.button(tr("Commit link"));widgets.insert("commit-browser-link".into(),(&link).into());
             if link.clicked(){intents.push(Intent::CommitLink(commit.id.clone()));}
         });
     });
@@ -86,12 +87,12 @@ pub(crate) fn commit_details(
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 for (kind, label, key) in [
-                    (DetailTab::Details, "Details".to_string(), "detail-details"),
+                    (DetailTab::Details, tr("Details").to_string(), "detail-details"),
                     (
                         DetailTab::Files,
-                        format!(
-                            "Files ({})",
-                            tab.patch.as_ref().map_or(0, |p| p.files.len())
+                        trf!(
+                            "Files ({n})",
+                            n = tab.patch.as_ref().map_or(0, |p| p.files.len())
                         ),
                         "detail-files",
                     ),
@@ -150,12 +151,12 @@ fn merge_fold(
         .show(ui, |ui| {
             let r = ui
                 .button(if collapsed {
-                    "Expand this merge in the list"
+                    tr("Expand this merge in the list")
                 } else {
-                    "Collapse this merge in the list"
+                    tr("Collapse this merge in the list")
                 })
                 .on_hover_text(
-                    "Hide or show the commits this merge brought in (← and → in the commit list)",
+                    tr("Hide or show the commits this merge brought in (← and → in the commit list)"),
                 );
             widgets.insert("detail-merge-fold".into(), (&r).into());
             if r.clicked() {
@@ -213,20 +214,20 @@ pub(crate) fn commit_header(
                         .inner;
                     {
                         let more = crate::chrome::icon_button(ui, Icon::More, true, false, 26.0)
-                            .on_hover_text("Commit actions");
+                            .on_hover_text(tr("Commit actions"));
                         Popup::menu(&more).show(|ui| {
-                            if ui.button("Copy commit ID").clicked() {
+                            if ui.button(tr("Copy commit ID")).clicked() {
                                 ui.ctx().copy_text(commit.id.to_string());
                                 ui.close();
                             }
-                            if ui.button("Browse files at this commit").clicked() {
+                            if ui.button(tr("Browse files at this commit")).clicked() {
                                 intents.push(Intent::Tree(crate::tree::TreeIntent::OpenSelected));
                                 ui.close();
                             }
                             ui.separator();
                             for (operation, label) in [
-                                (CommitOperation::CherryPick, "Cherry-pick"),
-                                (CommitOperation::Revert, "Revert"),
+                                (CommitOperation::CherryPick, tr("Cherry-pick")),
+                                (CommitOperation::Revert, tr("Revert")),
                             ] {
                                 if ui.button(label).clicked() {
                                     intents.push(Intent::Dialog(DialogKind::CommitAction(
@@ -279,22 +280,22 @@ pub(crate) fn commit_header(
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 if id_chip(ui, &commit.id.as_str()[..8], true)
-                    .on_hover_text("Copy full commit ID")
+                    .on_hover_text(tr("Copy full commit ID"))
                     .clicked()
                 {
                     ui.ctx().copy_text(commit.id.to_string());
                 }
                 for parent in &commit.parents {
-                    ui.label(RichText::new("parent").size(12.0).color(FAINT()));
+                    ui.label(RichText::new(tr("parent")).size(12.0).color(FAINT()));
                     if id_chip(ui, &parent.as_str()[..8], false)
-                        .on_hover_text("Copy full parent ID")
+                        .on_hover_text(tr("Copy full parent ID"))
                         .clicked()
                     {
                         ui.ctx().copy_text(parent.to_string());
                     }
                 }
                 // Inside the header's margins, next to the IDs it checks.
-                let r = ui.button("Verify signature");
+                let r = ui.button(tr("Verify signature"));
                 widgets.insert("detail-verify-signature".into(), (&r).into());
                 if r.clicked() {
                     intents.push(Intent::Dialog(DialogKind::Signing(Some(
@@ -304,7 +305,7 @@ pub(crate) fn commit_header(
             });
             if commit.parents.len() > 1 {
                 ui.label(
-                    RichText::new("Merge diff against the first parent")
+                    RichText::new(tr("Merge diff against the first parent"))
                         .size(12.0)
                         .color(FAINT()),
                 );
@@ -332,14 +333,14 @@ fn file_list(ui: &mut Ui, tab: &mut Tab, widgets: &mut HashMap<String, UiControl
         )
     });
     let (rect, header) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::click());
-    header.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, "Files changed"));
+    header.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tr("Files changed")));
     widgets.insert("detail-files".into(), (&header).into());
     if header.clicked() {
         tab.detail_tab = DetailTab::Files;
     }
     let galley = ui
         .painter()
-        .layout_no_wrap("Files changed".into(), semibold(12.5), MUTED());
+        .layout_no_wrap(tr("Files changed").into(), semibold(12.5), MUTED());
     let width = galley.size().x;
     ui.painter().galley(
         pos2(rect.left() + 14.0, rect.center().y - galley.size().y / 2.0),
@@ -379,7 +380,7 @@ fn file_list(ui: &mut Ui, tab: &mut Tab, widgets: &mut HashMap<String, UiControl
             Frame::new()
                 .inner_margin(Margin::symmetric(14, 6))
                 .show(ui, |ui| {
-                    ui.label(RichText::new("Loading changes…").color(FAINT()));
+                    ui.label(RichText::new(tr("Loading changes…")).color(FAINT()));
                 });
         }
         return false;

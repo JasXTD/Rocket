@@ -2,6 +2,7 @@ use crate::{
     app::{DialogKind, Intent, Tab, UiControl},
     backend::Action,
     diff::{FilePatch, Kind, Line},
+    i18n::{tr, trn},
     style::{self, *},
 };
 use eframe::egui::*;
@@ -32,19 +33,19 @@ pub(crate) fn patch_view(
     if tab.diff.is_some() && !reloading {
         let mut stop = false;
         // A preview first downloads the file versions this diff needs.
-        if let Some(clicked) = crate::preview_tab::downloading(ui, downloads.as_ref(), "Downloading the changed files", "diff-cancel", widgets) {
+        if let Some(clicked) = crate::preview_tab::downloading(ui, downloads.as_ref(), tr("Downloading the changed files"), "diff-cancel", widgets) {
             stop = clicked;
         } else {
-            crate::pages::loading_with(ui, "Loading diff…", 34.0, |ui| {
+            crate::pages::loading_with(ui, tr("Loading diff…"), 34.0, |ui| {
                 ui.add_space(6.0);
-                let r = ui.button("Stop");
+                let r = ui.button(tr("Stop"));
                 widgets.insert("diff-cancel".into(), (&r).into());
                 stop = r.clicked();
             });
         }
         if stop {
             tab.diff = None;
-            tab.patch_error = Some("Diff loading cancelled. Refresh or select a file to retry.".into());
+            tab.patch_error = Some(tr("Diff loading cancelled. Refresh or select a file to retry.").into());
         }
         return None;
     }
@@ -65,9 +66,9 @@ pub(crate) fn patch_view(
     let waiting = tab.loading() && selected;
     let Some(patch) = &mut tab.patch else {
         if waiting {
-            crate::pages::loading(ui, "Loading diff…");
+            crate::pages::loading(ui, tr("Loading diff…"));
         } else {
-            placeholder.show(ui, |ui| ui.colored_label(MUTED(), "Select a file to view its diff."));
+            placeholder.show(ui, |ui| ui.colored_label(MUTED(), tr("Select a file to view its diff.")));
         }
         return None;
     };
@@ -75,9 +76,9 @@ pub(crate) fn patch_view(
         ui.colored_label(
             AMBER(),
             if tab.view == crate::app::View::Compare {
-                "Preview limit reached. The file list is complete; this diff is truncated."
+                tr("Preview limit reached. The file list is complete; this diff is truncated.")
             } else {
-                "Preview limit reached. Review the complete file before staging."
+                tr("Preview limit reached. Review the complete file before staging.")
             },
         );
     }
@@ -90,7 +91,7 @@ pub(crate) fn patch_view(
         ui.colored_label(MUTED(), notice);
     }
     if patch.files.is_empty() {
-        ui.colored_label(MUTED(), "No patch content for this selection.");
+        ui.colored_label(MUTED(), tr("No patch content for this selection."));
         return None;
     }
     tab.patch_file = tab.patch_file.min(patch.files.len() - 1);
@@ -101,7 +102,7 @@ pub(crate) fn patch_view(
             .resizable(true)
             .frame(style::frame())
             .show(ui, |ui| {
-                ui.label(format!("{} files changed", patch.files.len()));
+                ui.label(trn!(patch.files.len(), "{n} file changed", "{n} files changed"));
                 ui.separator();
                 // Offscreen rows are absent, so carry keyboard focus into the
                 // newly visible row on the next frame. Reject old diff requests.
@@ -181,27 +182,27 @@ pub(crate) fn patch_view(
                 tab.diff_tools.invalidate();
                 header_strip(ui, |ui| {
                     ui.label(RichText::new(&file.label).strong());
-                    ui.small("Submodule commits · local history only");
+                    ui.small(tr("Submodule commits · local history only"));
                 });
                 ScrollArea::vertical().id_salt(("submodule-diff", file.id)).show(ui, |ui| {
                     Frame::new().inner_margin(14).show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            ui.monospace(summary.before.as_ref().map_or("Absent", |id| id.as_str()));
+                            ui.monospace(summary.before.as_ref().map_or(tr("Absent"), |id| id.as_str()));
                             ui.label("→");
-                            ui.monospace(summary.after.as_ref().map_or("Absent", |id| id.as_str()));
+                            ui.monospace(summary.after.as_ref().map_or(tr("Absent"), |id| id.as_str()));
                         });
                         if let Some(note) = &summary.notice { ui.colored_label(AMBER(), note); }
-                        if summary.commits.is_empty() && summary.notice.is_none() { ui.label("No commit changes; the submodule may have local file edits."); }
+                        if summary.commits.is_empty() && summary.notice.is_none() { ui.label(tr("No commit changes; the submodule may have local file edits.")); }
                         for commit in &summary.commits {
                             ui.horizontal_wrapped(|ui| {
-                                ui.colored_label(if commit.added { GREEN() } else { RED() }, if commit.added { "+ Added" } else { "− Removed" });
+                                ui.colored_label(if commit.added { GREEN() } else { RED() }, if commit.added { tr("+ Added") } else { tr("− Removed") });
                                 ui.monospace(&commit.id.as_str()[..9]);
                                 ui.label(String::from_utf8_lossy(&commit.subject));
                             });
                             ui.separator();
                         }
                         ui.add_space(10.0);
-                        ui.small("Original gitlink diff");
+                        ui.small(tr("Original gitlink diff"));
                         for line in file.lines.iter() { ui.monospace(&line.text); }
                     });
                 });
@@ -232,7 +233,7 @@ pub(crate) fn patch_view(
             let narrow = pane < 440.0;
             let words_in_menu = narrow && !tab.review_window;
             let editor = tab.view == crate::app::View::Changes;
-            let split_label = if narrow { "Split" } else { "Side by side" };
+            let split_label = if narrow { tr("Split") } else { tr("Side by side") };
             header_strip(ui, |ui| {
                 // Rows take their height from interact_size when they start.
                 ui.spacing_mut().interact_size.y = CONTROL;
@@ -317,10 +318,10 @@ pub(crate) fn patch_view(
                 if let Some(review) = &patch.review {
                     ui.horizontal_wrapped(|ui| {
                         let label = match (review.staged(), narrow) {
-                            (true, true) => "Unstage",
-                            (true, false) => "Unstage selected",
-                            (false, true) => "Stage",
-                            (false, false) => "Stage selected",
+                            (true, true) => tr("Unstage"),
+                            (true, false) => tr("Unstage selected"),
+                            (false, true) => tr("Stage"),
+                            (false, false) => tr("Stage selected"),
                         };
                         let r = ui.add_enabled(
                             selectable && !patch.selected.is_empty(),
@@ -337,12 +338,12 @@ pub(crate) fn patch_view(
                             ));
                         }
                         if !review.staged() && review.supports_worktree_selection() {
-                            let r=ui.add_enabled(selectable&&!patch.selected.is_empty(),Button::new("Stash selected"));
+                            let r=ui.add_enabled(selectable&&!patch.selected.is_empty(),Button::new(tr("Stash selected")));
                             widgets.insert("diff-stash-selection".into(),(&r).into());
                             if r.clicked(){action=Some(Intent::Dialog(DialogKind::Patch(crate::patches::Mode::Stash(review.clone(),patch.selected.iter().copied().collect()))));}
                             let r = ui.add_enabled(
                                 selectable && !patch.selected.is_empty(),
-                                Button::new(if narrow { "Discard" } else { "Discard selected" }),
+                                Button::new(if narrow { tr("Discard") } else { tr("Discard selected") }),
                             );
                             widgets.insert("diff-discard-selection".into(), (&r).into());
                             if r.clicked() {
@@ -355,7 +356,7 @@ pub(crate) fn patch_view(
                             }
                         }
                         // Only where it fits: wrapped, it would push the patch down a line.
-                        let tip = "Click lines or a hunk to select.";
+                        let tip = tr("Click lines or a hunk to select.");
                         // What is left on this line; available_width() is the whole row here.
                         let fits = ui.available_size_before_wrap().x
                             >= ui.painter().layout_no_wrap(tip.into(), TextStyle::Small.resolve(ui.style()), TEXT()).size().x;
@@ -371,10 +372,10 @@ pub(crate) fn patch_view(
                 }
                 tab.diff_tools.update(file, ui.ctx());
                 if tab.diff_tools.syntax && file.syntax_limited {
-                    ui.small("Syntax limit reached; remaining lines use plain colors.");
+                    ui.small(tr("Syntax limit reached; remaining lines use plain colors."));
                 }
                 if tab.diff_tools.word_highlights.limited {
-                    ui.small("Word detail limit reached; remaining changes use line highlights.");
+                    ui.small(tr("Word detail limit reached; remaining changes use line highlights."));
                 }
                 if let Some(error) = &tab.diff_tools.word_error {
                     ui.colored_label(AMBER(), error);
@@ -383,12 +384,12 @@ pub(crate) fn patch_view(
                     ui.colored_label(AMBER(), error);
                 }
                 if tab.diff_tools.running() {
-                    let r = ui.button("Stop search");
+                    let r = ui.button(tr("Stop search"));
                     widgets.insert("diff-search-cancel".into(), (&r).into());
                     if r.clicked() {
                         tab.diff_tools.cancel();
                         tab.diff_tools.error =
-                            Some("Search cancelled. Change the query to search again.".into());
+                            Some(tr("Search cancelled. Change the query to search again.").into());
                     }
                 }
             });
@@ -539,7 +540,7 @@ pub(crate) fn patch_view(
             tab.diff_tools.overview = crate::overview::Probe::new(&file.overview[mode], view);
             if let Some(o) = crate::overview::show(ui, rail,
                 Id::new(("diff-overview", tab.id, file.id, mode)), &file.overview[mode], view,
-                "Loaded diff: green added, red removed. Click or drag to scroll. Focus here for arrows, Page Up/Down, Home/End.") {
+                tr("Loaded diff: green added, red removed. Click or drag to scroll. Focus here for arrows, Page Up/Down, Home/End.")) {
                 crate::pages::control(widgets, "diff-overview", &o.response, ui.clip_rect());
                 if let Some(target) = o.target {
                     scroll.state.offset.y = target;
@@ -555,7 +556,7 @@ pub(crate) fn patch_view(
                 let painter = ui
                     .painter()
                     .with_clip_rect(header.intersect(ui.clip_rect()));
-                for (x, label) in [(left, "Before"), (middle, "After")] {
+                for (x, label) in [(left, tr("Before")), (middle, tr("After"))] {
                     painter.text(
                         pos2(x, header.center().y),
                         Align2::LEFT_CENTER,
@@ -639,9 +640,9 @@ fn draw(
             }
         }
         r.on_hover_text(if hunk {
-            "Select or clear every change in this hunk"
+            tr("Select or clear every change in this hunk")
         } else {
-            "Select or clear this changed line"
+            tr("Select or clear this changed line")
         });
     }
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
@@ -794,7 +795,7 @@ fn header_strip(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
 
 /// Unified | Side by side (Split in a narrow pane), one segmented control.
 fn layout_toggle(ui: &mut Ui, split: &mut bool, split_label: &str, widgets: &mut HashMap<String, UiControl>) {
-    let responses = crate::pages::segments(ui, &[("Unified", !*split), (split_label, *split)]);
+    let responses = crate::pages::segments(ui, &[(tr("Unified"), !*split), (split_label, *split)]);
     for ((value, key), r) in [(false, "diff-unified"), (true, "diff-split")].into_iter().zip(&responses) {
         widgets.insert(key.into(), r.into());
         if r.clicked() {
@@ -826,15 +827,15 @@ fn find_field(
     right.spacing_mut().item_spacing.x = 2.0;
     right.spacing_mut().interact_size.y = 20.0;
     if !tools.query.is_empty() {
-        let r = mini(&mut right, Icon::Close, true, "Clear search");
+        let r = mini(&mut right, Icon::Close, true, tr("Clear search"));
         widgets.insert("diff-search-clear".into(), (&r).into());
         if r.clicked() {
             tools.query.clear();
         }
     }
     for (forward, image, key, tip) in [
-        (true, Icon::Chevron, "diff-search-next", "Next match (F3)"),
-        (false, Icon::ChevronUp, "diff-search-prev", "Previous match (Shift+F3)"),
+        (true, Icon::Chevron, "diff-search-next", tr("Next match (F3)")),
+        (false, Icon::ChevronUp, "diff-search-prev", tr("Previous match (Shift+F3)")),
     ] {
         let r = mini(&mut right, image, !tools.hits.is_empty(), tip);
         widgets.insert(key.into(), (&r).into());
@@ -844,11 +845,11 @@ fn find_field(
     }
     if !tools.query.is_empty() {
         let count = if tools.running() {
-            "Searching…".into()
+            tr("Searching…").into()
         } else if tools.hits.is_empty() {
-            "No matches".into()
+            tr("No matches").into()
         } else {
-            format!("{} / {}{}", tools.current + 1, tools.hits.len(), if tools.limited { "+ (limit)" } else { "" })
+            format!("{} / {}{}", tools.current + 1, tools.hits.len(), if tools.limited { tr("+ (limit)") } else { "" })
         };
         let count = RichText::new(count).size(11.5).color(FAINT());
         let wide = right
@@ -866,7 +867,7 @@ fn find_field(
     let text_rect = Rect::from_min_max(inner.min, pos2(rest.right().max(inner.left()), inner.bottom()));
     let mut text = ui.new_child(UiBuilder::new().max_rect(text_rect).layout(Layout::left_to_right(Align::Center)));
     // The short hint where the long one would be cut.
-    let hint = if text_rect.width() >= 120.0 { "Find in this diff" } else { "Find" };
+    let hint = if text_rect.width() >= 120.0 { tr("Find in this diff") } else { tr("Find") };
     let r = text.add(
         TextEdit::singleline(&mut tools.query)
             .frame(Frame::NONE)
@@ -926,10 +927,11 @@ fn toggles(
         words_toggle(ui, tools, widgets);
     }
     let r = ui
-        .add(checkbox(&mut tools.syntax, "Syntax"))
-        .on_hover_text(format!("{} · lexical colors from available diff context.{}",
-            file.syntax_language.unwrap_or("Plain text"),
-            if file.syntax_limited { " Highlighting limit reached; remaining lines use plain colors." } else { "" }));
+        .add(checkbox(&mut tools.syntax, tr("Syntax")))
+        .on_hover_text(format!("{} · {}{}",
+            file.syntax_language.unwrap_or(tr("Plain text")),
+            tr("lexical colors from available diff context."),
+            if file.syntax_limited { format!(" {}", tr("Highlighting limit reached; remaining lines use plain colors.")) } else { String::new() }));
     widgets.insert("diff-syntax".into(), (&r).into());
     if !reversed && words {
         words_toggle(ui, tools, widgets);
@@ -941,15 +943,15 @@ fn words_toggle(ui: &mut Ui, tools: &mut crate::diff_tools::State, widgets: &mut
     if tools.words_running() {
         // Reuse the toggle's place so background work cannot push the patch out of a
         // short pane while its highlights load.
-        let r = ui.button("Words ×").on_hover_text("Stop word highlights");
+        let r = ui.button(tr("Words ×")).on_hover_text(tr("Stop word highlights"));
         widgets.insert("diff-words-cancel".into(), (&r).into());
         if r.clicked() {
             tools.stop_words();
         }
     } else {
         let r = ui
-            .add(checkbox(&mut tools.words, "Words"))
-            .on_hover_text("Highlight changed words within paired lines");
+            .add(checkbox(&mut tools.words, tr("Words")))
+            .on_hover_text(tr("Highlight changed words within paired lines"));
         widgets.insert("diff-words".into(), (&r).into());
     }
 }
@@ -966,13 +968,13 @@ fn external_menu(
         for (id, label, kind, enabled) in [
             (
                 "diff-external",
-                "Open external diff",
+                tr("Open external diff"),
                 rocket_git::ExternalToolKind::Diff,
                 true,
             ),
             (
                 "diff-editor",
-                "Open working file in editor",
+                tr("Open working file in editor"),
                 rocket_git::ExternalToolKind::Editor,
                 editor,
             ),

@@ -3,6 +3,7 @@
 use super::{Accent, Base, Choice, ClayMode, Look, Picture, Position, SWATCHES, Settings, Size, VISIBILITY, resolve};
 use crate::{
     app::Rocket,
+    i18n::tr,
     pages,
     preferences::{ROW_DENSITIES, card_frame, card_header, card_note, choices, divider, status_line},
     style::*,
@@ -27,7 +28,7 @@ impl Rocket {
         let theme = &mut self.theme;
         let backdrop = &mut self.backdrop;
         card_frame(ui, |ui| {
-            card_header(ui, "Theme", |_| {});
+            card_header(ui, tr("Theme"), |_| {});
             Frame::new().inner_margin(Margin::same(16)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 let tiles = Choice::ALL.len() as f32;
@@ -141,8 +142,8 @@ impl Rocket {
         let widgets = &mut self.frame_widgets;
         let theme = &mut self.theme;
         card_frame(ui, |ui| {
-            card_header(ui, "Clay", |_| {});
-            row(ui, "Mode", |ui| {
+            card_header(ui, tr("Clay"), |_| {});
+            row(ui, tr("Mode"), |ui| {
                 let items: Vec<(&str, bool)> = ClayMode::ALL.iter().map(|m| (m.label(), theme.clay == *m)).collect();
                 let ids: Vec<String> = ClayMode::ALL.iter().map(|m| format!("theme-clay-{}", m.key())).collect();
                 if let Some(i) = choices(ui, widgets, &items, &ids) {
@@ -150,9 +151,9 @@ impl Rocket {
                 }
                 if theme.clay == ClayMode::FollowWindows {
                     let now = match system {
-                        Some(Theme::Light) => "Windows is light now",
-                        Some(Theme::Dark) => "Windows is dark now",
-                        None => "Dark until Windows says light",
+                        Some(Theme::Light) => tr("Windows is light now"),
+                        Some(Theme::Dark) => tr("Windows is dark now"),
+                        None => tr("Dark until Windows says light"),
                     };
                     ui.add_space(4.0);
                     ui.label(RichText::new(now).size(12.5).color(FAINT()));
@@ -166,8 +167,8 @@ impl Rocket {
         let custom = &mut self.theme.custom;
         let code = &mut self.preferences.accent_code;
         card_frame(ui, |ui| {
-            card_header(ui, "Colours", |_| {});
-            row(ui, "Start from", |ui| {
+            card_header(ui, tr("Colours"), |_| {});
+            row(ui, tr("Start from"), |ui| {
                 let items: Vec<(&str, bool)> = Base::ALL.iter().map(|b| (b.label(), custom.base == *b)).collect();
                 let ids: Vec<String> = Base::ALL.iter().map(|b| format!("theme-base-{}", b.key())).collect();
                 if let Some(i) = choices(ui, widgets, &items, &ids) {
@@ -175,7 +176,7 @@ impl Rocket {
                 }
             });
             divider(ui);
-            row(ui, "Accent", |ui| {
+            row(ui, tr("Accent"), |ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
                 let r = from_picture(ui, custom.accent == Accent::FromPicture, picture_accent.unwrap_or(BLUE()));
                 pages::control(widgets, "theme-accent-picture", &r, ui.clip_rect());
@@ -225,14 +226,14 @@ impl Rocket {
         let importing = self.theme_import.is_some();
         let import_error = self.theme_import_error.as_deref();
         card_frame(ui, |ui| {
-            card_header(ui, "Background", |_| {});
+            card_header(ui, tr("Background"), |_| {});
             Frame::new().inner_margin(Margin::same(16)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 let width = ((ui.available_width() - 5.0 * GAP) / 6.0).floor();
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = GAP;
                     let none = custom.picture == Picture::None;
-                    let r = tile(ui, width, "None", none, false, |painter, thumb| {
+                    let r = tile(ui, width, tr("None"), none, false, |painter, thumb| {
                         painter.rect_filled(thumb, CornerRadius { nw: 7, ne: 7, ..CornerRadius::ZERO }, WINDOW());
                         icon(painter, Rect::from_center_size(thumb.center(), vec2(24.0, 24.0)), Icon::Blocked, FAINT());
                     });
@@ -253,7 +254,7 @@ impl Rocket {
                     // The user's picture once chosen; choosing again replaces it.
                     let own = matches!(custom.picture, Picture::Own(_));
                     let texture = if own { backdrop.tile(&ctx, &custom.picture) } else { None };
-                    let label = if own { "Your picture" } else { "Choose image" };
+                    let label = if own { tr("Your picture") } else { tr("Choose image") };
                     let r = tile(ui, width, label, own, !own, |painter, thumb| {
                         if texture.is_some() {
                             cover(painter, thumb, texture);
@@ -269,25 +270,30 @@ impl Rocket {
             });
             divider(ui);
             ui.add_enabled_ui(custom.picture != Picture::None, |ui| {
-                row(ui, "Size", |ui| {
-                    let all = [(Size::Fill, "Fill"), (Size::Fit, "Fit")];
-                    let items: Vec<(&str, bool)> = all.iter().map(|(s, label)| (*label, custom.size == *s)).collect();
-                    let ids: Vec<String> = all.iter().map(|(_, label)| format!("theme-size-{}", label.to_lowercase())).collect();
+                row(ui, tr("Size"), |ui| {
+                    // Ids keep their English keys whatever the labels' language.
+                    let all = [(Size::Fill, "fill", tr("Fill")), (Size::Fit, "fit", tr("Fit"))];
+                    let items: Vec<(&str, bool)> = all.iter().map(|(s, _, label)| (*label, custom.size == *s)).collect();
+                    let ids: Vec<String> = all.iter().map(|(_, key, _)| format!("theme-size-{key}")).collect();
                     if let Some(i) = choices(ui, widgets, &items, &ids) {
                         custom.size = all[i].0;
                     }
                 });
                 divider(ui);
-                row(ui, "Position", |ui| {
-                    let all = [(Position::Left, "Left"), (Position::Centre, "Centre"), (Position::Right, "Right")];
-                    let items: Vec<(&str, bool)> = all.iter().map(|(p, label)| (*label, custom.position == *p)).collect();
-                    let ids: Vec<String> = all.iter().map(|(_, label)| format!("theme-position-{}", label.to_lowercase())).collect();
+                row(ui, tr("Position"), |ui| {
+                    let all = [
+                        (Position::Left, "left", tr("Left")),
+                        (Position::Centre, "centre", tr("Centre")),
+                        (Position::Right, "right", tr("Right")),
+                    ];
+                    let items: Vec<(&str, bool)> = all.iter().map(|(p, _, label)| (*label, custom.position == *p)).collect();
+                    let ids: Vec<String> = all.iter().map(|(_, key, _)| format!("theme-position-{key}")).collect();
                     if let Some(i) = choices(ui, widgets, &items, &ids) {
                         custom.position = all[i].0;
                     }
                 });
                 divider(ui);
-                row(ui, "Visibility", |ui| {
+                row(ui, tr("Visibility"), |ui| {
                     ui.visuals_mut().selection.bg_fill = BLUE();
                     ui.spacing_mut().slider_width = (ui.available_width() - 64.0).clamp(120.0, 360.0);
                     let r = ui.add(Slider::new(&mut custom.visibility, VISIBILITY).show_value(false).trailing_fill(true));
@@ -299,7 +305,7 @@ impl Rocket {
             if importing || problem.is_some() {
                 divider(ui);
                 card_note(ui, |ui| match problem {
-                    _ if importing => status_line(ui, MUTED(), "Copying the picture"),
+                    _ if importing => status_line(ui, MUTED(), tr("Copying the picture")),
                     Some(message) => status_line(ui, RED(), message),
                     None => {}
                 });
@@ -312,12 +318,12 @@ impl Rocket {
         let widgets = &mut self.frame_widgets;
         let row_height = &mut self.row_height;
         card_frame(ui, |ui| {
-            card_header(ui, "Row density", |_| {});
+            card_header(ui, tr("Row density"), |_| {});
             Frame::new().inner_margin(Margin::same(16)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 let items: Vec<(&str, bool)> = ROW_DENSITIES
                     .iter()
-                    .map(|(_, value, label)| (*label, *row_height == *value))
+                    .map(|(_, value, label)| (tr(label), *row_height == *value))
                     .collect();
                 let ids: Vec<String> = ROW_DENSITIES.iter().map(|(key, ..)| (*key).to_owned()).collect();
                 if let Some(i) = choices(ui, widgets, &items, &ids) {
@@ -467,7 +473,7 @@ fn cover(painter: &Painter, rect: Rect, picture: Option<(TextureId, Vec2)>) {
 
 /// The From picture choice: the picture's colour in a dot, and its name.
 fn from_picture(ui: &mut Ui, selected: bool, colour: Color32) -> Response {
-    let name = "From picture";
+    let name = tr("From picture");
     let font = if selected { semibold(13.0) } else { FontId::proportional(13.0) };
     let galley = ui.painter().layout_no_wrap(name.into(), font, TEXT());
     let (rect, response) = ui.allocate_exact_size(vec2(galley.size().x + 40.0, CONTROL), Sense::click());
