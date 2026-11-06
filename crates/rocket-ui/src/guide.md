@@ -834,8 +834,9 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 ## Themes
 
 - Choose a theme in Edit → Preferences → Appearance, View → Appearance or the command palette. It applies at once and is saved for this profile. The window title bar keeps following Windows.
-- Default is Rocket's navy. Dark is neutral graphite. Light is light. System shows Light or Dark, following Windows' app mode as it changes.
-- Custom starts from Default, Dark or Light. Its accent is a swatch, a colour code such as #F472B6, or From picture: the colour each built-in picture was drawn around, or your picture's most common vivid colour. Rocket lightens or darkens an accent until it reads well on the theme.
+- Clay, the default, is Claude Code's colours: warm charcoal, cream text and a coral accent, or ivory and terracotta in its light mode. Its Mode follows Windows' app mode, as Claude's app does, or keeps Clay dark or light.
+- Ocean is Rocket's original navy and cyan, the default before Clay. Dark is neutral graphite. Light is light. System shows Light or Dark, following Windows' app mode as it changes.
+- Custom starts from Ocean, Dark, Light, Clay dark or Clay light. Its accent is a swatch, a colour code such as #F472B6, or From picture: the colour each built-in picture was drawn around, or your picture's most common vivid colour. Rocket lightens or darkens an accent until it reads well on the theme.
 - A Custom theme can show a picture behind the main window: Astronaut, Space cat, Planet, Stars, or your own PNG, JPG or WebP picture of up to 32 MB. Rocket keeps a copy in its storage, at most 2,560 pixels on its long side, so moving or deleting the original changes nothing. Choosing another picture replaces the copy.
 - The panes let the Visibility share of the picture through. Where a bright part (on Light, a dark part) would make text hard to read, Rocket dims or lightens it. Dialogs, menus and cards stay solid.
 - Fill covers the window, and Position keeps the picture's left, centre or right in view. Fit shows the whole picture, its inner edge fading into the theme; that suits a picture of a character.

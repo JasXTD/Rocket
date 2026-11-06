@@ -1,6 +1,6 @@
-//! Preferences → Appearance: the five theme tiles, the Custom theme's colours and
-//! picture, and row density.
-use super::{Accent, Base, Choice, Look, Picture, Position, SWATCHES, Settings, Size, VISIBILITY, resolve};
+//! Preferences → Appearance: the six theme tiles (Clay, the default, first), Clay's mode,
+//! the Custom theme's colours and picture, and row density.
+use super::{Accent, Base, Choice, ClayMode, Look, Picture, Position, SWATCHES, Settings, Size, VISIBILITY, resolve};
 use crate::{
     app::Rocket,
     pages,
@@ -30,14 +30,17 @@ impl Rocket {
             card_header(ui, "Theme", |_| {});
             Frame::new().inner_margin(Margin::same(16)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                let width = ((ui.available_width() - 4.0 * GAP) / 5.0).floor();
+                let tiles = Choice::ALL.len() as f32;
+                let width = ((ui.available_width() - (tiles - 1.0) * GAP) / tiles).floor();
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = GAP;
                     for choice in Choice::ALL {
                         let looks = match choice {
                             Choice::System => vec![plain(Choice::Light), plain(Choice::Dark)],
+                            // Both of Clay's modes, whichever the Mode row picks.
+                            Choice::Clay => vec![base_look(Base::ClayLight), base_look(Base::ClayDark)],
                             Choice::Custom => vec![resolve(
-                                &Settings { choice, custom: theme.custom.clone() },
+                                &Settings { choice, clay: theme.clay, custom: theme.custom.clone() },
                                 system,
                                 picture_accent,
                             )],
@@ -70,6 +73,9 @@ impl Rocket {
             });
         });
         let mut browse = false;
+        if self.theme.choice == Choice::Clay {
+            self.clay_mode(ui, system);
+        }
         if self.theme.choice == Choice::Custom {
             self.custom_colours(ui, picture_accent);
             browse = self.custom_background(ui);
@@ -82,7 +88,7 @@ impl Rocket {
     /// is chosen, its settings and picture. The user's own picture is named only by the
     /// file name Rocket keeps it under, never by a path.
     pub fn appearance_snapshot(&self) -> Value {
-        let key = |base: Base| base.label().to_lowercase();
+        let key = |base: Base| base.key().to_owned();
         let look = self.look.as_ref();
         // Rocket's palette on screen: System's follows Windows; Custom keeps its base's
         // background under the accent and see-through panes.
@@ -123,10 +129,36 @@ impl Rocket {
             "palette": palette,
             "windows_mode": windows,
             "accent": look.map(|l| hex([l.palette.accent.r(), l.palette.accent.g(), l.palette.accent.b()])),
+            "clay_mode": (self.theme.choice == Choice::Clay).then(|| self.theme.clay.key()),
             "custom": custom,
             "importing": self.theme_import.is_some(),
             "import_error": self.theme_import_error,
         })
+    }
+
+    /// Clay's card: Follow Windows, Dark or Light. MCP: `theme-clay-{mode key}`.
+    fn clay_mode(&mut self, ui: &mut Ui, system: Option<Theme>) {
+        let widgets = &mut self.frame_widgets;
+        let theme = &mut self.theme;
+        card_frame(ui, |ui| {
+            card_header(ui, "Clay", |_| {});
+            row(ui, "Mode", |ui| {
+                let items: Vec<(&str, bool)> = ClayMode::ALL.iter().map(|m| (m.label(), theme.clay == *m)).collect();
+                let ids: Vec<String> = ClayMode::ALL.iter().map(|m| format!("theme-clay-{}", m.key())).collect();
+                if let Some(i) = choices(ui, widgets, &items, &ids) {
+                    theme.clay = ClayMode::ALL[i];
+                }
+                if theme.clay == ClayMode::FollowWindows {
+                    let now = match system {
+                        Some(Theme::Light) => "Windows is light now",
+                        Some(Theme::Dark) => "Windows is dark now",
+                        None => "Dark until Windows says light",
+                    };
+                    ui.add_space(4.0);
+                    ui.label(RichText::new(now).size(12.5).color(FAINT()));
+                }
+            });
+        });
     }
 
     fn custom_colours(&mut self, ui: &mut Ui, picture_accent: Option<Color32>) {
@@ -137,7 +169,7 @@ impl Rocket {
             card_header(ui, "Colours", |_| {});
             row(ui, "Start from", |ui| {
                 let items: Vec<(&str, bool)> = Base::ALL.iter().map(|b| (b.label(), custom.base == *b)).collect();
-                let ids: Vec<String> = Base::ALL.iter().map(|b| format!("theme-base-{}", b.label().to_lowercase())).collect();
+                let ids: Vec<String> = Base::ALL.iter().map(|b| format!("theme-base-{}", b.key())).collect();
                 if let Some(i) = choices(ui, widgets, &items, &ids) {
                     custom.base = Base::ALL[i];
                 }
@@ -325,6 +357,11 @@ impl Rocket {
 /// What a plain (non-Custom) theme shows.
 fn plain(choice: Choice) -> Look {
     resolve(&Settings { choice, ..Default::default() }, None, None)
+}
+
+/// A base palette as a look, for tiles that show a mode no setting picks.
+fn base_look(base: Base) -> Look {
+    Look { palette: base.palette(), light: base.light() }
 }
 
 /// A card row: its label in a fixed column, then the control.

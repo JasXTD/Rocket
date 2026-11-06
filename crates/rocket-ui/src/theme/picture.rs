@@ -492,6 +492,7 @@ mod tests {
                     &super::super::Settings {
                         choice: super::super::Choice::Custom,
                         custom: Custom { base, visibility, accent: super::super::Accent::Colour([34, 195, 238]), ..Default::default() },
+                        ..Default::default()
                     },
                     None,
                     None,
@@ -506,7 +507,7 @@ mod tests {
                 }
             }
         }
-        assert_eq!(Palette::NAVY, Base::Default.palette());
+        assert_eq!(Palette::NAVY, Base::Ocean.palette());
     }
 
     #[test]

@@ -1532,7 +1532,7 @@ mod tests {
                     (
                         Page::Appearance,
                         &[
-                            "theme-default", "theme-dark", "theme-light", "theme-system", "theme-custom",
+                            "theme-clay", "theme-ocean", "theme-dark", "theme-light", "theme-system", "theme-custom",
                             "rows-compact", "rows-comfortable", "rows-spacious",
                         ],
                     ),

@@ -6,7 +6,8 @@ pub use tokens::*;
 pub const CONTROL: f32 = 28.0;
 
 pub fn install(ctx: &Context) {
-    apply(ctx, &Palette::NAVY, false);
+    // The default theme's dark mode until the first frame shows the chosen theme.
+    apply(ctx, &Palette::CLAY_DARK, false);
     // Windows 10 repaints only part of an open window's title bar when its theme
     // changes, so dragging showed dark caption text on a light bar. The window is
     // created in the Windows theme; it keeps it.

@@ -1,6 +1,8 @@
-//! Themes: the five choices in Preferences → Appearance and the palette each one
-//! shows. Custom starts from the Default, Dark or Light palette, takes its own accent
-//! and can show a picture behind the main window's panes (see [`picture`]).
+//! Themes: the six choices in Preferences → Appearance and the palette each one
+//! shows. Clay, the default, is Claude Code's colours, following Windows or kept dark
+//! or light; Ocean is Rocket's original navy. Custom starts from Ocean, Dark, Light or
+//! a Clay palette, takes its own accent and can show a picture behind the main
+//! window's panes (see [`picture`]).
 use crate::style::Palette;
 use eframe::egui::{self, Color32};
 use std::ops::RangeInclusive;
@@ -10,9 +12,11 @@ pub mod picture;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Choice {
-    /// Rocket's navy.
+    /// The default: Claude Code's colours, in the mode [`Settings::clay`] picks.
     #[default]
-    Default,
+    Clay,
+    /// Rocket's original navy and cyan, the default before Clay.
+    Ocean,
     Dark,
     Light,
     /// Light or Dark, following Windows as it changes.
@@ -21,14 +25,16 @@ pub enum Choice {
 }
 
 impl Choice {
-    pub const ALL: [Self; 5] = [Self::Default, Self::Dark, Self::Light, Self::System, Self::Custom];
+    /// In the order Preferences, View → Appearance and the palette show them.
+    pub const ALL: [Self; 6] = [Self::Clay, Self::Ocean, Self::Dark, Self::Light, Self::System, Self::Custom];
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Default => "Default",
+            Self::Ocean => "Ocean",
             Self::Dark => "Dark",
             Self::Light => "Light",
             Self::System => "System",
+            Self::Clay => "Clay",
             Self::Custom => "Custom",
         }
     }
@@ -36,45 +42,117 @@ impl Choice {
     /// The key used in automation ids and the command palette.
     pub fn key(self) -> &'static str {
         match self {
-            Self::Default => "default",
+            Self::Ocean => "ocean",
             Self::Dark => "dark",
             Self::Light => "light",
             Self::System => "system",
+            Self::Clay => "clay",
             Self::Custom => "custom",
         }
     }
+
+    /// The theme record's number for this choice: the numbers older builds wrote, where
+    /// 0 was the navy Default (now Ocean). Clay came after Custom; [`Choice::ALL`] is
+    /// only the order shown.
+    fn code(self) -> u8 {
+        match self {
+            Self::Ocean => 0,
+            Self::Dark => 1,
+            Self::Light => 2,
+            Self::System => 3,
+            Self::Custom => 4,
+            Self::Clay => 5,
+        }
+    }
+
+    fn from_code(code: u8) -> Option<Self> {
+        Self::ALL.into_iter().find(|c| c.code() == code)
+    }
 }
 
-/// The palette a Custom theme starts from.
+/// Clay's mode: following Windows, as Claude's app does, or always dark or light.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Base {
+pub enum ClayMode {
     #[default]
-    Default,
+    FollowWindows,
     Dark,
     Light,
 }
 
-impl Base {
-    pub const ALL: [Self; 3] = [Self::Default, Self::Dark, Self::Light];
+impl ClayMode {
+    pub const ALL: [Self; 3] = [Self::FollowWindows, Self::Dark, Self::Light];
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Default => "Default",
+            Self::FollowWindows => "Follow Windows",
             Self::Dark => "Dark",
             Self::Light => "Light",
         }
     }
 
+    /// The key used in automation ids and state.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::FollowWindows => "follow",
+            Self::Dark => "dark",
+            Self::Light => "light",
+        }
+    }
+}
+
+/// The palette a Custom theme starts from; Ocean by default, as its pictures were
+/// made over it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Base {
+    #[default]
+    Ocean,
+    Dark,
+    Light,
+    ClayDark,
+    ClayLight,
+}
+
+impl Base {
+    /// Also the theme record's numbers: new bases go at the end.
+    pub const ALL: [Self; 5] = [Self::Ocean, Self::Dark, Self::Light, Self::ClayDark, Self::ClayLight];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Ocean => "Ocean",
+            Self::Dark => "Dark",
+            Self::Light => "Light",
+            Self::ClayDark => "Clay dark",
+            Self::ClayLight => "Clay light",
+        }
+    }
+
+    /// The key used in automation ids and state.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Ocean => "ocean",
+            Self::Dark => "dark",
+            Self::Light => "light",
+            Self::ClayDark => "clay-dark",
+            Self::ClayLight => "clay-light",
+        }
+    }
+
     pub fn palette(self) -> Palette {
         match self {
-            Self::Default => Palette::NAVY,
+            Self::Ocean => Palette::NAVY,
             Self::Dark => Palette::GRAPHITE,
             Self::Light => Palette::LIGHT,
+            Self::ClayDark => Palette::CLAY_DARK,
+            Self::ClayLight => Palette::CLAY_LIGHT,
         }
     }
 
     pub fn light(self) -> bool {
-        self == Self::Light
+        matches!(self, Self::Light | Self::ClayLight)
+    }
+
+    fn clay(self) -> bool {
+        matches!(self, Self::ClayDark | Self::ClayLight)
     }
 }
 
@@ -169,7 +247,7 @@ pub struct Custom {
 impl Default for Custom {
     fn default() -> Self {
         Self {
-            base: Base::Default,
+            base: Base::Ocean,
             accent: Accent::FromPicture,
             picture: Picture::Astronaut,
             size: Size::Fill,
@@ -182,6 +260,8 @@ impl Default for Custom {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
     pub choice: Choice,
+    /// Clay's mode; kept while another theme is chosen.
+    pub clay: ClayMode,
     /// Kept while another theme is chosen, so switching back restores it.
     pub custom: Custom,
 }
@@ -192,10 +272,13 @@ impl Settings {
         (self.choice == Choice::Custom).then_some(&self.custom)
     }
 
-    /// The state file's theme record (version 1).
+    /// The state file's theme record. Version 2 adds Clay's mode after version 1's
+    /// fields and allows the Clay choice and bases. Older builds refuse it, and with it
+    /// the state file, so a record that needs nothing of Clay stays version 1.
     pub(crate) fn encode(&self) -> Vec<u8> {
         let c = &self.custom;
-        let mut bytes = vec![1, index(Choice::ALL, self.choice), index(Base::ALL, c.base)];
+        let clay = self.choice == Choice::Clay || c.base.clay() || self.clay != ClayMode::default();
+        let mut bytes = vec![if clay { 2 } else { 1 }, self.choice.code(), index(Base::ALL, c.base)];
         match c.accent {
             Accent::FromPicture => bytes.extend([0, 0, 0, 0]),
             Accent::Colour([r, g, b]) => bytes.extend([1, r, g, b]),
@@ -215,17 +298,24 @@ impl Settings {
             index([Position::Left, Position::Centre, Position::Right], c.position),
             c.visibility,
         ]);
+        if clay {
+            bytes.push(index(ClayMode::ALL, self.clay));
+        }
         bytes
     }
 
     pub(crate) fn decode(bytes: &[u8]) -> Option<Self> {
         let mut r = bytes.iter().copied();
         let mut next = || r.next();
-        if next()? != 1 {
+        let version = next()?;
+        if !matches!(version, 1 | 2) {
             return None;
         }
-        let choice = *Choice::ALL.get(usize::from(next()?))?;
+        let choice = Choice::from_code(next()?)?;
         let base = *Base::ALL.get(usize::from(next()?))?;
+        if version == 1 && (choice == Choice::Clay || base.clay()) {
+            return None;
+        }
         let accent = match (next()?, [next()?, next()?, next()?]) {
             (0, [0, 0, 0]) => Accent::FromPicture,
             (1, rgb) => Accent::Colour(rgb),
@@ -249,11 +339,13 @@ impl Settings {
         let size = *[Size::Fill, Size::Fit].get(usize::from(next()?))?;
         let position = *[Position::Left, Position::Centre, Position::Right].get(usize::from(next()?))?;
         let visibility = next()?;
+        let clay = if version == 2 { *ClayMode::ALL.get(usize::from(next()?))? } else { ClayMode::default() };
         if !VISIBILITY.contains(&visibility) || next().is_some() {
             return None;
         }
         Some(Self {
             choice,
+            clay,
             custom: Custom { base, accent, picture, size, position, visibility },
         })
     }
@@ -275,12 +367,19 @@ pub struct Look {
 pub fn resolve(settings: &Settings, system: Option<egui::Theme>, picture_accent: Option<Color32>) -> Look {
     let plain = |base: Base| Look { palette: base.palette(), light: base.light() };
     match settings.choice {
-        Choice::Default => plain(Base::Default),
+        Choice::Ocean => plain(Base::Ocean),
         Choice::Dark => plain(Base::Dark),
         Choice::Light => plain(Base::Light),
         // Without a reported mode, Dark.
         Choice::System if system == Some(egui::Theme::Light) => plain(Base::Light),
         Choice::System => plain(Base::Dark),
+        Choice::Clay => match settings.clay {
+            ClayMode::Dark => plain(Base::ClayDark),
+            ClayMode::Light => plain(Base::ClayLight),
+            // As System: light only when Windows says so.
+            ClayMode::FollowWindows if system == Some(egui::Theme::Light) => plain(Base::ClayLight),
+            ClayMode::FollowWindows => plain(Base::ClayDark),
+        },
         Choice::Custom => {
             let c = &settings.custom;
             let base = c.base.palette();
@@ -383,15 +482,19 @@ mod tests {
 
     fn looks() -> Vec<(&'static str, Look)> {
         let mut looks = vec![
-            ("Default", resolve(&Settings::default(), None, None)),
+            ("Clay, the default", resolve(&Settings::default(), None, None)),
+            ("Ocean", resolve(&Settings { choice: Choice::Ocean, ..Default::default() }, None, None)),
             ("Dark", resolve(&Settings { choice: Choice::Dark, ..Default::default() }, None, None)),
             ("Light", resolve(&Settings { choice: Choice::Light, ..Default::default() }, None, None)),
+            ("Clay dark", resolve(&Settings { choice: Choice::Clay, clay: ClayMode::Dark, ..Default::default() }, None, None)),
+            ("Clay light", resolve(&Settings { choice: Choice::Clay, clay: ClayMode::Light, ..Default::default() }, None, None)),
         ];
         for base in Base::ALL {
             for (name, rgb) in SWATCHES {
                 let settings = Settings {
                     choice: Choice::Custom,
                     custom: Custom { base, accent: Accent::Colour(rgb), picture: Picture::None, ..Default::default() },
+                    ..Default::default()
                 };
                 looks.push((name, resolve(&settings, None, None)));
             }
@@ -423,8 +526,14 @@ mod tests {
     }
 
     #[test]
-    fn default_is_the_navy_palette_and_system_follows_windows() {
-        assert_eq!(resolve(&Settings::default(), None, None).palette, Palette::NAVY);
+    fn default_is_clay_ocean_is_the_navy_and_system_follows_windows() {
+        let default = Settings::default();
+        assert_eq!((default.choice, default.clay), (Choice::Clay, ClayMode::FollowWindows));
+        assert_eq!(resolve(&default, None, None).palette, Palette::CLAY_DARK);
+        assert_eq!(resolve(&default, Some(egui::Theme::Light), None).palette, Palette::CLAY_LIGHT);
+        let ocean = Settings { choice: Choice::Ocean, ..Default::default() };
+        assert_eq!(resolve(&ocean, Some(egui::Theme::Light), None).palette, Palette::NAVY, "Ocean stays navy");
+        assert_eq!(Choice::ALL[0], Choice::Clay, "the default comes first");
         let system = Settings { choice: Choice::System, ..Default::default() };
         assert_eq!(resolve(&system, Some(egui::Theme::Light), None).palette, Palette::LIGHT);
         assert_eq!(resolve(&system, Some(egui::Theme::Dark), None).palette, Palette::GRAPHITE);
@@ -432,9 +541,57 @@ mod tests {
     }
 
     #[test]
+    fn clay_follows_windows_unless_its_mode_keeps_it_dark_or_light() {
+        let clay = |clay| Settings { choice: Choice::Clay, clay, ..Default::default() };
+        let follow = clay(ClayMode::FollowWindows);
+        assert_eq!(follow, clay(ClayMode::default()), "Follow Windows is the default");
+        assert_eq!(resolve(&follow, Some(egui::Theme::Light), None).palette, Palette::CLAY_LIGHT);
+        assert_eq!(resolve(&follow, Some(egui::Theme::Dark), None).palette, Palette::CLAY_DARK);
+        assert_eq!(resolve(&follow, None, None).palette, Palette::CLAY_DARK, "no reported mode: dark");
+        for system in [Some(egui::Theme::Light), Some(egui::Theme::Dark), None] {
+            assert_eq!(resolve(&clay(ClayMode::Dark), system, None), Look { palette: Palette::CLAY_DARK, light: false });
+            assert_eq!(resolve(&clay(ClayMode::Light), system, None), Look { palette: Palette::CLAY_LIGHT, light: true });
+        }
+        // Claude Code's colours: coral on charcoal; terracotta on ivory, deepened to read.
+        assert_eq!(Palette::CLAY_DARK.accent, Color32::from_rgb(217, 119, 87));
+        assert_eq!(Palette::CLAY_DARK.bg, Color32::from_rgb(31, 30, 29));
+        assert_eq!(Palette::CLAY_LIGHT.bg, Color32::from_rgb(245, 244, 237));
+        // Custom can start from either mode; its accent replaces the coral.
+        let custom = Settings { choice: Choice::Custom, custom: Custom { base: Base::ClayLight, accent: Accent::Colour([52, 211, 153]), picture: Picture::None, ..Default::default() }, ..Default::default() };
+        let look = resolve(&custom, None, None);
+        assert!(look.light && look.palette.bg == Palette::CLAY_LIGHT.bg && look.palette.accent != Palette::CLAY_LIGHT.accent);
+    }
+
+    #[test]
+    fn a_record_without_clay_stays_version_1_so_older_builds_keep_reading_it() {
+        // Clay is shown first, but each choice keeps the number older builds wrote:
+        // Ocean is the navy they called Default.
+        let custom = Settings { choice: Choice::Custom, ..Default::default() };
+        assert_eq!(custom.encode()[..2], [1, 4]);
+        assert_eq!(Settings { choice: Choice::System, ..Default::default() }.encode()[..2], [1, 3]);
+        assert_eq!(Settings { choice: Choice::Ocean, ..Default::default() }.encode()[..2], [1, 0]);
+        // Anything of Clay's needs version 2, which adds its mode at the end.
+        let chosen = Settings { choice: Choice::Clay, ..Default::default() };
+        let mode = Settings { choice: Choice::Ocean, clay: ClayMode::Light, ..Default::default() };
+        let base = Settings { custom: Custom { base: Base::ClayDark, ..Default::default() }, ..custom.clone() };
+        for settings in [chosen, mode, base] {
+            let bytes = settings.encode();
+            assert_eq!(bytes[0], 2, "{settings:?}");
+            assert_eq!(Settings::decode(&bytes), Some(settings));
+        }
+        let mut old = Settings { choice: Choice::Clay, ..Default::default() }.encode();
+        old[0] = 1;
+        old.pop();
+        assert_eq!(Settings::decode(&old), None, "version 1 has no Clay");
+        let mut unknown = Settings { choice: Choice::Clay, clay: ClayMode::Dark, ..Default::default() }.encode();
+        *unknown.last_mut().unwrap() = 3;
+        assert_eq!(Settings::decode(&unknown), None, "no fourth mode");
+    }
+
+    #[test]
     fn a_picture_turns_only_the_main_panes_see_through() {
         let pink = Color32::from_rgb(244, 114, 182);
-        let settings = Settings { choice: Choice::Custom, custom: Custom::default() };
+        let settings = Settings { choice: Choice::Custom, custom: Custom::default(), ..Default::default() };
         let look = resolve(&settings, None, Some(pink));
         let p = look.palette;
         assert_eq!(p.accent, pink, "From picture uses the picture's colour");
@@ -459,6 +616,7 @@ mod tests {
                 position: Position::Centre,
                 visibility: 45,
             },
+            ..Default::default()
         };
         for settings in [Settings::default(), own.clone(), Settings { choice: Choice::System, ..Default::default() }] {
             assert_eq!(Settings::decode(&settings.encode()), Some(settings));

@@ -208,8 +208,9 @@ See the [extensions guide](docs/wiki/Integrations.md).
 - Use the integrated terminal (Windows PowerShell, Git Bash, Command Prompt, PowerShell 7 or your own shell), command palette, configurable shortcuts,
   scoped custom commands, activity history and diagnostic viewer. **Help → Crash
   Reports** reviews local crash metadata and exports JSON without automatic uploads.
-- Choose a theme: Default, Dark, Light, System, or Custom with your own accent colour and
-  a picture behind the window.
+- Choose a theme: Clay, the default, in Claude Code's colours (following Windows or kept
+  dark or light), Ocean (Rocket's original navy), Dark, Light, System, or Custom with your
+  own accent colour and a picture behind the window.
 - Set up Rocket in **Preferences → General**: a source code folder for new clones, tags in
   fetch, spaces in branch names, submodule updates on checkout, Push after commit, diff font
   and marks, and compact branch labels.

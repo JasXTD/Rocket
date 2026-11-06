@@ -1,5 +1,6 @@
 // Native acceptance for themes through authenticated localhost MCP: Preferences → Appearance
-// and View → Appearance switch Default, Dark, Light, System and Custom, and state.appearance
+// and View → Appearance switch Clay (the default: Follow Windows, Dark or Light), Ocean, Dark,
+// Light, System and Custom, and state.appearance
 // reports each. Custom covers base, accent swatch/colour code/From picture, the four built-in
 // pictures, a picture chosen in the fixture-scoped picker (refused when it is not a picture),
 // size, position and Visibility (a click moves its slider to the centre, 35%, and is refused
@@ -143,6 +144,8 @@ async function showing(theme, palette, label) {
 }
 // The theme's palette under System: Windows' mode as Rocket was told it, Dark without one.
 const systemPalette = () => appearance().windows_mode === 'light' ? 'light' : 'dark';
+// Clay following Windows: its light mode only when Windows is light.
+const clayPalette = () => appearance().windows_mode === 'light' ? 'clay-light' : 'clay-dark';
 function noPaths() {
   const text = JSON.stringify(appearance());
   for (const part of [path.basename(root), 'rocket-ui-state', 'http-profile']) assert(!text.includes(part), 'appearance names a path: ' + text);
@@ -174,7 +177,7 @@ async function pick(name) {
 async function viewTheme(theme) {
   await click('menu-view'); await click('view-appearance');
   await until(s => s.controls.some(c => c.id === 'view-theme-' + theme), 'View → Appearance');
-  for (const id of ['default', 'dark', 'light', 'system', 'custom']) assert(control('view-theme-' + id)?.enabled, 'View → Appearance lists ' + id);
+  for (const id of ['clay', 'ocean', 'dark', 'light', 'system', 'custom']) assert(control('view-theme-' + id)?.enabled, 'View → Appearance lists ' + id);
   await click('view-theme-' + theme);
   if (control('view-appearance')) await click('menu-view');
   assert(!control('view-appearance'), 'the View menu closed');
@@ -199,28 +202,37 @@ async function run() {
     await open();
     const registry = windowsMode();
     report.windows_registry_mode = registry;
-    assert.deepEqual({ theme: appearance().theme, palette: appearance().palette, custom: appearance().custom, importing: appearance().importing },
-      { theme: 'default', palette: 'default', custom: null, importing: false });
+    assert.deepEqual({ theme: appearance().theme, palette: appearance().palette, clay_mode: appearance().clay_mode, custom: appearance().custom, importing: appearance().importing },
+      { theme: 'clay', palette: clayPalette(), clay_mode: 'follow', custom: null, importing: false });
     assert.match(appearance().accent, /^#[0-9A-F]{6}$/);
     if (registry) assert.equal(appearance().windows_mode, registry, 'Rocket is told Windows\' app mode');
-    passed('state.appearance reports the Default theme without Custom settings');
+    passed('state.appearance reports Clay, the default, following Windows, without Custom settings');
 
     // Preferences → Appearance.
     await click('menu-edit'); await click('preferences'); await click('pref-page-appearance');
     await until(s => s.preferences?.page === 'appearance', 'Appearance page');
-    for (const id of ['default', 'dark', 'light', 'system', 'custom']) assert(control('theme-' + id)?.enabled, 'tile ' + id);
-    assert(!control('theme-base-default'), 'Custom cards show only for Custom');
+    for (const id of ['clay', 'ocean', 'dark', 'light', 'system', 'custom']) assert(control('theme-' + id)?.enabled, 'tile ' + id);
+    assert(!control('theme-base-ocean'), 'Custom cards show only for Custom');
+    for (const mode of ['follow', 'dark', 'light']) assert(control('theme-clay-' + mode)?.enabled, 'Clay mode ' + mode);
+    await click('theme-clay-dark'); await showing('clay', 'clay-dark', 'Clay dark'); assert.equal(appearance().clay_mode, 'dark');
+    await capture('00-preferences-clay-dark');
+    await click('theme-clay-light'); await showing('clay', 'clay-light', 'Clay light'); await capture('00-preferences-clay-light');
+    await click('theme-clay-follow'); await showing('clay', clayPalette(), 'Clay follows Windows');
+    passed('Clay, the default, follows Windows and keeps Dark or Light when chosen (now ' + appearance().palette + ')');
+    await click('theme-ocean'); await showing('ocean', 'ocean', 'Ocean'); assert.equal(appearance().clay_mode, null);
+    assert(!control('theme-clay-dark'), 'the Clay card shows only for Clay'); await capture('00-preferences-ocean');
+    passed('Ocean is the navy theme, without Clay\'s card');
     await click('theme-dark'); await showing('dark', 'dark', 'Dark'); await capture('01-preferences-dark');
     await click('theme-light'); await showing('light', 'light', 'Light'); await capture('02-preferences-light');
     await click('theme-system'); await showing('system', systemPalette(), 'System'); await capture('03-preferences-system');
     passed('Preferences → Appearance switches Dark, Light and System (follows Windows: ' + appearance().palette + ')');
 
-    await click('theme-custom'); await showing('custom', 'default', 'Custom');
-    assert.deepEqual(appearance().custom, { base: 'default', accent: 'picture', picture: 'astronaut', picture_name: null, size: 'fill',
+    await click('theme-custom'); await showing('custom', 'ocean', 'Custom');
+    assert.deepEqual(appearance().custom, { base: 'ocean', accent: 'picture', picture: 'astronaut', picture_name: null, size: 'fill',
       position: 'right', visibility: 30, picture_shown: true, picture_preparing: false, picture_problem: null });
     assert.equal(appearance().accent, ASTRONAUT, 'From picture takes the astronaut\'s colour');
     await capture('04-preferences-custom-astronaut');
-    passed('Custom starts from Default with the Astronaut picture and its colour');
+    passed('Custom starts from Ocean with the Astronaut picture and its colour');
 
     await click('theme-base-light'); await showing('custom', 'light', 'Custom from Light');
     await click('theme-accent-green'); await until(s => s.appearance.custom.accent === '#34D399', 'Green swatch');
@@ -278,16 +290,16 @@ async function run() {
     // View → Appearance over the main window, with a diff showing.
     await click('view-changes'); await click('change-unstaged-' + Buffer.from(FILE).toString('hex'));
     await until(s => s.tabs.find(t => t.id === s.active_tab)?.patch_files?.length, 'diff');
-    for (const [theme, number] of [['default', '09'], ['dark', '10'], ['light', '11'], ['system', '12']]) {
+    for (const [theme, number] of [['clay', '08'], ['ocean', '09'], ['dark', '10'], ['light', '11'], ['system', '12']]) {
       await viewTheme(theme);
-      await showing(theme, theme === 'system' ? systemPalette() : theme, 'View → Appearance ' + theme);
+      await showing(theme, theme === 'system' ? systemPalette() : theme === 'clay' ? clayPalette() : theme, 'View → Appearance ' + theme);
       assert.equal(appearance().custom, null);
       await capture(number + '-view-' + theme);
     }
     await viewTheme('custom'); await showing('custom', 'light', 'View → Appearance custom');
     assert.deepEqual(appearance().custom, custom, 'Custom keeps its settings while other themes show');
     await capture('13-view-custom');
-    passed('View → Appearance switches all five themes over the main window; Custom comes back as it was left');
+    passed('View → Appearance switches all six themes over the main window; Custom comes back as it was left');
 
     await closeWindow(); await open();
     await showing('custom', 'light', 'reopened Custom');

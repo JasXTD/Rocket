@@ -1009,7 +1009,12 @@ mod tests {
         state.preferences.theme = Settings {
             choice: Choice::Custom,
             custom: Custom { picture: Picture::Own("picture-00000000000000ff.png".into()), ..Default::default() },
+            ..Default::default()
         };
+        let bytes = super::encode(&state).unwrap();
+        assert_eq!(super::decode(&bytes).unwrap(), state);
+        // Clay and its mode come back too.
+        state.preferences.theme = Settings { choice: Choice::Clay, clay: crate::theme::ClayMode::Light, ..Default::default() };
         let bytes = super::encode(&state).unwrap();
         assert_eq!(super::decode(&bytes).unwrap(), state);
         let mut bad = bytes.clone();

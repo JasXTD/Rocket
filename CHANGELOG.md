@@ -8,6 +8,21 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Clay, the new default theme
+
+- Clay is the new default theme, in Claude Code's colours: warm charcoal surfaces, cream
+  text and a coral accent (#D97757), with Claude Code's own diff greens and reds; in light
+  mode, ivory surfaces and a terracotta accent (#AE5236, Claude's #C6613F deepened so text
+  in it and on it reads at 4.5:1 or better). Its Mode follows Windows' app mode, as
+  Claude's app does, or keeps it dark or light. Every colour Rocket draws has a Clay value
+  in both modes; graph lanes put gold second so they stay apart from the coral.
+- Rocket's navy and cyan theme, the default until now, is named Ocean. Anyone who chose a
+  theme keeps it; a profile that never chose one now shows Clay. Custom can start from
+  Ocean, Dark, Light, Clay dark or Clay light.
+- The saved theme record stays the version older builds read unless Clay's settings are
+  in use (a Clay mode or a Custom theme from a Clay palette); those older builds then
+  refuse the saved state, as with other newer settings.
+
 ## Unreleased — Linux build (preview)
 
 - Rocket builds and opens on Linux under X11 or Wayland. It was checked under WSL2 Ubuntu
