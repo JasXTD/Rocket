@@ -52,6 +52,13 @@ finished. Read Activity before retrying an unconfirmed result.
 
 ## Resolve a conflict
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="../media/conflict-light.webp">
+    <img src="../media/conflict-dark.webp" width="880" alt="The three-column conflict editor with Ours, Result and Theirs, and two conflicts numbered and linked across the columns.">
+  </picture>
+</p>
+
 1. Open **Changes** and read the banner naming the interrupted operation.
 2. Select a conflicted file and open its conflict editor. Read the side labels
    and use conflict navigation to visit each unresolved section.

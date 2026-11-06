@@ -43,6 +43,13 @@ needs attention using the same refreshed state as Changes.
 
 Use a separate practice folder if you are learning.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="../media/hero-light.webp">
+    <img src="../media/hero-dark.webp" width="880" alt="The Changes page in a demo repository: README.md staged, four files unstaged, the selected file's diff and a commit message ready to commit.">
+  </picture>
+</p>
+
 1. In File Explorer, choose or create a parent folder for your projects. In
    Rocket, open **File → New Repository**, choose a new folder under that parent
    and name the initial branch `main`. Review what will be created, then confirm.

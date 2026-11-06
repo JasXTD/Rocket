@@ -34,6 +34,11 @@ rules while you are in a dialog.
 
 - **Git:** select an installed executable and set global commit identity defaults.
   Use repository-local settings when one project needs a different identity.
+- **Appearance:** Clay is the default theme, in warm charcoal with a coral accent or
+  ivory with terracotta. Its **Mode** is **Follow Windows**, **Dark** or **Light**.
+  **Ocean** is Rocket's original navy; **Dark**, **Light**, **System** and **Custom** (your
+  accent colour and a picture behind the window) are there too. **View → Appearance**
+  switches theme without opening Preferences. See [Themes](../../crates/rocket-ui/src/guide.md#themes).
 - **Shortcuts:** find a command by name or by pressing its keys, click its
   Shortcut or Alternate cell, then press a key chord or mouse gesture; it is
   saved at once (Esc cancels, Delete clears the cell). Side buttons work alone;

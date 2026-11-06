@@ -19,6 +19,13 @@ review. Rocket can't confirm who made a file, so only install what you trust. Ne
 runs a script: scripts run only from **Refresh panel**, a control in the panel or a command you
 choose.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="../media/review-light.webp">
+    <img src="../media/review-dark.webp" width="642" alt="The review shown before an extension is turned on, listing its permissions, its commands and what it can never do.">
+  </picture>
+</p>
+
 Network reaches only the server you set in a connection. **Reviewed writes** and
 **Repository details** stay off until you allow them for a connection. An extension can't run
 Git or shell commands, read your files or see your tokens.

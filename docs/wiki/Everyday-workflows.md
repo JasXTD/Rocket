@@ -79,6 +79,13 @@ rejected or cancelled after the commit succeeds, **keep that commit** and use
 
 ## Look up an earlier change
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="../media/history-light.webp">
+    <img src="../media/history-dark.webp" width="880" alt="The Commits page with a branch graph across five branches, merges, and branch and remote labels.">
+  </picture>
+</p>
+
 - Select a commit in **Commits** to inspect its message, files and diff.
 - Use file history to follow changes to one path, including renames.
 - Use **Blame** to find which commit last changed a line; it is an investigation

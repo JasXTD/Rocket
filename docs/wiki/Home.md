@@ -53,7 +53,7 @@ work to GitHub; **Commit & Push** explicitly combines those two steps.
 - **Remotes:** inspect the saved destinations for fetch and push.
 - **Activity:** see the running operation and its result in the bottom drawer.
 - **Terminal:** use a shell in the selected repository when you need it: Windows PowerShell, Git Bash, Command Prompt, PowerShell 7 or your own, chosen in Preferences → Terminal.
-- **Edit → Preferences:** Git selection, global defaults and app settings.
+- **Edit → Preferences:** Git selection, global defaults, the theme and other app settings.
 - **Repository → Settings → Repository Settings:** settings for the open repository.
 
 Start with the [local practice walkthrough](Getting-started.md#make-your-first-local-commit).
