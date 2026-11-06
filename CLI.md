@@ -112,7 +112,8 @@ test's process tree has stopped. In each case the search stays active: check
 `bisect status`, then run `bisect run --continue` or `bisect restore`. Results (not
 output) are saved in the repository, so the desktop's Bisect page shows a CLI run.
 While a test runs, its output goes to private files under
-`%LOCALAPPDATA%\Rocket\cli\bisect-output`, deleted after each test.
+`%LOCALAPPDATA%\Rocket\cli\bisect-output` (on Linux, `~/.local/state/rocket/cli/bisect-output`),
+deleted after each test.
 
 **Remote tags.** `tag remote REMOTE` reads the tags advertised by the remote's push
 destination without downloading objects. Each entry has `name`, `remote_id`,
@@ -729,7 +730,8 @@ reads can run after interruption. A timed-out or cancelled clone retains its sib
 staging directory for inspection; existing files are not recursively removed.
 
 By default, diagnostics use `%LOCALAPPDATA%\Rocket\logs\cli\rocket.jsonl` with
-the existing bounded backend rotation. `--log-dir ABSOLUTE_PATH` or `ROCKET_LOG_DIR`
+the existing bounded backend rotation. On Linux the folder is `logs/cli` under
+`$XDG_STATE_HOME/rocket`, by default `~/.local/state/rocket`. `--log-dir ABSOLUTE_PATH` or `ROCKET_LOG_DIR`
 selects a dedicated directory. `--no-log` or `ROCKET_LOG=off` disables logging.
 `diagnostics` gives the actual log path, session ID and dropped-event count.
 Logging failure is a warning, never a reason to repeat a successful write.
@@ -737,7 +739,7 @@ Logging failure is a warning, never a reason to repeat a successful write.
 Crash metadata is separate from operation logs. Operational CLI commands capture
 Rust panics and best-effort unhandled Windows exceptions locally, without panic
 payloads, repository data, credentials or dumps. The default directory is
-`%LOCALAPPDATA%\Rocket\crashes`; explicit `--log-dir` uses its `crashes` subfolder
+`%LOCALAPPDATA%\Rocket\crashes` (on Linux, `~/.local/state/rocket/crashes`); explicit `--log-dir` uses its `crashes` subfolder
 for isolated runs. `--no-log` controls operation logging, not crash capture.
 Initialization failure adds `crash_capture_unavailable` without changing the
 requested operation. Reports are never uploaded. See [capture limits](SECURITY.md#local-crash-reports-0920).

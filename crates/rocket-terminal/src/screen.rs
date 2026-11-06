@@ -123,6 +123,7 @@ impl Screen {
         self.previous = None;
         self.revision += 1;
     }
+    #[cfg(any(windows, test))]
     pub(crate) fn take_replies(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.replies)
     }

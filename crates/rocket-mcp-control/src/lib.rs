@@ -109,6 +109,7 @@ fn exclusive_file(profile: &Path, name: &str) -> io::Result<File> {
     }
     #[cfg(not(windows))]
     {
+        let _ = name;
         return Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "MCP settings ownership currently requires Windows",

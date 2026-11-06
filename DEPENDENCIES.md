@@ -1,5 +1,49 @@
 # Dependency review
 
+## Linux window backends — 2026-11-06
+
+`crates/rocket-ui/Cargo.toml` turns on winit's X11 and Wayland backends for
+`target_os = "linux"` only:
+- `x11` and `wayland` on egui-winit 0.36.2;
+- `x11`, `glx` and `wayland` on glutin 0.32.3 and glutin-winit 0.5.0.
+
+These three crates are the ones that read eframe's own `x11` and `wayland` features.
+eframe's features were not used, because their weak `egui-wgpu?/…` entries make Cargo
+lock the unused wgpu stack (18 more packages). The pins match the versions eframe 0.36.2
+already locks and must move together with it. rocket-mcp gets them through rocket-ui.
+
+Cargo.lock adds ten packages and no locked version changes. Existing entries only gain
+dependency edges, or versioned names where a second version now exists:
+
+| Package | License | Build script | Built for |
+| --- | --- | --- | --- |
+| x11-dl 2.21.0 | MIT | yes, optional pkg-config library paths | Linux |
+| glutin_glx_sys 0.6.1 | Apache-2.0 | yes, generated GL bindings | Linux |
+| wayland-protocols-plasma 0.3.12 | MIT | no | Linux |
+| smithay-client-toolkit 0.19.2 | MIT | yes | Linux, for winit; 0.20.0 stays for the clipboard |
+| calloop-wayland-source 0.3.0 | MIT | no | Linux; 0.4.1 stays |
+| as-raw-xcb-connection 1.0.1 | MIT OR Apache-2.0 | no | Linux |
+| getrandom 0.3.4 | MIT OR Apache-2.0 | yes | Linux, for ahash's runtime RNG through winit; 0.4.3 stays |
+| r-efi 5.3.0, wasip2 1.0.4+wasi-0.2.12, wit-bindgen 0.57.1 | — | — | getrandom 0.3's UEFI and WASI targets only; never downloaded or built here |
+
+Wayland is loaded at run time through smithay-clipboard's default `dlopen`. So building
+needs neither libwayland-dev nor pkg-config. Windows and macOS compile the same crates as
+before, because the features are target-specific.
+
+In WSL, Cargo downloaded the seven Linux crates from crates.io and checked each archive
+against its Cargo.lock SHA-256. `cargo audit --no-fetch --stale` (cargo-audit 0.22.2)
+reported no advisories for the 295 locked packages, against the local RustSec snapshot of
+2026-11-05 (1,409 advisories).
+
+THIRD-PARTY-NOTICES.txt still describes the Windows release. A Linux package will need
+notices generated for the Linux target.
+
+The check used Ubuntu 26.04's build-essential 12.12ubuntu2.26.04.2 (gcc 15.2), rustup
+1.27.1-8 and Rust 1.99.1 in WSL. None of these ship with Rocket.
+
+This is a bounded integrity and advisory review, not proof against an undisclosed
+compromise.
+
 ## Portable Windows Visual C++ runtime — 2026-11-03
 
 The package now carries Microsoft x64 `vcruntime140.dll` 14.51.36247.0 beside

@@ -5,9 +5,10 @@
 mod common;
 use common::Fixture;
 use rocket_git::*;
+use std::{ffi::OsString, path::Path};
+// For the Windows-only cancellation test.
+#[cfg(windows)]
 use std::{
-    ffi::OsString,
-    path::Path,
     thread,
     time::{Duration, Instant},
 };

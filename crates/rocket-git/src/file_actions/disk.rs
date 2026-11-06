@@ -2,12 +2,18 @@ use super::*;
 use crate::local_files;
 use std::{
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::Read,
     path::Path,
+};
+// Used by the Windows publication; elsewhere publish reports Unsupported.
+#[cfg(windows)]
+use std::{
+    io::Write,
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 const FOLDER: &str = "rocket-file-backups";
+#[cfg(windows)]
 static NEXT: AtomicU64 = AtomicU64::new(0);
 pub(super) fn validate_path(path: &RepoPath) -> Result<()> {
     for part in path.as_bytes().split(|b| *b == b'/') {
@@ -114,6 +120,7 @@ pub(super) fn read_working(
     let _guard = local_files::pin_directories(root, full.parent().unwrap())?;
     read(root, &full, cancel)
 }
+#[cfg(windows)]
 fn write(directory: &Path, name: &str, bytes: &[u8], cancel: &CancellationToken) -> Result<()> {
     let mut file = OpenOptions::new()
         .write(true)

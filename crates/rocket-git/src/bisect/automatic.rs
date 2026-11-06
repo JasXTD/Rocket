@@ -171,7 +171,10 @@ fn program_digest(program: &Path, root: &Path, c: &CancellationToken) -> Result<
         return Err(Error::InvalidInput("Choose a regular local test executable no larger than 128 MiB.".into()));
     }
     #[cfg(not(windows))]
-    return Err(Error::InvalidInput("Automatic bisect executable verification currently requires Windows.".into()));
+    {
+        let _ = c; // Only the Windows SHA-256 check below can be cancelled.
+        return Err(Error::InvalidInput("Automatic bisect executable verification currently requires Windows.".into()));
+    }
     #[cfg(windows)]
     crate::osv_file_digest(&full, 128 * 1024 * 1024, c).map_err(|error| match error {
         Error::Io { source, .. } => Error::io("verify bisect test executable", source),

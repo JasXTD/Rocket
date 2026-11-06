@@ -8,6 +8,28 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Linux build (preview)
+
+- Rocket builds and opens on Linux under X11 or Wayland. It was checked under WSL2 Ubuntu
+  26.04 with WSLg, where opening a repository, history, diffs, staging, committing and
+  fetching work. It uses the first `git` on `PATH` (2.46 or later); Linux has no bundled
+  Git.
+- Settings, drafts, logs, previews and crash reports live in `$XDG_STATE_HOME/rocket`, by
+  default `~/.local/state/rocket`. Rocket creates missing folders for the current user only
+  (0700). As on Windows, a second Rocket using the same settings is refused, and the lock
+  ends with the process, even after a crash. The CLI's Linux logs move from
+  `~/.local/state/rocket/cli` to `logs/cli` beside the desktop's.
+- Interface text uses whichever is found first of Ubuntu Sans, Noto Sans, Ubuntu, DejaVu
+  Sans or Liberation Sans, with its own semibold for headings. Fallbacks follow for
+  Chinese, Japanese and Korean (Noto Sans CJK and others), emoji (Noto Emoji, Symbola) and
+  symbols (Noto Sans Symbols 2, DejaVu Sans). Fonts are looked up by name in the user's
+  and the system's font folders, and egui's own fonts remain the last fallback. Windows
+  fonts are unchanged.
+- Features that still need Windows keep their existing messages on Linux; README's
+  Current limits lists them.
+- Cargo.lock adds ten Linux-only packages for winit's X11 and Wayland backends, and the
+  Windows build is unchanged. See DEPENDENCIES.md.
+
 ## Unreleased — Branch switcher and diff header
 
 - The toolbar's branch list opens with a filter focused. The current branch comes first

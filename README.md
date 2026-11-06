@@ -304,6 +304,22 @@ When moving a build, keep its supporting files together:
 Copying only `rocket.exe` omits the included Git and the terminal, rebase and Lua helpers. The bundled native
 runtime's origin and hashes are recorded in [ConPTY provenance](runtime/conpty/1.25.260930003/README.md).
 
+### Linux (preview)
+
+Rocket builds and opens on Linux under X11 or Wayland; this has been checked under WSL2
+Ubuntu 26.04 with WSLg. Install Rust 1.95 or later, a C compiler and Git 2.46 or later
+from your distribution, then:
+
+```bash
+cargo build --workspace --locked
+./target/debug/rocket
+```
+
+Add `--features rocket-integrations/runtime` for the release feature set. Rocket uses the
+first `git` on `PATH`; Linux has no bundled Git. Settings, logs and crash reports live in
+`$XDG_STATE_HOME/rocket`, by default `~/.local/state/rocket`. See [Current limits](#current-limits)
+for what still needs Windows.
+
 ## Getting started
 
 1. **Open, create or clone a repository.** Use Open for an existing Git checkout,
@@ -400,8 +416,15 @@ folders. Start validation with the checks for the feature being changed; the
 
 ## Current limits
 
-- Windows is the validated platform. Linux/macOS behavior is not certified by the
-  current Windows testing.
+- Windows is the validated platform. On Linux, opening repositories, history, diffs,
+  staging, committing and fetching work with the system Git. These still report that
+  they need Windows: the integrated terminal, automatic refresh (use F5), creating,
+  cloning and adding worktrees, saving the conflict editor and whole-file replacements,
+  moves that must not overwrite (for example .gitignore and LFS attribute edits,
+  patch files, submodules), creating SSH keys, remembering hosting tokens, MCP
+  control, Lua extensions, spell check, app updates, dependency scanning, LFS cache
+  pruning and automatic bisect. Rocket's own times (activity history) show in UTC.
+  macOS is unverified.
 - Hosting adapters have different capabilities. Live acceptance for GitHub Enterprise Server, GitLab,
   Bitbucket, Azure DevOps and Gitea remains unverified; local fixtures do not prove
   a real organization's permissions, SSO or server policy. See [Hosting](HOSTING.md).

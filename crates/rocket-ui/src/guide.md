@@ -16,7 +16,7 @@ Operations that change a repository open a review first. The dialog shows what w
 - If Rocket or the MCP server stopped, or recorded an internal error, in the 15 minutes before this start, a notice in the corner offers that report once: View opens it, Dismiss hides the notice. Reports from the command-line tool are listed but not offered.
 - An internal error is a Rust panic that may have been caught in a worker, so the whole app didn't necessarily stop. A report that says Rocket stopped is an unhandled Windows exception, named in plain words such as Access violation or Stack overflow. When it failed in the graphics driver's OpenGL, the report says so; a driver update often helps. Forced termination and some severe failures can prevent a report.
 - Copy report copies a structured summary. Save as saves it as a new .json file: Browse picks the folder, keep or change the name, then Save. Existing files are never replaced. Stop cancels a save before it is published; a file already saved stays saved. Code offsets show where in Rocket's code it failed, for a bug report.
-- Reports omit panic messages, repository contents, credentials and memory dumps. Review a saved file before sharing it. Open folder shows the storage folder, by default %LOCALAPPDATA%\Rocket\crashes; old inactive session files rotate automatically.
+- Reports omit panic messages, repository contents, credentials and memory dumps. Review a saved file before sharing it. Open folder shows the storage folder, by default %LOCALAPPDATA%\Rocket\crashes (on Linux, ~/.local/state/rocket/crashes); old inactive session files rotate automatically.
 
 ### Saved repositories
 
@@ -177,7 +177,7 @@ Every operation that writes follows the same rules, so dialogs do not repeat the
 
 - Keep makes a normal clone in a folder you choose, with the same checks as Clone. Rocket first downloads the file versions the preview doesn't have yet, then copies it with Rocket's verified clone and points origin at the original address. The kept repository replaces the preview's tab, and Activity notes where it went. Stopping Keep, or a Keep that can't download the rest, leaves the preview as it was; Try again picks up from there.
 - Discard, or closing the preview's tab, deletes it straight away, and Activity notes the space freed; it can always be downloaded again. Quitting Rocket deletes every preview. If Rocket closes unexpectedly, the next start deletes previews no running Rocket holds.
-- Previews live in the previews folder next to Rocket's state folder (%LOCALAPPDATA%\Rocket\previews). They never appear in Recent repositories.
+- Previews live in the previews folder next to Rocket's state folder (%LOCALAPPDATA%\Rocket\previews; on Linux, ~/.local/state/rocket/previews). They never appear in Recent repositories.
 
 ## Commits
 

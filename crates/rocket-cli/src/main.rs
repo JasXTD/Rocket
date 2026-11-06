@@ -35,7 +35,7 @@ fn log_directory(options: &Options) -> io::Result<PathBuf> {
             }
             #[cfg(not(windows))]
             {
-                std::env::var_os("HOME").map(|p| PathBuf::from(p).join(".local/state/rocket/cli"))
+                rocket_git::local_storage::directory().map(|p| p.join("logs").join("cli"))
             }
         })
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "log directory unavailable"))?;

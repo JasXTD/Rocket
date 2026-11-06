@@ -57,7 +57,7 @@ impl Probe {
         let outcome = &activity.outcome;
         let tab = self.app.tab().unwrap();
         let snapshot = tab.snapshot.as_ref().unwrap();
-        let refresh_ok = tab.error.is_none() && snapshot.warnings.is_empty();
+        let refresh_ok = tab.error.is_none() && unexpected(&snapshot.warnings).is_empty();
         let details = outcome
             .details
             .iter()
@@ -158,7 +158,8 @@ impl App for Probe {
                 let tab = self.app.tab().expect("fixture tab");
                 assert!(tab.error.is_none());
                 let snapshot = tab.snapshot.as_ref().expect("fixture snapshot");
-                assert!(snapshot.warnings.is_empty());
+                let unexpected = unexpected(&snapshot.warnings);
+                assert!(unexpected.is_empty(), "{unexpected:?}");
                 assert_eq!(snapshot.remotes.len(), 1);
                 assert_eq!(snapshot.remotes[0].name, b"origin");
                 let head = match snapshot.head.as_ref().unwrap() {
@@ -225,6 +226,14 @@ impl App for Probe {
         }
         self.stage += 1;
     }
+}
+/// Snapshot warnings other than the notice every refresh carries where automatic
+/// refresh still needs Windows.
+fn unexpected(warnings: &[String]) -> Vec<&String> {
+    warnings
+        .iter()
+        .filter(|warning| cfg!(windows) || !warning.starts_with("Automatic refresh unavailable"))
+        .collect()
 }
 fn json_string(value: &str) -> String {
     let mut result = String::from("\"");

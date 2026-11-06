@@ -107,6 +107,10 @@ fn response<T>() -> (Reply<T>, Pending<T>) {
 // Matches the persisted commit-message byte limit and bounds every queued payload.
 const MAX_TEXT_BYTES: usize = 128 * 1024;
 
+#[cfg_attr(
+    not(any(windows, test)),
+    expect(dead_code, reason = "only the Windows worker reads the text")
+)]
 enum Request {
     Check(String, Reply<Vec<Misspelling>>),
     Suggest(String, Reply<Vec<String>>),

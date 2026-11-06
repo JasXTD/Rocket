@@ -400,9 +400,12 @@ fn verify_inventory(
     progress.begin(entries.len(), entries.values().map(|e| e.bytes).sum());
     let mut seen = BTreeSet::new();
     let mut directories = vec![root.to_owned()];
-    let mut directory_guards = Vec::new();
+    // Only Windows holds the directories open and reads the volume's change journal.
+    #[cfg(windows)]
+    let (mut directory_guards, mut journal) = (Vec::new(), ChangeJournal::default());
+    #[cfg(not(windows))]
+    let (directory_guards, journal) = (Vec::new(), ChangeJournal::default());
     let mut directory_entries = BTreeMap::new();
-    let mut journal = ChangeJournal::default();
     let mut visited = 0usize;
     while let Some(directory) = directories.pop() {
         cancel.check()?;

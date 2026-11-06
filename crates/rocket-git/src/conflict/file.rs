@@ -1,12 +1,19 @@
 use super::*;
 use crate::local_files;
 use std::{
-    fs::{self, File, OpenOptions},
-    io::{Read, Seek, SeekFrom, Write},
+    fs::{File, OpenOptions},
+    io::{Read, Seek, SeekFrom},
+};
+// Used by the Windows publication; elsewhere publish_change reports Unsupported.
+#[cfg(windows)]
+use std::{
+    fs,
+    io::Write,
     path::Path,
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
+#[cfg(windows)]
 static NEXT: AtomicU64 = AtomicU64::new(0);
 fn io(action: &'static str, e: std::io::Error) -> Error {
     Error::io(action, e)
@@ -59,6 +66,8 @@ fn open_mode(
             .share_mode(if allow_replace { 1 | 4 } else { 1 })
             .custom_flags(0x00200000);
     }
+    #[cfg(not(windows))]
+    let _ = allow_replace; // Only Windows share modes deny writers while a file is read.
     let file = options
         .open(&full)
         .map_err(|e| io("open conflict working file", e))?;
@@ -110,6 +119,7 @@ pub(super) fn read_optional(
 }
 
 /// One checked working-file change and how its failures are reported.
+#[cfg_attr(not(windows), expect(dead_code, reason = "only the Windows publication reads a change"))]
 pub(super) struct Change<'a> {
     pub path: &'a RepoPath,
     /// The reviewed bytes, or None when the path was absent.

@@ -107,11 +107,20 @@ pub fn execute(
 
 /// Test output reaches private files here while a test runs; each is deleted after it.
 fn output_folder() -> Result<PathBuf> {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .map(|p| p.join("Rocket").join("cli").join("bisect-output"))
-        .ok_or_else(|| Error::InvalidInput("LOCALAPPDATA must name an absolute folder for bisect test output.".into()))
+    #[cfg(windows)]
+    {
+        std::env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+            .map(|p| p.join("Rocket").join("cli").join("bisect-output"))
+            .ok_or_else(|| Error::InvalidInput("LOCALAPPDATA must name an absolute folder for bisect test output.".into()))
+    }
+    #[cfg(not(windows))]
+    {
+        rocket_git::local_storage::directory()
+            .map(|p| p.join("cli").join("bisect-output"))
+            .ok_or_else(|| Error::InvalidInput("HOME or XDG_STATE_HOME must name an absolute folder for bisect test output.".into()))
+    }
 }
 fn target(head: &Head) -> Option<&str> {
     match head {

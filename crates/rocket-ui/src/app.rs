@@ -887,10 +887,16 @@ pub struct Rocket {
 
 impl Rocket {
     pub fn new(ctx: &Context, paths: Vec<PathBuf>) -> Self {
+        #[cfg(windows)]
         let log_path = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir)
             .join("Rocket/logs");
+        // Without a home folder, a temporary one, as without LOCALAPPDATA on Windows.
+        #[cfg(not(windows))]
+        let log_path = rocket_git::local_storage::directory()
+            .unwrap_or_else(|| std::env::temp_dir().join("rocket"))
+            .join("logs");
         let state_path = log_path.parent().expect("Rocket directory").join("state");
         let mut app=Self::with_storage(ctx, paths, log_path, state_path);
         app.updates.endpoint=Some(rocket_git::app_update::UpdateEndpoint::Public);

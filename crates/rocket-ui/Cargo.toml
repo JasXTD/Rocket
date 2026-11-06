@@ -18,6 +18,15 @@ unicode-segmentation = "=1.13.3"
 serde_json = "=1.0.151"
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "bmp", "tga", "webp"] }
 
+# Linux windows need winit's X11 and Wayland backends. eframe's own x11/wayland features
+# would also lock its unused wgpu renderer, so these turn them on in the crates eframe
+# 0.36.2 uses (rocket-mcp gets them through rocket-ui). Move these three pins together
+# with eframe's.
+[target.'cfg(target_os = "linux")'.dependencies]
+egui-winit = { version = "=0.36.2", default-features = false, features = ["x11", "wayland"] }
+glutin = { version = "=0.32.3", default-features = false, features = ["x11", "glx", "wayland"] }
+glutin-winit = { version = "=0.5.0", default-features = false, features = ["x11", "glx", "wayland"] }
+
 [lints]
 workspace = true
 

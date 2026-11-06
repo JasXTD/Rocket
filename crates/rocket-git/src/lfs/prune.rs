@@ -1,7 +1,9 @@
 //! Use Git LFS's retention/remote verification, but delete only the exact
 //! reviewed cache objects. Never run an unbounded second destructive prune.
 use super::*;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+#[cfg(windows)]
+use std::fs::OpenOptions;
 #[derive(Clone)]
 pub struct LfsPrunePreview {
     repository: PathBuf,
@@ -48,6 +50,7 @@ fn hex(s: &str, n: usize) -> bool {
         && s.bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
+#[cfg(windows)]
 fn path(repo: &Repository, p: &LfsPointer) -> PathBuf {
     repo.info()
         .common_dir

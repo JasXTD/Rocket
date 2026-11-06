@@ -1,6 +1,8 @@
 //! Windows current-user credential protection. The UI remains safe Rust.
 use crate::{Error, Result};
+#[cfg(windows)]
 const LIMIT: usize = 512 * 1024;
+#[cfg(windows)]
 fn refused() -> Error {
     Error::InvalidInput("Hosting credentials could not be protected or decrypted for this Windows user. Existing data was preserved.".into())
 }

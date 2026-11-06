@@ -212,49 +212,55 @@ impl Store {
             use std::os::windows::fs::OpenOptionsExt;
             options.share_mode(0); // OS releases ownership on exit/crash; no stale lock deletion.
         }
+        let lock = options.open(directory.join("state.lock"))?;
+        // Elsewhere an exclusive flock owns the folder. The OS releases it on exit or a
+        // crash, so no stale lock is deleted, and it belongs to this open file: a second
+        // Store is refused even in the same process, as the share mode refuses it.
         #[cfg(not(windows))]
-        return Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "State ownership currently requires Windows",
-        ));
-        #[cfg(windows)]
-        {
-            let lock = options.open(directory.join("state.lock"))?;
-            let mut archive = None;
-            let mut state = match File::open(directory.join("state.bin")) {
-                Ok(file) => {
-                    let mut bytes = Vec::new();
-                    file.take(MAX_BYTES + 1).read_to_end(&mut bytes)?;
-                    if bytes.len() as u64 > MAX_BYTES {
-                        return Err(invalid());
-                    }
-                    if let Some(inner) = bytes.strip_prefix(DRAFT_STORE_MAGIC) {
-                        let mut r = Reader(inner);
-                        let name = std::str::from_utf8(r.bytes()?).map_err(|_| invalid())?;
-                        if !drafts::archive_name(name) { return Err(invalid()); }
-                        archive = Some(name.to_owned());
-                        let settings = decode(r.0)?;
-                        if !settings.drafts.is_empty() { return Err(invalid()); }
-                        settings
-                    } else {
-                        decode(&bytes)?
-                    }
-                }
-                Err(e) if e.kind() == io::ErrorKind::NotFound => SavedState::default(),
-                Err(e) => return Err(e),
-            };
-            if let Some(name) = &archive {
-                state.drafts = drafts::read(&directory.join(name))?;
+        match lock.try_lock() {
+            Ok(()) => {}
+            Err(fs::TryLockError::WouldBlock) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::ResourceBusy,
+                    "Another Rocket window is using these settings",
+                ));
             }
-            Ok((
-                Self {
-                    directory: directory.into(),
-                    _lock: lock,
-                    archive: Mutex::new(archive),
-                },
-                state,
-            ))
+            Err(fs::TryLockError::Error(error)) => return Err(error),
         }
+        let mut archive = None;
+        let mut state = match File::open(directory.join("state.bin")) {
+            Ok(file) => {
+                let mut bytes = Vec::new();
+                file.take(MAX_BYTES + 1).read_to_end(&mut bytes)?;
+                if bytes.len() as u64 > MAX_BYTES {
+                    return Err(invalid());
+                }
+                if let Some(inner) = bytes.strip_prefix(DRAFT_STORE_MAGIC) {
+                    let mut r = Reader(inner);
+                    let name = std::str::from_utf8(r.bytes()?).map_err(|_| invalid())?;
+                    if !drafts::archive_name(name) { return Err(invalid()); }
+                    archive = Some(name.to_owned());
+                    let settings = decode(r.0)?;
+                    if !settings.drafts.is_empty() { return Err(invalid()); }
+                    settings
+                } else {
+                    decode(&bytes)?
+                }
+            }
+            Err(e) if e.kind() == io::ErrorKind::NotFound => SavedState::default(),
+            Err(e) => return Err(e),
+        };
+        if let Some(name) = &archive {
+            state.drafts = drafts::read(&directory.join(name))?;
+        }
+        Ok((
+            Self {
+                directory: directory.into(),
+                _lock: lock,
+                archive: Mutex::new(archive),
+            },
+            state,
+        ))
     }
     pub fn save(&self, state: &SavedState) -> io::Result<()> {
         let mut archive = self.archive.lock().map_err(|_| io::Error::other("State writer poisoned"))?;
@@ -921,6 +927,34 @@ mod lifecycle_tests;
 
 #[cfg(all(test, windows))]
 mod nested_workspace_tests;
+
+#[cfg(all(test, not(windows)))]
+mod lock_tests {
+    use super::*;
+
+    #[test]
+    fn one_store_owns_a_state_folder_until_it_closes() {
+        let directory = std::env::temp_dir().join(format!(
+            "rocket-state-lock-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let (store, mut state) = Store::open(&directory).unwrap();
+        state.recent.push(directory.join("repository"));
+        state.drafts.insert(directory.join("repository"), "Keep my draft 文".into());
+        store.save(&state).unwrap();
+        let refused = Store::open(&directory).err().expect("a second Store must be refused");
+        assert_eq!(refused.kind(), io::ErrorKind::ResourceBusy);
+        drop(store);
+        let (store, restored) = Store::open(&directory).unwrap();
+        assert_eq!(restored, state);
+        drop(store);
+        fs::remove_dir_all(directory).unwrap();
+    }
+}
 
 #[cfg(all(test, windows))]
 mod tests {

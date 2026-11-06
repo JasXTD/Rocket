@@ -58,7 +58,9 @@ damaged records do not become raw text in the UI or exports. Export publishes a
 new JSON file atomically without overwriting an existing file. Cancellation before
 publication creates no destination; completion remains success after a late Stop.
 
-Default storage is `%LOCALAPPDATA%\Rocket\crashes`. An explicit CLI `--log-dir`
+Default storage is `%LOCALAPPDATA%\Rocket\crashes`; on Linux it is `crashes` under
+`$XDG_STATE_HOME/rocket` (by default `~/.local/state/rocket`), whose folders Rocket creates
+for the current user only (0700). An explicit CLI `--log-dir`
 puts reports in its `crashes` subdirectory; MCP uses its explicit profile or test
 root. Initialization failure is visible in the viewer/CLI warning. Crash-time disk
 failure, simultaneous/reentrant failures, exhausted report limits, hard process

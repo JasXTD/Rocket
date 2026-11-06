@@ -1,7 +1,9 @@
 //! Filesystem primitives for repository creation and transactional config writes.
 use crate::{Error, Result};
+#[cfg(windows)]
+use std::fs::OpenOptions;
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::Read,
     path::Path,
 };
@@ -131,7 +133,11 @@ pub(crate) fn pin_directories(root: &Path, parent: &Path) -> Result<Vec<File>> {
         )
     })?;
     let mut current = root.to_path_buf();
+    #[cfg(windows)]
     let mut out = Vec::new();
+    // Other platforms have no handle that pins a folder against rename.
+    #[cfg(not(windows))]
+    let out = Vec::new();
     let mut paths = vec![current.clone()];
     for component in relative.components() {
         if !matches!(component, std::path::Component::Normal(_)) {

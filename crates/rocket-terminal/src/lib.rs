@@ -16,8 +16,9 @@ use std::{
         atomic::{AtomicBool, AtomicU32, Ordering},
         mpsc::{self, SyncSender},
     },
-    time::Duration,
 };
+#[cfg(windows)]
+use std::time::Duration;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Status {
@@ -232,13 +233,13 @@ impl Session {
         }
         #[cfg(not(windows))]
         {
-            let _ = (directory, receive, history, openssh, shell);
+            let _ = (directory, receive, history, openssh, shell, shared, input);
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "Interactive terminal currently requires Windows 10 1809 or later.",
             ));
         }
-        #[allow(unreachable_code)]
+        #[cfg(windows)]
         Ok(Self { shared, input })
     }
     pub fn input(&self, bytes: &[u8]) -> io::Result<()> {
@@ -294,6 +295,7 @@ impl Drop for Session {
 fn pack(columns: u16, rows: u16) -> u32 {
     u32::from(columns) | (u32::from(rows) << 16)
 }
+#[cfg(windows)]
 const POLL: Duration = Duration::from_millis(30);
 
 #[cfg(all(test, windows))]

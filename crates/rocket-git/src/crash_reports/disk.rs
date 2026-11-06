@@ -105,7 +105,11 @@ pub(super) fn read_file(path: &Path) -> io::Result<File> {
 /// Keep directory ancestry from being renamed while reading or exporting on Windows.
 pub(super) fn pin_directory(path: &Path) -> io::Result<Vec<File>> {
     check_directory(path)?;
+    #[cfg(windows)]
     let mut held = vec![];
+    // Other platforms have no handle that pins a folder against rename.
+    #[cfg(not(windows))]
+    let held = vec![];
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
