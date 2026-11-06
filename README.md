@@ -22,6 +22,13 @@
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/media/theme-clay-light.webp">
+    <img src="docs/media/theme-clay-dark.webp" width="960" alt="The Commits page in Clay, Rocket's default theme: a branch graph with merges, the selected commit's details and its diff.">
+  </picture>
+</p>
+
 ## What is Rocket?
 
 Rocket is an open-source alternative to Fork and GitKraken Desktop for Windows. It

@@ -293,7 +293,15 @@ async function theme(id) {
   await click('view-theme-' + id); if (control('view-appearance')) await click('menu-view');
   await until(s => s.appearance?.theme === id, 'theme ' + id); await settled();
 }
-async function look(id) { state = await client.tool('rocket_state'); if (state.appearance?.theme !== id) await theme(id); }
+// The site's pictures show Clay, the default theme: dark, and light for the light-mode copies. Clay's mode
+// is set in Preferences, so each shot names its mode instead of following Windows.
+async function look(mode) {
+  state = await client.tool('rocket_state');
+  if (state.appearance?.theme === 'clay' && state.appearance.palette === 'clay-' + mode) return;
+  await prefs('pref-page-appearance'); await click('theme-clay'); await click('theme-clay-' + mode);
+  await until(s => s.appearance?.theme === 'clay' && s.appearance.palette === 'clay-' + mode, 'Clay ' + mode);
+  await click('dialog-close'); await settled();
+}
 async function prefs(page) {
   await click('menu-edit'); await click('preferences'); await until(s => s.dialog && control('pref-page-integrations'), 'Preferences'); await click(page);
 }
@@ -330,7 +338,11 @@ const shotA = name => shot(repoA, 'feature/plane-change', name), shotB = name =>
 const row = (file, kind = 'unstaged') => 'change-' + kind + '-' + Buffer.from(file).toString('hex');
 const lineControls = () => state.controls.filter(c => /^diff-line-\d+$/.test(c.id)).sort((x, y) => Number(x.id.split('-').at(-1)) - Number(y.id.split('-').at(-1)));
 async function changes() { await click('view-changes'); await click(row('src/transfer.rs')); }
-async function commits() { await click('view-commits'); await click('history-scope'); await click('history-all'); await settled(); }
+// Every page shares one diff layout, so the Commits shots pick Unified instead of keeping the last step's.
+async function commits() {
+  await click('view-commits'); await click('history-scope'); await click('history-all');
+  await until(s => s.controls.some(c => c.id === 'diff-unified'), 'Commits diff'); await click('diff-unified'); await settled();
+}
 
 // A real script for the Lua playground, so the picture shows what writing an extension looks like.
 const LUA = [
@@ -405,31 +417,32 @@ async function run() {
   await open(repoA);
 
   await attempt('changes', async () => {
-    await changes(); await type('commit-message', 'Add plane changes to transfers');
+    await look('dark'); await changes(); await type('commit-message', 'Add plane changes to transfers');
     await click('diff-unified'); await shotA('changes-unified');
     await click('diff-split'); await shotA('changes-split');
   });
   await attempt('light', async () => {
-    await theme('light'); await changes();
+    await look('light'); await changes();
     await click('diff-unified'); await shotA('changes-unified-light');
     await click('diff-split'); await shotA('changes-split-light');
-    await commits(); await shotA('commits-light');
+    await commits(); await shotA('commits-clay-light');
   });
-  await attempt('dark', async () => { await theme('dark'); await commits(); await shotA('commits-dark'); });
+  // The Themes section's other built-in themes. Its two Clay shots come from the light and history steps.
+  await attempt('themes', async () => { for (const id of ['ocean', 'dark', 'light']) { await theme(id); await commits(); await shotA('commits-' + id); } });
   await attempt('custom', async () => {
-    await theme('default'); await prefs('pref-page-appearance');
+    await theme('ocean'); await prefs('pref-page-appearance');
     await click('theme-custom'); await click('theme-picture-astronaut'); await click('theme-accent-picture');
     await until(s => s.appearance?.custom?.picture_shown, 'picture'); await click('dialog-close');
-    await commits(); await shotA('commits-custom'); await theme('default');
+    await commits(); await shotA('commits-custom');
   });
   await attempt('history', async () => {
-    await look('default'); await commits(); await shotA('commits-default');
+    await look('dark'); await commits(); await shotA('commits-clay-dark');
     const id = tab().history_ids[3];
     await click('commit-' + id); await stable(); assert.equal(tab().selected_commit, id);
     await shotA('commit-selected'); assert.equal(tab().selected_commit, id);
   });
   await attempt('palette', async () => {
-    await look('default'); await click('view-changes');
+    await look('dark'); await click('view-changes');
     for (const text of ['r', 'reb', 'rebase']) {
       if (!control('palette-input')) {
         await client.tool('rocket_shortcut', { binding: 'Ctrl+K', expected_tab: state.active_tab });
@@ -440,20 +453,20 @@ async function run() {
     await client.tool('rocket_escape'); await settled();
   });
   await attempt('lua', async () => {
-    await look('default'); await playground(); await shotA('lua-0');
+    await look('dark'); await playground(); await shotA('lua-0');
     await runLua(); await shotA('lua-1');
     await click('int-play-ui-next'); await stable(); await shotA('lua-2');
     await click('int-play-ui-next'); await stable(); await shotA('lua-3');
     await reviewShot('review');
   });
   await attempt('lua-light', async () => {
-    await theme('light'); await playground(); await runLua();
+    await look('light'); await playground(); await runLua();
     await click('int-play-ui-next'); await stable(); await shotA('lua-light');
-    await reviewShot('review-light'); await theme('default');
+    await reviewShot('review-light');
   });
   // Picking lines stays on the marked branch. The video shows only the diff pane, which names no branch.
   await attempt('stage', async () => {
-    await look('default'); await changes(); await click('diff-split'); await capture('stage-0');
+    await look('dark'); await changes(); await click('diff-split'); await capture('stage-0');
     const lines = lineControls(), right = lines.filter(c => c.rect[0] > 1200), picks = right.length >= 3 ? right : lines;
     await click(picks[1].id); await capture('stage-1');
     await click(picks[2].id); await capture('stage-2');
@@ -462,12 +475,12 @@ async function run() {
 
   await client.tool('rocket_open', { path: repoB }); await settled(); if (control('console-close')) await click('console-close');
   for (const other of state.tabs.filter(t => t.id !== state.active_tab)) await click('close-tab-' + other.id);
-  await attempt('conflict', async () => { await look('default'); await conflictShots(''); });
-  await attempt('conflict-light', async () => { await theme('light'); await conflictShots('-light'); await theme('default'); });
+  await attempt('conflict', async () => { await look('dark'); await conflictShots(''); });
+  await attempt('conflict-light', async () => { await look('light'); await conflictShots('-light'); });
 
   await client.tool('rocket_open', { path: repoC }); await settled(); if (control('console-close')) await click('console-close');
-  for (const [look, suffix] of [['default', ''], ['light', '-light']]) await attempt('rebase' + suffix, async () => {
-    await theme(look);
+  for (const [mode, suffix] of [['dark', ''], ['light', '-light']]) await attempt('rebase' + suffix, async () => {
+    await look(mode);
     await click('menu-repository'); await click('repository-branch-menu'); await click('repository-interactive-rebase');
     await type('dialog-rebase-target', 'release/0.2'); await click('dialog-preview-refresh');
     await until(s => s.dialog?.rebase_preview_loaded || s.dialog?.error, 'rebase preview'); assert(state.dialog.rebase_preview_loaded); await stable();
@@ -475,7 +488,7 @@ async function run() {
     await act(2, 'fixup'); await act(4, 'drop'); await capture('rebase' + suffix);
     await click('dialog-cancel'); await settled();
   });
-  await attempt('reset', () => theme('default'));
+  await attempt('reset', () => look('dark'));
 }
 
 async function stop() {

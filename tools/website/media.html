@@ -10,13 +10,14 @@ const WEBP = .9, JPEG = .86, FPS = 30;
 const PICTURES = [
   ['hero-dark', 'changes-unified', 0, 0, 1920, 990], ['hero-light', 'changes-unified-light', 0, 0, 1920, 990],
   ['split-dark', 'changes-split', 596, 236, 1304, 536], ['split-light', 'changes-split-light', 596, 236, 1304, 536],
-  ['history-dark', 'commits-default', 236, 116, 944, 420], ['history-light', 'commits-light', 236, 116, 944, 420],
+  ['history-dark', 'commits-clay-dark', 236, 116, 944, 420], ['history-light', 'commits-clay-light', 236, 116, 944, 420],
   ['rebase-dark', 'rebase', 415, 240, 690, 220], ['rebase-light', 'rebase-light', 415, 240, 690, 220],
   ['conflict-dark', 'conflict', 236, 116, 1684, 874], ['conflict-light', 'conflict-light', 236, 116, 1684, 874],
   ['cards-dark', 'proposal', 1552, 245, 356, 276], ['cards-light', 'proposal-light', 1552, 245, 356, 276],
   ['lua-dark', 'lua-2', 236, 116, 1684, 874], ['lua-light', 'lua-light', 236, 116, 1684, 874],
   ['review-dark', 'review', 639, 239, 643, 540], ['review-light', 'review-light', 639, 239, 643, 540],
-  ['theme-default', 'commits-default', 0, 0, 1920, 990, 960], ['theme-dark', 'commits-dark', 0, 0, 1920, 990, 960],
+  ['theme-clay-dark', 'commits-clay-dark', 0, 0, 1920, 990, 960], ['theme-clay-light', 'commits-clay-light', 0, 0, 1920, 990, 960],
+  ['theme-ocean', 'commits-ocean', 0, 0, 1920, 990, 960], ['theme-dark', 'commits-dark', 0, 0, 1920, 990, 960],
   ['theme-light', 'commits-light', 0, 0, 1920, 990, 960], ['theme-custom', 'commits-custom', 0, 0, 1920, 990, 960]
 ];
 
@@ -26,14 +27,14 @@ const THEMES = [0, 0, 792];
 const SCENES = [
   { shot: 'changes-unified', dur: 2.6, cap: 'Review every change', path: [[1180, 560, 0], [908, 176, 1.8]], clicks: [2.0], crop: [640, 236, 432], pp: [[900, 640, 0], [730, 362, 1.8]] },
   { shots: [[0, 'stage-0'], [1.1, 'stage-1'], [1.8, 'stage-2'], [3.0, 'stage-3']], area: [596, 116, 1324, 683], dur: 3.8, cap: 'Stage files, hunks or lines', path: [[1000, 560, 0], [1361, 403, 1.0], [1361, 425, 1.7], [1020, 176, 2.8]], clicks: [1.1, 1.8, 2.9], crop: [1340, 236, 432], pp: [[1560, 700, 0], [1361, 403, 1.0], [1361, 425, 1.7]], pclicks: [1.1, 1.8] },
-  { shots: [[0, 'commits-default'], [2.2, 'commit-selected']], dur: 3.2, cap: 'Follow every branch', path: [[1000, 420, 0], [270, 319, 1.0], [286, 452, 1.7], [700, 353, 2.1]], clicks: [2.2], crop: [236, 216, 432], pp: [[600, 640, 0], [270, 319, 1.0], [286, 452, 1.7], [520, 353, 2.1]], pclicks: [2.2] },
+  { shots: [[0, 'commits-clay-dark'], [2.2, 'commit-selected']], dur: 3.2, cap: 'Follow every branch', path: [[1000, 420, 0], [270, 319, 1.0], [286, 452, 1.7], [700, 353, 2.1]], clicks: [2.2], crop: [236, 216, 432], pp: [[600, 640, 0], [270, 319, 1.0], [286, 452, 1.7], [520, 353, 2.1]], pclicks: [2.2] },
   { shot: 'conflict', dur: 2.8, cap: 'Resolve conflicts in three columns', path: [[640, 640, 0], [1520, 188, 2.0]], clicks: [2.2], crop: [806, 330, 432], pp: [[1150, 760, 0], [1060, 400, 2.0]] },
   { shot: 'proposal', dur: 3.2, cap: 'Read an AI proposal first', path: [[1520, 188, 0], [1880, 345, 1.2], [1830, 200, 2.6]], clicks: [2.8], crop: [1548, 230, 364], pp: [[1800, 640, 0], [1885, 345, 2.0]] },
   { shots: [[0, 'lua-0'], [1.3, 'lua-1'], [2.5, 'lua-2'], [3.3, 'lua-3']], dur: 4.2, cap: 'Add your own features', path: [[900, 560, 0], [1879, 148, 1.2], [1163, 568, 2.4], [1163, 568, 3.2]], clicks: [1.3, 2.5, 3.3], crop: [1090, 130, 640], pp: [[1500, 800, 0], [1163, 568, 2.4], [1163, 568, 3.2]], pclicks: [2.5, 3.3] },
   { shots: [[0, 'palette-r'], [.5, 'palette-reb'], [1.0, 'palette-rebase']], dur: 2.2, cap: 'Find any command with Ctrl+K', path: null, crop: [640, 70, 640] },
-  { shot: 'commits-default', dur: 1.1, cap: 'Make the window yours', path: null, crop: THEMES },
-  { shot: 'commits-dark', dur: 1.0, cap: 'Make the window yours', path: null, keep: true, crop: THEMES },
-  { shot: 'commits-light', dur: 1.0, cap: 'Make the window yours', path: null, keep: true, crop: THEMES },
+  { shot: 'commits-clay-dark', dur: 1.1, cap: 'Make the window yours', path: null, crop: THEMES },
+  { shot: 'commits-clay-light', dur: 1.0, cap: 'Make the window yours', path: null, keep: true, crop: THEMES },
+  { shot: 'commits-ocean', dur: 1.0, cap: 'Make the window yours', path: null, keep: true, crop: THEMES },
   { shot: 'commits-custom', dur: 1.5, cap: 'Make the window yours', path: null, keep: true, crop: THEMES },
   { end: true, dur: 2.4 }
 ];
@@ -188,7 +189,7 @@ async function video(phone, bitrate, name) {
 async function social() {
   size(1200, 630);
   g.fillStyle = '#0A1621'; g.fillRect(0, 0, 1200, 630);
-  const screen = images['commits-default'];
+  const screen = images['commits-clay-dark'];
   g.drawImage(screen, 230, 110, 1000, 690, 560, 96, 880, 607);
   g.strokeStyle = '#243E56'; g.lineWidth = 2; g.strokeRect(560, 96, 880, 607);
   g.drawImage(LOGO, 72, 96, 96, 96);
@@ -216,7 +217,7 @@ async function social() {
       await video(false, 3000000, 'demo-wide.mp4');
       await video(true, 1200000, 'demo-phone.mp4');
     }
-    if (images['commits-default']) await social();
+    if (images['commits-clay-dark']) await social();
     await post('/done', '');
   } catch (e) { await post('/fail', String(e && e.stack || e)); }
 })();

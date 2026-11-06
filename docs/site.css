@@ -77,7 +77,7 @@ h1 span{color:var(--accent);display:block}
 .c.wide{display:block}
 .two{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);column-gap:56px;align-items:start}
 .two>div>p:first-child{margin-top:0}
-.thumbs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-top:36px}
+.thumbs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:36px}
 .thumbs figure{margin:0;min-width:0}
 .thumbs img{display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:8px}
 .thumbs figcaption{margin-top:8px;font-size:14.5px;color:var(--soft)}
