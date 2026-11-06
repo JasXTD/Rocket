@@ -1,21 +1,27 @@
 //! Writes `THIRD-PARTY-NOTICES.txt` at the workspace root: the notices of every crate
-//! compiled into Rocket's programs, the fonts egui embeds and the bundled ConPTY runtime.
-//! About › Legal shows the file. Run it after changing dependencies:
+//! compiled into Rocket's programs on Windows or Linux, the fonts egui embeds and the
+//! bundled ConPTY runtime. Each entry names the platforms whose builds include it, so one
+//! file ships with every package and About › Legal shows the running platform's entries.
+//! Run it after changing dependencies:
 //! `cargo run -p rocket-ui --example third_party_notices`; `-- --check` only reports
 //! whether the file is current. Cargo reads the locked dependencies offline.
 use serde_json::Value;
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     env, fs,
     path::{Path, PathBuf},
     process::{Command, ExitCode},
 };
 
-/// The packages whose programs ship: rocket.exe, rocket-mcp.exe, rocket-cli.exe and
-/// rocket-rebase-editor.exe. rocket-terminal-host.exe uses only the standard library.
+/// The packages whose programs ship: rocket, rocket-mcp, rocket-cli and
+/// rocket-rebase-editor (`.exe` on Windows). rocket-terminal-host.exe uses only the
+/// standard library.
 const SHIPPED: [&str; 5] = ["rocket-ui", "rocket-mcp", "rocket-cli", "rocket-git", "rocket-integrations"];
-/// The release target, which decides the platform-specific crates.
-const TARGET: &str = "x86_64-pc-windows-msvc";
+/// The release targets, which decide the platform-specific crates, under the platform
+/// names the entries and the Legal page use.
+const TARGETS: [(&str, &str); 2] = [("Windows", "x86_64-pc-windows-msvc"), ("Linux", "x86_64-unknown-linux-gnu")];
+/// Where `cargo metadata` says a crates.io package comes from.
+const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 /// Opens and closes each entry's header; the Legal page splits the file on it.
 const SEPARATOR: &str = "########################################################################";
 const FILE_NAME: &str = "THIRD-PARTY-NOTICES.txt";
@@ -79,6 +85,8 @@ struct Entry {
     name: String,
     version: String,
     license: String,
+    /// The platforms whose builds include it, as in TARGETS: "Windows, Linux".
+    platforms: String,
     source: String,
     text: String,
 }
@@ -96,24 +104,33 @@ fn main() -> ExitCode {
         assert!(output.status.success(), "cargo {args:?} failed: {}", String::from_utf8_lossy(&output.stderr));
         output.stdout
     };
-    // The crates the shipped programs compile, with features resolved as the build does;
-    // `cargo metadata` would also count features only tests turn on.
-    let mut tree = vec!["tree", "-e", "normal", "--prefix", "none", "--format", "{p}", "--target", TARGET];
-    for package in SHIPPED {
-        tree.extend(["-p", package]);
+    // The crates the shipped programs compile for each target, with the platforms that
+    // compile them, and features resolved as the build does; `cargo metadata` would also
+    // count features only tests turn on.
+    let mut compiled: BTreeMap<(String, String), Vec<&str>> = BTreeMap::new();
+    for (platform, target) in TARGETS {
+        let mut tree = vec!["tree", "-e", "normal", "--prefix", "none", "--format", "{p}", "--target", target];
+        for package in SHIPPED {
+            tree.extend(["-p", package]);
+        }
+        tree.extend(["--features", "rocket-integrations/runtime"]);
+        let mut crates: HashSet<(String, String)> = String::from_utf8_lossy(&cargo(&tree))
+            .lines()
+            .filter_map(|line| {
+                let mut words = line.split_whitespace();
+                let name = words.next()?;
+                let version = words.next()?.strip_prefix('v')?;
+                Some((name.to_owned(), version.to_owned()))
+            })
+            .collect();
+        // This build dependency supplies the C sources statically linked into the Lua worker.
+        if crates.iter().any(|(name, _)| name == "mlua-sys") {
+            crates.insert(("lua-src".into(), "551.1.0".into()));
+        }
+        for key in crates {
+            compiled.entry(key).or_default().push(platform);
+        }
     }
-    tree.extend(["--features", "rocket-integrations/runtime"]);
-    let mut compiled: HashSet<(String, String)> = String::from_utf8_lossy(&cargo(&tree))
-        .lines()
-        .filter_map(|line| {
-            let mut words = line.split_whitespace();
-            let name = words.next()?;
-            let version = words.next()?.strip_prefix('v')?;
-            Some((name.to_owned(), version.to_owned()))
-        })
-        .collect();
-    // This build dependency supplies the C sources statically linked into the Lua worker.
-    compiled.insert(("lua-src".into(), "551.1.0".into()));
     let metadata: Value =
         serde_json::from_slice(&cargo(&["metadata", "--format-version", "1", "--features", "rocket-integrations/runtime"])).expect("cargo metadata JSON");
     let apache = read_text(&root.join("LICENSE-APACHE"));
@@ -122,9 +139,9 @@ fn main() -> ExitCode {
     let mut crates: Vec<&Value> = array(&metadata["packages"])
         .iter()
         .filter(|p| !members.contains(string(&p["id"])))
-        .filter(|p| compiled.contains(&(string(&p["name"]).to_owned(), string(&p["version"]).to_owned())))
+        .filter(|p| compiled.contains_key(&(string(&p["name"]).to_owned(), string(&p["version"]).to_owned())))
         .collect();
-    let first_party = compiled.iter().filter(|(name, _)| name.starts_with("rocket-")).count();
+    let first_party = compiled.keys().filter(|(name, _)| name.starts_with("rocket-")).count();
     assert_eq!(crates.len() + first_party, compiled.len(), "every compiled crate has package metadata");
     crates.sort_by(|a, b| (string(&a["name"]), string(&a["version"])).cmp(&(string(&b["name"]), string(&b["version"]))));
 
@@ -142,11 +159,23 @@ fn main() -> ExitCode {
             .filter(|a| !a.is_empty())
             .collect();
         let authors = if authors.is_empty() { format!("the {name} authors") } else { authors.join(", ") };
+        let platforms = compiled[&(name.to_owned(), version.to_owned())].join(", ");
         let mut text = notice(directory, license, &authors, &apache)
             .unwrap_or_else(|missing| panic!("{name} {version}: no text for {missing}; add it to this generator"));
         if name == "epaint_default_fonts" {
-            fonts = egui_fonts(directory, version);
+            fonts = egui_fonts(directory, version, &platforms);
             text.push_str("\n\nThe fonts it includes have their own entries.");
+        }
+        if choices(license).iter().any(|(chosen, _)| chosen == "MPL-2.0") {
+            // MPL-2.0 section 3.2(a): whoever receives the program must be told how to get
+            // the source of the covered files. That is the crates.io package, as long as
+            // Cargo builds it from there unchanged rather than from a patch or a fork.
+            assert_eq!(string(&package["source"]), CRATES_IO, "{name} {version}: say where this MPL-2.0 source is");
+            text = format!(
+                "Rocket includes {name} {version} unmodified. Its source code is available from crates.io:\n\
+                 https://crates.io/crates/{name}/{version}\n\
+                 Download: https://static.crates.io/crates/{name}/{version}/download\n\n{text}"
+            );
         }
         if name == "lua-src" {
             // The wrapper's LICENSE carries an older Lua notice; also include
@@ -164,6 +193,7 @@ fn main() -> ExitCode {
             name: name.to_owned(),
             version: version.to_owned(),
             license: license.to_owned(),
+            platforms,
             source: package["repository"].as_str().unwrap_or_default().to_owned(),
             text,
         });
@@ -175,17 +205,25 @@ fn main() -> ExitCode {
     let text = render(&entries);
     let path = root.join(FILE_NAME);
     let crates = entries.iter().filter(|e| e.kind == "crate").count();
+    let per_platform: Vec<String> = TARGETS
+        .iter()
+        .map(|(platform, _)| {
+            let on = entries.iter().filter(|e| e.kind == "crate" && e.platforms.split(", ").any(|p| p == *platform));
+            format!("{} on {platform}", on.count())
+        })
+        .collect();
+    let summary = format!("{crates} crates ({}), {} other entries", per_platform.join(", "), entries.len() - crates);
     if check {
         let current = fs::read_to_string(&path).unwrap_or_default().replace("\r\n", "\n");
         if current != text {
             eprintln!("{FILE_NAME} is out of date; run `cargo run -p rocket-ui --example third_party_notices`.");
             return ExitCode::FAILURE;
         }
-        println!("{FILE_NAME} is current: {crates} crates, {} other entries.", entries.len() - crates);
+        println!("{FILE_NAME} is current: {summary}.");
         return ExitCode::SUCCESS;
     }
     fs::write(&path, text).expect("write the notices");
-    println!("Wrote {FILE_NAME}: {crates} crates, {} other entries.", entries.len() - crates);
+    println!("Wrote {FILE_NAME}: {summary}.");
     ExitCode::SUCCESS
 }
 
@@ -269,8 +307,8 @@ fn file_word(license: &str) -> String {
     }
 }
 
-/// egui's fonts, each with the notice its crate ships for it.
-fn egui_fonts(directory: &Path, version: &str) -> Vec<Entry> {
+/// egui's fonts, each with the notice its crate ships for it, on its crate's platforms.
+fn egui_fonts(directory: &Path, version: &str, platforms: &str) -> Vec<Entry> {
     let fonts = directory.join("fonts");
     let present: BTreeSet<String> = fs::read_dir(&fonts)
         .expect("egui's fonts folder")
@@ -287,13 +325,14 @@ fn egui_fonts(directory: &Path, version: &str) -> Vec<Entry> {
             name: name.to_owned(),
             version: format!("from epaint_default_fonts {version}"),
             license: license.to_owned(),
+            platforms: platforms.to_owned(),
             source: "https://github.com/emilk/egui".to_owned(),
             text: read_text(&fonts.join(notice)),
         })
         .collect()
 }
 
-/// The reviewed ConPTY runtime shipped beside Rocket, with Microsoft's license.
+/// The reviewed ConPTY runtime shipped beside Rocket on Windows, with Microsoft's license.
 fn conpty(root: &Path) -> Entry {
     let base = root.join("runtime").join("conpty");
     let versions: Vec<String> = fs::read_dir(&base)
@@ -311,22 +350,25 @@ fn conpty(root: &Path) -> Entry {
         source: format!("https://www.nuget.org/packages/Microsoft.Windows.Console.ConPTY/{version}"),
         version,
         license: "MIT".to_owned(),
+        platforms: "Windows".to_owned(),
     }
 }
 
 fn render(entries: &[Entry]) -> String {
+    let targets = TARGETS.map(|(platform, target)| format!("{target} ({platform})")).join(" and ");
     let mut out = format!(
         "Third-party notices for Rocket\n\n\
-         Rocket includes the software below. Each entry names its license and carries the\n\
-         notice its authors ship with it. Where a crate offers MIT among other licenses,\n\
-         Rocket uses it under MIT. Generated from Cargo.lock for {TARGET} by\n\
+         Rocket includes the software below. Each entry names its license and the platforms\n\
+         whose builds include it, and carries the notice its authors ship with it. Where a\n\
+         crate offers MIT among other licenses, Rocket uses it under MIT. Generated from\n\
+         Cargo.lock for {targets} by\n\
          `cargo run -p rocket-ui --example third_party_notices`; do not edit by hand.\n"
     );
     for e in entries {
         assert!(!e.text.contains(SEPARATOR), "{} has a line the Legal page splits on", e.name);
         out.push_str(&format!(
-            "\n{SEPARATOR}\nKind: {}\nName: {}\nVersion: {}\nLicense: {}\nSource: {}\n{SEPARATOR}\n\n{}\n",
-            e.kind, e.name, e.version, e.license, e.source, e.text
+            "\n{SEPARATOR}\nKind: {}\nName: {}\nVersion: {}\nLicense: {}\nPlatforms: {}\nSource: {}\n{SEPARATOR}\n\n{}\n",
+            e.kind, e.name, e.version, e.license, e.platforms, e.source, e.text
         ));
     }
     out

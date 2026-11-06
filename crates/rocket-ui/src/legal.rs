@@ -1,5 +1,6 @@
 //! About › Legal: Rocket's license and the notices of the software it includes, from
 //! `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-NOTICES.txt` at the workspace root.
+//! The notices cover Windows and Linux builds; Legal lists the running platform's entries.
 //! After changing dependencies, regenerate the notices with
 //! `cargo run -p rocket-ui --example third_party_notices`.
 use crate::{
@@ -17,6 +18,15 @@ const NOTICES: &str = include_str!("../../../THIRD-PARTY-NOTICES.txt");
 const SEPARATOR: &str = "########################################################################";
 /// Where the open dialog keeps its choices, in egui's memory.
 const STATE: &str = "legal-state";
+/// The name the notices give this build's platform. A platform Rocket ships no package
+/// for has none and lists every entry.
+const PLATFORM: Option<&str> = if cfg!(windows) {
+    Some("Windows")
+} else if cfg!(target_os = "linux") {
+    Some("Linux")
+} else {
+    None
+};
 
 /// One entry of THIRD-PARTY-NOTICES.txt.
 pub(crate) struct Notice {
@@ -25,14 +35,23 @@ pub(crate) struct Notice {
     pub name: String,
     pub version: String,
     pub license: String,
+    /// The platforms whose builds include it: "Windows", "Linux" or "Windows, Linux".
+    pub platforms: String,
     pub source: String,
     pub text: String,
 }
 
-/// The notices file's entries, read once.
+impl Notice {
+    /// Whether `platform`'s builds include it.
+    fn ships_on(&self, platform: &str) -> bool {
+        self.platforms.split(", ").any(|p| p == platform)
+    }
+}
+
+/// The notices file's entries for this build's platform, read once.
 pub(crate) fn notices() -> &'static [Notice] {
     static PARSED: OnceLock<Vec<Notice>> = OnceLock::new();
-    PARSED.get_or_init(|| parse(NOTICES))
+    PARSED.get_or_init(|| parse(NOTICES).into_iter().filter(|n| PLATFORM.is_none_or(|p| n.ships_on(p))).collect())
 }
 
 fn parse(file: &str) -> Vec<Notice> {
@@ -49,6 +68,7 @@ fn parse(file: &str) -> Vec<Notice> {
             name: field("Name:"),
             version: field("Version:"),
             license: field("License:"),
+            platforms: field("Platforms:"),
             source: field("Source:"),
             text: body.trim().to_owned(),
         });
@@ -131,6 +151,10 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
                     ),
                 ];
                 for (i, (section, title, sub, key)) in rows.into_iter().enumerate() {
+                    // Linux builds bundle no runtime, so there is nothing to list.
+                    if section == Section::Runtime && runtime.is_none() {
+                        continue;
+                    }
                     if i == 1 {
                         ui.add_space(10.0);
                         ui.label(RichText::new("INCLUDED IN ROCKET").font(semibold(11.0)).color(HINT()));
@@ -352,28 +376,40 @@ fn text_box(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, salt: (&str, 
 mod tests {
     use super::*;
 
-    /// The notices name each crate at a version Cargo.lock has, and include egui's fonts
-    /// and the ConPTY runtime. A dependency change without regenerating fails here.
+    /// The notices name each crate at a version Cargo.lock has, and each entry the
+    /// platforms whose builds include it. A build lists its own platform's entries:
+    /// egui's fonts everywhere, the ConPTY runtime on Windows and spellbook, with its
+    /// MPL-2.0 text and where its source is, on Linux. A dependency change without
+    /// regenerating fails here.
     #[test]
     fn notices_match_the_locked_crates() {
         let lock = include_str!("../../../Cargo.lock").replace("\r\n", "\n");
+        let every = parse(NOTICES);
+        for n in &every {
+            let named = n.platforms.split(", ").all(|p| ["Windows", "Linux"].contains(&p));
+            assert!(named, "{} {} names its platforms, not {:?}", n.name, n.version, n.platforms);
+            assert!(!n.license.is_empty() && !n.text.is_empty(), "{} has a license and its text", n.name);
+            if n.kind == "crate" {
+                assert!(
+                    lock.contains(&format!("name = \"{}\"\nversion = \"{}\"", n.name, n.version)),
+                    "{} {} is not in Cargo.lock; regenerate THIRD-PARTY-NOTICES.txt",
+                    n.name,
+                    n.version
+                );
+            }
+        }
         let all = notices();
         let crates: Vec<&Notice> = all.iter().filter(|n| n.kind == "crate").collect();
         assert!(crates.len() > 50, "{} crates", crates.len());
-        for n in &crates {
-            assert!(
-                lock.contains(&format!("name = \"{}\"\nversion = \"{}\"", n.name, n.version)),
-                "{} {} is not in Cargo.lock; regenerate THIRD-PARTY-NOTICES.txt",
-                n.name,
-                n.version
-            );
-        }
-        for n in all {
-            assert!(!n.license.is_empty() && !n.text.is_empty(), "{} has a license and its text", n.name);
-        }
         assert_eq!(all.iter().filter(|n| n.kind == "font").count(), 4);
-        assert!(all.iter().any(|n| n.kind == "runtime" && n.name == "Microsoft ConPTY" && n.license == "MIT"));
+        let conpty = all.iter().any(|n| n.kind == "runtime" && n.name == "Microsoft ConPTY" && n.license == "MIT");
+        assert_eq!(conpty, PLATFORM.is_none_or(|p| p == "Windows"));
         assert!(crates.iter().any(|n| n.name == "egui" && n.text.contains("Permission is hereby granted")));
+        let spellbook = every.iter().find(|n| n.name == "spellbook").expect("spellbook's notice");
+        assert_eq!((spellbook.license.as_str(), spellbook.platforms.as_str()), ("MPL-2.0", "Linux"));
+        assert!(spellbook.text.contains("Mozilla Public License Version 2.0"));
+        assert!(spellbook.text.contains(&format!("https://crates.io/crates/spellbook/{}", spellbook.version)));
+        assert_eq!(crates.iter().any(|n| n.name == "spellbook"), PLATFORM.is_none_or(|p| p == "Linux"));
     }
 
     #[test]
@@ -383,7 +419,8 @@ mod tests {
         assert!(licenses().1.contains("Apache License") && licenses().1.contains("END OF TERMS AND CONDITIONS"));
     }
 
-    /// About shows the license and opens Legal; each section opens and × closes it.
+    /// About shows the license and opens Legal; each section opens and × closes it. Linux
+    /// builds bundle no runtime, so Legal has no runtime section there.
     #[test]
     fn about_opens_legal_and_its_sections() {
         crate::test_common::isolated(
@@ -410,7 +447,11 @@ mod tests {
                 assert!(enabled(&ctx, &mut app, "dialog-legal-filter"));
                 click(&ctx, &mut app, "dialog-legal-fonts");
                 assert!(enabled(&ctx, &mut app, "dialog-legal-font-3"));
-                click(&ctx, &mut app, "dialog-legal-runtime");
+                if cfg!(target_os = "linux") {
+                    assert!(!app.frame_widgets.contains_key("dialog-legal-runtime"));
+                } else {
+                    click(&ctx, &mut app, "dialog-legal-runtime");
+                }
                 click(&ctx, &mut app, "dialog-close");
                 assert!(app.dialog.is_none());
             },

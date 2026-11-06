@@ -1,5 +1,44 @@
 # Dependency review
 
+## Third-party notices for Linux builds — 2026-11-07
+
+No package, feature, tool or download was added, and Cargo.lock is unchanged. This
+answers the notices notes in the two Linux sections below.
+`crates/rocket-ui/examples/third_party_notices.rs` now runs `cargo tree` for both
+x86_64-pc-windows-msvc and x86_64-unknown-linux-gnu, still `--locked --offline`. It writes
+one `THIRD-PARTY-NOTICES.txt` for both, in which each entry gains a `Platforms:` line
+(`Windows`, `Linux` or `Windows, Linux`):
+
+- 189 crates: 120 in both builds, 11 only on Windows (the windows-sys family,
+  clipboard-win, error-code and glutin_wgl_sys) and 58 only on Linux. Both builds include
+  the 20 ICU4X and helper crates from the Arabic text section below. The Linux-only ones
+  are the Wayland, X11 and clipboard crates with what they use (rustix, calloop, polling
+  and others), the 14 RustCrypto packages and spellbook.
+- egui's four fonts are in both builds; the ConPTY runtime is Windows-only. lua-src counts
+  on every platform whose tree has mlua-sys, which today is both.
+- Every Linux-only crate ships its own license file. The licenses are MIT, choices that
+  include MIT (Rocket uses MIT), Apache-2.0 for gethostname and glutin_glx_sys, and
+  MPL-2.0 for spellbook.
+- The Windows entries' texts are unchanged.
+
+One file rather than one per platform: About › Legal embeds it with `include_str!` and
+lists only the running platform's entries, so each build shows what it includes. On
+Linux, Legal leaves out the runtime section, because Linux builds bundle no runtime. A
+Linux package can ship the same file the Windows ZIP ships, and one `--check` keeps it
+current.
+
+spellbook 0.4.2 is the only MPL-2.0 package. Its entry carries the MPL-2.0 text from the
+package's LICENSE. It opens with where its unmodified source is
+(<https://crates.io/crates/spellbook/0.4.2>, and Cargo's download URL), which MPL-2.0
+section 3.2(a) requires when the executable is distributed. The generator stops if an
+MPL-2.0 package ever comes from anywhere but crates.io, such as a patch or a fork, because
+the notice would then name the wrong source. spellbook's bundled en_US and fr_FR
+dictionaries are compiled only into its own tests (`#[cfg(test)]`), so Rocket ships none;
+Linux spell check reads the system's Hunspell dictionaries.
+
+`cargo run -p rocket-ui --example third_party_notices -- --check` reports 189 crates (131
+on Windows, 178 on Linux) and 5 other entries.
+
 ## Credential sealing and spell check on Linux — 2026-11-07
 
 Two Linux-only dependencies, approved by the user, pinned exactly:

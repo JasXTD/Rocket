@@ -40,6 +40,10 @@ keep detailed test evidence in `VALIDATION.md`.
   to Rocket's word list for the language.
 - Cargo.lock adds 15 Linux-only packages: chacha20poly1305 0.11.0 and spellbook 0.4.2 with
   their dependencies (see DEPENDENCIES.md). Windows and macOS builds compile nothing new.
+- THIRD-PARTY-NOTICES.txt covers Linux builds too, and each entry names the platforms
+  whose builds include it. About › Legal lists what the running build includes. On Linux
+  that includes spellbook's MPL-2.0 license and where its source is, and there is no
+  ConPTY runtime section.
 
 ## Unreleased — Interface languages (groundwork)
 
