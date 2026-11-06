@@ -66,6 +66,13 @@ runtime into the worker executable.
 
 ### Changes and code review
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/media/split-light.webp">
+    <img src="docs/media/split-dark.webp" width="880" alt="A side-by-side diff with syntax and word highlights, and a checkbox on each changed line for staging it alone.">
+  </picture>
+</p>
+
 - Stage or unstage whole files, including dragging selections between the Staged
   and Unstaged groups. Select individual hunks or lines for supported text changes.
 - Read unified or side-by-side diffs with syntax highlighting, word highlights, search
@@ -79,6 +86,13 @@ runtime into the worker executable.
   two bindings per command, duplicate checks, reset options and a search by keys.
 
 ### History and branch workflows
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/media/history-light.webp">
+    <img src="docs/media/history-dark.webp" width="880" alt="The Commits page with a branch graph across five branches, merges, and branch and remote labels.">
+  </picture>
+</p>
 
 - See how a repository fits together in the native
   [Repository map](docs/wiki/Repository-map.md): Cargo packages and the folder tree,
@@ -116,6 +130,13 @@ runtime into the worker executable.
 
 ### Conflicts, saved work and recovery
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/media/conflict-light.webp">
+    <img src="docs/media/conflict-dark.webp" width="880" alt="The three-column conflict editor with Ours, Result and Theirs, and two conflicts numbered and linked across the columns.">
+  </picture>
+</p>
+
 - Resolve supported text conflicts in a three-column editor with linked scrolling
   and conflict navigation. Binary and delete/modify conflicts use whole versions.
 - Get an AI proposal for a conflict from Claude Code, Codex or a connected MCP agent.
@@ -152,6 +173,13 @@ content you send can leave your computer, so each tool shows or explains it firs
 Add your own features to Rocket with extensions: sandboxed Lua packages with their own
 native panels, forms and tables, plus commands in the palette, the Repository menu and
 right-click menus.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/media/lua-light.webp">
+    <img src="docs/media/lua-dark.webp" width="880" alt="The Lua playground: a short script on the left, and on the right the release checklist panel it draws, with a table, a progress bar and a button.">
+  </picture>
+</p>
 
 - Install a package from a file after a review of its code and permissions. An extension
   can't run Git or shell commands, read your files or see your tokens.

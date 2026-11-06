@@ -474,7 +474,11 @@ async function run() {
   });
 
   await client.tool('rocket_open', { path: repoB }); await settled(); if (control('console-close')) await click('console-close');
-  for (const other of state.tabs.filter(t => t.id !== state.active_tab)) await click('close-tab-' + other.id);
+  // A tab with a message draft or changed files asks before it closes; they stay in its folder.
+  for (const other of state.tabs.filter(t => t.id !== state.active_tab)) {
+    await click('close-tab-' + other.id); if (state.dialog?.kind === 'close-tab') await click('dialog-submit');
+  }
+  assert.equal(state.tabs.length, 1, 'the conflict shots need the other tab closed');
   await attempt('conflict', async () => { await look('dark'); await conflictShots(''); });
   await attempt('conflict-light', async () => { await look('light'); await conflictShots('-light'); });
 
