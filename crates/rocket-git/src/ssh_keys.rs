@@ -1,4 +1,6 @@
-//! Windows OpenSSH profiles. Private key material is never logged or returned.
+//! OpenSSH profiles: Windows OpenSSH, or on Linux the system's OpenSSH from /usr/bin
+//! with ssh-agent reached through SSH_AUTH_SOCK. Private key material is never logged
+//! or returned.
 mod binding;
 mod discovery;
 mod direct;
@@ -37,10 +39,15 @@ pub enum SshFailure {
     Overrides,
     PassphraseUnavailable,
     HelperUnavailable,
+    /// Unix: a private key other users can open, which OpenSSH refuses too.
+    KeyPermissions,
 }
+/// What the guidance calls this platform's OpenSSH.
+const OPENSSH: &str = if cfg!(windows) { "Windows OpenSSH" } else { "OpenSSH" };
 impl SshFailure {
     pub fn code(self) -> &'static str {
         match self {
+            Self::KeyPermissions => "ssh_key_permissions",
             Self::Unavailable => "ssh_tools_unavailable",
             Self::InvalidProfile => "ssh_profile_invalid",
             Self::Exists => "ssh_profile_exists",
@@ -60,10 +67,17 @@ impl SshFailure {
     }
     pub fn guidance(self) -> &'static str {
         match self {
-            Self::Unavailable => {
+            Self::KeyPermissions => {
+                "Other users can open this private key, so OpenSSH refuses it. Run chmod 600 on the key file, then refresh. Nothing was changed."
+            }
+            Self::Unavailable if cfg!(windows) => {
                 "Windows OpenSSH Client is unavailable. Enable the Windows optional feature, then refresh."
             }
-            Self::PassphraseUnavailable => "No usable saved passphrase exists for this exact key and profile. Open SSH keys, select the key, and verify/save its passphrase, or use Windows agent mode.",
+            Self::Unavailable => {
+                "OpenSSH is not installed in /usr/bin. Install your system's OpenSSH client package (openssh-client), then refresh."
+            }
+            Self::PassphraseUnavailable if cfg!(windows) => "No usable saved passphrase exists for this exact key and profile. Open SSH keys, select the key, and verify/save its passphrase, or use Windows agent mode.",
+            Self::PassphraseUnavailable => "No usable saved passphrase exists for this exact key and profile. Open SSH keys, select the key, and verify/save its passphrase, or use ssh-agent mode.",
             Self::HelperUnavailable => "Rocket's SSH helper is missing or invalid. Use a complete Rocket bundle; existing SSH settings and keys were preserved.",
             Self::InvalidProfile => {
                 "Use a unique rocket- alias, a DNS hostname, a simple SSH username and a port from 1 to 65535."
@@ -83,14 +97,20 @@ impl SshFailure {
             Self::Unencrypted => {
                 "New keys must have a passphrase of at least 10 characters. No unencrypted key was published."
             }
-            Self::AgentUnavailable => {
+            Self::AgentUnavailable if cfg!(windows) => {
                 "Windows ssh-agent is unavailable. Start the ssh-agent service in Windows, then refresh. Rocket does not change service settings."
+            }
+            Self::AgentUnavailable => {
+                "ssh-agent is unavailable: SSH_AUTH_SOCK doesn't name your agent's socket. Start ssh-agent in your desktop session, then reopen Rocket. Rocket starts no agent itself."
             }
             Self::UnlockFailed => {
                 "OpenSSH could not unlock this key. Check the passphrase and file permissions, then retry. Existing keys were preserved."
             }
-            Self::ToolFailed => {
+            Self::ToolFailed if cfg!(windows) => {
                 "OpenSSH did not finish successfully. Check the key and Windows OpenSSH installation, then refresh. Raw tool output is not logged."
+            }
+            Self::ToolFailed => {
+                "OpenSSH did not finish successfully. Check the key and the OpenSSH installation, then refresh. Raw tool output is not logged."
             }
             Self::RecoveryRequired => {
                 "The operation finished only partially. Inspect the retained profile folder or repository SSH recovery backup before retrying; Rocket will not overwrite it."
@@ -232,6 +252,12 @@ impl SshManager {
         )
     }
     pub fn agent(&self, cancel: &CancellationToken) -> Result<(bool, Vec<String>)> {
+        // Windows OpenSSH reaches the ssh-agent service by itself. Elsewhere the agent is
+        // the one SSH_AUTH_SOCK names; without a usable socket there is none to ask.
+        #[cfg(unix)]
+        if !agent_socket() {
+            return Ok((false, Vec::new()));
+        }
         let out = self.tool("ssh-add.exe", args(&["-l", "-E", "sha256"]), cancel)?;
         let running = out.status.code() == Some(0) || out.status.code() == Some(1);
         let loaded = String::from_utf8_lossy(&out.stdout)
@@ -426,7 +452,7 @@ impl SshManager {
             }
         }
         Ok(format!(
-            "Windows OpenSSH: {}@{}:{} · IdentitiesOnly yes",
+            "{OPENSSH}: {}@{}:{} · IdentitiesOnly yes",
             p.user, p.host, p.port
         ))
     }
@@ -523,9 +549,36 @@ fn configuration(alias: &str, host: &str, user: &str, port: u16, key: &Path) -> 
         "# Rocket SSH profile. No user/system SSH config is inherited.\nHost {alias} {host}\n    HostName {host}\n    User {user}\n    Port {port}\n    IdentityFile \"{key}\"\n    IdentitiesOnly yes\nHost *\n    IdentitiesOnly yes\n    IdentityFile none\n"
     ))
 }
+/// Whether SSH_AUTH_SOCK names a socket of this user, as ssh-agent creates it, directly
+/// or through a link (as tmux setups keep one). Another user's socket would hand keys and
+/// signatures to that user's agent.
+#[cfg(unix)]
+fn agent_socket() -> bool {
+    use std::os::unix::fs::{FileTypeExt, MetadataExt};
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    std::env::var_os("SSH_AUTH_SOCK")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .and_then(|path| fs::metadata(path).ok())
+        // SAFETY: geteuid takes no arguments and always succeeds.
+        .is_some_and(|found| found.file_type().is_socket() && found.uid() == unsafe { geteuid() })
+}
+/// A system OpenSSH tool, by its Windows file name: from Windows' OpenSSH folder, or on
+/// Linux the same tool from /usr/bin. Nothing is looked up on PATH. Other systems have
+/// none yet.
 pub fn openssh(tool: &str) -> Result<PathBuf> {
     if !matches!(tool, "ssh-keygen.exe" | "ssh-add.exe" | "ssh.exe") {
         return Err(fail(SshFailure::Unavailable));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let path = Path::new("/usr/bin").join(tool.trim_end_matches(".exe"));
+        if !path.is_file() {
+            return Err(fail(SshFailure::Unavailable));
+        }
+        Ok(path)
     }
     #[cfg(windows)]
     {
@@ -547,7 +600,7 @@ pub fn openssh(tool: &str) -> Result<PathBuf> {
         }
         Ok(p)
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         Err(fail(SshFailure::Unavailable))
     }

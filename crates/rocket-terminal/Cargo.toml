@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "Owned Windows pseudoconsole sessions for Rocket"
+description = "Owned terminal sessions for Rocket: Windows pseudoconsoles and Linux pseudoterminals"
 publish = false
 
 [dependencies]

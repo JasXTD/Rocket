@@ -616,7 +616,7 @@ fn key_card(
             ui.separator();
             ui.label(RichText::new("Use this key through").font(semibold(13.0)));
             ui.horizontal_wrapped(|ui| {
-                for (id,label,mode) in [("ssh-mode-agent","Windows agent",SshAuthentication::Agent),("ssh-mode-direct","Direct key",SshAuthentication::Direct)] {
+                for (id,label,mode) in [("ssh-mode-agent",if cfg!(windows) {"Windows agent"} else {"ssh-agent"},SshAuthentication::Agent),("ssh-mode-direct","Direct key",SshAuthentication::Direct)] {
                     let r=ui.selectable_value(&mut s.authentication,mode,label);
                     control(widgets,id,&r,ui.clip_rect());
                 }
@@ -625,7 +625,8 @@ fn key_card(
                 ui.label(RichText::new("Uses this key directly. Unknown or changed host keys are rejected.").size(12.0).color(HINT()));
                 if let Some(p)=s.profile() {
                     let saved=p.passphrase_saved;
-                    ui.label(RichText::new(if saved {"Passphrase saved with Windows user encryption."} else if p.encrypted {"Save this key's passphrase before using it directly."} else {"This key has no passphrase."}).size(12.0).color(if saved {GREEN()}else{HINT()}));
+                    let saved_text = if cfg!(windows) {"Passphrase saved with Windows user encryption."} else {"Passphrase saved, encrypted with a key in your desktop keyring."};
+                    ui.label(RichText::new(if saved {saved_text} else if p.encrypted {"Save this key's passphrase before using it directly."} else {"This key has no passphrase."}).size(12.0).color(if saved {GREEN()}else{HINT()}));
                     ui.horizontal_wrapped(|ui| {
                         if btn(ui,widgets,"ssh-remember","Save passphrase",p.encrypted&&!saved){out.action=Some("remember");}
                         if btn(ui,widgets,"ssh-forget","Forget passphrase",saved){out.action=Some("forget");}
@@ -634,7 +635,7 @@ fn key_card(
                     ui.label(RichText::new("First use the repository action below to set up this key's host profile.").size(12.0).color(HINT()));
                 }
             } else {
-                ui.label(RichText::new("The key's tick controls Windows ssh-agent. Rocket does not save its passphrase in this mode.").size(12.0).color(HINT()));
+                ui.label(RichText::new(if cfg!(windows) {"The key's tick controls Windows ssh-agent. Rocket does not save its passphrase in this mode."} else {"The key's tick controls ssh-agent. Rocket does not save its passphrase in this mode."}).size(12.0).color(HINT()));
             }
             // The repository box sits at the card's foot when the card fills the page. Its
             // buttons go beside the repository when they fit, otherwise under it.
@@ -906,7 +907,7 @@ fn review_card(
                 ui.label(repository);
             });
             if let Some(p) = &review.profile {
-                pages::key_value(ui,"Authentication",96.0,|ui|{ui.label(if review.authentication==SshAuthentication::Direct {"Direct key · host verification required"}else{"Windows agent / OpenSSH"});});
+                pages::key_value(ui,"Authentication",96.0,|ui|{ui.label(if review.authentication==SshAuthentication::Direct {"Direct key · host verification required"}else if cfg!(windows) {"Windows agent / OpenSSH"} else {"ssh-agent / OpenSSH"});});
                 pages::key_value(ui, "Key", 96.0, |ui| {
                     ui.label(&name);
                 });
@@ -1095,9 +1096,14 @@ fn file_name(path: &Path) -> String {
         .map_or_else(|| crate::views::display_path(path), |n| n.to_string_lossy().into_owned())
 }
 
-/// A path as Windows compares it: without `\\?\`, with backslashes, ignoring case.
+/// A path as the system compares it: on Windows without `\\?\`, with backslashes,
+/// ignoring case; elsewhere exactly as written, since case matters.
 fn comparable(path: &Path) -> String {
-    crate::views::display_path(path).replace('/', "\\").to_lowercase()
+    if cfg!(windows) {
+        crate::views::display_path(path).replace('/', "\\").to_lowercase()
+    } else {
+        path.to_string_lossy().into_owned()
+    }
 }
 
 fn same_file(a: &Path, b: &Path) -> bool {
@@ -1105,8 +1111,9 @@ fn same_file(a: &Path, b: &Path) -> bool {
 }
 
 fn under(path: &Path, root: &Path) -> bool {
+    let separator = std::path::MAIN_SEPARATOR;
     let (path, root) = (comparable(path), comparable(root));
-    path.strip_prefix(root.trim_end_matches('\\')).is_some_and(|rest| rest.starts_with('\\'))
+    path.strip_prefix(root.trim_end_matches(separator)).is_some_and(|rest| rest.starts_with(separator))
 }
 
 /// "Ed25519", "RSA" or "ECDSA" for an OpenSSH key type such as `ssh-ed25519`.
@@ -1164,6 +1171,16 @@ mod tests {
         assert_eq!(alias_for(&"x".repeat(100)).len(), 64);
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn linux_paths_compare_exactly() {
+        assert!(same_file(Path::new("/home/a/.ssh/id"), Path::new("/home/a/.ssh/id")));
+        assert!(!same_file(Path::new("/home/a/.ssh/Id"), Path::new("/home/a/.ssh/id")), "case matters");
+        assert!(under(Path::new("/home/a/.ssh/rocket-keys/w/id"), Path::new("/home/a/.ssh/rocket-keys/")));
+        assert!(!under(Path::new("/home/a/.ssh/rocket-keys-old/id"), Path::new("/home/a/.ssh/rocket-keys")));
+    }
+
+    #[cfg(windows)]
     #[test]
     fn paths_compare_as_windows_does() {
         assert!(same_file(Path::new(r"\\?\C:\Users\A\.ssh\id"), Path::new(r"c:\users\a\.SSH\id")));

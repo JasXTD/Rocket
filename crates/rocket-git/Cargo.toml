@@ -10,4 +10,9 @@ publish = false
 [lints]
 workspace = true
 
-# Deliberately no third-party dependencies, including development dependencies.
+# Deliberately no third-party dependencies, including development dependencies, with one
+# exception on Linux: remembered credentials are sealed with XChaCha20-Poly1305 from
+# RustCrypto (audited), under a key kept in the desktop keyring, as DPAPI seals them on
+# Windows. Default features are off: the key and nonces come from getrandom(2) directly.
+[target.'cfg(target_os = "linux")'.dependencies]
+chacha20poly1305 = { version = "=0.11.0", default-features = false, features = ["alloc"] }

@@ -61,6 +61,7 @@ Operations that change a repository open a review first. The dialog shows what w
 - Edit > Preferences > Accounts holds your hosting accounts, and Preferences > SSH keys lists your SSH keys. Both work before you open a repository; the command palette (Ctrl+K) finds them as Accounts and SSH keys.
 - Git uses your configured credential helpers and SSH agent.
 - Hosting accounts and the local MCP access token are stored separately in Rocket's application settings.
+- On Linux, remembered tokens, saved SSH passphrases and saved drafts are encrypted with a key Rocket keeps in your desktop keyring, "Rocket credential protection key". It needs libsecret (Ubuntu: libsecret-1-0) and an unlocked keyring such as GNOME Keyring or KeePassXC; desktop sessions have both. WSL has neither: install gnome-keyring and libsecret-1-0, then start the keyring before Rocket, for example with `gnome-keyring-daemon --unlock --components=secrets`, which reads its password from the terminal. Data encrypted with the key can't be read without it, so removing it from the keyring loses what was saved.
 
 ### Diff overview
 
@@ -210,6 +211,7 @@ Every operation that writes follows the same rules, so dialogs do not repeat the
 
 - Drafting with Claude Code or Codex is off until you turn it on in Edit → Preferences → Commit messages. Draft with Claude or Draft with Codex then shows in the commit box in Changes, and works once something is staged. The first draft with each tool explains exactly what is sent and asks first. Nothing is committed: the draft goes into the message fields for you to edit.
 - Check spelling as you type is in Edit → Preferences → Commit messages and uses the Windows spell checker. Spell checking discards obsolete queued text as you edit. Disabling it stays responsive; an accepted dictionary change finishes in the background. Text checks are limited to 128 KiB, matching the saved-message limit.
+- On Linux, spelling is checked against the Hunspell dictionaries installed on the system (Ubuntu: hunspell-en-us for English), in your language or else English (US). Words that look like code aren't checked: paths, URLs, file names, identifiers and words with capitals inside. Add to dictionary keeps the word in Rocket's own list for that language, ~/.local/state/rocket/dictionary; other applications don't share it. Ignore lasts until Rocket restarts.
 
 ## Branches
 
@@ -580,7 +582,8 @@ or thread requires a new preview. A reply draft must be sent or explicitly
 discarded before switching to a resolution action.
 
 Draft text and uncertain review/merge/thread outcomes are protected for your
-Windows user and retained across restarts. Saved drafts restores them after
+Windows user (on Linux, encrypted with Rocket's key in your desktop keyring) and
+retained across restarts. Saved drafts restores them after
 connecting the same account. Restored line comments require their original
 revision, and previews are never restored or submitted automatically. If a write
 was interrupted, refresh and inspect the PR on the server before acknowledging
@@ -684,6 +687,8 @@ the result. An error saving recovery data blocks sending the request.
 - Use only this key makes the repository that is open use the chosen key and no other. Rocket shows a review first and backs up the repository's config when you apply it. For a key found in the folder, Rocket first asks for its host, user and port, taken from the repository's SSH remote when it has one, and checks the key again before setting it up; the key is never copied or unlocked. Restore previous setting brings back the repository's earlier SSH setting. Remote URLs and working files stay unchanged, and external edits to the config invalidate the review.
 - A key set up this way uses its own SSH config: user and system SSH proxy and host settings are not inherited. Shared worktrees use the repository's setting. Check settings shows what OpenSSH reads from that config; it does not connect to the host.
 - Your main .ssh/config and existing keys are preserved; Rocket does not delete key files or change services.
+- On Linux, Rocket uses OpenSSH from /usr/bin (Ubuntu: openssh-client), and Windows agent is called ssh-agent. Rocket reaches the agent that SSH_AUTH_SOCK names; desktop sessions set it. In WSL or another session without it, start Rocket from a terminal after `eval "$(ssh-agent)"`, or after `export SSH_AUTH_SOCK=$XDG_RUNTIME_DIR/openssh_agent` where systemd's ssh-agent socket runs. Rocket starts no agent itself.
+- On Linux, a private key must be yours and readable by you only (chmod 600), as OpenSSH requires: Rocket lists one that isn't but won't unlock or use it until you fix it. Folders Rocket makes are 0700 and its files 0600, and links to keys are refused. Linux can't lock a key's files while they are used, as Windows does; Rocket checks them again afterwards instead.
 
 ## File history
 
@@ -736,7 +741,7 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 - The toolbar's Activity and Terminal buttons and Ctrl+` hide the drawer completely. On a collapsed drawer the first press opens it.
 - A running operation has one spinner and one Stop: in the footer of the dialog it came from while that is open, otherwise in its Activity row while the drawer is open, otherwise in the status bar. Anywhere else it is only named. The Terminal menu acts only on the terminal.
 - The light at the right of the status bar means Rocket is reading in the background, for example refreshing or loading history, and says which. Pages and dialogs show their own reads where their data appears.
-- The terminal runs the shell chosen in Edit → Preferences → Terminal, in the repository folder; Windows PowerShell unless you change it. Type in the command field and press Enter, or click the screen for direct keyboard input, arrows, Tab and Ctrl+C.
+- The terminal runs the shell chosen in Edit → Preferences → Terminal, in the repository folder: Windows PowerShell, or on Linux your login shell, unless you change it. Type in the command field under the screen and press Enter, or click the screen for direct keyboard input, arrows, Tab and Ctrl+C.
 - Interrupt sends Ctrl+C to the running command. Clear scrollback removes the lines above the screen; what is on screen stays. End session stops this session; Terminal → New Terminal starts another.
 - A shell that can't start says why in the drawer, with Terminal settings to change it. Rocket never starts another shell in its place. A shell that stops with an error right after starting keeps its own output below that message, because it usually says what went wrong.
 
@@ -800,6 +805,7 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 - Custom runs one program by its full .exe path, with one argument per line and no shell. It starts from the shell you had. Rocket checks that the file is there and runs nothing until New Terminal.
 - Interrupt sends Ctrl+C, and Clear scrollback is Rocket's own, so both work on every shell; what Ctrl+C does in a custom program is up to that program. Arrow-up history is the shell's. Both PowerShells and Git Bash save it as you go, so End session keeps it. Command Prompt's lasts for the session.
 - The program and arguments come only from your settings on this computer, never from a repository. MCP can't change them, and an MCP window always uses Windows PowerShell.
+- On Linux the choices are Login shell (the program $SHELL names, the default), Bash, Zsh and Fish as /etc/shells lists them, and Custom: any program by its full path. They run as interactive shells with your own startup files and history, on a Linux terminal with job control, so Ctrl+C, Ctrl+Z, fg and bg work as usual. End session hangs up the shell and its jobs, as closing a terminal window does, and ends what is left a second later; a program that started its own session (setsid) keeps running. An MCP window always uses bash without your startup files.
 
 ### External tools
 
@@ -820,6 +826,7 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 - Only marked test repositories inside the test repositories folder can be controlled. Stop the server to change its port or folder. After an edit, Save keeps it and Discard drops it; Start server waits until you choose one.
 - Connected tools need the access token. Copy token puts it on the clipboard; Rocket never shows it. Rotating the token disconnects clients that still use the old one.
 - Close a controlled test window before stopping its server; closing a test window leaves the server running.
+- On Linux the server's folder, ~/.local/state/rocket/mcp, is yours only (0700) and its settings and token are 0600. Rocket refuses a folder other users can change, or files they can open, and says how to fix it; Rotate token replaces a token others could read.
 
 ### Storage
 

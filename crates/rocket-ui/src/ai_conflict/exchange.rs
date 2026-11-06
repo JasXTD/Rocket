@@ -14,7 +14,7 @@ const LIMIT: usize = CONTEXT_LIMIT + 8192;
 const TTL: u64 = 15 * 60;
 static NEXT: AtomicU64 = AtomicU64::new(0);
 fn protected(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>> {
-    protect_hosting_secret(bytes,encrypt).map_err(|_|invalid("ai_exchange_data: Cannot protect or decrypt this conflict snapshot for the current Windows user. Nothing was applied."))
+    protect_hosting_secret(bytes,encrypt).map_err(|_|invalid(if cfg!(windows) {"ai_exchange_data: Cannot protect or decrypt this conflict snapshot for the current Windows user. Nothing was applied."} else {"ai_exchange_data: Cannot protect or decrypt this conflict snapshot with the key in your desktop keyring. Nothing was applied."}))
 }
 struct Shared {
     id: String,

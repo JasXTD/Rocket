@@ -1,5 +1,69 @@
 # Dependency review
 
+## Credential sealing and spell check on Linux — 2026-11-07
+
+Two Linux-only dependencies, approved by the user, pinned exactly:
+
+- `crates/rocket-git`: `chacha20poly1305 =0.11.0` with default features off and `alloc`
+  on. It seals protected data under the key kept in the desktop keyring. Its `getrandom`
+  feature is off; Rocket draws keys and nonces from `getrandom(2)` itself.
+- `crates/rocket-spell`: `spellbook =0.4.2`, the Helix editor's pure-Rust Hunspell reader.
+
+libsecret is loaded at run time and adds nothing to Cargo.lock. Cargo.lock adds 15
+packages, and no locked version changes:
+
+| Package | License | Repository | Build script |
+| --- | --- | --- | --- |
+| chacha20poly1305 0.11.0 | Apache-2.0 OR MIT | RustCrypto/AEADs | no |
+| aead 0.6.1, cipher 0.5.2, crypto-common 0.2.2, universal-hash 0.6.1 | Apache-2.0 OR MIT | RustCrypto/traits | no |
+| chacha20 0.10.2 | Apache-2.0 OR MIT | RustCrypto/stream-ciphers | no |
+| poly1305 0.9.1 | Apache-2.0 OR MIT | RustCrypto/universal-hashes | no |
+| block-buffer 0.12.1, cmov 0.5.4, cpufeatures 0.3.1, ctutils 0.4.5, inout 0.2.5 | Apache-2.0 OR MIT | RustCrypto/utils | no |
+| hybrid-array 0.4.15 | Apache-2.0 OR MIT | RustCrypto/hybrid-array | no |
+| typenum 1.20.1 | MIT OR Apache-2.0 | paholg/typenum | no |
+| spellbook 0.4.2 | MPL-2.0 | helix-editor/spellbook | no |
+
+spellbook reuses the hashbrown 0.17.1 and foldhash 0.2.0 already locked. Windows and macOS
+compile none of these packages, because the dependencies are target-specific.
+
+What was checked:
+
+- cargo-audit 0.22.2 against the RustSec database of 2026-11-06 (1,417 advisories) found
+  no advisories for the 310 locked packages.
+- OSV.dev, which includes RustSec and the OpenSSF malicious-packages list, has no entries
+  for any of the 15. The alternatives considered (keyring 4.2.0, secret-service 5.2.0,
+  oo7 0.7.0, dbus-secret-service 4.1.0) have no malicious-package entries either. keyring
+  and secret-service would have added zbus 5's zvariant, zvariant_derive and zbus_names,
+  which RustSec marks unmaintained.
+- On crates.io, every package's Cargo.lock checksum equals the one crates.io publishes for
+  that version. None is yanked, and each comes from the repository above under its usual
+  owners: RustCrypto teams, rust-lang-owner, and the authors.
+- The three packages not published by their repository's CI were compared with the git
+  commits they name: spellbook 0.4.2 (tag v0.4.2), chacha20poly1305 0.11.0 (tag
+  chacha20poly1305-v0.11.0) and cpufeatures 0.3.1. Every source file is identical, and
+  each commit is in its repository's default branch with a verified signature.
+  - spellbook's package also carries two files that aren't in its commit:
+    `.claude/scheduled_tasks.lock` and `.claude/settings.local.json`, the maintainer's
+    local tool settings. They are data that Cargo never builds or runs.
+- ctutils is pinned to 0.4.5 (2026-10-23) rather than 0.4.8 (2026-11-02), so nothing in
+  the tree is days old. Releases 0.4.6–0.4.8 only add 32-bit Thumb-1 and RISC-V
+  constant-time hardening and helpers; 0.4.4's general constant-time fix is included.
+- The RustCrypto AEADs had an NCC Group audit in 2020, with no significant findings; it
+  covered that year's code, not 0.11.
+
+spellbook is MPL-2.0, a file-level copyleft. Shipping it unmodified needs its license and
+source location in the notices. THIRD-PARTY-NOTICES.txt still describes the Windows
+release; a Linux package needs notices generated for the Linux target.
+
+Testing under WSL installed these packages from Ubuntu's signed archive, with the user's
+approval: gnome-keyring 50.0-1, libsecret-1-0 and libsecret-tools 0.21.7-2build1,
+hunspell-en-us 1:2020.12.07-4build1, zsh 5.9-8ubuntu3 and fish 4.2.1-3.2, with their
+dependencies. `dpkg --verify` found every installed file as packaged. None of them ships
+with Rocket.
+
+This is a bounded integrity and advisory review, not proof against an undisclosed
+compromise.
+
 ## Bidirectional text for Arabic — 2026-11-07
 
 Rocket now builds a modified epaint 0.36.2 from `vendor/epaint`, through

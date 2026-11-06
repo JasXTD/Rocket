@@ -1,15 +1,28 @@
-//! Windows current-user credential protection. The UI remains safe Rust.
+//! Current-user credential protection: DPAPI on Windows; on Linux a key in the desktop
+//! keyring (see `linux`). The UI remains safe Rust.
 use crate::{Error, Result};
-#[cfg(windows)]
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(any(windows, target_os = "linux"))]
 const LIMIT: usize = 512 * 1024;
 #[cfg(windows)]
 fn refused() -> Error {
     Error::InvalidInput("Hosting credentials could not be protected or decrypted for this Windows user. Existing data was preserved.".into())
 }
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
+pub fn protect_hosting_secret(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>> {
+    // The same bounds as DPAPI's: nothing empty, nothing over 512 KiB (plus the seal).
+    if bytes.is_empty() || bytes.len() > LIMIT + if encrypt { 0 } else { 64 } {
+        return Err(Error::InvalidInput(
+            "Hosting credentials could not be protected or decrypted: the data is empty or too large. Existing data was preserved.".into(),
+        ));
+    }
+    linux::protect(bytes, encrypt)
+}
+#[cfg(not(any(windows, target_os = "linux")))]
 pub fn protect_hosting_secret(_: &[u8], _: bool) -> Result<Vec<u8>> {
     Err(Error::Unsupported(
-        "Remembering hosting tokens currently requires Windows user protection.".into(),
+        "Remembering hosting tokens currently requires Windows or Linux.".into(),
     ))
 }
 #[cfg(windows)]

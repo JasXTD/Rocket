@@ -9,3 +9,8 @@ publish = false
 
 [lints]
 workspace = true
+
+# Linux has no system spell checker: the Helix editor's pure-Rust Hunspell reader checks
+# words against the system's Hunspell dictionaries, with no C code in Rocket.
+[target.'cfg(target_os = "linux")'.dependencies]
+spellbook = "=0.4.2"

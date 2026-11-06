@@ -118,8 +118,8 @@ impl TerminalPane {
             Err(error) => self.error = Some(error.to_string()),
         }
     }
-    /// The command line and the screen. The session's state and actions are in the
-    /// drawer header (`Rocket::terminal_actions`).
+    /// The screen with the command line under it. The session's state and actions are in
+    /// the drawer header (`Rocket::terminal_actions`).
     fn show(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, closing: bool) -> Option<PaneAction> {
         let running = self.status.running && !closing;
         let failure = self.failure();
@@ -127,29 +127,75 @@ impl TerminalPane {
         if let Some(error) = self.error.as_ref().or(self.status.error.as_ref().filter(|_| failure.is_none())) {
             ui.colored_label(RED(), error);
         }
+        // The command line sits under the screen, as a console's input does. Its room is
+        // kept first, so the screen still ends on a whole row right above it.
+        let body = vec2(
+            ui.available_width(),
+            (ui.available_height() - CONTROL - ui.spacing().item_spacing.y).max(0.0),
+        );
+        let action = ui
+            .allocate_ui_with_layout(body, Layout::top_down(Align::Min), |ui| {
+                ui.set_min_size(body);
+                match failure {
+                    Some(failure) => failure_state(ui, widgets, failure),
+                    None => self.show_screen(ui, id, widgets, running),
+                }
+            })
+            .inner;
+        self.command_line(ui, id, widgets, running);
+        action
+    }
+
+    /// A line for the shell, sent with Enter or Send.
+    fn command_line(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, running: bool) {
+        const SEND: f32 = 64.0;
+        // A single-line TextEdit consumes Enter as it surrenders focus.
+        // Capture ownership before drawing it: lost_focus() can still be
+        // true on the first keyboard frame after clicking the terminal.
+        // Using that stale response would steal Enter from the shell.
+        let command_focused =
+            ui.input(|i| i.focused) && ui.memory(|m| m.has_focus(command_id(id)));
+        let enter_pressed =
+            ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers == Modifiers::NONE);
         ui.horizontal(|ui| {
-            // A single-line TextEdit consumes Enter as it surrenders focus.
-            // Capture ownership before drawing it: lost_focus() can still be
-            // true on the first keyboard frame after clicking the terminal.
-            // Using that stale response would steal Enter from the shell.
-            let command_focused =
-                ui.input(|i| i.focused) && ui.memory(|m| m.has_focus(command_id(id)));
-            let enter_pressed =
-                ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers == Modifiers::NONE);
-            let r = ui.add_enabled(
-                running,
-                TextEdit::singleline(&mut self.command)
-                    .id(command_id(id))
-                    .desired_width((ui.available_width() - 100.0).max(100.0))
-                    .hint_text("Command or input · Enter to send")
-                    .font(TextStyle::Monospace),
-            );
+            let width = (ui.available_width() - SEND - ui.spacing().item_spacing.x).max(120.0);
+            // Rocket's field: a raised box with a prompt mark, outlined brighter while it
+            // holds the keyboard. Its text fills the box, so a click anywhere in it types.
+            let r = Frame::new()
+                .fill(RAISED())
+                .stroke(Stroke::new(1.0, if command_focused { EDGE_HOT() } else { BORDER() }))
+                .corner_radius(6)
+                .inner_margin(Margin::symmetric(8, 0))
+                .show(ui, |ui| {
+                    // Less the margins and the outline: the box ends right before Send.
+                    ui.set_width(width - 18.0);
+                    // A row is at least interact_size tall; this one is the box less its
+                    // outline, so the box is exactly as tall as Send.
+                    ui.spacing_mut().interact_size.y = CONTROL - 2.0;
+                    ui.horizontal(|ui| {
+                        let (mark, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+                        icon(ui.painter(), mark, Icon::Prompt, if running { MUTED() } else { FAINT() });
+                        ui.add_enabled(
+                            running,
+                            TextEdit::singleline(&mut self.command)
+                                .id(command_id(id))
+                                .frame(Frame::NONE)
+                                .font(TextStyle::Monospace)
+                                .vertical_align(Align::Center)
+                                .min_size(vec2(0.0, CONTROL - 2.0))
+                                .desired_width(ui.available_width())
+                                .hint_text("Command or input · Enter to send"),
+                        )
+                    })
+                    .inner
+                })
+                .inner;
             widgets.insert("terminal-command".into(), (&r).into());
             let enter = running && enter_pressed && command_focused;
             if enter {
                 ui.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Enter));
             }
-            let send = ui.add_enabled(running, Button::new("Send"));
+            let send = ui.add_enabled(running, Button::new("Send").min_size(vec2(SEND, CONTROL)));
             widgets.insert("terminal-send".into(), (&send).into());
             if enter || send.clicked() {
                 let command = format!("{}\r", self.command);
@@ -160,9 +206,10 @@ impl TerminalPane {
                 r.request_focus();
             }
         });
-        if let Some(failure) = failure {
-            return failure_state(ui, widgets, failure);
-        }
+    }
+
+    /// The shell's screen in whole rows, under the line of a shell that stopped at once.
+    fn show_screen(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, running: bool) -> Option<PaneAction> {
         let mut action = None;
         if let Some(code) = self.stopped_early() {
             action = early_exit_line(ui, widgets, &self.name, code);
@@ -185,6 +232,9 @@ impl TerminalPane {
         if running {
             self.session.resize(columns, rows);
         }
+        // What is left over, less than a row, goes above the screen: its last row meets
+        // the command line.
+        ui.add_space((ui.available_height() - fit * cell_size.y).max(0.0));
         let scrollback = self.screen.scrollback.len();
         let output = ui
             .scope(|ui| {
@@ -1196,5 +1246,167 @@ mod tests {
         }
         fs::remove_file(root.join("history.log")).unwrap();
         fs::remove_dir(root).unwrap();
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod linux_tests {
+    use super::*;
+    use crate::terminal_settings::{Choice, Settings};
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
+
+    /// A repository open in a window of the real drawer; `frame` draws it once.
+    fn with_drawer(test: impl FnOnce(&Context, &mut crate::app::Rocket, &crate::test_common::Fixture)) {
+        let fixture = crate::test_common::Fixture::new();
+        fixture.write("file", "first");
+        fixture.commit("first");
+        let ctx = Context::default();
+        let mut app = crate::app::Rocket::with_log_directory(&ctx, vec![fixture.repository.clone()], fixture.root.join("logs"));
+        let deadline = Instant::now() + Duration::from_secs(40);
+        while app.busy() {
+            app.poll(&ctx);
+            assert!(Instant::now() < deadline);
+            thread::sleep(Duration::from_millis(10));
+        }
+        app.auto_refresh = false;
+        test(&ctx, &mut app, &fixture);
+    }
+    fn frame(ctx: &Context, app: &mut crate::app::Rocket) {
+        app.poll(ctx);
+        app.frame_widgets.clear();
+        let mut output = ctx.run_ui(
+            RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1480.0, 920.0))), ..Default::default() },
+            |ui| app.shell(ui, &mut Vec::new()),
+        );
+        output.textures_delta.clear();
+    }
+    fn until(ctx: &Context, app: &mut crate::app::Rocket, what: &str, done: impl Fn(&TerminalPane) -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !done(app.tabs[0].terminal.as_ref().unwrap()) {
+            frame(ctx, app);
+            assert!(Instant::now() < deadline, "{what}: {}", app.tabs[0].terminal.as_ref().unwrap().screen.text());
+            thread::sleep(Duration::from_millis(20));
+        }
+        frame(ctx, app);
+    }
+
+    #[test]
+    fn the_drawer_runs_the_chosen_linux_shell_in_the_repository_and_an_mcp_window_runs_bash() {
+        crate::test_common::isolated("ROCKET_TERMINAL_UI_CASE", "terminal::linux_tests::the_drawer_runs_the_chosen_linux_shell_in_the_repository_and_an_mcp_window_runs_bash", || {
+            with_drawer(|ctx, app, fixture| {
+                app.terminal_shell.load(Settings { choice: Choice::Bash, ..Default::default() });
+                assert_eq!(app.terminal_session_name(), "Bash");
+                app.open_terminal();
+                until(ctx, app, "bash output", |t| t.printed);
+                let terminal = app.tabs[0].terminal.as_ref().unwrap();
+                assert_eq!(terminal.name, "Bash");
+                terminal.session.input(b"echo ROCKET_IN_$(basename \"$PWD\")\r").unwrap();
+                let folder = fixture.repository.file_name().unwrap().to_string_lossy().into_owned();
+                until(ctx, app, "command output", |t| t.screen.text().lines().any(|l| l == format!("ROCKET_IN_{folder}")));
+                assert_eq!(app.terminal_state(), Some((true, "running".to_owned())));
+                app.terminal_action(TerminalAction::End);
+                until(ctx, app, "end", |t| t.status.closed);
+                assert_eq!(app.tabs[0].terminal.as_ref().unwrap().status.error, None);
+                app.tabs[0].terminal = None;
+
+                // An MCP window's history file marks it: its setting is ignored.
+                app.terminal_history_file = Some(fixture.root.join("history.log"));
+                assert_eq!(app.terminal_name(), "bash");
+                app.open_terminal();
+                assert_eq!(app.tabs[0].terminal.as_ref().unwrap().name, "bash");
+                until(ctx, app, "Rocket's bash prompt", |t| t.screen.text().trim_end().ends_with("\n>"));
+                app.terminal_action(TerminalAction::End);
+                until(ctx, app, "end", |t| t.status.closed);
+            });
+        });
+    }
+
+    #[test]
+    fn a_missing_linux_shell_says_which_file() {
+        crate::test_common::isolated("ROCKET_TERMINAL_UI_CASE", "terminal::linux_tests::a_missing_linux_shell_says_which_file", || {
+            with_drawer(|ctx, app, fixture| {
+                let program = fixture.root.join("no-such-shell");
+                app.terminal_shell.load(Settings { choice: Choice::Custom, program: program.display().to_string(), arguments: String::new() });
+                app.open_terminal();
+                until(ctx, app, "closed", |t| t.status.closed);
+                let (title, detail, retry) = app.tabs[0].terminal.as_ref().unwrap().failure().expect("it never ran");
+                assert_eq!(title, "no-such-shell didn't start");
+                assert!(detail.contains("no-such-shell") && detail.ends_with("was not found."), "{detail}");
+                assert!(retry);
+            });
+        });
+    }
+}
+
+#[cfg(all(test, any(windows, target_os = "linux")))]
+mod layout_tests {
+    use super::*;
+    use std::{
+        thread,
+        time::{Duration, Instant},
+    };
+
+    #[test]
+    fn the_command_line_sits_under_whole_rows_even_in_the_shortest_drawer() {
+        crate::test_common::isolated(
+            "ROCKET_TERMINAL_UI_CASE",
+            "terminal::layout_tests::the_command_line_sits_under_whole_rows_even_in_the_shortest_drawer",
+            || {
+                let fixture = crate::test_common::Fixture::new();
+                fixture.write("file", "first");
+                fixture.commit("first");
+                let ctx = Context::default();
+                let mut app = crate::app::Rocket::with_log_directory(&ctx, vec![fixture.repository.clone()], fixture.root.join("logs"));
+                let deadline = Instant::now() + Duration::from_secs(40);
+                while app.busy() {
+                    app.poll(&ctx);
+                    assert!(Instant::now() < deadline);
+                    thread::sleep(Duration::from_millis(10));
+                }
+                app.auto_refresh = false;
+                app.open_terminal();
+                // 500 high leaves the drawer only its least height; 920 gives it its usual one.
+                for size in [vec2(1000.0, 500.0), vec2(1480.0, 920.0)] {
+                    let mut cell = 0.0;
+                    let mut tops = Vec::new();
+                    for _ in 0..24 {
+                        app.poll(&ctx);
+                        app.frame_widgets.clear();
+                        let mut output = ctx.run_ui(
+                            RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() },
+                            |ui| {
+                                cell = ui.fonts_mut(|f| f.row_height(&FontId::monospace(13.0)).max(18.0));
+                                app.shell(ui, &mut Vec::new())
+                            },
+                        );
+                        output.textures_delta.clear();
+                        tops.push(app.frame_widgets["drawer-terminal"].rect.top());
+                    }
+                    // The drawer keeps its height: it neither creeps up over the window nor
+                    // shrinks to its least height, frame after frame.
+                    assert!(tops[3..].iter().all(|top| (top - tops[3]).abs() < 0.5), "the drawer moved at {size:?}: {tops:?}");
+                    let [screen, command, send] =
+                        ["terminal-screen", "terminal-command", "terminal-send"].map(|key| app.frame_widgets[key].rect);
+                    let rows = screen.height() / cell;
+                    assert!(rows > 3.99 && (rows - rows.round()).abs() < 0.01, "{rows} rows at {size:?}");
+                    assert!(command.top() >= screen.bottom() && command.top() - screen.bottom() < 12.0, "the command line right under the screen at {size:?}: {command:?}, {screen:?}");
+                    // Inside the drawer's 8-point margin, above the 26-point status bar.
+                    assert!(send.bottom() <= size.y - 26.0 - 8.0 + 0.5, "{send:?} at {size:?}");
+                    // Send is as tall as the field, beside it, and ends where the screen does.
+                    assert!((send.height() - CONTROL).abs() < 0.5 && (send.center().y - command.center().y).abs() < 1.0, "{send:?}, {command:?}");
+                    assert!(send.left() > command.right() && send.left() - command.right() < 24.0, "{send:?}, {command:?}");
+                    assert!((send.right() - screen.right()).abs() < 12.0, "{send:?}, {screen:?}");
+                }
+                app.terminal_action(TerminalAction::End);
+                let deadline = Instant::now() + Duration::from_secs(20);
+                while !app.tabs[0].terminal.as_ref().unwrap().session.status().closed {
+                    assert!(Instant::now() < deadline, "the shell ends");
+                    thread::sleep(Duration::from_millis(20));
+                }
+            },
+        );
     }
 }

@@ -634,9 +634,12 @@ impl Runner {
         {
             command
                 .env_remove("SSH_ASKPASS")
-                .env_remove("SSH_AUTH_SOCK")
                 .env_remove("SSH_AGENT_PID")
                 .env("SSH_ASKPASS_REQUIRE", "never");
+            // Windows OpenSSH uses the ssh-agent service, never another socket. On Unix
+            // SSH_AUTH_SOCK is how ssh-add reaches the agent at all.
+            #[cfg(windows)]
+            command.env_remove("SSH_AUTH_SOCK");
         }
         if tool {
             // A TLS key log would expose the session; curl honours it if inherited.

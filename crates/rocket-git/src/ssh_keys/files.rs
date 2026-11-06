@@ -49,6 +49,11 @@ pub(super) fn locked(p: &Path) -> Result<File> {
     if !m.is_file() || local_files::redirected(&m) {
         return Err(fail(SshFailure::UnsafePath));
     }
+    // Linux opens through a link; refuse one, as Windows refuses a reparse point.
+    #[cfg(target_os = "linux")]
+    if !local_files::opened_without_link(&f, p).map_err(|e| Error::io("inspect SSH file", e))? {
+        return Err(fail(SshFailure::UnsafePath));
+    }
     Ok(f)
 }
 pub(super) fn read(p: &Path, limit: usize) -> Result<Vec<u8>> {
@@ -64,7 +69,15 @@ pub(super) fn read(p: &Path, limit: usize) -> Result<Vec<u8>> {
     Ok(b)
 }
 pub(super) fn create_file(p: &Path, b: &[u8]) -> Result<()> {
-    OpenOptions::new()
+    let mut options = OpenOptions::new();
+    // Unix: only this user can open it, like the folder it is in (Windows files take
+    // the folder's protected permissions).
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
         .write(true)
         .create_new(true)
         .open(p)
@@ -194,9 +207,36 @@ pub(super) fn create_private_dir(p: &Path) -> Result<()> {
     }
     Ok(())
 }
-#[cfg(not(windows))]
+/// Unix: a new folder only this user can open (0700). It must not exist yet.
+#[cfg(unix)]
+pub(super) fn create_private_dir(p: &Path) -> Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    fs::DirBuilder::new()
+        .mode(0o700)
+        .create(p)
+        .map_err(|e| Error::io("create protected SSH directory", e))
+}
+#[cfg(not(any(windows, unix)))]
 pub(super) fn create_private_dir(_: &Path) -> Result<()> {
     Err(fail(SshFailure::Unavailable))
+}
+/// Unix: refuse a private key other users can open, as OpenSSH does, or one that
+/// belongs to another user, who could replace it. Windows keys are checked by OpenSSH.
+#[cfg(unix)]
+pub(super) fn private_key(file: &File) -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    let found = file.metadata().map_err(|e| Error::io("inspect SSH key", e))?;
+    // SAFETY: geteuid takes no arguments and always succeeds.
+    if found.uid() != unsafe { geteuid() } {
+        return Err(fail(SshFailure::UnsafePath));
+    }
+    if found.mode() & 0o077 != 0 {
+        return Err(fail(SshFailure::KeyPermissions));
+    }
+    Ok(())
 }
 pub(super) fn public_path(p: &Path) -> PathBuf {
     let mut s = p.as_os_str().to_owned();
@@ -250,6 +290,8 @@ fn string<'a>(b: &mut &'a [u8]) -> Result<&'a [u8]> {
 }
 pub(super) fn key_pair(p: &Path) -> Result<(String, bool)> {
     safe_path(p)?;
+    #[cfg(unix)]
+    private_key(&locked(p)?)?;
     let bytes = SecretBytes(read(p, 1024 * 1024)?);
     // Locate the exact footer; support CRLF and LF without exposing the payload.
     let footer = b"-----END OPENSSH PRIVATE KEY-----";

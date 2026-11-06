@@ -54,6 +54,48 @@ where Windows refuses reparse points. Linux has no handle that keeps folders fro
 renamed during an operation, as Windows handles do; the checks before and after
 publication still apply.
 
+## Linux terminal, SSH keys, MCP control and credentials (unreleased, 2026-11-07)
+
+**Terminal.** The terminal's pseudoterminal is opened with `posix_openpt` and
+`TIOCGPTPEER`, both close-on-exec. The shell starts by its full path; a bare name is never
+looked up on `PATH`. Before exec, its signal handlers are reset to their defaults, and it
+gets a new session with the terminal as its controlling terminal. Ending a session sends
+SIGHUP and SIGCONT to every process group in it, then SIGKILL a second later; the
+shell's own group is signalled only while it is unreaped, so its ID can't have been reused.
+A process that calls `setsid` itself leaves the session and is not followed. The reader
+and writer wait with `poll`, so a process holding the terminal can't stall shutdown.
+
+**SSH keys.** OpenSSH comes from `/usr/bin` only. A private key must belong to the user
+and be unreadable by others (mode `077` clear), as OpenSSH's own check requires; links to
+keys and profile files are refused, as reparse points are on Windows. Rocket's folders
+are created 0700 and its files 0600. ssh-agent is reached only through an `SSH_AUTH_SOCK`
+that names a socket owned by the user; Rocket starts no agent. Linux cannot share-lock
+files as Windows does, so key files are checked again after use. A repository binding
+replaces the config in one step (`RENAME_EXCHANGE`) and keeps its permissions.
+
+**MCP control.** The profile folder must belong to the user and not be writable by
+others. Its settings, token and lock files are created 0600, and Rocket refuses any that
+other users can open. Locks are exclusive `flock`s, released when the process ends.
+Tokens are 32 bytes from `getrandom(2)`.
+
+**Protected data.** Remembered tokens, saved SSH passphrases, drafts, conflict snapshots
+and integration secrets are sealed locally with XChaCha20-Poly1305 (RustCrypto
+`chacha20poly1305`), with a random 24-byte nonce for every seal and associated data that
+binds each blob to this purpose. The 256-bit key comes from `getrandom(2)`. It is kept as
+one Secret Service item ("Rocket credential protection key"), through libsecret, which
+handles the keyring's encrypted session and unlock prompts.
+
+libsecret is loaded at run time only from the system's own library folders, as a file
+that root owns in folders root owns and no one else can write; a library offered by
+`LD_LIBRARY_PATH` or a planted copy is never used. A lock file in Rocket's folder stops
+two Rocket processes from creating the key at once. Decrypting never creates a key, and
+a damaged key is reported, not replaced. Like DPAPI, this protects data at rest from other
+users and offline copies, not from programs running as the same user.
+
+**Spell check.** Words are checked by spellbook, a pure-Rust reader of the system's
+Hunspell dictionaries, so no C dictionary parser runs in Rocket. Dictionaries are read
+only from the system folders, and added words are kept in a 0600 file in Rocket's folder.
+
 ## Local crash reports (0.92.0)
 
 Desktop, operational CLI commands and the MCP host install a process-local Rust

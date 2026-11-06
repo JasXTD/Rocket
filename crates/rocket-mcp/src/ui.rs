@@ -899,7 +899,7 @@ impl Ui {
             return Err("Pre-push dependency checks and warning approval are user controls in the normal Rocket application.".into());
         }
         if target.starts_with("shell-") {
-            return Err("The shell is a user preference. MCP cannot change it, and an MCP window always runs Windows PowerShell.".into());
+            return Err(format!("The shell is a user preference. MCP cannot change it, and an MCP window always runs {}.", if cfg!(windows) { "Windows PowerShell" } else { "bash" }));
         }
         if target == "tools-start" {
             self.policy

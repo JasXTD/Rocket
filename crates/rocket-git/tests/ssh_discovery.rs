@@ -1,13 +1,11 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code)]
 mod common;
 use common::*;
 use rocket_git::*;
 use std::{
     fs,
-    os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::Command,
 };
 
 fn home(f: &Fixture) -> PathBuf {
@@ -20,9 +18,7 @@ fn home(f: &Fixture) -> PathBuf {
     .join("SSH 資料")
 }
 fn key(path: &Path) {
-    let out = Command::new(
-        PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("System32/OpenSSH/ssh-keygen.exe"),
-    )
+    let out = ssh_keygen()
     .args([
         "-q",
         "-t",
@@ -34,7 +30,6 @@ fn key(path: &Path) {
         "-f",
     ])
     .arg(path)
-    .creation_flags(0x0800_0000)
     .output()
     .unwrap();
     assert!(out.status.success(), "generate disposable key");
@@ -222,9 +217,13 @@ fn ssh_found_key_shows_its_public_key_and_is_held_while_unchanged() {
             assert_eq!(found.keys[0].public_key(), public.trim());
             assert!(found.keys[0].public_key().starts_with("ssh-ed25519 "));
             let guard = m.guard_discovered(&found.keys[0], &c).unwrap();
-            // The files cannot change while a key is being unlocked or removed.
-            assert!(fs::write(&p, "replacement").is_err());
-            assert!(fs::remove_file(root.join("id_ed25519.pub")).is_err());
+            // Windows: the files cannot change while a key is being unlocked or removed.
+            // Linux has no such lock; the recheck below finds a change instead.
+            #[cfg(windows)]
+            {
+                assert!(fs::write(&p, "replacement").is_err());
+                assert!(fs::remove_file(root.join("id_ed25519.pub")).is_err());
+            }
             drop(guard);
             fs::write(
                 root.join("id_ed25519.pub"),
@@ -241,6 +240,47 @@ fn ssh_found_key_shows_its_public_key_and_is_held_while_unchanged() {
                 Err(Error::Ssh(SshFailure::Changed))
             ));
             assert!(!m.root().exists(), "nothing is created for a found key");
+        },
+    );
+}
+
+/// Linux: a found key other users can open is listed, so the page can say why, but it
+/// is never handed to ssh-add or a profile; a key replaced after the scan is refused.
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_found_keys_other_users_can_open_are_listed_but_not_used() {
+    isolated(
+        "ROCKET_SSH_SCAN_CASE",
+        "linux_found_keys_other_users_can_open_are_listed_but_not_used",
+        || {
+            use std::os::unix::fs::PermissionsExt;
+            let f = Fixture::new();
+            let root = home(&f);
+            fs::create_dir(&root).unwrap();
+            let p = root.join("id_ed25519");
+            key(&p);
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o644)).unwrap();
+            let m = manager(&root);
+            let c = CancellationToken::new();
+            let found = m.discover_keys(&root, &c).unwrap();
+            assert_eq!(found.keys.len(), 1);
+            assert!(matches!(m.guard_discovered(&found.keys[0], &c), Err(Error::Ssh(SshFailure::KeyPermissions))));
+            assert!(matches!(m.unload_discovered(&found.keys[0], &c), Err(Error::Ssh(SshFailure::KeyPermissions))),
+                "refused before ssh-agent is asked");
+            assert!(matches!(
+                m.import_discovered(&found.keys[0], "rocket-open", "github.com", "git", 22, &c),
+                Err(Error::Ssh(SshFailure::KeyPermissions))
+            ));
+            assert!(!m.root().exists());
+            assert_eq!(fs::metadata(&p).unwrap().permissions().mode() & 0o777, 0o644, "left as it was");
+            // The same key, replaced by a copy after the scan, is another file.
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o600)).unwrap();
+            let found = m.discover_keys(&root, &c).unwrap();
+            let bytes = fs::read(&p).unwrap();
+            fs::remove_file(&p).unwrap();
+            fs::write(&p, &bytes).unwrap();
+            fs::set_permissions(&p, fs::Permissions::from_mode(0o600)).unwrap();
+            assert!(matches!(m.guard_discovered(&found.keys[0], &c), Err(Error::Ssh(SshFailure::Changed))));
         },
     );
 }

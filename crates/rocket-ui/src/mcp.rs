@@ -163,6 +163,8 @@ impl Panel {
             let run = || -> std::io::Result<ResultState> {
                 let fallback = profile.join("fixtures");
                 if !profile.join("settings").exists() {
+                    // The profile first, so it is private before anything is put in it.
+                    control::create_profile(&profile)?;
                     std::fs::create_dir_all(&fallback)?;
                 }
                 let mut config = control::initialize(&profile, &fallback)?;
@@ -177,7 +179,8 @@ impl Panel {
                         message = Some("MCP settings saved.".into());
                     }
                     Action::Start => {
-                        let executable = std::env::current_exe()?.with_file_name("rocket-mcp.exe");
+                        let executable = std::env::current_exe()?
+                            .with_file_name(format!("rocket-mcp{}", std::env::consts::EXE_SUFFIX));
                         control::start(&profile, &executable)?;
                         message = Some("Local MCP service is running.".into());
                     }

@@ -24,25 +24,36 @@ impl SshDiscoveredKey {
     }
 }
 
+/// Which file a found key is and when it last changed. Windows records its creation
+/// time. Unix records the inode and its change time instead: some filesystems keep no
+/// creation time, and any replacement, rename or permission change moves those.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct KeyStamp {
     length: u64,
     modified: SystemTime,
+    #[cfg(not(unix))]
     created: SystemTime,
+    #[cfg(unix)]
+    changed: (u64, u64, i64, i64),
 }
 impl KeyStamp {
     fn read(file: &fs::File) -> Result<Self> {
         let m = file
             .metadata()
             .map_err(|e| Error::io("inspect SSH key", e))?;
+        #[cfg(unix)]
+        use std::os::unix::fs::MetadataExt;
         Ok(Self {
             length: m.len(),
             modified: m
                 .modified()
                 .map_err(|e| Error::io("inspect SSH key time", e))?,
+            #[cfg(not(unix))]
             created: m
                 .created()
                 .map_err(|e| Error::io("inspect SSH key time", e))?,
+            #[cfg(unix)]
+            changed: (m.dev(), m.ino(), m.ctime(), m.ctime_nsec()),
         })
     }
 }
@@ -205,6 +216,9 @@ impl SshManager {
         {
             return Err(fail(SshFailure::Changed));
         }
+        // Using it means ssh-add or a profile reads it: OpenSSH refuses an open key.
+        #[cfg(unix)]
+        files::private_key(&private)?;
         Ok(SshKeyGuard {
             _files: vec![private, public],
             _parents: parents,

@@ -20,7 +20,7 @@ pub(super) fn helper() -> Result<PathBuf> {
             .parent()
             .ok_or(fail(SshFailure::HelperUnavailable))?;
     }
-    let path = directory.join("rocket-ssh.exe");
+    let path = directory.join(format!("rocket-ssh{}", std::env::consts::EXE_SUFFIX));
     files::locked(&path).map_err(|_| fail(SshFailure::HelperUnavailable))?;
     Ok(path)
 }

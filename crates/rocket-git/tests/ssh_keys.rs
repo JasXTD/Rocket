@@ -1,15 +1,14 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code)]
 mod common;
 use common::*;
 use rocket_git::*;
-use std::{fs, os::windows::process::CommandExt, path::Path, process::Command};
+use std::{fs, path::Path};
 fn key(path: &Path) {
-    let out = Command::new(r"C:\Windows\System32\OpenSSH\ssh-keygen.exe")
+    let out = ssh_keygen()
         .args(["-q", "-t", "ed25519", "-N", ""])
         .arg("-f")
         .arg(path)
-        .creation_flags(0x0800_0000)
         .output()
         .unwrap();
     assert!(out.status.success(), "disposable key generation");
@@ -241,6 +240,121 @@ fn ssh_binding_refuses_overrides_and_preserves_existing_locks() {
             assert!(repo.apply_ssh_binding(&m, &preview, &c).is_err());
             assert_eq!(fs::read(&lock).unwrap(), b"owned by another writer");
             assert_eq!(fs::read(&config).unwrap(), before);
+        },
+    );
+}
+
+#[cfg(target_os = "linux")]
+fn mode(path: &Path) -> u32 {
+    use std::os::unix::fs::PermissionsExt;
+    fs::symlink_metadata(path).unwrap().permissions().mode() & 0o777
+}
+#[cfg(target_os = "linux")]
+fn set_mode(path: &Path, mode: u32) {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_profiles_are_private_and_keys_other_users_can_open_are_refused() {
+    isolated(
+        "ROCKET_SSH_CASE",
+        "linux_profiles_are_private_and_keys_other_users_can_open_are_refused",
+        || {
+            let f = Fixture::new();
+            let m = manager(&f);
+            let c = CancellationToken::new();
+            let p = register(&f, &m, "rocket-private");
+            // Folders Rocket creates are 0700 and its files 0600; ssh-keygen made the key 0600.
+            for folder in [m.root().parent().unwrap(), m.root(), p.config.parent().unwrap()] {
+                assert_eq!(mode(folder), 0o700, "{}", folder.display());
+            }
+            for file in [p.config.clone(), p.config.with_file_name("profile")] {
+                assert_eq!(mode(&file), 0o600, "{}", file.display());
+            }
+            assert!(m.check_config(&p, &c).unwrap().starts_with("OpenSSH: git@github.com:22"));
+
+            // A key other users can open is refused, as ssh refuses it, and kept as it is.
+            set_mode(&p.key, 0o640);
+            assert!(matches!(m.guard(&p, &c), Err(Error::Ssh(SshFailure::KeyPermissions))));
+            assert_eq!(m.inventory(&c).unwrap().invalid, 1);
+            assert_eq!(mode(&p.key), 0o640);
+            set_mode(&p.key, 0o600);
+            assert!(m.guard(&p, &c).is_ok());
+            let open = base(&f).join("open-key");
+            key(&open);
+            set_mode(&open, 0o604);
+            assert!(matches!(
+                m.prepare("rocket-open", "github.com", "git", 22, Some(&open), &c),
+                Err(Error::Ssh(SshFailure::KeyPermissions))
+            ));
+            assert!(!m.root().join("rocket-open").exists());
+            // A link to a key is refused like a Windows reparse point.
+            let link = base(&f).join("linked-key");
+            std::os::unix::fs::symlink(&p.key, &link).unwrap();
+            std::os::unix::fs::symlink(format!("{}.pub", p.key.display()), base(&f).join("linked-key.pub")).unwrap();
+            assert!(matches!(
+                m.prepare("rocket-linked", "github.com", "git", 22, Some(&link), &c),
+                Err(Error::Ssh(SshFailure::UnsafePath))
+            ));
+
+            // Binding keeps the repository config's own permissions.
+            let repo = f.git.open(&f.repository, &c).unwrap();
+            let config = repo.info().common_dir.join("config");
+            set_mode(&config, 0o600);
+            let review = repo.preview_ssh_binding(&m, Some(&p), &c).unwrap();
+            let backup = repo.apply_ssh_binding(&m, &review, &c).unwrap();
+            assert_eq!(mode(&config), 0o600);
+            assert!(fs::read_to_string(&config).unwrap().contains("sshCommand = '/usr/bin/ssh' -F '"));
+            assert_eq!(mode(backup.parent().unwrap()), 0o700);
+            assert_eq!(mode(&backup.join("after")), 0o600);
+        },
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_ssh_agent_is_the_one_ssh_auth_sock_names() {
+    isolated(
+        "ROCKET_SSH_CASE",
+        "linux_ssh_agent_is_the_one_ssh_auth_sock_names",
+        || {
+            use std::{process::Command, time::{Duration, Instant}};
+            let f = Fixture::new();
+            let m = manager(&f);
+            let c = CancellationToken::new();
+            let p = register(&f, &m, "rocket-agent");
+            // No socket named: no agent, and ssh-add is not even asked.
+            assert_eq!(m.agent(&c).unwrap(), (false, vec![]));
+            let socket = base(&f).join("agent.sock");
+            let mut agent = Command::new("/usr/bin/ssh-agent").arg("-D").arg("-a").arg(&socket).spawn().unwrap();
+            let start = Instant::now();
+            while !socket.exists() {
+                assert!(start.elapsed() < Duration::from_secs(10), "ssh-agent did not start");
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            // SAFETY: this isolated test process has no other threads using the environment.
+            unsafe { std::env::set_var("SSH_AUTH_SOCK", &socket) };
+            assert_eq!(m.agent(&c).unwrap(), (true, vec![]));
+            let added = Command::new("/usr/bin/ssh-add").arg(&p.key).env("SSH_AUTH_SOCK", &socket).output().unwrap();
+            assert!(added.status.success(), "{}", String::from_utf8_lossy(&added.stderr));
+            assert_eq!(m.agent(&c).unwrap(), (true, vec![p.fingerprint.clone()]));
+            m.unload(&p, &c).unwrap();
+            assert_eq!(m.agent(&c).unwrap(), (true, vec![]));
+            // A link to the socket, as tmux setups keep one, reaches the same agent.
+            let link = base(&f).join("agent-link.sock");
+            std::os::unix::fs::symlink(&socket, &link).unwrap();
+            unsafe { std::env::set_var("SSH_AUTH_SOCK", &link) };
+            assert_eq!(m.agent(&c).unwrap(), (true, vec![]));
+            // A path that isn't a socket is no agent either.
+            let plain = base(&f).join("not-a-socket");
+            fs::write(&plain, "").unwrap();
+            unsafe { std::env::set_var("SSH_AUTH_SOCK", &plain) };
+            assert_eq!(m.agent(&c).unwrap(), (false, vec![]));
+            assert!(matches!(m.unload(&p, &c), Err(Error::Ssh(SshFailure::AgentUnavailable))));
+            agent.kill().unwrap();
+            agent.wait().unwrap();
         },
     );
 }

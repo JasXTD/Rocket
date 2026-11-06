@@ -91,6 +91,9 @@ pub struct Screen {
     wrapped: Vec<Option<usize>>,
     history_wrapped: VecDeque<Option<usize>>,
     replies: Vec<u8>,
+    /// Answer "which terminal is this?" (primary device attributes). ConPTY answers it
+    /// itself; on Linux the program asks the screen, and fish waits for the answer.
+    device_attributes: bool,
 }
 impl Screen {
     pub fn new(columns: u16, rows: u16) -> Self {
@@ -115,7 +118,12 @@ impl Screen {
             wrapped: vec![None; rows],
             history_wrapped: VecDeque::new(),
             replies: Vec::new(),
+            device_attributes: false,
         }
+    }
+    #[cfg(any(target_os = "linux", test))]
+    pub(crate) fn answer_device_attributes(&mut self) {
+        self.device_attributes = true;
     }
     pub fn resize(&mut self, columns: u16, rows: u16) {
         self.reflow(columns.clamp(20, 240) as usize, rows.clamp(4, 100) as usize);
@@ -123,7 +131,7 @@ impl Screen {
         self.previous = None;
         self.revision += 1;
     }
-    #[cfg(any(windows, test))]
+    #[cfg(any(windows, target_os = "linux", test))]
     pub(crate) fn take_replies(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.replies)
     }
@@ -205,8 +213,13 @@ impl Screen {
                 'c' => {
                     let (cols, rows, revision) =
                         (self.columns as u16, self.rows as u16, self.revision);
+                    let device_attributes = self.device_attributes;
+                    // The rest of the chunk being fed is still in this buffer.
+                    let utf8 = std::mem::take(&mut self.utf8);
                     *self = Self::new(cols, rows);
                     self.revision = revision;
+                    self.device_attributes = device_attributes;
+                    self.utf8 = utf8;
                 }
                 _ => {}
             },
@@ -372,6 +385,14 @@ impl Screen {
                 self.replies.extend_from_slice(
                     format!("\x1b[{};{}R", self.cursor.1 + 1, self.cursor.0 + 1).as_bytes(),
                 );
+            }
+            // A VT100 with advanced video: true of this screen, and enough for programs
+            // that only wait for an answer. Secondary attributes (CSI > c) get none.
+            'c' if self.device_attributes
+                && matches!(sequence, "" | "0")
+                && self.replies.len() < 4000 =>
+            {
+                self.replies.extend_from_slice(b"\x1b[?1;2c");
             }
             'A' => self.cursor.1 = self.cursor.1.saturating_sub(n),
             'B' | 'e' => self.cursor.1 = (self.cursor.1 + n).min(self.rows - 1),
@@ -612,6 +633,27 @@ mod tests {
         assert_eq!(s.text().lines().filter(|l| !l.is_empty()).count(), 2);
         s.feed(b"\x1b]52;c;untrusted\x07\x1b[?6n");
         assert!(s.take_replies().is_empty());
+    }
+    #[test]
+    fn device_attributes_are_answered_only_when_asked_for_and_survive_a_reset() {
+        let mut s = Screen::new(40, 4);
+        s.feed(b"\x1b[c");
+        assert!(s.take_replies().is_empty(), "ConPTY answers this on Windows");
+        s.answer_device_attributes();
+        s.feed(b"\x1b[c\x1b[0c\x1b[>c\x1b[>0c\x1b[1c");
+        assert_eq!(s.take_replies(), b"\x1b[?1;2c\x1b[?1;2c");
+        s.feed(b"\x1bc\x1b[c");
+        assert_eq!(s.take_replies(), b"\x1b[?1;2c");
+        assert_eq!(s.cursor, (0, 0));
+    }
+    #[test]
+    fn a_full_reset_keeps_the_rest_of_its_chunk() {
+        // `reset` sends ESC c; text after it in the same read must still be shown.
+        let mut s = Screen::new(40, 4);
+        s.feed(b"before\r\nline\x1bcafter \xc3");
+        s.feed(b"\xa9");
+        assert_eq!(s.text().trim_end(), "after é");
+        assert!(s.scrollback.is_empty());
     }
     #[test]
     fn unicode_advances_by_display_columns_across_utf8_chunks() {

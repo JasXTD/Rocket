@@ -1,15 +1,27 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
+//! On Linux a saved passphrase is sealed with Rocket's key in the desktop keyring, so the
+//! tests that save one are ignored by default there: run them with --include-ignored in a
+//! session with an unlocked keyring (see guide.md).
 #[allow(dead_code)]
 mod common;
 use common::*;
 use rocket_git::*;
 use std::{
     fs,
-    os::windows::process::CommandExt,
     path::PathBuf,
     process::{Command, Output},
     time::{Duration, Instant},
 };
+
+/// Starts helpers without a console window on Windows.
+fn quiet(command: &mut Command) -> &mut Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
+    command
+}
 
 fn setup() -> (Fixture, SshManager, SshProfile, String) {
     let f = Fixture::new();
@@ -20,14 +32,11 @@ fn setup() -> (Fixture, SshManager, SshProfile, String) {
         .to_owned();
     let key = PathBuf::from(&root).join("鍵 identity");
     let secret = format!("Disposable SSH phrase {}!", std::process::id());
-    let status = Command::new(
-        PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("System32/OpenSSH/ssh-keygen.exe"),
-    )
-    .args(["-q", "-t", "ed25519", "-a", "16", "-N", &secret, "-f"])
-    .arg(&key)
-    .creation_flags(0x0800_0000)
-    .status()
-    .unwrap();
+    let status = ssh_keygen()
+        .args(["-q", "-t", "ed25519", "-a", "16", "-N", &secret, "-f"])
+        .arg(&key)
+        .status()
+        .unwrap();
     assert!(status.success());
     let m = SshManager::new(PathBuf::from(root).join("profiles"), None).unwrap();
     let p = m
@@ -45,16 +54,18 @@ fn setup() -> (Fixture, SshManager, SshProfile, String) {
     (f, m, p, secret)
 }
 fn helper(p: &SshProfile, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_rocket-ssh"))
-        .arg("--profile")
-        .arg(p.config.parent().unwrap())
-        .args(args)
-        .creation_flags(0x0800_0000)
-        .output()
-        .unwrap()
+    quiet(
+        Command::new(env!("CARGO_BIN_EXE_rocket-ssh"))
+            .arg("--profile")
+            .arg(p.config.parent().unwrap())
+            .args(args),
+    )
+    .output()
+    .unwrap()
 }
 
 #[test]
+#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
 fn direct_binding_and_helper_recheck_custom_services_without_contacting_a_host() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",
@@ -95,16 +106,17 @@ fn direct_binding_and_helper_recheck_custom_services_without_contacting_a_host()
             let bound = fs::read(&config).unwrap();
             // -G only prints OpenSSH's effective configuration, never connects.
             let probe = |remote_command: &str| {
-                Command::new(env!("CARGO_BIN_EXE_rocket-ssh"))
-                    .current_dir(&f.repository)
-                    .env("GIT_CONFIG_GLOBAL", f.root.join("empty.config"))
-                    .env("GIT_CONFIG_SYSTEM", f.root.join("empty.config"))
-                    .arg("--profile")
-                    .arg(p.config.parent().unwrap())
-                    .args(["-G", "git@github.com", remote_command])
-                    .creation_flags(0x0800_0000)
-                    .output()
-                    .unwrap()
+                quiet(
+                    Command::new(env!("CARGO_BIN_EXE_rocket-ssh"))
+                        .current_dir(&f.repository)
+                        .env("GIT_CONFIG_GLOBAL", f.root.join("empty.config"))
+                        .env("GIT_CONFIG_SYSTEM", f.root.join("empty.config"))
+                        .arg("--profile")
+                        .arg(p.config.parent().unwrap())
+                        .args(["-G", "git@github.com", remote_command]),
+                )
+                .output()
+                .unwrap()
             };
             assert!(probe("git-upload-pack 'team/repo.git'").status.success());
             for command in [
@@ -152,6 +164,7 @@ fn direct_binding_and_helper_recheck_custom_services_without_contacting_a_host()
 }
 
 #[test]
+#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
 fn direct_key_verifies_encrypts_binds_and_forgets_without_an_agent() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",
@@ -211,7 +224,7 @@ fn direct_key_verifies_encrypts_binds_and_forgets_without_an_agent() {
             assert!(
                 String::from_utf8(fs::read(&cfg).unwrap())
                     .unwrap()
-                    .contains("rocket-ssh.exe")
+                    .contains(&format!("rocket-ssh{}", std::env::consts::EXE_SUFFIX))
             );
             let restore = repo.preview_ssh_binding(&m, None, &c).unwrap();
             repo.apply_ssh_binding(&m, &restore, &c).unwrap();
@@ -240,15 +253,11 @@ fn unencrypted_direct_key_needs_no_saved_passphrase() {
                 .trim_start_matches(r"\\?\")
                 .to_owned();
             let key = PathBuf::from(&root).join("unencrypted 鍵");
-            let status = Command::new(
-                PathBuf::from(std::env::var_os("WINDIR").unwrap())
-                    .join("System32/OpenSSH/ssh-keygen.exe"),
-            )
-            .args(["-q", "-t", "ed25519", "-N", "", "-f"])
-            .arg(&key)
-            .creation_flags(0x0800_0000)
-            .status()
-            .unwrap();
+            let status = ssh_keygen()
+                .args(["-q", "-t", "ed25519", "-N", "", "-f"])
+                .arg(&key)
+                .status()
+                .unwrap();
             assert!(status.success());
             let c = CancellationToken::new();
             let m = SshManager::new(PathBuf::from(root).join("profiles"), None).unwrap();
@@ -278,6 +287,7 @@ fn unencrypted_direct_key_needs_no_saved_passphrase() {
     );
 }
 #[test]
+#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
 fn direct_key_cancellation_and_external_edits_preserve_credentials() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",
@@ -338,6 +348,7 @@ fn direct_key_cancellation_and_external_edits_preserve_credentials() {
 }
 
 #[test]
+#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
 fn credential_gate_rejects_concurrent_writers_and_recovers_after_owner_releases() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",
@@ -368,6 +379,7 @@ fn credential_gate_rejects_concurrent_writers_and_recovers_after_owner_releases(
     );
 }
 #[test]
+#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
 fn encrypted_credentials_cannot_move_between_profiles_or_answer_host_prompts() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",
@@ -395,16 +407,17 @@ fn encrypted_credentials_cannot_move_between_profiles_or_answer_host_prompts() {
                 "git@github.com's password:",
                 "Enter passphrase for key 'C:/other/key':",
             ] {
-                let out = Command::new(env!("CARGO_BIN_EXE_rocket-ssh"))
-                    .arg(prompt)
-                    .env("ROCKET_SSH_PROFILE", p.config.parent().unwrap())
-                    .env(
-                        "ROCKET_SSH_CREDENTIAL",
-                        p.config.with_file_name("passphrase.dpapi"),
-                    )
-                    .creation_flags(0x0800_0000)
-                    .output()
-                    .unwrap();
+                let out = quiet(
+                    Command::new(env!("CARGO_BIN_EXE_rocket-ssh"))
+                        .arg(prompt)
+                        .env("ROCKET_SSH_PROFILE", p.config.parent().unwrap())
+                        .env(
+                            "ROCKET_SSH_CREDENTIAL",
+                            p.config.with_file_name("passphrase.dpapi"),
+                        ),
+                )
+                .output()
+                .unwrap();
                 assert!(!out.status.success());
                 assert!(out.stdout.is_empty());
             }

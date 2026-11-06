@@ -48,6 +48,25 @@ pub fn isolated(case_variable: &str, name: &str, test: fn()) {
     );
 }
 
+/// The system's ssh-keygen, for disposable fixture keys: Windows OpenSSH, or on Linux
+/// the one in /usr/bin, as Rocket uses them.
+#[allow(dead_code)]
+pub fn ssh_keygen() -> Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        let mut command = Command::new(
+            PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("System32/OpenSSH/ssh-keygen.exe"),
+        );
+        command.creation_flags(0x0800_0000);
+        command
+    }
+    #[cfg(not(windows))]
+    {
+        Command::new("/usr/bin/ssh-keygen")
+    }
+}
+
 pub struct Fixture {
     pub root: PathBuf,
     pub repository: PathBuf,

@@ -1,10 +1,13 @@
-//! A bounded terminal model and an owned, asynchronous Windows ConPTY session.
-//! No shell input or output is persisted or sent to application diagnostics.
+//! A bounded terminal model and an owned, asynchronous terminal session: a Windows
+//! ConPTY, or a Linux pseudoterminal. No shell input or output is persisted or sent to
+//! application diagnostics.
 #[cfg(all(test, windows))]
 mod resize_tests;
 mod screen;
 #[path = "../../rocket-git/src/process_privilege.rs"]
 mod process_privilege;
+#[cfg(target_os = "linux")]
+mod unix;
 #[cfg(windows)]
 mod windows;
 pub use screen::{Cell, Row, Screen};
@@ -17,8 +20,12 @@ use std::{
         mpsc::{self, SyncSender},
     },
 };
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 use std::time::Duration;
+#[cfg(target_os = "linux")]
+use unix as platform;
+#[cfg(windows)]
+use windows as platform;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Status {
@@ -42,7 +49,8 @@ pub enum Shell {
     GitBash(PathBuf),
     /// Command Prompt from the system folder.
     CommandPrompt,
-    /// The user's own program, with one item per argument.
+    /// A program by its full path, with one item per argument: the user's own, or on
+    /// Linux an installed shell, which gets none and runs interactively on the terminal.
     Custom {
         program: PathBuf,
         arguments: Vec<String>,
@@ -68,7 +76,11 @@ impl Shell {
         }
         #[cfg(not(windows))]
         {
-            Err(io::Error::from(io::ErrorKind::Unsupported))
+            match self {
+                Self::Custom { program, .. } => Ok(program.clone()),
+                // Windows' own shells; on Linux the terminal refuses them.
+                _ => Err(io::Error::from(io::ErrorKind::Unsupported)),
+            }
         }
     }
     /// The arguments it starts with, or `None` for PowerShell's startup line, which is
@@ -95,7 +107,9 @@ pub struct Session {
     input: SyncSender<Vec<u8>>,
 }
 impl Session {
-    /// Returns immediately; process creation, I/O and shutdown run on workers.
+    /// Rocket's own shell: Windows PowerShell with Rocket's startup line, or on Linux bash
+    /// without the user's startup files. Returns immediately; process creation, I/O and
+    /// shutdown run on workers.
     pub fn start(
         directory: &Path,
         columns: u16,
@@ -104,8 +118,8 @@ impl Session {
     ) -> io::Result<Self> {
         Self::start_session(directory, columns, rows, wake, None)
     }
-    /// Use a separate PSReadLine history file for an owned test session. Selected
-    /// before the first prompt; normal sessions keep the system history default.
+    /// Use a separate history file (PSReadLine's, or bash's HISTFILE) for an owned test
+    /// session. Selected before the first prompt; normal sessions keep the default.
     pub fn start_with_history(
         directory: &Path,
         columns: u16,
@@ -151,7 +165,8 @@ impl Session {
             input,
         }
     }
-    /// Runs Windows OpenSSH directly, without a shell, history or askpass.
+    /// Runs the system's OpenSSH directly, without a shell, history or askpass: Windows
+    /// OpenSSH, or on Linux the same tool from /usr/bin. `tool` is its Windows file name.
     pub fn start_openssh(
         directory: &Path,
         tool: &str,
@@ -205,7 +220,7 @@ impl Session {
             wake,
         });
         let (input, receive) = mpsc::sync_channel::<Vec<u8>>(32);
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "linux"))]
         {
             let worker = shared.clone();
             let directory = directory.to_path_buf();
@@ -213,7 +228,7 @@ impl Session {
             std::thread::Builder::new()
                 .name("rocket-terminal".into())
                 .spawn(move || {
-                    let result = windows::run(
+                    let result = platform::run(
                         &directory,
                         history.as_deref(),
                         openssh.as_ref(),
@@ -231,15 +246,15 @@ impl Session {
                     (worker.wake)();
                 })?;
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "linux")))]
         {
             let _ = (directory, receive, history, openssh, shell, shared, input);
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "Interactive terminal currently requires Windows 10 1809 or later.",
+                "Interactive terminal currently requires Windows 10 1809 or later, or Linux.",
             ));
         }
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "linux"))]
         Ok(Self { shared, input })
     }
     pub fn input(&self, bytes: &[u8]) -> io::Result<()> {
@@ -295,7 +310,7 @@ impl Drop for Session {
 fn pack(columns: u16, rows: u16) -> u32 {
     u32::from(columns) | (u32::from(rows) << 16)
 }
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 const POLL: Duration = Duration::from_millis(30);
 
 #[cfg(all(test, windows))]

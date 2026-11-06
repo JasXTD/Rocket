@@ -282,18 +282,28 @@ impl Rocket {
                 .show(ui, |ui| self.activity(ui));
         } else if self.show_terminal && !overlay {
             // Leave room for the repository tabs, diff controls and selectable
-            // lines when a tall terminal is resized into a short window.
-            let maximum = (ui.available_height() - 300.0).clamp(150.0, 500.0);
+            // lines when a tall terminal is resized into a short window. The least
+            // height still shows four whole rows of the shell above its command line.
+            let maximum = (ui.available_height() - 300.0).clamp(170.0, 500.0);
             Panel::bottom("terminal-panel")
                 .default_size(250.0)
-                .size_range(150.0..=maximum)
+                .size_range(170.0..=maximum)
                 .resizable(true)
                 .frame(Frame::new().fill(PANE_DEEP()).inner_margin(0))
                 .show(ui, |ui| {
                     self.drawer_header(ui, false);
-                    Frame::new()
-                        .inner_margin(Margin::symmetric(12, 8))
-                        .show(ui, |ui| self.terminal_panel(ui));
+                    // egui keeps a panel at the height its content used, so a pane even a
+                    // point taller or shorter than the drawer moved the drawer on every
+                    // frame, up over the window or down to its least height. The pane is
+                    // laid out in the drawer's rest, and exactly that rest is claimed.
+                    let rest = ui.available_rect_before_wrap();
+                    let mut pane = ui.new_child(
+                        UiBuilder::new()
+                            .max_rect(rest.shrink2(vec2(12.0, 8.0)))
+                            .layout(Layout::top_down(Align::Min)),
+                    );
+                    self.terminal_panel(&mut pane);
+                    ui.advance_cursor_after_rect(rest);
                 });
         }
         if self.show_sidebar && repository && !overlay {

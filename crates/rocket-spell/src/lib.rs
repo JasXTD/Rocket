@@ -1,10 +1,12 @@
-//! Spell checking through the operating system's spell checker, for Rocket's
-//! commit message editor. Windows only for now: elsewhere [`SpellChecker::start`]
-//! reports [`Error::Unavailable`] and callers hide the feature.
+//! Spell checking for Rocket's commit message editor: the operating system's spell
+//! checker on Windows, and on Linux the system's Hunspell dictionaries read by spellbook.
+//! Elsewhere [`SpellChecker::start`] reports [`Error::Unavailable`] and callers hide the
+//! feature.
 //!
 //! The Windows checker is a COM object. One worker thread owns it and initializes
 //! COM for itself, so the UI thread (which Windows may have set up for drag and
-//! drop) never touches COM. Requests are answered asynchronously through [`Pending`].
+//! drop) never touches COM. The Linux checker has its worker too. Requests are answered
+//! asynchronously through [`Pending`].
 use std::{
     ops::Range,
     sync::{Arc, Weak, mpsc},
@@ -13,8 +15,14 @@ use std::{
 
 mod queue;
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(windows)]
 mod windows;
+#[cfg(target_os = "linux")]
+use linux as platform;
+#[cfg(windows)]
+use windows as platform;
 
 /// Text the checker flags in a checked string.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,6 +53,9 @@ pub enum Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Unavailable if cfg!(target_os = "linux") => f.write_str(
+                "no Hunspell dictionary is installed for this language (on Ubuntu, hunspell-en-us for English)",
+            ),
             Self::Unavailable => f.write_str("no spell checker is available for this language"),
             Self::Failed(detail) => write!(f, "the spell checker failed: {detail}"),
         }
@@ -108,8 +119,8 @@ fn response<T>() -> (Reply<T>, Pending<T>) {
 const MAX_TEXT_BYTES: usize = 128 * 1024;
 
 #[cfg_attr(
-    not(any(windows, test)),
-    expect(dead_code, reason = "only the Windows worker reads the text")
+    not(any(windows, target_os = "linux", test)),
+    expect(dead_code, reason = "only the Windows and Linux workers read the text")
 )]
 enum Request {
     Check(String, Reply<Vec<Misspelling>>),
@@ -149,11 +160,11 @@ impl SpellChecker {
     /// user's Windows language when None (falling back to `en-US`). This waits
     /// until the checker is ready, so call it off the UI thread.
     pub fn start(language: Option<&str>) -> Result<Self, Error> {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "linux"))]
         {
             Self::spawn(language.map(str::to_owned))
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "linux")))]
         {
             let _ = language;
             Err(Error::Unavailable)
@@ -173,7 +184,7 @@ impl SpellChecker {
         answer
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     fn spawn(language: Option<String>) -> Result<Self, Error> {
         let (requests, received) = queue::channel();
         let (ready, started) = mpsc::channel();
@@ -181,7 +192,7 @@ impl SpellChecker {
         let worker = thread::Builder::new()
             .name("rocket-spell".into())
             .spawn(move || {
-                let checker = match windows::Checker::new(language.as_deref()) {
+                let checker = match platform::Checker::new(language.as_deref()) {
                     Ok(checker) => checker,
                     Err(e) => {
                         let _ = ready.send(Err(e));
@@ -267,7 +278,8 @@ impl SpellChecker {
         self.ask(word, Request::Ignore)
     }
 
-    /// Add `word` to the user's Windows dictionary, which other applications share.
+    /// Add `word` to the user's Windows dictionary, which other applications share, or
+    /// on Linux to Rocket's own word list for this language.
     pub fn add(&self, word: &str) -> Pending<()> {
         self.ask(word, Request::Add)
     }

@@ -23,7 +23,11 @@ pub struct Loaded {
     pub snapshot: Option<Vec<u8>>,
 }
 fn refused() -> Error {
-    Error::InvalidInput("Saved hosting accounts are invalid, changed externally, or cannot be decrypted for this Windows user. The existing file was preserved.".into())
+    Error::InvalidInput(if cfg!(windows) {
+        "Saved hosting accounts are invalid, changed externally, or cannot be decrypted for this Windows user. The existing file was preserved."
+    } else {
+        "Saved hosting accounts are invalid, changed externally, or cannot be decrypted with the key in your desktop keyring. The existing file was preserved."
+    }.into())
 }
 fn read(directory: &Path) -> Result<Option<Vec<u8>>> {
     let path = directory.join(FILE);
@@ -169,10 +173,11 @@ pub fn save(directory: &Path, accounts: Vec<Account>, expected: Option<Vec<u8>>)
 fn protect(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>> {
     rocket_git::protect_hosting_secret(bytes, encrypt)
 }
-#[cfg(all(test, windows))]
+#[cfg(all(test, any(windows, target_os = "linux")))]
 mod tests {
     use super::*;
     #[test]
+    #[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
     fn azure_server_version_roundtrip_and_invalid_profile_preserved() {
         let dir = std::env::temp_dir().join(format!("rocket-azure-vault-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
         fs::create_dir(&dir).unwrap();
@@ -203,6 +208,7 @@ mod tests {
         fs::remove_file(dir.join(FILE)).unwrap(); fs::remove_dir(&dir).unwrap();
     }
     #[test]
+    #[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
     fn user_protection_roundtrip_and_tampering() {
         let raw = b"disposable-hosting-token-ONLY";
         let enc = protect(raw, true).unwrap();
@@ -214,6 +220,7 @@ mod tests {
         assert!(protect(&bad, false).is_err());
     }
     #[test]
+    #[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
     fn external_edit_is_preserved() {
         let dir = std::env::temp_dir().join(format!(
             "rocket-vault-test-{}",

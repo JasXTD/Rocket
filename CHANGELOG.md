@@ -8,6 +8,39 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Linux terminal, SSH keys, tokens, MCP and spell check (preview)
+
+- The integrated terminal works on Linux on its own pseudoterminal. The shell leads a new
+  session with the terminal as its controlling terminal, so job control, Ctrl+C and
+  resizes work as in any terminal. Ending a session hangs up its process groups and ends
+  what is left a second later, also after the shell exits by itself. Signals Rocket
+  ignores (as when started in the background of a script) are reset for the shell.
+- Preferences → Terminal lists Linux's shells: Login shell (`$SHELL`, the default), Bash,
+  Zsh and Fish from `/etc/shells`, and Custom. MCP windows run bash without your startup
+  files and with their own history file.
+- The terminal answers the "which terminal is this?" query (primary device attributes),
+  which fish waits for, on Linux only; ConPTY answers it on Windows.
+- Fixed: a full reset (`ESC c`, as `reset` sends) in the middle of a block of terminal
+  output stopped the terminal on every platform; the rest of the block is now shown.
+- Terminal drawer, on every platform: the command field sits under the screen, in Rocket's
+  field style, with Send beside it at the same height. The drawer keeps the height you
+  give it. It no longer grows up over the window, or shrinks to its least height, while a
+  shell runs. Its least height shows four whole rows of the shell.
+- SSH keys work on Linux with the system's OpenSSH: creating keys, unlocking them in the
+  ssh-agent that `SSH_AUTH_SOCK` names, binding a repository and direct-key mode. A private
+  key other users can open is refused, as OpenSSH refuses it. Rocket's SSH folders are
+  0700 and its files 0600. The new-key passphrase prompt is also recognised in OpenSSH
+  10's form, which names the key.
+- Remembered hosting tokens, saved SSH passphrases, PR drafts and the other protected data
+  work on Linux: they are sealed with XChaCha20-Poly1305 under one key kept in the desktop
+  keyring through libsecret, as DPAPI protects them on Windows.
+- MCP control works on Linux: the profile is 0700, its files 0600 and owned by you,
+  tokens come from `getrandom(2)`, and the service runs in its own process group.
+- Spell checking works on Linux with the system's Hunspell dictionaries. Added words go
+  to Rocket's word list for the language.
+- Cargo.lock adds 15 Linux-only packages: chacha20poly1305 0.11.0 and spellbook 0.4.2 with
+  their dependencies (see DEPENDENCIES.md). Windows and macOS builds compile nothing new.
+
 ## Unreleased — Interface languages (groundwork)
 
 - Rocket can show its interface in German, Swiss German, French, Swedish, Russian,

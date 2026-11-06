@@ -493,6 +493,10 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
             Choice::CommandPrompt => 2,
             Choice::PowerShell7 => 3,
             Choice::Custom => 4,
+            Choice::LoginShell => 5,
+            Choice::Bash => 6,
+            Choice::Zsh => 7,
+            Choice::Fish => 8,
         });
         put(&mut bytes, s.program.as_bytes())?;
         put(&mut bytes, s.arguments.as_bytes())?;
@@ -919,6 +923,10 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
             2 => Choice::CommandPrompt,
             3 => Choice::PowerShell7,
             4 => Choice::Custom,
+            5 => Choice::LoginShell,
+            6 => Choice::Bash,
+            7 => Choice::Zsh,
+            8 => Choice::Fish,
             _ => return Err(invalid()),
         };
         s.program = text(&mut r)?;
@@ -971,6 +979,21 @@ mod lock_tests {
         assert_eq!(restored, state);
         drop(store);
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn linux_shells_roundtrip_and_the_login_shell_keeps_the_earlier_format() {
+        use crate::terminal_settings::{Choice, Settings};
+        let mut state = SavedState::default();
+        let old = encode(&state).unwrap();
+        assert_eq!(decode(&old).unwrap().preferences.shell.choice, Choice::LoginShell);
+        for choice in Choice::ALL {
+            state.preferences.shell = Settings { choice, ..Default::default() };
+            let bytes = encode(&state).unwrap();
+            assert_eq!(decode(&bytes).unwrap(), state, "{choice:?}");
+        }
+        state.preferences.shell = Settings::default();
+        assert_eq!(encode(&state).unwrap(), old, "the default writes nothing new");
     }
 }
 

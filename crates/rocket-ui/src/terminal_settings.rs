@@ -1,7 +1,8 @@
 //! Preferences → Terminal: the shell the Terminal drawer runs. A custom program and its
 //! arguments come only from this profile's settings, like tool profiles: repository
 //! configuration never supplies them. An MCP test window can't change the setting and keeps
-//! Windows PowerShell, whose probes and private history it relies on.
+//! Rocket's own shell (Windows PowerShell, or bash on Linux), whose probes and private
+//! history it relies on. Each platform lists its own shells.
 use crate::{
     app::{Rocket, UiControl},
     pages,
@@ -21,16 +22,27 @@ const LABEL: f32 = 96.0;
 /// A custom shell gets as many arguments as a tool profile.
 const MAX_ARGUMENTS: usize = 64;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Choice {
-    #[default]
     WindowsPowerShell,
     GitBash,
     CommandPrompt,
     PowerShell7,
+    /// Linux: the shell $SHELL names, the user's login shell.
+    LoginShell,
+    Bash,
+    Zsh,
+    Fish,
     Custom,
 }
+impl Default for Choice {
+    fn default() -> Self {
+        Self::ALL[0]
+    }
+}
 impl Choice {
+    /// This platform's shells, the default first.
+    #[cfg(windows)]
     pub const ALL: [Self; 5] = [
         Self::WindowsPowerShell,
         Self::GitBash,
@@ -38,12 +50,18 @@ impl Choice {
         Self::PowerShell7,
         Self::Custom,
     ];
+    #[cfg(not(windows))]
+    pub const ALL: [Self; 5] = [Self::LoginShell, Self::Bash, Self::Zsh, Self::Fish, Self::Custom];
     pub fn label(self) -> &'static str {
         match self {
             Self::WindowsPowerShell => "Windows PowerShell",
             Self::GitBash => "Git Bash",
             Self::CommandPrompt => "Command Prompt",
             Self::PowerShell7 => "PowerShell 7",
+            Self::LoginShell => "Login shell",
+            Self::Bash => "Bash",
+            Self::Zsh => "Zsh",
+            Self::Fish => "Fish",
             Self::Custom => "Custom",
         }
     }
@@ -54,10 +72,17 @@ impl Choice {
             Self::GitBash => "git-bash",
             Self::CommandPrompt => "command-prompt",
             Self::PowerShell7 => "powershell-7",
+            Self::LoginShell => "login-shell",
+            Self::Bash => "bash",
+            Self::Zsh => "zsh",
+            Self::Fish => "fish",
             Self::Custom => "custom",
         }
     }
 }
+
+/// What an MCP window runs, whatever is saved: Rocket's own shell.
+pub(crate) const ROCKET_SHELL: &str = if cfg!(windows) { "Windows PowerShell" } else { "bash" };
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Settings {
@@ -74,16 +99,19 @@ impl Settings {
             && !self.program.contains(['\0', '\r', '\n'])
             && !self.arguments.contains('\0')
     }
-    /// What the drawer calls this shell.
+    /// What the drawer calls this shell. The login shell is named after its program.
     pub(crate) fn name(&self) -> String {
-        if self.choice != Choice::Custom {
-            return self.choice.label().to_owned();
+        let named = |program: &Path| {
+            program
+                .file_stem()
+                .map(|name| name.to_string_lossy().into_owned())
+                .filter(|name| !name.is_empty())
+        };
+        match self.choice {
+            Choice::Custom => named(Path::new(self.program.trim())).unwrap_or_else(|| "Custom shell".to_owned()),
+            Choice::LoginShell => login_shell().as_deref().and_then(named).unwrap_or_else(|| self.choice.label().to_owned()),
+            choice => choice.label().to_owned(),
         }
-        Path::new(self.program.trim())
-            .file_stem()
-            .map(|name| name.to_string_lossy().into_owned())
-            .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| "Custom shell".to_owned())
     }
     fn argument_lines(&self) -> Vec<String> {
         self.arguments.lines().filter(|l| !l.is_empty()).map(str::to_owned).collect()
@@ -92,12 +120,12 @@ impl Settings {
     fn custom_problem(&self) -> Option<&'static str> {
         let program = self.program.trim();
         let path = Path::new(program);
+        // Windows programs are .exe files; on Linux any file can be one.
+        let program_file = !cfg!(windows) || path.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
         if program.is_empty() {
             Some("Choose the shell's program.")
-        } else if !path.is_absolute()
-            || !path.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"))
-        {
-            Some("Use the full path to a program's .exe file.")
+        } else if !path.is_absolute() || !program_file {
+            Some(if cfg!(windows) { "Use the full path to a program's .exe file." } else { "Use the full path to the shell's program." })
         } else if self.argument_lines().len() > MAX_ARGUMENTS {
             Some("Use at most 64 arguments, one per line.")
         } else {
@@ -107,11 +135,46 @@ impl Settings {
 }
 
 /// The shells that may not be here, looked for when the page opens or a terminal starts.
+/// Windows fills the first three, Linux the rest.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Located {
     git_bash: Option<PathBuf>,
     powershell_7: Option<PathBuf>,
     git_version: String,
+    login: Option<PathBuf>,
+    bash: Option<PathBuf>,
+    zsh: Option<PathBuf>,
+    fish: Option<PathBuf>,
+}
+impl Located {
+    fn installed(&self, choice: Choice) -> Option<&PathBuf> {
+        match choice {
+            Choice::LoginShell => self.login.as_ref(),
+            Choice::Bash => self.bash.as_ref(),
+            Choice::Zsh => self.zsh.as_ref(),
+            Choice::Fish => self.fish.as_ref(),
+            _ => None,
+        }
+    }
+}
+
+/// The program $SHELL names, when it is a full path. Nothing is looked up on PATH.
+fn login_shell() -> Option<PathBuf> {
+    std::env::var_os("SHELL").map(PathBuf::from).filter(|path| path.is_absolute())
+}
+
+/// Where `name` is installed: the first entry of /etc/shells, the system's list of
+/// installed shells, with that file name, else /usr/bin/`name`. Only regular files count.
+fn installed_shell(name: &str, shells: Option<&str>) -> Option<PathBuf> {
+    shells
+        .into_iter()
+        .flat_map(str::lines)
+        .map(str::trim)
+        .filter(|line| line.starts_with('/'))
+        .map(PathBuf::from)
+        .filter(|path| path.file_name().is_some_and(|file| file == name))
+        .chain(Some(Path::new("/usr/bin").join(name)))
+        .find(|path| path.is_file())
 }
 
 /// `cmd\git.exe`, `bin\git.exe` or `ucrt64\bin\git.exe`: the launcher is in the install's
@@ -136,7 +199,19 @@ enum Readiness {
 }
 
 fn readiness(settings: &Settings, located: &Located, custom: Option<&Status>) -> Readiness {
+    if !Choice::ALL.contains(&settings.choice) {
+        return Readiness::CantUse(format!("{} isn't on this system. Choose another shell.", settings.choice.label()));
+    }
     match settings.choice {
+        Choice::LoginShell => match (located.login.as_ref(), login_shell()) {
+            (Some(_), _) => Readiness::Ready("Your login shell, from $SHELL".into()),
+            (None, Some(path)) => Readiness::NotFound(format!("$SHELL names {}, which isn't there. Choose another shell.", path.display())),
+            (None, None) => Readiness::NotFound("$SHELL doesn't name a shell. Choose another shell.".into()),
+        },
+        Choice::Bash | Choice::Zsh | Choice::Fish => match located.installed(settings.choice) {
+            Some(_) => Readiness::Ready("Installed".into()),
+            None => Readiness::NotFound(format!("{} isn't installed. Choose another shell.", settings.choice.label())),
+        },
         Choice::WindowsPowerShell | Choice::CommandPrompt => Readiness::Ready("Comes with Windows".into()),
         Choice::GitBash if located.git_bash.is_some() => {
             // "git version 2.56.0.windows.4": its prefix and build suffix add nothing here.
@@ -163,7 +238,18 @@ fn readiness(settings: &Settings, located: &Located, custom: Option<&Status>) ->
 
 /// What New Terminal starts, or why it can't.
 fn launch(settings: &Settings, located: &Located) -> Result<Shell, String> {
+    if !Choice::ALL.contains(&settings.choice) {
+        return Err(format!("{} isn't on this system.", settings.choice.label()));
+    }
     match settings.choice {
+        // Linux shells start with no arguments and run interactively on the terminal.
+        Choice::LoginShell | Choice::Bash | Choice::Zsh | Choice::Fish => located
+            .installed(settings.choice)
+            .map(|program| Shell::Custom { program: program.clone(), arguments: vec![] })
+            .ok_or_else(|| match settings.choice {
+                Choice::LoginShell => "$SHELL doesn't name an installed shell.".to_owned(),
+                choice => format!("{} isn't installed.", choice.label()),
+            }),
         Choice::WindowsPowerShell => Ok(Shell::WindowsPowerShell),
         Choice::CommandPrompt => Ok(Shell::CommandPrompt),
         Choice::GitBash => located
@@ -196,8 +282,17 @@ fn shown(settings: &Settings, located: &Located) -> (String, String) {
     let arguments = shell
         .as_ref()
         .and_then(Shell::arguments)
-        .map_or_else(|| "Set by Rocket".to_owned(), |a| a.join(" "));
+        .map_or_else(|| "Set by Rocket".to_owned(), |a| if a.is_empty() { "None".to_owned() } else { a.join(" ") });
     (program, arguments)
+}
+
+/// The Program row when the chosen shell isn't there.
+fn missing_program(choice: Choice) -> &'static str {
+    match choice {
+        Choice::GitBash => "No bash.exe beside this Git",
+        Choice::LoginShell => "$SHELL doesn't name an installed shell",
+        _ => "Not installed",
+    }
 }
 
 pub struct State {
@@ -261,10 +356,23 @@ impl State {
 
 pub(crate) fn check_program(path: &Path) -> Status {
     match path.symlink_metadata() {
-        Ok(found) if found.is_dir() => Status::Refused("This is a folder. Use the full path to a program's .exe file.".into()),
+        Ok(found) if found.is_dir() => Status::Refused(if cfg!(windows) {
+            "This is a folder. Use the full path to a program's .exe file."
+        } else {
+            "This is a folder. Use the full path to a program."
+        }.into()),
+        #[cfg(unix)]
+        Ok(_) if !executable(path) => Status::Refused("This file can't be run: it isn't executable.".into()),
         Ok(_) => Status::Exists,
         Err(_) => Status::MissingParent,
     }
+}
+
+/// Whether the file a link or path names has an executable bit.
+#[cfg(unix)]
+fn executable(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    path.metadata().is_ok_and(|found| found.is_file() && found.permissions().mode() & 0o111 != 0)
 }
 
 /// A row with its label in the card's column, level with the top of the field.
@@ -318,14 +426,27 @@ fn choice_row(ui: &mut Ui, label: &str, detail: &str, selected: bool, enabled: b
 }
 
 impl Rocket {
-    /// Looks for Git Bash and PowerShell 7. A few checks for a file, like the ones behind
-    /// Preferences → Commit messages, and only on request, never per frame.
+    /// Looks for Git Bash and PowerShell 7, or on Linux the login shell, Bash, Zsh and
+    /// Fish. A few checks for a file, like the ones behind Preferences → Commit messages,
+    /// and only on request, never per frame.
     fn locate_shells(&self) -> Located {
-        let git = self.backend.as_ref();
+        if cfg!(windows) {
+            let git = self.backend.as_ref();
+            return Located {
+                git_bash: git.and_then(|b| beside_git(&b.executable)),
+                powershell_7: powershell_7(),
+                git_version: git.map_or_else(String::new, |b| b.version.clone()),
+                ..Default::default()
+            };
+        }
+        let shells = std::fs::read_to_string("/etc/shells").ok();
+        let shell = |name| installed_shell(name, shells.as_deref());
         Located {
-            git_bash: git.and_then(|b| beside_git(&b.executable)),
-            powershell_7: powershell_7(),
-            git_version: git.map_or_else(String::new, |b| b.version.clone()),
+            login: login_shell().filter(|path| path.is_file()),
+            bash: shell("bash"),
+            zsh: shell("zsh"),
+            fish: shell("fish"),
+            ..Default::default()
         }
     }
     /// The page opened: it shows what is on this computer now.
@@ -334,10 +455,10 @@ impl Rocket {
         self.terminal_shell.check = Default::default();
     }
     /// What New Terminal names, before and after a session starts. An MCP window always
-    /// runs Windows PowerShell, whatever is saved.
+    /// runs Rocket's own shell, whatever is saved.
     pub(crate) fn terminal_name(&self) -> String {
         if self.terminal_history_file.is_some() {
-            Choice::WindowsPowerShell.label().to_owned()
+            ROCKET_SHELL.to_owned()
         } else {
             self.terminal_shell.saved.name()
         }
@@ -409,6 +530,10 @@ impl Rocket {
                                     Choice::CommandPrompt => ("Comes with Windows", true),
                                     Choice::PowerShell7 if s.located.powershell_7.is_some() => ("Installed", true),
                                     Choice::PowerShell7 => ("Not installed", false),
+                                    Choice::LoginShell if s.located.login.is_some() => ("Default · from $SHELL", true),
+                                    Choice::LoginShell => ("$SHELL isn't set", false),
+                                    Choice::Bash | Choice::Zsh | Choice::Fish if s.located.installed(choice).is_some() => ("Installed", true),
+                                    Choice::Bash | Choice::Zsh | Choice::Fish => ("Not installed", false),
                                     Choice::Custom => ("Your own program", true),
                                 };
                                 if choice == Choice::Custom {
@@ -434,7 +559,7 @@ impl Rocket {
                             let r = ui.add_sized(
                                 [width, CONTROL],
                                 TextEdit::singleline(&mut s.editing.program)
-                                    .hint_text(RichText::new("Full path to the shell's .exe").font(FontId::proportional(13.0)).color(FAINT()))
+                                    .hint_text(RichText::new(if cfg!(windows) { "Full path to the shell's .exe" } else { "Full path to the shell's program" }).font(FontId::proportional(13.0)).color(FAINT()))
                                     .font(FontId::monospace(12.0))
                                     .vertical_align(Align::Center)
                                     .char_limit(32768)
@@ -456,7 +581,7 @@ impl Rocket {
                     let (program, arguments) = shown(&s.editing, &s.located);
                     row(ui, "Program", |ui| {
                         if program.is_empty() {
-                            fixed(ui, widgets, "shell-program", "No bash.exe beside this Git", false);
+                            fixed(ui, widgets, "shell-program", missing_program(s.editing.choice), false);
                         } else {
                             fixed(ui, widgets, "shell-program", &program, true);
                         }
@@ -483,7 +608,7 @@ impl Rocket {
                             }
                         });
                     } else {
-                        status_line(ui, AMBER(), "MCP windows always use Windows PowerShell.");
+                        status_line(ui, AMBER(), &format!("MCP windows always use {ROCKET_SHELL}."));
                     }
                     if let Some(name) = &open_terminal {
                         status_line(ui, AMBER(), &format!("Open terminals keep {name} until you end them."));
@@ -501,13 +626,16 @@ impl Rocket {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
     fn located() -> Located {
         Located {
             git_bash: Some(r"C:\Apps\Rocket\git\2.56.0.windows.4\bin\bash.exe".into()),
             powershell_7: None,
             git_version: "git version 2.56.0.windows.4".into(),
+            ..Default::default()
         }
     }
+    #[cfg(windows)]
     #[test]
     fn the_default_is_windows_powershell_and_custom_is_named_after_its_program() {
         assert_eq!(Settings::default().name(), "Windows PowerShell");
@@ -516,6 +644,7 @@ mod tests {
         custom.program = r"C:\msys64\usr\bin\zsh.exe".into();
         assert_eq!(custom.name(), "zsh");
     }
+    #[cfg(windows)]
     #[test]
     fn each_shell_is_ready_or_says_why_not() {
         let plain = |choice| Settings { choice, ..Default::default() };
@@ -532,6 +661,7 @@ mod tests {
         assert!(launch(&plain(Choice::GitBash), &nothing).is_err());
         assert_eq!(launch(&plain(Choice::WindowsPowerShell), &nothing), Ok(Shell::WindowsPowerShell));
     }
+    #[cfg(windows)]
     #[test]
     fn a_custom_shell_must_be_a_full_exe_path_that_exists() {
         let custom = |program: &str| Settings { choice: Choice::Custom, program: program.into(), arguments: "--login\n\n-i".into() };
@@ -551,6 +681,7 @@ mod tests {
         let many = Settings { arguments: "x\n".repeat(65), ..good };
         assert!(matches!(state(&many, Some(&Status::Exists)), Readiness::CantUse(_)));
     }
+    #[cfg(windows)]
     #[test]
     fn custom_starts_from_the_shell_you_had_and_keeps_its_own_values() {
         let mut state = State { located: located(), ..Default::default() };
@@ -578,6 +709,7 @@ mod tests {
         state.discard();
         assert!(!state.dirty());
     }
+    #[cfg(windows)]
     #[test]
     fn the_launcher_is_found_in_the_gits_own_bin_folder() {
         let root = std::env::temp_dir().join(format!("rocket-beside-git-{}", std::process::id()));
@@ -589,6 +721,71 @@ mod tests {
         for git in [r"cmd\git.exe", r"bin\git.exe", r"ucrt64\bin\git.exe"] {
             assert_eq!(beside_git(&root.join(git)), Some(root.join(r"bin\bash.exe")), "{git}");
         }
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(not(windows))]
+    fn linux() -> Located {
+        Located { login: Some("/bin/bash".into()), bash: Some("/usr/bin/bash".into()), ..Default::default() }
+    }
+    #[cfg(not(windows))]
+    #[test]
+    fn linux_lists_its_own_shells_and_the_login_shell_comes_first() {
+        assert_eq!(Choice::ALL, [Choice::LoginShell, Choice::Bash, Choice::Zsh, Choice::Fish, Choice::Custom]);
+        assert_eq!(Settings::default().choice, Choice::LoginShell);
+        let plain = |choice| Settings { choice, ..Default::default() };
+        // Named after the program $SHELL names, so the drawer says "bash".
+        let named = login_shell().and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
+        assert_eq!(plain(Choice::LoginShell).name(), named.unwrap_or_else(|| "Login shell".into()));
+        assert_eq!(plain(Choice::Zsh).name(), "Zsh");
+        assert_eq!(ROCKET_SHELL, "bash");
+    }
+    #[cfg(not(windows))]
+    #[test]
+    fn linux_shells_are_ready_when_installed_and_start_with_no_arguments() {
+        let plain = |choice| Settings { choice, ..Default::default() };
+        let state = |choice, located: &Located| readiness(&plain(choice), located, None);
+        assert_eq!(state(Choice::LoginShell, &linux()), Readiness::Ready("Your login shell, from $SHELL".into()));
+        assert_eq!(state(Choice::Bash, &linux()), Readiness::Ready("Installed".into()));
+        assert_eq!(state(Choice::Zsh, &linux()), Readiness::NotFound("Zsh isn't installed. Choose another shell.".into()));
+        assert!(matches!(state(Choice::LoginShell, &Located::default()), Readiness::NotFound(_)));
+        assert_eq!(launch(&plain(Choice::Bash), &linux()), Ok(Shell::Custom { program: "/usr/bin/bash".into(), arguments: vec![] }));
+        assert_eq!(launch(&plain(Choice::LoginShell), &linux()), Ok(Shell::Custom { program: "/bin/bash".into(), arguments: vec![] }));
+        assert_eq!(launch(&plain(Choice::Fish), &linux()), Err("Fish isn't installed.".into()));
+        assert_eq!(shown(&plain(Choice::Bash), &linux()), ("/usr/bin/bash".into(), "None".into()));
+        assert_eq!(missing_program(Choice::Fish), "Not installed");
+        // A setting saved for Windows' shells can't start one here.
+        for windows in [Choice::WindowsPowerShell, Choice::GitBash, Choice::CommandPrompt, Choice::PowerShell7] {
+            assert!(matches!(state(windows, &linux()), Readiness::CantUse(_)), "{windows:?}");
+            assert!(launch(&plain(windows), &linux()).is_err(), "{windows:?}");
+        }
+    }
+    #[cfg(not(windows))]
+    #[test]
+    fn linux_shells_are_found_from_etc_shells_and_custom_ones_need_a_full_executable_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = std::env::temp_dir().join(format!("rocket-linux-shells-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("bin/folder-shell")).unwrap();
+        let shell = root.join("bin/rocket-test-shell");
+        std::fs::write(&shell, b"#!/bin/sh\n").unwrap();
+        let listed = format!("# /etc/shells\n/nowhere/rocket-test-shell\n{}/bin/folder-shell\n  {}\n", root.display(), shell.display());
+        assert_eq!(installed_shell("rocket-test-shell", Some(&listed)), Some(shell.clone()), "the first file listed");
+        assert_eq!(installed_shell("folder-shell", Some(&listed)), None, "folders don't count");
+        assert_eq!(installed_shell("rocket-test-shell", None), None, "nothing in /usr/bin");
+
+        let custom = |program: &str| Settings { choice: Choice::Custom, program: program.into(), arguments: String::new() };
+        assert!(matches!(readiness(&custom("zsh"), &linux(), None), Readiness::CantUse(_)), "a bare name is looked up nowhere");
+        assert_eq!(readiness(&custom(&shell.to_string_lossy()), &linux(), None), Readiness::Checking, "no .exe needed");
+        assert!(matches!(check_program(&shell), Status::Refused(_)), "not executable yet");
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(check_program(&shell), Status::Exists);
+        assert!(matches!(check_program(&root.join("bin")), Status::Refused(_)));
+        assert_eq!(check_program(&root.join("absent")), Status::MissingParent);
+        // Custom starts from the shell you had.
+        let mut state = State { located: linux(), ..Default::default() };
+        state.editing.choice = Choice::Bash;
+        state.choose(Choice::Custom);
+        assert_eq!((state.editing.program.as_str(), state.editing.arguments.as_str()), ("/usr/bin/bash", ""));
         std::fs::remove_dir_all(root).unwrap();
     }
 }

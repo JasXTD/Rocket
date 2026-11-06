@@ -1,4 +1,4 @@
-//! Spell checking for the commit message: Windows only, off by default. The
+//! Spell checking for the commit message: Windows and Linux, off by default. The
 //! rocket-spell worker checks text off the UI thread. Results are kept per exact
 //! text, so an edited field never shows underlines computed for older text.
 use crate::{
@@ -49,7 +49,7 @@ pub struct Spelling {
 impl Spelling {
     /// Whether this platform has a spell checker Rocket can use.
     pub fn supported() -> bool {
-        cfg!(windows)
+        cfg!(any(windows, target_os = "linux"))
     }
 
     /// Start or stop the checker to match the preference.
@@ -204,7 +204,7 @@ impl Spelling {
         }
     }
 
-    /// Add the target word to the user's Windows dictionary.
+    /// Add the target word to the user's dictionary (on Linux, Rocket's word list).
     pub fn add_target(&mut self) {
         if let (Some(checker), Some(target)) = (&self.checker, self.target.take()) {
             self.word_change = Some(checker.add(&target.word));
@@ -360,7 +360,7 @@ pub fn layout(
 mod tests {
     use super::*;
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn disabling_keeps_an_accepted_dictionary_change_observable() {
         let mut spelling = Spelling::default();
@@ -388,7 +388,7 @@ mod tests {
         assert!(!spelling.waiting());
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn rapid_toggle_observes_startup_and_cleanup_before_restarting() {
         let mut spelling = Spelling::default();
@@ -435,7 +435,7 @@ mod tests {
         assert_eq!(text, "Fix the simple bug");
     }
 
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     #[test]
     fn checks_are_kept_per_text_and_redone_after_ignoring_a_word() {
         let mut spelling = Spelling::default();

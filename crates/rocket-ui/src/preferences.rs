@@ -713,7 +713,8 @@ impl Rocket {
                     Page::Tools => tr("Profiles are saved on this computer."),
                     Page::Terminal => tr("Applies to the next terminal."),
                     Page::Commands => "",
-                    Page::Accounts => tr("Remembered accounts are protected for your Windows user."),
+                    Page::Accounts if cfg!(windows) => tr("Remembered accounts are protected for your Windows user."),
+                    Page::Accounts => tr("Remembered accounts are encrypted with a key in your desktop keyring."),
                     Page::SshKeys => tr("Key files and your own SSH config are never overwritten."),
                     Page::Git | Page::Mcp | Page::Storage | Page::Shortcuts | Page::Integrations => "",
                     _ => tr("Changes apply right away."),
@@ -1189,11 +1190,16 @@ impl Rocket {
     fn commit_page(&mut self, ui: &mut Ui) -> bool {
         if crate::spell::Spelling::supported() {
             let hint = if !self.spell_check {
-                tr("Uses the Windows spell checker.").to_owned()
+                if cfg!(windows) {
+                    tr("Uses the Windows spell checker.").to_owned()
+                } else {
+                    tr("Uses the Hunspell dictionaries installed on this system.").to_owned()
+                }
             } else {
                 match (&self.spelling.problem, self.spelling.language()) {
                     (Some(problem), _) => trf!("Off: {problem}", problem),
-                    (None, Some(language)) => trf!("Windows spell checker · {language}", language),
+                    (None, Some(language)) if cfg!(windows) => trf!("Windows spell checker · {language}", language),
+                    (None, Some(language)) => trf!("Hunspell dictionary · {language}", language),
                     (None, None) => tr("Starting the spell checker…").to_owned(),
                 }
             };
@@ -1317,6 +1323,9 @@ mod tests {
             "preferences::tests::the_terminal_page_saves_only_on_save_and_holds_the_dialog_until_then",
             || {
                 use crate::{batch::flow_tests::wait, terminal_settings::{Choice, Settings}};
+                // A shell that is always there, other than the default.
+                let (other, other_key) = if cfg!(windows) { (Choice::CommandPrompt, "command-prompt") } else { (Choice::Bash, "bash") };
+                let other_id = format!("shell-choice-{other_key}");
                 let fixture = common::Fixture::new();
                 let ctx = Context::default();
                 let mut app = Rocket::with_log_directory(&ctx, vec![], fixture.root.join("logs"));
@@ -1334,9 +1343,9 @@ mod tests {
                     let id = format!("shell-choice-{}", choice.key());
                     assert!(app.frame_widgets.contains_key(&id), "{id}");
                 }
-                click(&ctx, &mut app, "shell-choice-command-prompt");
+                click(&ctx, &mut app, &other_id);
                 frame(&ctx, &mut app, vec![]);
-                assert_eq!(app.terminal_shell.editing.choice, Choice::CommandPrompt);
+                assert_eq!(app.terminal_shell.editing.choice, other);
                 assert_eq!(app.terminal_shell.saved, Settings::default(), "choosing doesn't save");
 
                 // Closing with an edit stays open and asks for a decision.
@@ -1355,7 +1364,8 @@ mod tests {
                 frame(&ctx, &mut app, vec![]);
                 click(&ctx, &mut app, "shell-choice-custom");
                 frame(&ctx, &mut app, vec![]);
-                assert!(app.terminal_shell.editing.program.ends_with("powershell.exe"), "Custom starts from the shell you had");
+                let had = if cfg!(windows) { "powershell.exe".to_owned() } else { std::env::var("SHELL").unwrap_or_default() };
+                assert!(app.terminal_shell.editing.program.ends_with(&had), "Custom starts from the shell you had");
                 assert!(app.frame_widgets.contains_key("shell-browse"));
                 assert!(app.frame_widgets["shell-program"].enabled);
 
@@ -1370,11 +1380,11 @@ mod tests {
 
                 click(&ctx, &mut app, "shell-choice");
                 frame(&ctx, &mut app, vec![]);
-                click(&ctx, &mut app, "shell-choice-command-prompt");
+                click(&ctx, &mut app, &other_id);
                 frame(&ctx, &mut app, vec![]);
                 frame(&ctx, &mut app, vec![]);
                 click(&ctx, &mut app, "shell-save");
-                assert_eq!(app.terminal_shell.saved.choice, Choice::CommandPrompt);
+                assert_eq!(app.terminal_shell.saved.choice, other);
                 click(&ctx, &mut app, "dialog-close");
                 assert!(app.dialog.is_none(), "saved, so it closes");
             },

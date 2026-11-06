@@ -81,7 +81,11 @@ pub struct State {
     uncaptured: bool,
 }
 fn refused() -> Error {
-    Error::InvalidInput("hosting_drafts_preserved: saved PR drafts changed externally, are invalid, or could not be protected for this Windows user. Existing data was preserved; no new remote write was started.".into())
+    Error::InvalidInput(if cfg!(windows) {
+        "hosting_drafts_preserved: saved PR drafts changed externally, are invalid, or could not be protected for this Windows user. Existing data was preserved; no new remote write was started."
+    } else {
+        "hosting_drafts_preserved: saved PR drafts changed externally, are invalid, or could not be protected with the key in your desktop keyring. Existing data was preserved; no new remote write was started."
+    }.into())
 }
 fn io(action: &'static str, source: std::io::Error) -> Error {
     Error::Io { action, source }
@@ -636,7 +640,11 @@ pub(super) fn panel(
     out: &mut PageOut,
 ) {
     ui.heading("Saved PR drafts and recovery");
-    ui.label("Protected for your Windows user. Connect the same account to restore a draft; saved requests never run automatically.");
+    ui.label(if cfg!(windows) {
+        "Protected for your Windows user. Connect the same account to restore a draft; saved requests never run automatically."
+    } else {
+        "Encrypted with a key in your desktop keyring. Connect the same account to restore a draft; saved requests never run automatically."
+    });
     if let Some(error) = &s.drafts.error {
         ui.colored_label(RED(), error);
         ui.label("Fix the storage problem or shorten/remove an unneeded draft, then retry. Rocket will check the original file again before saving.");

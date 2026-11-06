@@ -69,7 +69,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             enabled: true,
-            root: std::env::var_os("USERPROFILE")
+            root: std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })
                 .map(PathBuf::from)
                 .unwrap_or_default()
                 .join(".ssh/rocket-keys"),
@@ -185,12 +185,14 @@ impl Rocket {
             Ok(Done::Agent(fingerprint,unlocked))=>{
                 s.loaded_keys.retain(|v|v!=&fingerprint);if unlocked{s.loaded_keys.push(fingerprint)}
                 s.notice=Some(if stopped&&unlocked{"Stopped. OpenSSH had already unlocked this key; the result was checked. Untick it to remove it from ssh-agent."}
-                    else if unlocked{"Key unlocked in Windows ssh-agent. Only this key was added."}
+                    else if unlocked{if cfg!(windows) {"Key unlocked in Windows ssh-agent. Only this key was added."} else {"Key unlocked in ssh-agent. Only this key was added."}}
                     else if stopped{"Cancelled. The key is still locked."}else{"Key removed from ssh-agent. Key files and other unlocked keys are unchanged."}.into());
             }
             Ok(Done::Passphrase(p,saved))=>{
                 if let Some(old)=s.profiles.iter_mut().find(|old|old.alias==p.alias){*old=p;}
-                s.notice=Some(if saved {"Passphrase verified by OpenSSH and saved with Windows user encryption. Windows ssh-agent and key files were not changed."} else {"Saved passphrase forgotten. The private key, public key and agent are unchanged."}.into());
+                s.notice=Some(if !saved {"Saved passphrase forgotten. The private key, public key and agent are unchanged."}
+                    else if cfg!(windows) {"Passphrase verified by OpenSSH and saved with Windows user encryption. Windows ssh-agent and key files were not changed."}
+                    else {"Passphrase verified by OpenSSH and saved, encrypted with a key in your desktop keyring. ssh-agent and key files were not changed."}.into());
             }
             Err(Error::Cancelled)=>s.notice=Some(if reading {"Scan cancelled. The previous list is retained; keys and settings are unchanged."} else {"Cancelled. No profile or repository setting was published. Any incomplete key folder is retained for recovery."}.into()),
             Err(e)=>{s.error=Some(user_error(&e));s.preview=None;}
