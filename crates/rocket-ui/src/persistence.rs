@@ -92,7 +92,7 @@ pub struct Preferences {
     pub auto_fetch_minutes: u16,
     /// Open repositories are listed in the sidebar instead of tabs above it.
     pub repository_list: bool,
-    /// Commit messages are spell-checked (Windows only).
+    /// Commit messages are spell-checked (Windows and Linux).
     pub spell_check: bool,
     /// Commit message drafts with Claude Code; off by default.
     pub drafting: crate::commit_draft::Settings,

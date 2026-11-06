@@ -818,7 +818,7 @@ pub struct Rocket {
     pub sidebar_labels_narrow: bool,
     /// Persisted: list open repositories in the sidebar instead of tabs above it.
     pub repository_list: bool,
-    /// Persisted: spell-check commit messages (Windows only).
+    /// Persisted: spell-check commit messages (Windows and Linux).
     pub spell_check: bool,
     /// Persisted: the repository, diff and commit list settings on Preferences → General.
     pub general: crate::general::Settings,
