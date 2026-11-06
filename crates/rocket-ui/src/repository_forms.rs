@@ -207,6 +207,8 @@ enum Next {
     Stay,
     Close,
     Submit,
+    /// Keep: stop the running Keep.
+    Stop,
     Browse(PickTarget),
     Open(PathBuf),
 }
@@ -218,6 +220,10 @@ impl Rocket {
             return;
         };
         let clone = matches!(dialog.kind, DialogKind::Clone);
+        if let DialogKind::KeepPreview(id) = dialog.kind {
+            self.keep_dialog(ctx, dialog, id);
+            return;
+        }
         if dialog.create.is_none() {
             let form = if clone { self.clone_form(&dialog) } else { self.init_form(&mut dialog) };
             dialog.create = Some(form);
@@ -339,6 +345,125 @@ impl Rocket {
                 self.browse(target, &current);
             }
             Next::Open(path) => self.open(path),
+            Next::Stop => {}
+        }
+    }
+
+    /// Keep a preview: choose the folder, then follow the download, copy and checkout.
+    fn keep_dialog(&mut self, ctx: &Context, mut dialog: Dialog, id: u64) {
+        let Some((name, estimate)) = self.tabs.iter().find(|t| t.id == id).and_then(|t| t.preview.as_ref()).map(|p| {
+            let have = p.meter.status().size;
+            let estimate = p
+                .request
+                .size_kb
+                .map(|kb| kb.saturating_mul(1024).saturating_sub(have))
+                .filter(|b| *b > 0);
+            (p.request.name.clone(), estimate)
+        }) else {
+            // The preview's tab closed: nothing to keep.
+            return;
+        };
+        if dialog.create.is_none() {
+            let mut form = self.clone_form(&dialog);
+            form.name = name.rsplit('/').next().unwrap_or(&name).to_owned();
+            form.name_edited = true;
+            dialog.create = Some(form);
+        }
+        let running = self
+            .write
+            .as_ref()
+            .filter(|w| w.label == "keep-preview" && self.keeping_preview == Some(id))
+            .map(|w| (w.progress.clone(), w.fraction, w.cancelling));
+        let idle = self.write.is_none() && !self.quitting;
+        let scope = self.browse_root.clone();
+        let widgets = &mut self.frame_widgets;
+        let Dialog { second, create, error, .. } = &mut dialog;
+        let form = create.as_mut().expect("form created above");
+        let shown = form.parent.clone();
+        if let Some(usual) = form.missing_source(ctx, &shown) {
+            form.parent = usual;
+        }
+        let destination = (!form.parent.trim().is_empty() && !form.name.trim().is_empty())
+            .then(|| Path::new(form.parent.trim()).join(form.name.trim()));
+        *second = destination.as_ref().map_or_else(String::new, |p| p.display().to_string());
+        let status = form.status(ctx, destination.clone(), scope.as_deref(), check_clone);
+        let ready = idle && running.is_none() && status == Some(Status::New);
+        let mut next = Next::Stay;
+        // Running, the dialog follows the Keep; after a failure, Try again resumes it.
+        let failed = running.is_none() && error.is_some();
+        let short = name.rsplit('/').next().unwrap_or(&name).to_owned();
+        let (title, subtitle) = if running.is_some() {
+            (format!("Keeping {short}"), destination.as_deref().map_or_else(String::new, crate::views::display_path))
+        } else {
+            ("Keep repository".to_owned(), format!("Make a normal clone of {name} in a folder you choose."))
+        };
+        let response = form_modal(ctx, "rocket-keep-preview", Icon::Bookmark, &title, &subtitle, widgets, |ui, part, widgets| match part {
+            Part::Body => match &running {
+                Some((progress, fraction, _)) => keep_progress(ui, progress, *fraction, destination.as_deref()),
+                None if failed => {
+                    let error = error.as_deref().unwrap_or_default().trim_end_matches('.');
+                    pages::callout(ui, RED(), &format!("{error}. The preview is unchanged."));
+                }
+                None => {
+                    destination_fields(ui, form, destination.as_deref(), status.as_ref(), widgets, &mut next);
+                    ui.add_space(4.0);
+                    let note = match estimate {
+                        Some(bytes) => format!("Downloads the rest of the file history first · about {}", crate::explore::size(bytes)),
+                        None => "Downloads the rest of the file history first".to_owned(),
+                    };
+                    ui.label(RichText::new(note).size(12.5).color(MUTED()));
+                }
+            },
+            Part::Hint => {
+                if running.is_none() && !failed {
+                    shortcut_hint(ui, "to keep");
+                }
+            }
+            Part::Buttons => match &running {
+                Some((_, _, cancelling)) => {
+                    let stop = ui.add_enabled(!cancelling, Button::new(if *cancelling { "Stopping" } else { "Stop" }));
+                    pages::control(widgets, "dialog-stop", &stop, ui.clip_rect());
+                    if stop.clicked() {
+                        next = Next::Stop;
+                    }
+                }
+                None => buttons(ui, ready, if failed { "Try again" } else { "Keep" }, widgets, &mut next),
+            },
+            Part::Close(clicked) => {
+                if clicked && running.is_none() {
+                    next = Next::Close;
+                }
+            }
+        });
+        if response.should_close() && running.is_none() {
+            next = Next::Close;
+        }
+        if matches!(next, Next::Stay)
+            && ready
+            && self.picker.is_none()
+            && ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Enter))
+        {
+            next = Next::Submit;
+        }
+        match next {
+            Next::Stay => self.dialog = Some(dialog),
+            Next::Close => {}
+            Next::Submit => {
+                dialog.error = None;
+                let target = PathBuf::from(dialog.second.trim());
+                self.dialog = Some(dialog);
+                self.keep_preview(id, target);
+            }
+            Next::Stop => {
+                self.dialog = Some(dialog);
+                self.cancel_write();
+            }
+            Next::Browse(target) => {
+                let current = dialog.create.as_ref().map(|f| f.parent.clone()).unwrap_or_default();
+                self.dialog = Some(dialog);
+                self.browse(target, &current);
+            }
+            Next::Open(path) => self.open(path),
         }
     }
 
@@ -431,6 +556,18 @@ fn clone_body(
     });
     crate::remote_check::inline_status(ui, connection);
     ui.add_space(10.0);
+    destination_fields(ui, form, destination, status, widgets, next);
+}
+
+/// Parent folder and name with the "Clones into" check, shared by Clone and Keep.
+fn destination_fields(
+    ui: &mut Ui,
+    form: &mut Form,
+    destination: Option<&Path>,
+    status: Option<&Status>,
+    widgets: &mut HashMap<String, UiControl>,
+    next: &mut Next,
+) {
     caption(ui, "Destination");
     let gap = 10.0;
     let width = ui.available_width();
@@ -649,6 +786,46 @@ pub(crate) fn fit_path(ui: &Ui, path: &str, width: f32) -> String {
         .map(|start| format!("…\\{}", parts[start..].join("\\")))
         .find(|text| fits(text))
         .unwrap_or_else(|| format!("…\\{}", parts.last().copied().unwrap_or_default()))
+}
+
+/// Keep's three steps, the running one from the write's progress.
+fn keep_progress(ui: &mut Ui, progress: &str, fraction: Option<f32>, destination: Option<&Path>) {
+    let stage = if progress.starts_with("Downloading files") || progress.starts_with("Preparing") {
+        0
+    } else if progress.starts_with("Cloning") || progress.starts_with("Receiving") || progress.starts_with("Resolving") || progress.starts_with("Counting") || progress.starts_with("Compressing") {
+        1
+    } else {
+        2
+    };
+    let place = destination.map_or_else(String::new, |p| crate::views::display_path(p));
+    for (i, label) in ["Download the rest of the file history".to_owned(), format!("Copy to {place}"), "Check out the default branch".to_owned()].iter().enumerate() {
+        ui.horizontal(|ui| {
+            ui.set_min_height(34.0);
+            let (mark, _) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::hover());
+            let painter = ui.painter();
+            if i < stage {
+                painter.circle_filled(mark.center(), 10.0, GREEN().gamma_multiply(0.18));
+                icon(painter, mark.shrink(5.0), Icon::Check, GREEN());
+            } else if i == stage {
+                painter.circle_stroke(mark.center(), 8.5, Stroke::new(2.0, BLUE()));
+            } else {
+                painter.circle_stroke(mark.center(), 8.5, Stroke::new(1.5, HAIRLINE()));
+            }
+            ui.add_space(6.0);
+            let text = RichText::new(label).color(if i > stage { HINT() } else { TEXT() });
+            ui.add(Label::new(if i == stage { text.strong() } else { text }).truncate());
+            if i == stage {
+                // "1,240 of 3,912 files" while the history downloads.
+                let detail = progress.strip_prefix("Downloading files: ").map_or_else(|| progress.trim_end_matches('…').to_owned(), |rest| format!("{rest} files"));
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.label(RichText::new(detail).size(12.0).color(HINT()));
+                });
+            }
+        });
+        if i == stage && let Some(fraction) = fraction {
+            ui.add(ProgressBar::new(fraction).desired_height(6.0));
+        }
+    }
 }
 
 fn caption(ui: &mut Ui, text: &str) {

@@ -20,11 +20,12 @@ const control=id=>controls().find(c=>c.id===id);
 async function until(predicate,label){const start=performance.now();for(;;){state=await client.tool('rocket_state');if(predicate(state))return;assert(performance.now()-start<60000,label+' timed out');await delay(80);}}
 async function settle(){await until(s=>!s.busy&&!s.input_pending&&!s.crash_reports.loading&&!s.crash_reports.exporting&&!(s.tabs||[]).some(t=>t.loading),'settled state');}
 async function stable(){let last='',count=0;await until(s=>{const now=JSON.stringify(s.controls);count=now===last?count+1:0;last=now;return count>=2;},'stable controls');}
-async function reveal(id){await stable();if(!control(id)&&['crash-export-path','crash-export-save','crash-export-cancel'].includes(id)){await client.tool('rocket_scroll',{target:'crash-scroll',direction:'down',pixels:2000,expected_tab:state.active_tab});await settle();await stable();}}
+async function reveal(id){await stable();if(!control(id)&&['crash-export-folder','crash-export-name','crash-export-save','crash-export-cancel'].includes(id)){await client.tool('rocket_scroll',{target:'crash-scroll',direction:'down',pixels:2000,expected_tab:state.active_tab});await settle();await stable();}}
 async function click(id){await reveal(id);assert(control(id)?.enabled,'Missing/disabled '+id);await client.tool('rocket_click',{target:id,expected_tab:state.active_tab});await settle();}
 async function type(id,text){await reveal(id);assert(control(id)?.enabled,'Missing field '+id);await client.tool('rocket_type',{target:id,text,expected_tab:state.active_tab});await settle();}
 async function capture(name){await stable();const result=await client.request('tools/call',{name:'rocket_capture',arguments:{}});const block=result.content.find(c=>c.type==='image');assert(block);fs.writeFileSync(path.join(evidence,name+'.png'),Buffer.from(block.data,'base64'));}
 async function open(){await click('menu-help');await click('help-crash-reports');assert(state.crash_reports.open);}
+async function saveAs(folder,name){await click('crash-export');assert(state.crash_reports.export_open);await type('crash-export-folder',folder);await type('crash-export-name',name);}
 async function refresh(){await client.tool('rocket_scroll',{target:'crash-scroll',direction:'up',pixels:2000,expected_tab:state.active_tab});await settle();await click('crash-refresh');}
 function pass(name){report.cases.push(name);console.log('PASS '+name);}
 function preserved(before){assert.deepEqual({head:g('rev-parse','HEAD'),index:digest(path.join(repo,'.git/index')),config:digest(path.join(repo,'.git/config')),data:fs.readFileSync(path.join(repo,'資料.txt'),'utf8')},before);}
@@ -41,42 +42,52 @@ try{
     const result=cp.spawnSync(probes[0],['--exact','crash_probe','--ignored','--nocapture','--test-threads=1'],{env:{...env,ROCKET_CRASH_FIXTURE:reportDirectory,ROCKET_CRASH_MODE:mode},windowsHide:true,timeout:60000,encoding:'utf8'});
     assert(!result.error,'Isolated probe timeout');assert.equal(result.status===0,mode==='caught');assert(!result.stderr.includes('PRIVATE_'));
   }
+  const recentMs=Date.now()-5*60_000;
+  const recentFile='crash-'+(BigInt(recentMs)*1000000n).toString(16).padStart(32,'0')+'-00002a2a-00000001.rcr';
+  fs.writeFileSync(path.join(reportDirectory,recentFile),'ROCKET-CRASH-1\t0.92.0\tdesktop\twindows-exception\t'+recentMs+'\t10794\t10800\t-\t0\t0\t3221225477\t6:52112\t6:52112,1:2201004,2:314513,3:95092\twindows\tx86_64\n');
+  const recentId=recentFile.replace(/\.rcr$/,'-1');
   const listener=net.createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));const port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
   fs.writeFileSync(path.join(profile,'settings'),'ROCKET-MCP-1\n'+port+'\n'+root+'\n');
   const log=fs.openSync(path.join(evidence,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env,windowsHide:true,stdio:['ignore','ignore',log]});fs.closeSync(log);
   client=new RocketHttpClient(profile);for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break;}catch(e){if(i>120)throw e;await delay(100);}}
   await client.initialize();await client.tool('rocket_open',{path:repo});await settle();
-  await client.tool('rocket_resize',{width:1480,height:920});await settle();await open();
-  assert.equal(state.crash_reports.reports.length,2);assert(state.crash_reports.reports.every(r=>r.version==='0.92.0'));
-  for(let i=0;i<2;i++){
+  await client.tool('rocket_resize',{width:1480,height:920});await settle();
+  await until(s=>s.crash_reports.recent,'next-start notice');assert(control('crash-toast-view')?.enabled);await capture('next-start-notice');
+  await click('crash-toast-view');await until(s=>s.crash_reports.open&&!s.crash_reports.loading,'opened from the notice');assert.equal(state.crash_reports.selected.id,recentId);await capture('opened-from-notice');
+  await click('crash-close');assert(!state.crash_reports.open);assert(!state.crash_reports.recent,'the notice is offered once');assert(!control('crash-toast-view'));
+  pass('The next start offers a window app\'s crash from just before it once, and opens on that report');
+  await open();
+  assert.equal(state.crash_reports.reports.length,3);assert(state.crash_reports.reports.every(r=>r.version==='0.92.0'));
+  for(let i=0;i<3;i++){
     await click('crash-report-'+i);const selected=state.crash_reports.selected;
     assert(['rust-panic','windows-exception'].includes(selected.kind));assert.equal(selected.os,'windows');assert.equal(selected.arch,'x86_64');assert(!JSON.stringify(selected).includes('PRIVATE_'));assert(!JSON.stringify(selected).includes(root));
   }
   await capture('reports-wide');await click('crash-copy');assert.match(state.crash_reports.notice,/copied/);
   pass('Real isolated panic/native reports load with private-safe metadata and copy');
 
-  const destination=path.join(root,'报告 文.json');await click('crash-export');await type('crash-export-path',destination);await click('crash-export-save');
+  const destination=path.join(root,'报告 文.json');await saveAs(root,path.basename(destination));await capture('save-as');await click('crash-export-save');assert(!state.crash_reports.export_open,'Save as closes after saving');
   assert.match(state.crash_reports.notice,/saved/);const exported=JSON.parse(fs.readFileSync(destination,'utf8'));assert.equal(exported.id,state.crash_reports.selected.id);assert(!fs.readFileSync(destination,'utf8').includes('PRIVATE_'));
-  await click('crash-export');await type('crash-export-path',destination);await click('crash-export-save');assert.match(state.crash_reports.error,/already exists/);assert.deepEqual(JSON.parse(fs.readFileSync(destination,'utf8')),exported);
+  await saveAs(root,path.basename(destination));await click('crash-export-save');assert.match(state.crash_reports.error,/already exists/);assert.deepEqual(JSON.parse(fs.readFileSync(destination,'utf8')),exported);
   await capture('existing-file-error');await click('crash-export-cancel');
   pass('Unicode JSON export succeeds and an existing file is preserved with a clear error');
 
-  const cancelled=path.join(root,'cancelled.json');await click('crash-export');await type('crash-export-path',cancelled);await click('crash-export-cancel');assert(!fs.existsSync(cancelled));
+  const cancelled=path.join(root,'cancelled.json');await saveAs(root,'cancelled.json');await click('crash-export-cancel');assert(!fs.existsSync(cancelled));assert(!state.crash_reports.export_open);
   const outside=path.join(path.dirname(root),'outside-'+path.basename(root)+'.json');assert(!fs.existsSync(outside));
-  await click('crash-export');await type('crash-export-path',outside);await click('crash-export-save');assert(state.crash_reports.error);assert(!fs.existsSync(outside));await click('crash-export-cancel');
-  pass('Cancelled review creates no file and MCP export cannot leave its fixture scope');
+  await saveAs(path.dirname(root),path.basename(outside));await click('crash-export-save');assert(state.crash_reports.error);assert(!fs.existsSync(outside));await click('crash-export-cancel');
+  await saveAs(root,'report.txt');await click('crash-export-save');assert.match(state.crash_reports.error,/\.json/);assert(!fs.existsSync(path.join(root,'report.txt')));await click('crash-export-cancel');
+  pass('Cancelled Save as creates no file, a name must end in .json, and MCP export cannot leave its fixture scope');
 
-  await client.tool('rocket_resize',{width:780,height:620});await settle();await capture('reports-compact');await click('crash-export');await capture('export-compact');
-  for(const id of ['crash-close','crash-copy','crash-export']){const r=control(id);assert(r,'Compact missing '+id);assert(r.rect[0]>=0&&r.rect[1]>=0&&r.rect[2]<=780&&r.rect[3]<=620,'Offscreen '+id);}
-  await client.tool('rocket_scroll',{target:'crash-scroll',direction:'down',pixels:700,expected_tab:state.active_tab});await settle();await stable();
-  for(const id of ['crash-export-path','crash-export-save','crash-export-cancel']){const r=control(id);assert(r?.enabled,'Compact missing '+id);const body=control('crash-scroll');assert(r.rect[1]>=body.rect[1]&&r.rect[3]<=body.rect[3],'Export control outside scroll area: '+id);}
-  await capture('export-compact-scrolled');
-  await type('crash-export-path',destination);await click('crash-export-save');await stable();assert.match(state.crash_reports.error,/already exists/);assert(control('crash-feedback'),'Compact export error must be visible without scrolling');await capture('export-error-compact');assert.deepEqual(JSON.parse(fs.readFileSync(destination,'utf8')),exported);
+  await client.tool('rocket_resize',{width:780,height:620});await settle();await stable();await capture('reports-compact');
+  const onScreen=id=>{const r=control(id);assert(r?.enabled,'Compact missing '+id);assert(r.rect[0]>=0&&r.rect[1]>=0&&r.rect[2]<=780&&r.rect[3]<=620,'Offscreen '+id);};
+  for(const id of ['crash-close','crash-copy','crash-export','crash-open-folder','crash-picker','crash-refresh'])onScreen(id);
+  await click('crash-export');await capture('export-compact');
+  for(const id of ['crash-export-folder','crash-export-name','crash-export-browse','crash-export-save','crash-export-cancel'])onScreen(id);
+  await type('crash-export-folder',root);await type('crash-export-name',path.basename(destination));await click('crash-export-save');await stable();assert.match(state.crash_reports.error,/already exists/);assert(control('crash-feedback'),'Compact export error must be visible without scrolling');await capture('export-error-compact');assert.deepEqual(JSON.parse(fs.readFileSync(destination,'utf8')),exported);
   await client.tool('rocket_escape');await settle();assert(!state.crash_reports.export_open);assert(state.crash_reports.open);await click('crash-close');assert(!state.crash_reports.open);await open();
   pass('Compact report/export controls remain reachable and Escape cancels the review');
 
-  const damaged=path.join(reportDirectory,'crash-0000-1-1.rcr');fs.writeFileSync(damaged,'PRIVATE_REPORT_DATA must never be shown\n');await refresh();assert.equal(state.crash_reports.damaged,1);assert.equal(state.crash_reports.reports.length,2);await capture('damaged-record');fs.unlinkSync(damaged);
-  const extra=[];for(let i=0;i<257;i++){const file=path.join(reportDirectory,'entry-'+i);fs.writeFileSync(file,'');extra.push(file);}await refresh();assert(state.crash_reports.error);assert.equal(state.crash_reports.reports.length,2);await capture('read-error-retained');for(const file of extra)fs.unlinkSync(file);await refresh();assert(!state.crash_reports.error);
+  const damaged=path.join(reportDirectory,'crash-0000-1-1.rcr');fs.writeFileSync(damaged,'PRIVATE_REPORT_DATA must never be shown\n');await refresh();assert.equal(state.crash_reports.damaged,1);assert.equal(state.crash_reports.reports.length,3);await capture('damaged-record');fs.unlinkSync(damaged);
+  const extra=[];for(let i=0;i<257;i++){const file=path.join(reportDirectory,'entry-'+i);fs.writeFileSync(file,'');extra.push(file);}await refresh();assert(state.crash_reports.error);assert.equal(state.crash_reports.reports.length,3);await capture('read-error-retained');for(const file of extra)fs.unlinkSync(file);await refresh();assert(!state.crash_reports.error);
   pass('Damaged records are excluded and failed refresh retains prior reports');
 
   const retained=path.join(evidence,'seed-reports');fs.mkdirSync(retained);

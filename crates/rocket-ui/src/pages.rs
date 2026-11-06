@@ -12,6 +12,7 @@ use std::collections::HashMap;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     RepositoryManager,
+    Explore,
     Tags,
     Worktrees,
     Submodules,
@@ -27,6 +28,7 @@ impl Page {
     pub fn dialog_kind(self) -> DialogKind {
         match self {
             Self::RepositoryManager => DialogKind::RepositoryManager,
+            Self::Explore => DialogKind::Explore,
             Self::Tags => DialogKind::Tags,
             Self::Worktrees => DialogKind::Worktrees,
             Self::Submodules => DialogKind::Submodules,
@@ -42,6 +44,7 @@ impl Page {
     pub fn of(kind: &DialogKind) -> Option<Self> {
         match kind {
             DialogKind::RepositoryManager => Some(Self::RepositoryManager),
+            DialogKind::Explore => Some(Self::Explore),
             DialogKind::Tags => Some(Self::Tags),
             DialogKind::Worktrees => Some(Self::Worktrees),
             DialogKind::Submodules => Some(Self::Submodules),
@@ -82,6 +85,8 @@ pub fn browsing(d: &Dialog) -> bool {
         Some(Page::Hosting) => !d.flag,
         Some(Page::Integrations) => true,
         Some(Page::RepositoryManager) => !d.flag,
+        // Explore never reviews or writes; Preview opens a tab.
+        Some(Page::Explore) => true,
         // Read-only.
         Some(Page::Statistics) => true,
         Some(Page::Benchmark) => !d.flag,
@@ -96,7 +101,7 @@ impl Rocket {
         let active = self.tab().map(|t| t.id);
         // Hosting and Integrations also work from the welcome screen. Repository-owned
         // pages still require the original tab; a review never follows another tab.
-        (page == Page::RepositoryManager
+        (matches!(page, Page::RepositoryManager | Page::Explore)
             || (d.owner == active
                 && (d.owner.is_some() || matches!(page, Page::Hosting | Page::Integrations))))
             .then_some(page)
@@ -105,10 +110,11 @@ impl Rocket {
     /// A dialog that owns input: any modal dialog, or a page with a review or
     /// write in progress. Browsing pages leave shortcuts and navigation available.
     pub fn blocking_dialog(&self) -> bool {
-        self.crash_reports.open || self.dependency_push_review_open() || self.updates.open || self.commit_link.is_some() || self.dialog.as_ref().is_some_and(|d| !browsing(d))
+        self.crash_reports.open || self.dependency_push_review_open() || self.updates.open || self.commit_link.is_some() || self.ci.rerun.is_some() || self.dialog.as_ref().is_some_and(|d| !browsing(d))
             || self.picker.is_some()
             || self.integrations.prompt_open()
             || self.external.open
+            || self.map_export_open()
     }
 
     /// Leave a browsing page, e.g. when the user navigates to another view.
@@ -130,6 +136,7 @@ impl Rocket {
             Page::Integrations => self.integration_page(ui),
             Page::Statistics => self.statistics_page(ui),
             Page::Benchmark => self.benchmark_page(ui),
+            Page::Explore => self.explore_page(ui),
         }
     }
 }
@@ -373,7 +380,8 @@ pub(crate) fn split(ui: &mut Ui, mut side: impl FnMut(&mut Ui, Side)) {
         .show(ui, |ui| {
             if width >= 700.0 {
                 let details = (width * 0.4).clamp(300.0, 440.0);
-                let list = width - details - 16.0;
+                // The 16-point gap comes on top of the layout's item spacing.
+                let list = width - details - 16.0 - ui.spacing().item_spacing.x;
                 ui.horizontal_top(|ui| {
                     ui.allocate_ui_with_layout(
                         vec2(list, height),

@@ -1505,7 +1505,7 @@ fn duration(ms: u64) -> String {
 }
 
 /// `ms` on this computer's clock, or as UTC if the system can't say.
-fn local(ms: u64) -> rocket_git::LocalTime {
+pub(crate) fn local(ms: u64) -> rocket_git::LocalTime {
     rocket_git::local_time(ms).unwrap_or_else(|| civil(ms))
 }
 
@@ -1521,7 +1521,7 @@ fn day_number(t: &rocket_git::LocalTime) -> i64 {
 }
 
 /// "Today", "Yesterday", a weekday within the last week, else the date.
-fn day(ms: u64, now_ms: u64) -> String {
+pub(crate) fn day(ms: u64, now_ms: u64) -> String {
     let (then, now) = (local(ms), local(now_ms));
     let number = day_number(&then);
     match day_number(&now) - number {
@@ -1534,14 +1534,39 @@ fn day(ms: u64, now_ms: u64) -> String {
     }
 }
 
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+/// A date in a list: "Today", a weekday this week, "2 Oct" this year, else "2 Oct 2025".
+pub(crate) fn short_date(seconds: i64, now_ms: u64) -> String {
+    let ms = u64::try_from(seconds).unwrap_or(0).saturating_mul(1000);
+    let named = day(ms, now_ms);
+    if !named.starts_with(|c: char| c.is_ascii_digit()) {
+        return named;
+    }
+    let (then, now) = (local(ms), local(now_ms));
+    let month = MONTHS[usize::from(then.month.clamp(1, 12)) - 1];
+    if then.year == now.year {
+        format!("{} {month}", then.day)
+    } else {
+        format!("{} {month} {}", then.day, then.year)
+    }
+}
+/// Milliseconds since 1970 now.
+pub(crate) fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
+}
+
 /// "00:59" on this computer's clock.
-fn clock(ms: u64) -> String {
+pub(crate) fn clock(ms: u64) -> String {
     let t = local(ms);
     format!("{:02}:{:02}", t.hour, t.minute)
 }
 
 /// "Today at 00:59:43" on this computer's clock.
-fn started(ms: u64, now_ms: u64) -> String {
+pub(crate) fn started(ms: u64, now_ms: u64) -> String {
     let t = local(ms);
     format!("{} at {:02}:{:02}:{:02}", day(ms, now_ms), t.hour, t.minute, t.second)
 }
@@ -1566,7 +1591,7 @@ fn centred(ui: &mut Ui, rect: Rect, height: f32, content: impl FnOnce(&mut Ui)) 
 }
 
 /// A round toggle such as This session only, with an optional count.
-fn chip(ui: &mut Ui, label: &str, count: Option<usize>, on: bool, height: f32) -> Response {
+pub(crate) fn chip(ui: &mut Ui, label: &str, count: Option<usize>, on: bool, height: f32) -> Response {
     let ink = if on { BLUE() } else { MUTED() };
     let size = if height < CONTROL { 12.0 } else { 12.5 };
     let mut job = text::LayoutJob::default();

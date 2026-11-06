@@ -1019,6 +1019,8 @@ impl Rocket {
                 | PickTarget::ExtensionFile
                 | PickTarget::LibraryRepository
                 | PickTarget::LibraryScanFolder
+                | PickTarget::CrashReportFolder
+                | PickTarget::MapExportFolder
                 | PickTarget::CloneParent
                 | PickTarget::InitFolder
                 | PickTarget::WorktreeFolder

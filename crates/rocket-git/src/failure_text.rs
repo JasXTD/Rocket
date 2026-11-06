@@ -33,7 +33,7 @@ const FETCH: [FetchFailure; 18] = [
     FetchFailure::ConnectionInterrupted,
     FetchFailure::Other,
 ];
-const CLONE: [CloneFailure; 11] = [
+const CLONE: [CloneFailure; 12] = [
     CloneFailure::DestinationExists,
     CloneFailure::InvalidDestination,
     CloneFailure::SourceUnavailable,
@@ -45,6 +45,7 @@ const CLONE: [CloneFailure; 11] = [
     CloneFailure::OpenFailed,
     CloneFailure::CommandFailed,
     CloneFailure::TransportNotAllowed,
+    CloneFailure::SizeLimit,
 ];
 const PUSH: [PushFailure; 8] = [
     PushFailure::UnpublishedSubmodule,

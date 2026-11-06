@@ -109,6 +109,7 @@ fn orders_pin_pagination_search_and_ancestry_across_external_changes() {
                             start: full.start(),
                             query: "node".into(),
                             kind: HistorySearchKind::Text,
+                            content: Default::default(),
                         },
                         &cancel,
                     )

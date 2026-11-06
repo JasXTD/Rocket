@@ -60,7 +60,7 @@ async function busy(){await until(s=>s.git_settings.busy&&!s.input_pending
  &&s.git_settings.bundled.progress[0]>0,'verification hashing with visible Stop');}
 async function main(){try{
  const source=path.resolve(process.env.ROCKET_MANAGED_BUILD||'target/release');
- for(const name of ['rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-lua-host.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe'])fs.copyFileSync(path.join(source,name),path.join(bundle,name),fs.constants.COPYFILE_EXCL);
+ for(const name of ['rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-lua-host.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-ssh.exe'])fs.copyFileSync(path.join(source,name),path.join(bundle,name),fs.constants.COPYFILE_EXCL);
  fs.cpSync(path.join(source,'conpty'),path.join(bundle,'conpty'),{recursive:true,errorOnExist:true,force:false});
  console.log('Preparing one disposable runtime bundle...');
  run('C:/Program Files/PowerShell/7/pwsh.exe',['-NoProfile','-File',path.resolve('tools/Assemble-GitRuntime.ps1'),'-Destination',bundle],{env:{...env,PATH:process.env.PATH},timeout:180000});

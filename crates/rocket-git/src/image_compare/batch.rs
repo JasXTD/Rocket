@@ -17,6 +17,7 @@ pub(super) fn read(
     if ids.len() > 2 {
         return Err(invalid());
     }
+    repo.prepare_objects(ids, cancel)?;
     let header_limit: usize = ids
         .iter()
         .map(|id| id.as_str().len() + 7 + IMAGE_FILE_LIMIT.to_string().len())

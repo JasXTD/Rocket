@@ -226,6 +226,7 @@ struct Flags {
     section: Option<Section>,
     open: Option<String>,
     clone: Option<String>,
+    preview: Option<crate::preview_tab::PreviewRequest>,
 }
 
 impl Rocket {
@@ -535,6 +536,10 @@ impl Rocket {
         }
         if let Some(url) = f.open {
             self.open_github(&url);
+        }
+        if let Some(request) = f.preview {
+            self.start_preview(request, false);
+            return;
         }
         if let Some(url) = f.clone {
             // Clone replaces this page; the source stays editable there.
@@ -929,6 +934,17 @@ fn repositories_section(
                 }
                 if button(ui, widgets, "github-repository-clone", "Clone", can_clone) {
                     f.clone = Some(r.clone_url.clone());
+                }
+                if button(ui, widgets, "github-repository-preview", "Preview", true) {
+                    f.preview = Some(crate::preview_tab::PreviewRequest {
+                        source: CloneSource::Url(r.clone_url.clone()),
+                        url: r.clone_url.clone(),
+                        name: r.remote.full_name(),
+                        host: "github.com".into(),
+                        web: Some(r.html_url.clone()),
+                        size_kb: None,
+                        branch: Some(r.default_branch.clone()),
+                    });
                 }
             });
         }

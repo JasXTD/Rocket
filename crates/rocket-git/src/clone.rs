@@ -16,6 +16,31 @@ use std::{
 
 static NEXT_WORKSPACE: AtomicU64 = AtomicU64::new(0);
 
+/// How a clone is made. The default is Rocket's normal clone: a checkout of the
+/// default branch with every file version. Preview, Keep and the Clone dialog share
+/// these; branch, depth and submodule choices can join them later.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CloneOptions {
+    /// A bare repository: no checkout and no working tree.
+    pub bare: bool,
+    /// Leave file contents on the server (`--filter=blob:none`). Rocket never lets
+    /// Git fetch them on demand; callers download what a view needs explicitly.
+    pub omit_file_contents: bool,
+    /// Stop the clone once its workspace holds more than this many bytes.
+    pub size_limit: Option<u64>,
+}
+
+impl CloneOptions {
+    /// A repository preview: bare, without file contents, within `size_limit`.
+    pub fn preview(size_limit: Option<u64>) -> Self {
+        Self {
+            bare: true,
+            omit_file_contents: true,
+            size_limit,
+        }
+    }
+}
+
 impl GitClient {
     /// Clone into a fresh sibling workspace, verify, then publish without replacement.
     /// Existing destinations (including empty directories) are refused. After workspace
@@ -28,6 +53,20 @@ impl GitClient {
         &self,
         source: &CloneSource,
         destination: impl AsRef<Path>,
+        progress: Option<&SyncSender<CloneProgress>>,
+        cancel: &CancellationToken,
+    ) -> Result<CloneReport> {
+        self.clone_repository_with(source, destination, &CloneOptions::default(), progress, cancel)
+    }
+
+    /// [`GitClient::clone_repository`] with [`CloneOptions`]. A bare clone publishes the
+    /// repository directory itself; a size limit stops Git and reports
+    /// `CloneFailure::SizeLimit` without publishing anything.
+    pub fn clone_repository_with(
+        &self,
+        source: &CloneSource,
+        destination: impl AsRef<Path>,
+        options: &CloneOptions,
         progress: Option<&SyncSender<CloneProgress>>,
         cancel: &CancellationToken,
     ) -> Result<CloneReport> {
@@ -64,17 +103,29 @@ impl GitClient {
                 "--no-local",
                 "--no-recurse-submodules",
                 "--origin=origin",
+            ]));
+            if options.bare {
+                arguments.push("--bare".into());
+            } else {
                 // Relative to .git, so inherited core.worktree cannot redirect the
                 // checkout and moving the finished repository preserves its identity.
-                "--config=core.worktree=..",
-            ]));
+                arguments.push("--config=core.worktree=..".into());
+            }
+            if options.omit_file_contents {
+                arguments.push("--filter=blob:none".into());
+            }
             let mut template_option = OsString::from("--template=");
             template_option.push(git_path(&template));
             arguments.extend([template_option, "--".into(), source, git_path(&checkout)]);
             phase(progress, ClonePhase::Cloning);
-            let output = self
-                .runner
-                .clone_command(&workspace, &arguments, cancel, progress, local_only)?;
+            let (output, over_limit) = within_size_limit(&workspace, options.size_limit, cancel, |cancel| {
+                self.runner
+                    .clone_command(&workspace, &arguments, cancel, progress, local_only)
+            });
+            if over_limit {
+                return Err(Error::Clone(CloneFailure::SizeLimit));
+            }
+            let output = output?;
             if output.status.success() {
                 Ok(WriteOutput {
                     stdout: output.stdout,
@@ -109,7 +160,11 @@ impl GitClient {
             // Keep command success while allowing cancellation to stop verification.
             // An unverified checkout is never published.
             report.verification = Some(self.runner.step("clone", "verify_clone", || {
-                self.verify_clone(&checkout, cancel)
+                if options.bare {
+                    self.verify_bare_clone(&checkout, cancel)
+                } else {
+                    self.verify_clone(&checkout, cancel)
+                }
             }));
         }
         if matches!(report.verification, Some(Ok(()))) {
@@ -174,6 +229,115 @@ impl GitClient {
             Ok(())
         })()
         .map_err(|e| phase_error(e, "clone-verify", CloneFailure::VerificationFailed))
+    }
+
+    /// A bare clone is its own Git directory: no working tree, no alternates, and a
+    /// default branch whenever the source has branches.
+    fn verify_bare_clone(&self, directory: &Path, cancel: &CancellationToken) -> Result<()> {
+        (|| {
+            cancel.check()?;
+            plain_directory(directory)?;
+            let repo = self.open(directory, cancel)?;
+            let root = directory
+                .canonicalize()
+                .map_err(|e| Error::io("resolve clone repository", e))?;
+            if repo.info().worktree.is_some()
+                || repo.info().git_dir != root
+                || repo.info().common_dir != root
+            {
+                return Err(Error::Clone(CloneFailure::VerificationFailed));
+            }
+            match fs::symlink_metadata(root.join("objects/info/alternates")) {
+                Ok(_) => return Err(Error::Clone(CloneFailure::VerificationFailed)),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => (),
+                Err(error) => return Err(Error::io("clone-verify", error)),
+            }
+            let branches = repo.branches(cancel)?;
+            if matches!(repo.head(cancel)?, Head::Unborn { .. }) && !branches.is_empty() {
+                return Err(Error::Clone(CloneFailure::MissingDefaultBranch));
+            }
+            Ok(())
+        })()
+        .map_err(|e| phase_error(e, "clone-verify", CloneFailure::VerificationFailed))
+    }
+}
+
+/// Run `work` with a token that also stops it once `directory` holds more than
+/// `limit` bytes. Returns its result and whether the limit stopped it. Without a
+/// limit, `work` gets the caller's token directly.
+pub(crate) fn within_size_limit<T>(
+    directory: &Path,
+    limit: Option<u64>,
+    cancel: &CancellationToken,
+    work: impl FnOnce(&CancellationToken) -> T,
+) -> (T, bool) {
+    let Some(limit) = limit else {
+        return (work(cancel), false);
+    };
+    let inner = CancellationToken::new();
+    let done = std::sync::atomic::AtomicBool::new(false);
+    let over = std::sync::atomic::AtomicBool::new(false);
+    let result = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            let mut checked: Option<std::time::Instant> = None;
+            while !done.load(Ordering::Acquire) {
+                if cancel.is_cancelled() {
+                    inner.cancel();
+                }
+                // Walking the workspace is cheap (Git writes a few pack files), but
+                // not every 50 ms: cancellation is checked often, size less often.
+                if checked.is_none_or(|at| at.elapsed() >= std::time::Duration::from_millis(400)) {
+                    checked = Some(std::time::Instant::now());
+                    if directory_size(directory) > limit {
+                        over.store(true, Ordering::Release);
+                        inner.cancel();
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        });
+        let result = work(&inner);
+        done.store(true, Ordering::Release);
+        result
+    });
+    // The watcher samples; a final measure makes the limit exact when Git finished
+    // between two samples.
+    let over = over.load(Ordering::Acquire) || directory_size(directory) > limit;
+    (result, over)
+}
+
+/// Bytes of the regular files below `directory`. Reparse points (junctions and
+/// symbolic links) are counted as themselves and never followed.
+pub(crate) fn directory_size(directory: &Path) -> u64 {
+    let mut total = 0u64;
+    let mut pending = vec![directory.to_path_buf()];
+    while let Some(folder) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&folder) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let Ok(meta) = fs::symlink_metadata(entry.path()) else {
+                continue;
+            };
+            if meta.is_dir() && !reparse_point(&meta) {
+                pending.push(entry.path());
+            } else {
+                total = total.saturating_add(meta.len());
+            }
+        }
+    }
+    total
+}
+
+pub(crate) fn reparse_point(meta: &fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        meta.file_attributes() & 0x400 != 0 // FILE_ATTRIBUTE_REPARSE_POINT, including junctions
+    }
+    #[cfg(not(windows))]
+    {
+        meta.file_type().is_symlink()
     }
 }
 

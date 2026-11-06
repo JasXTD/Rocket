@@ -106,6 +106,9 @@ fn show_progress(progress: CloneProgress) {
         CloneProgress::Checkout { current, total } => {
             eprintln!("Clone checkout: {current} / {total:?} files")
         }
+        CloneProgress::Files { done, total } => {
+            eprintln!("Clone file download: {done} / {total} files")
+        }
     }
 }
 

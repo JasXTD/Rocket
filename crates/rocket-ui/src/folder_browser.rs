@@ -280,6 +280,24 @@ fn typed_folder(text: &str, scope: Option<&Path>) -> std::result::Result<PathBuf
     Ok(path)
 }
 
+/// Where a saved copy goes first: Documents, else the home folder; in the MCP host,
+/// its fixture folder.
+pub(crate) fn save_folder(scope: Option<&Path>) -> String {
+    if let Some(scope) = scope {
+        return crate::views::display_path(scope);
+    }
+    let home = home();
+    home.as_ref()
+        .and_then(|h| {
+            [h.join("Documents"), h.join("OneDrive").join("Documents")]
+                .into_iter()
+                .find(|p| p.is_dir())
+        })
+        .or(home)
+        .map(|p| crate::views::display_path(&p))
+        .unwrap_or_default()
+}
+
 pub(crate) fn home() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
@@ -1163,6 +1181,10 @@ pub enum PickTarget {
     /// Repository manager: the repository a saved entry points to.
     LibraryRepository,
     LibraryScanFolder,
+    /// Crash reports: the folder a saved copy goes into.
+    CrashReportFolder,
+    /// Map export: the folder the Mermaid file goes into.
+    MapExportFolder,
     /// Clone: the folder the new folder goes into.
     CloneParent,
     /// New repository: the project folder.
@@ -1281,6 +1303,8 @@ impl Rocket {
             PickTarget::CommandInput(_) | PickTarget::CommandImport | PickTarget::ThemePicture | PickTarget::ExtensionFile => Mode::File,
             PickTarget::McpRoot
             | PickTarget::LibraryScanFolder
+            | PickTarget::CrashReportFolder
+            | PickTarget::MapExportFolder
             | PickTarget::SourceFolder
             | PickTarget::CloneParent
             | PickTarget::InitFolder
@@ -1327,7 +1351,7 @@ impl Rocket {
                     current.parent().map_or_else(|| current.to_path_buf(), Path::to_path_buf),
                     None,
                 ),
-                PickTarget::McpRoot | PickTarget::LibraryScanFolder | PickTarget::SourceFolder | PickTarget::CloneParent => (current.to_path_buf(), None),
+                PickTarget::McpRoot | PickTarget::LibraryScanFolder | PickTarget::CrashReportFolder | PickTarget::MapExportFolder | PickTarget::SourceFolder | PickTarget::CloneParent => (current.to_path_buf(), None),
             }
         } else if mode == Mode::Program {
             (
@@ -1494,6 +1518,8 @@ impl Rocket {
             PickTarget::SourceFolder => self.source_folder_picked(path),
             PickTarget::LibraryRepository => self.library_repository_picked(path),
             PickTarget::LibraryScanFolder => self.manager_scan_picked(path),
+            PickTarget::CrashReportFolder => self.crash_reports.picked_folder(path),
+            PickTarget::MapExportFolder => self.map_export_folder_picked(path),
             PickTarget::ToolProgram(kind, index) => {
                 if let Some(profile) = self.external.editing.0[kind.index()].entries.get_mut(index) {
                     profile.config.executable = text;

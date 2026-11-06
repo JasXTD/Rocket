@@ -332,8 +332,8 @@ impl Rocket {
             Action::New | Action::Clone | Action::Manager => {
                 self.backend.is_some() && self.write.is_none()
             }
-            Action::Open => self.backend.is_some(),
-            Action::Close | Action::Terminal | Action::Changes | Action::History => {
+            Action::Open | Action::Explore => self.backend.is_some(),
+            Action::Close | Action::Terminal | Action::Changes | Action::History | Action::SearchFiles => {
                 self.tab().is_some()
             }
             Action::Next | Action::Previous => self.tabs.len() > 1,
@@ -396,6 +396,7 @@ impl Rocket {
             Action::New => intents.push(Intent::Dialog(DialogKind::NewRepository)),
             Action::Open => intents.push(Intent::Dialog(DialogKind::Open)),
             Action::Clone => intents.push(Intent::Dialog(DialogKind::Clone)),
+            Action::Explore => intents.push(Intent::Explore(None)),
             Action::Manager => intents.push(Intent::Dialog(DialogKind::RepositoryManager)),
             Action::Close => {
                 if let Some(t) = self.tab() {
@@ -417,6 +418,7 @@ impl Rocket {
             Action::Push => intents.push(Intent::Dialog(DialogKind::Push)),
             Action::Changes => intents.push(Intent::View(View::Changes)),
             Action::History => intents.push(Intent::View(View::Commits)),
+            Action::SearchFiles => intents.push(Intent::Tree(crate::tree::TreeIntent::FocusSearch)),
             Action::Commit => {
                 if let Some(t) = self.tab() {
                     if let Some(intent) = t.continue_paused().filter(|_| t.view == View::Changes) {

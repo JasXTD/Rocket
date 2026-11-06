@@ -1,7 +1,7 @@
 // Tiny store-only ZIP writer and synthetic installation fixtures. No downloads.
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto');
-const binaries=['rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-lua-host.exe'];
+const binaries=['rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-lua-host.exe','rocket-ssh.exe'];
 const sha=data=>crypto.createHash('sha256').update(data).digest('hex');
 function inventory(root){const result={};function visit(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())visit(p);else if(e.isFile())result[path.relative(root,p).replaceAll('\\','/')]=sha(fs.readFileSync(p));else throw Error('Unexpected fixture link')}}visit(root);return result}
 function probe(root,version){const dest=path.join(root,'probe-'+version+'.exe');cp.execFileSync('rustc',[path.resolve('tools/helpers/app-update-probe.rs'),'--edition','2024','-C','debuginfo=0','-o',dest],{env:{...process.env,ROCKET_UPDATE_PROBE_VERSION:version},windowsHide:true,stdio:'pipe'});return fs.readFileSync(dest)}

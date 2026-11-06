@@ -1,5 +1,17 @@
 # Rocket development tools
 
+## Direct SSH keys
+
+`tools/mockups/ssh-direct-key/preview.html` preserves key selection and previews
+the agent/direct choice, remembered passphrase and repository review. Focused
+backend coverage: `cargo test --release --offline --locked -p rocket-git --test
+ssh_direct --test ssh_keys`. Use the normal Windows user token: restricted tokens
+cannot perform the ancestor-file protections/DPAPI checks. After Build-Local,
+`node tools/tests/test-mcp-ssh-direct.cjs` tests the native page through localhost
+MCP with disposable encrypted Unicode keys and local repos. It does not need or
+modify the Windows SSH agent and does not connect to GitHub. The first-party
+`rocket-ssh.exe` is included by the portable packager and updater manifest checks.
+
 ## Crash reports
 
 The interactive design is `tools/mockups/crash-reports/preview.html`. Focused
@@ -109,9 +121,9 @@ disposable app copy. It reuses the closed fixture to check pinned files, invento
 verifier code, mixed builds and missing/extra files. It never executes damaged
 binaries or changes an existing versioned release.
 
-`node tools/tests/test-release-bundle.cjs tools/releases/0.89.3` checks missing
+`node tools/tests/test-release-bundle.cjs tools/releases/0.92.0` checks missing
 workers, mismatched host/worker pairs, manifest tampering and unsigned policy on
-a disposable copy. `node tools/tests/test-release-git-guard.cjs tools/releases/0.89.3/rocket-cli.exe`
+a disposable copy. `node tools/tests/test-release-git-guard.cjs tools/releases/0.92.0/rocket-cli.exe`
 checks vulnerable/fixed/unknown Git versions using an owned compiled fixture that
 never starts Git or opens a network connection.
 
@@ -185,10 +197,11 @@ redacted logs and unchanged local files. The matching mockup is
 | `helpers/` | Test-only Git relays and small Rust helpers; never put them on your normal PATH |
 | `diagnostics/` | Diagnostic log viewer |
 | `website/` | Website preview, checks, screenshots and demo video |
-| `releases/0.89.3/` | Current standalone local release and hash manifest; older bundles are retained locally |
+| `releases/0.92.0/` | Latest locally packaged release and hash manifest; matching built executables are in `target/release/` |
+| `releases/0.81.1/`, `releases/0.82.0/` | Small frozen bundles retained for existing baseline/test tools |
 | `mockups/branch-dropdown/` | Interactive Branch dropdown preview with compact and recovery states |
 | `mockups/review-windows/` | Independent review windows, history order and commit browser link preview |
-| `archive/` | Compressed pre-cleanup source snapshots, patches, mockups and test evidence |
+| `archive/` | Archive cleanup notes; obsolete local history/test ZIPs were removed on 2026-11-04 |
 | `maintenance/` | Cleanup inventory, path mapping, archive hashes and verification records |
 
 ## Website
@@ -348,10 +361,10 @@ Never store reusable scripts, source backups or release bundles in `work/` again
 Keep `tools/`, `crates/`, `runtime/`, Cargo manifests and root documentation.
 
 Old `work/...` evidence paths in changelogs, validation notes and coordination
-history refer to entries inside `archive/work-history-20261025.zip`. Historical
-scripts tied to frozen releases were archived, not promoted as current tests.
-Use `maintenance/work-cleanup-20261025/migrated.json` to find each moved tool.
-That maintenance folder records a completed, one-time migration; do not rerun its
-archive or deletion scripts.
+history describe past runs and may no longer exist. Their historical ZIPs were
+removed on 2026-11-04 after confirming the current source, reusable tools and tests
+remain outside them. Archive-only experiments and patches are no longer retained.
+See `maintenance/release-archive-cleanup-20261104/REPORT.md` for the local inventory.
+Do not rerun historical one-time migration, archive or deletion scripts.
 `node tools/maintenance/check-tooling.cjs target/release/rocket-mcp.exe` is the
 small offline localhost/relay smoke check for this layout after a current build.

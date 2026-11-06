@@ -176,9 +176,13 @@ async function run() {
     assert.equal(active().summary.remote, 'No upstream configured'); await capture('summary-dirty');
     setup.write('another', 'external');
     await until(() => active().summary?.untracked === 2, 'External edit automatic refresh');
+    // An automatic refresh leaves the tab marked as refreshed in the background; Summary
+    // used to read that mark as "still refreshing" and kept its busy line forever.
+    await until(() => active().summary?.refreshing === false, 'Summary stops saying Refreshing after the automatic refresh');
+    await capture('summary-after-automatic-refresh');
     assert(active().summary.next.includes('Review staged'));
     await click('summary-changes'); assert.equal(active().view, 'Changes');
-    passed('Summary distinguishes staged/unstaged/untracked data and follows external edits without another Git polling loop');
+    passed('Summary distinguishes staged/unstaged/untracked data, follows external edits without another Git polling loop and stops saying Refreshing afterwards');
 
     for (const unborn of [false, true]) {
       const f = fixture(unborn ? 'PRIVATE_ROOT' : 'PRIVATE_ORDINARY', unborn);

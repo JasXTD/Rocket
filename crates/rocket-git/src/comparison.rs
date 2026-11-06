@@ -61,7 +61,8 @@ impl Comparison {
 
 impl Repository {
     /// Compare the complete trees, not a merge-base/three-dot review. This does
-    /// not check out a commit, refresh the index, run filters, or fetch objects.
+    /// not check out a commit, refresh the index or run filters. Only a registered
+    /// preview fetches anything: the file versions that differ, before comparing.
     pub fn compare_revisions(
         &self,
         base: &str,
@@ -78,6 +79,7 @@ impl Repository {
         };
         let base = resolve(base, "compare-base")?;
         let target = resolve(target, "compare-target")?;
+        self.prepare_changes(Some(base.as_str()), target.as_str(), &[], cancel)?;
         let files = self.runner.step("compare-files", "read-identities", || {
             // The two full IDs were just validated. A dedicated metadata read
             // avoids resolving them again or generating any file bodies.

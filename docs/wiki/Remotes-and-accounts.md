@@ -46,6 +46,35 @@ for profile behavior.
    asks for the host, user and port, taken from the repository's SSH remote when it has
    one, then shows a review. Your existing key stays at its original path.
 
+### Direct key authentication
+
+The key list and its selection remain available. **Windows agent** retains the
+existing unlock workflow; its checkboxes show agent membership. **Direct key**
+uses the selected profile without requiring a running agent. For an encrypted
+key, choose **Save passphrase**: Rocket verifies it locally with OpenSSH before
+saving Windows-user-encrypted data inside that profile. Saving is explicit,
+persists across restarts, and does not alter the key file. **Forget passphrase**
+removes only that saved credential; an encrypted direct key then needs saving
+again before use. This uses Windows DPAPI, not a Windows Credential Manager entry.
+
+Review **Use only this key** to apply the chosen method to the open repository.
+The repository config backup and **Restore previous setting** work for both
+methods. Keys for separate accounts have separate profiles, even on one host.
+Direct mode requires an already verified server host key in OpenSSH's known-hosts
+files: it rejects unknown/changed keys and never answers trust prompts for you.
+Verify a new host's fingerprint independently before trusting it with OpenSSH.
+The `rocket-ssh.exe` helper must stay beside Rocket in the portable folder.
+If that folder moves, review and apply the key again to update the helper path
+stored in the repository's Git configuration.
+Check settings evaluates the selected method locally; it does not authenticate
+against a remote server.
+
+Direct key accepts standard Git services and LFS upload/download requests only.
+Extra remote-shell commands and custom `remote.*.uploadpack`, `receivepack` or
+`vcs` settings are refused, including changes made after binding. Rocket leaves
+those settings intact for you to review. If a server needs a custom service
+command, that configuration is not supported by Direct key.
+
 **Rescan** finds keys added outside Rocket and reads ssh-agent again. Stop preserves the
 previous list. The scan reports skipped pairs and stops at 512 entries or 128 keys. A
 matching `.pub` is required; Rocket supports OpenSSH software keys, not PEM or

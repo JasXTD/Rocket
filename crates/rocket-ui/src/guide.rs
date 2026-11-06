@@ -20,6 +20,7 @@ pub(crate) enum Topic {
     GettingStarted,
     Safety,
     Repositories,
+    Explore,
     Commits,
     Branches,
     Remotes,
@@ -45,6 +46,7 @@ pub(crate) enum Topic {
     CustomCommands,
     IssueLinks,
     Hosting,
+    CiChecks,
     Integrations,
     SshKeys,
     FileHistory,
@@ -55,10 +57,11 @@ pub(crate) enum Topic {
 }
 
 impl Topic {
-    pub(crate) const ALL: [Topic; 35] = [
+    pub(crate) const ALL: [Topic; 37] = [
         Topic::GettingStarted,
         Topic::Safety,
         Topic::Repositories,
+        Topic::Explore,
         Topic::Commits,
         Topic::Branches,
         Topic::Remotes,
@@ -84,6 +87,7 @@ impl Topic {
         Topic::CustomCommands,
         Topic::IssueLinks,
         Topic::Hosting,
+        Topic::CiChecks,
         Topic::SshKeys,
         Topic::FileHistory,
         Topic::Activity,
@@ -98,6 +102,7 @@ impl Topic {
             Topic::GettingStarted => "Getting started",
             Topic::Safety => "Reviews and safety",
             Topic::Repositories => "Repositories",
+            Topic::Explore => "Exploring other repositories",
             Topic::Commits => "Commits",
             Topic::Branches => "Branches",
             Topic::Remotes => "Remotes",
@@ -123,6 +128,7 @@ impl Topic {
             Topic::CustomCommands => "Custom commands",
             Topic::IssueLinks => "Issue links",
             Topic::Hosting => "Hosting and pull requests",
+            Topic::CiChecks => "CI checks",
             Topic::Integrations => "Extensions",
             Topic::SshKeys => "SSH keys",
             Topic::FileHistory => "File history",
@@ -387,6 +393,9 @@ impl Rocket {
             .as_ref()
             .filter(|d| pages::Page::of(&d.kind).is_none() || self.page().is_some());
         let Some(d) = dialog else {
+            if self.ci.rerun.is_some() {
+                return Some(Topic::CiChecks);
+            }
             if self.external.open || self.picker.is_some() {
                 return Some(Topic::Preferences);
             }
@@ -400,10 +409,12 @@ impl Rocket {
                 Some(View::Branches) => Topic::Branches,
                 Some(View::Remotes) => Topic::Remotes,
                 Some(View::Stashes) => Topic::Stashes,
+                Some(View::Actions) => Topic::CiChecks,
                 Some(View::Summary | View::Commits | View::Tree | View::Compare | View::BranchReview | View::Map) | None => Topic::GettingStarted,
             });
         };
         Some(match &d.kind {
+            DialogKind::Explore | DialogKind::KeepPreview(_) => Topic::Explore,
             DialogKind::RepositoryManager
             | DialogKind::Open
             | DialogKind::NewRepository

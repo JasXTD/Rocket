@@ -13,6 +13,9 @@ use std::{
 pub struct GitClient {
     pub(crate) runner: Runner,
     version: String,
+    /// Previews whose reads may download file contents; shared by every client
+    /// made from this one.
+    pub(crate) previews: crate::preview::PreviewRegistry,
 }
 
 impl GitClient {
@@ -22,6 +25,7 @@ impl GitClient {
         Self {
             runner,
             version: String::new(),
+            previews: Default::default(),
         }
     }
     /// Locate the bundled runtime when included, otherwise installed Git on PATH.
@@ -151,7 +155,7 @@ impl GitClient {
         }
         runner.git_http_allowed = !cfg!(windows)
             || crate::runner::http_safety::patched_windows_git(&version);
-        Ok(Self { runner, version })
+        Ok(Self { runner, version, previews: Default::default() })
     }
 
     pub fn version(&self) -> &str {
@@ -206,6 +210,7 @@ impl GitClient {
         client.runner.secret_protection = self.runner.secret_protection.clone();
         client.runner.guard_ai_api_keys = self.runner.guard_ai_api_keys.clone();
         client.runner.push_check = self.runner.push_check.clone();
+        client.previews = self.previews.clone();
         Ok(client)
     }
 
@@ -267,6 +272,7 @@ impl GitClient {
                 return Ok(Repository {
                     runner: self.runner.clone(),
                     write_gate: crate::write_gate::for_repository(&info.common_dir)?,
+                    downloads: self.previews.lookup(&info.common_dir),
                     info,
                 });
             }
@@ -297,6 +303,7 @@ impl GitClient {
         Ok(Repository {
             runner: self.runner.clone(),
             write_gate,
+            downloads: self.previews.lookup(&common_dir),
             info: RepositoryInfo {
                 worktree,
                 git_dir,
@@ -382,6 +389,8 @@ pub struct Repository {
     pub(crate) runner: Runner,
     info: RepositoryInfo,
     pub(crate) write_gate: Arc<crate::write_gate::WriteGate>,
+    /// Set only for a preview Rocket registered: its reads may download contents.
+    pub(crate) downloads: Option<Arc<crate::preview::PreviewDownloads>>,
 }
 
 impl Repository {
@@ -733,6 +742,21 @@ impl Repository {
 
     pub fn diff(&self, options: &DiffOptions, cancel: &CancellationToken) -> Result<Diff> {
         let arguments = self.diff_arguments(options, cancel)?;
+        if self.is_preview() {
+            // The revisions are already resolved: the two IDs before "--" for Between.
+            let split = arguments.iter().position(|a| a == "--").unwrap_or(arguments.len());
+            let paths = &arguments[(split + 1).min(arguments.len())..];
+            match &options.target {
+                DiffTarget::Commit { id } => self.prepare_changes(None, id.as_str(), paths, cancel)?,
+                DiffTarget::Between { .. } if split >= 2 => self.prepare_changes(
+                    Some(&arguments[split - 2].to_string_lossy()),
+                    &arguments[split - 1].to_string_lossy(),
+                    paths,
+                    cancel,
+                )?,
+                _ => {}
+            }
+        }
         let patch = self.read_diff("diff", &arguments, cancel)?;
         cancel.check()?;
         Ok(Diff { patch })

@@ -444,10 +444,24 @@ pub(crate) fn view(
     }
     status(ui, &tab.compare, widgets, narrow);
 
+    let downloads = crate::preview_tab::downloads(tab);
     let s = &tab.compare;
     let Some(loaded) = &s.loaded else {
         if s.listing() {
-            pages::loading(ui, "Reading the comparison…");
+            match crate::preview_tab::downloading(ui, downloads.as_ref(), "Downloading the changed files", "compare-download-stop", widgets) {
+                Some(stop) => {
+                    if stop {
+                        emit(intents, CompareIntent::Cancel);
+                    }
+                }
+                None => pages::loading(ui, "Reading the comparison…"),
+            }
+        } else if s.error.is_some()
+            && let Some(retry) = crate::preview_tab::not_downloaded(ui, downloads.as_ref(), "compare-download-retry", widgets)
+        {
+            if retry {
+                emit(intents, CompareIntent::Retry);
+            }
         } else if s.error.is_some() {
             message(ui, None, "Nothing to show until a comparison succeeds.", "", |_| ());
         } else {

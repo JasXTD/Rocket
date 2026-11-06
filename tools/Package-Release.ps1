@@ -13,7 +13,7 @@ if (Test-Path -LiteralPath $bundle) { throw "Release $version already exists; ch
 
 & (Join-Path $PSScriptRoot 'Build-Local.ps1') -Offline:$Offline
 $source = Join-Path $packageRoot 'target/release'
-$binaries = @('rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-lua-host.exe')
+$binaries = @('rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-lua-host.exe','rocket-ssh.exe')
 $documents = @('CHANGELOG.md','CLI.md','DEPENDENCIES.md','HOSTING.md','INTEGRATIONS.md','LICENSE-APACHE','LICENSE-MIT','README.md','SECURITY.md','THIRD-PARTY-NOTICES.txt','tools/Verify-Release.ps1',
     'docs/images/rocket-logo.png','crates/rocket-ui/src/guide.md','tools/README.md','runtime/conpty/1.25.260930003/README.md',
     'runtime/git/README.md','tools/Git-Runtime.ps1','runtime/vc/README.md')

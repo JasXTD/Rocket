@@ -77,6 +77,24 @@ impl Rocket {
                                 }
                             }
                         });
+                        ui.add_space(16.0);
+                        pages::caption(ui, "Explore");
+                        ui.add_space(4.0);
+                        // Enter opens Explore with this search or address.
+                        let explore = ui.add_enabled(
+                            ready,
+                            TextEdit::singleline(&mut self.explore.query)
+                                .hint_text("Search GitHub or paste a repository address")
+                                .desired_width(width)
+                                .margin(Margin::symmetric(10, 7)),
+                        );
+                        pages::control(&mut self.frame_widgets, "welcome-explore", &explore, ui.clip_rect());
+                        if explore.lost_focus()
+                            && ui.input(|i| i.key_pressed(Key::Enter))
+                            && !self.explore.query.trim().is_empty()
+                        {
+                            intents.push(Intent::Explore(Some(self.explore.query.clone())));
+                        }
                         ui.add_space(12.0);
                         // Dropping works anywhere in the window; the hint lights up while
                         // a folder is dragged over it.
@@ -736,17 +754,16 @@ pub(crate) fn commits(
 ) {
     let width = ui.available_width();
     let searching = !tab.search.trim().is_empty();
-    let count = format!(
-        "{} {}",
-        tab.commits().len(),
-        if searching && tab.commits().len() == 1 {
-            "match"
-        } else if searching {
-            "matches"
-        } else {
-            "commits"
-        }
-    );
+    let found = tab.commits().len();
+    let noun = if found == 1 { "commit" } else { "commits" };
+    let state = &tab.search_state;
+    let count = if searching && state.stopped {
+        format!("Stopped · {} commits checked", pages::number_text(state.scanned))
+    } else if searching && !state.complete && !state.scanning() && state.error.is_none() {
+        format!("{} {noun} · {} checked", pages::number_text(found), pages::number_text(state.scanned))
+    } else {
+        format!("{} {noun}", pages::number_text(found))
+    };
     let more = if searching {
         !tab.search_state.complete
     } else {
@@ -851,6 +868,9 @@ pub(crate) fn commits(
             });
             // Give scope/order their own row. In a wrapping row available_width
             // is the whole row, not the remaining space after preceding controls.
+            let code = tab.search_kind == HistorySearchKind::Content;
+            // In a narrow window Changed code puts the path and the status on a row of their own.
+            let path_row = code && width < 1000.0;
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 search_kind_selector(ui, tab, width, intents, widgets);
@@ -864,71 +884,51 @@ pub(crate) fn commits(
                         "Find commits that changed a file whose path contains this text, ignoring case. Renames count as both paths; merges are not included.",
                     ),
                     HistorySearchKind::Content => (
-                        "Search changed text…",
-                        "Find commits that add or remove this exact text, ignoring case (like git log -S). Reads file changes, so it checks 200 commits per step.",
+                        "Search changed code",
+                        "Find commits that add or remove this text (git log -S), or with .* change a line matching it (git log -G). Reads file changes, so it checks 200 commits per step.",
                     ),
                 };
-                let search_width = (ui.available_width() - 260.0).clamp(110.0, 440.0);
-                let search = search_field(ui, &mut tab.search, hint, search_width).on_hover_text(hover);
-                if search.changed() {
+                let search_width = if path_row {
+                    ui.available_width()
+                } else {
+                    let reserve = if code { 260.0 + 208.0 } else { 260.0 };
+                    (ui.available_width() - reserve).clamp(110.0, 440.0)
+                };
+                let toggles = code.then_some((&mut tab.search_case, &mut tab.search_regex));
+                let (search, toggled) = query_field(
+                    ui,
+                    &mut tab.search,
+                    hint,
+                    search_width,
+                    toggles,
+                    tab.search_state.bad_pattern,
+                    ["commit-filter", "search-case", "search-regex"],
+                    widgets,
+                );
+                let search = search.on_hover_text(hover);
+                if search.changed() || toggled {
                     intents.push(Intent::Search);
                 }
-                widgets.insert("commit-filter".into(), (&search).into());
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.spacing_mut().item_spacing.x = 6.0;
-                    let browse = ui
-                        .add_enabled(
-                            tab.selected_commit.is_some(),
-                            quiet(Button::new(RichText::new("Browse files").size(12.5))),
-                        )
-                        .on_hover_text("Browse the repository files at the selected commit");
-                    widgets.insert("commit-browse-files".into(), (&browse).into());
-                    if browse.clicked() {
-                        intents.push(Intent::Tree(crate::tree::TreeIntent::OpenSelected));
-                    }
-                    if searching && tab.search_state.scanning() {
-                        let stop = ui.button("Stop search");
-                        widgets.insert("history-stop".into(), (&stop).into());
-                        if stop.clicked() {
-                            intents.push(Intent::StopSearch);
-                        }
-                        ui.label(
-                            RichText::new(format!("Searching… {} checked", tab.search_state.scanned))
-                                .size(12.0)
-                                .color(FAINT()),
-                        );
-                        ui.spinner();
-                    } else {
-                        if more {
-                            let load = ui.add_enabled(
-                                tab.more.is_none() && !tab.loading(),
-                                Button::new(
-                                    RichText::new(if searching && tab.search_state.paused {
-                                        "Resume search"
-                                    } else {
-                                        "Load more"
-                                    })
-                                    .size(12.5),
-                                ),
-                            );
-                            widgets.insert("history-more".into(), (&load).into());
-                            if load.clicked() {
-                                intents.push(Intent::More);
-                            }
-                        }
-                        ui.label(RichText::new(&count).size(12.0).color(FAINT()))
-                            .on_hover_text(if searching {
-                                format!(
-                                    "{} commits checked{}",
-                                    tab.search_state.scanned,
-                                    if tab.search_state.complete { " · complete" } else { " · more history remains" }
-                                )
-                            } else {
-                                format!("{} order: parents follow their children. All branches combines local and remote-tracking branches, plus HEAD.",tab.history_order.label())
-                            });
-                    }
-                });
+                if code && !path_row && path_field(ui, &mut tab.search_path, 200.0, "commit-search-path", widgets) {
+                    intents.push(Intent::Search);
+                }
+                if !path_row {
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        search_status(ui, tab, searching, more, &count, intents, widgets);
+                    });
+                }
             });
+            if path_row {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    if path_field(ui, &mut tab.search_path, 260.0, "commit-search-path", widgets) {
+                        intents.push(Intent::Search);
+                    }
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        search_status(ui, tab, searching, more, &count, intents, widgets);
+                    });
+                });
+            }
         })
         .response
         .rect;
@@ -938,12 +938,20 @@ pub(crate) fn commits(
         Stroke::new(1.0, HAIRLINE()),
     );
     if let Some(error) = &tab.search_state.error {
+        let color = if tab.search_state.bad_pattern { RED() } else { AMBER() };
         Frame::new()
-            .fill(AMBER().gamma_multiply(0.1))
+            .fill(color.gamma_multiply(0.1))
             .inner_margin(Margin::symmetric(14, 6))
             .show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                ui.colored_label(AMBER(), error);
+                let r = ui.horizontal(|ui| {
+                    if tab.search_state.bad_pattern {
+                        let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+                        icon(ui.painter(), rect, Icon::Warning, color);
+                    }
+                    ui.colored_label(color, error)
+                });
+                widgets.insert("history-search-error".into(), (&r.inner).into());
             });
     }
     if details {
@@ -1123,6 +1131,244 @@ fn commit_list_keys(
         });
     }
 }
+/// What an empty commit list says during or after a search, and a hint below it.
+fn empty_search(tab: &Tab) -> (String, Option<&'static str>) {
+    let state = &tab.search_state;
+    if state.bad_pattern {
+        return ("Fix the expression, or turn off .* to search for the text as written.".into(), None);
+    }
+    if state.refused {
+        return ("Nothing was searched. Fix the path, or clear it to search everywhere.".into(), None);
+    }
+    if state.scanning() {
+        return ("Still searching older commits.".into(), None);
+    }
+    if state.stopped {
+        return (
+            format!("Nothing found in the {} commits checked.", pages::number_text(state.scanned)),
+            Some("Resume continues with older commits."),
+        );
+    }
+    if !state.complete {
+        return ("No matches yet. The history search is not complete.".into(), None);
+    }
+    if state.kind != HistorySearchKind::Content {
+        return ("No commits match this search in the selected history.".into(), None);
+    }
+    let scope = if tab.history_all {
+        "all branches".to_owned()
+    } else {
+        tab.history_ref
+            .as_ref()
+            .map_or_else(|| "the current branch".into(), |r| short_ref(r.as_bytes()))
+    };
+    let under = state
+        .content
+        .path
+        .as_ref()
+        .map(|p| format!(" under {}", crate::tree::path_label(p.as_bytes())))
+        .unwrap_or_default();
+    if state.content.regex {
+        (format!("No commits in {scope} change a line matching this{under}."), None)
+    } else {
+        (
+            format!("No commits in {scope} add or remove this text{under}."),
+            Some("Exact text finds a change in how often it appears. Turn on .* to include edited lines."),
+        )
+    }
+}
+
+/// The commit search's status at the right of its bar: Browse files, then Stop while
+/// it runs, or Resume or Load more and the count.
+fn search_status(
+    ui: &mut Ui,
+    tab: &mut Tab,
+    searching: bool,
+    more: bool,
+    count: &str,
+    intents: &mut Vec<Intent>,
+    widgets: &mut std::collections::HashMap<String, UiControl>,
+) {
+    ui.spacing_mut().item_spacing.x = 6.0;
+    let browse = ui
+        .add_enabled(
+            tab.selected_commit.is_some(),
+            quiet(Button::new(RichText::new("Browse files").size(12.5))),
+        )
+        .on_hover_text("Browse the repository files at the selected commit");
+    widgets.insert("commit-browse-files".into(), (&browse).into());
+    if browse.clicked() {
+        intents.push(Intent::Tree(crate::tree::TreeIntent::OpenSelected));
+    }
+    if searching && tab.search_state.scanning() {
+        let stop = ui.button("Stop");
+        widgets.insert("history-stop".into(), (&stop).into());
+        if stop.clicked() {
+            intents.push(Intent::StopSearch);
+        }
+        ui.label(
+            RichText::new(format!("{} commits checked", pages::number_text(tab.search_state.scanned)))
+                .size(12.0)
+                .color(FAINT()),
+        );
+        ui.spinner();
+        return;
+    }
+    if more && !tab.search_state.bad_pattern && !tab.search_state.refused {
+        let resume = searching && tab.search_state.paused;
+        let load = ui.add_enabled(
+            tab.more.is_none() && !tab.loading(),
+            Button::new(RichText::new(if resume { "Resume" } else { "Load more" }).size(12.5)),
+        );
+        widgets.insert("history-more".into(), (&load).into());
+        if load.clicked() {
+            intents.push(Intent::More);
+        }
+    }
+    ui.label(RichText::new(count).size(12.0).color(FAINT()))
+        .on_hover_text(if searching {
+            format!(
+                "{} commits checked{}",
+                pages::number_text(tab.search_state.scanned),
+                if tab.search_state.complete { " · complete" } else { " · more history remains" }
+            )
+        } else {
+            format!("{} order: parents follow their children. All branches combines local and remote-tracking branches, plus HEAD.",tab.history_order.label())
+        });
+}
+
+/// One toggle inside a search field, such as Aa or .*.
+fn field_toggle(ui: &mut Ui, label: &str, on: bool, hover: &str) -> Response {
+    let ink = if on { BLUE() } else { FAINT() };
+    let text = if label == ".*" {
+        RichText::new(label).monospace().size(12.0).color(ink)
+    } else {
+        RichText::new(label).strong().size(12.0).color(ink)
+    };
+    ui.add(
+        Button::new(text)
+            .selected(on)
+            .fill(if on { BLUE().gamma_multiply(0.16) } else { Color32::TRANSPARENT })
+            .stroke(Stroke::new(1.0, if on { BLUE().gamma_multiply(0.45) } else { Color32::TRANSPARENT }))
+            .corner_radius(5)
+            .min_size(vec2(26.0, 22.0)),
+    )
+    .on_hover_text(hover)
+}
+
+/// A search field with an optional Match case and Regular expression toggle inside it,
+/// outlined red while Git refuses the expression. `ids` names the field and toggles for
+/// MCP. Returns the field and whether a toggle changed.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn query_field(
+    ui: &mut Ui,
+    value: &mut String,
+    hint: &str,
+    width: f32,
+    toggles: Option<(&mut bool, &mut bool)>,
+    bad: bool,
+    ids: [&str; 3],
+    widgets: &mut std::collections::HashMap<String, UiControl>,
+) -> (Response, bool) {
+    let mut toggled = false;
+    // 22 points of text in a 3-point margin and a 1-point border: 30 points, the
+    // height of the search-kind and scope pickers beside it.
+    let field = Frame::new()
+        .fill(RAISED())
+        .stroke(Stroke::new(1.0, if bad { RED() } else { BORDER() }))
+        .corner_radius(6)
+        .inner_margin(Margin { left: 10, right: 4, top: 3, bottom: 3 })
+        .show(ui, |ui| {
+            ui.set_width((width - 16.0).max(30.0));
+            ui.spacing_mut().interact_size.y = 22.0;
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                // Keeps the Aa and .* toggles 22 points tall, the text line's height:
+                // taller ones made the field 34 points and pushed the row out of line.
+                ui.spacing_mut().button_padding.y = 2.0;
+                let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+                icon(ui.painter(), rect, Icon::Search, MUTED());
+                let room = if toggles.is_some() { 60.0 } else { 0.0 };
+                let edit = ui.add(
+                    TextEdit::singleline(value)
+                        .frame(Frame::NONE)
+                        .char_limit(1024)
+                        .min_size(vec2(0.0, 22.0))
+                        .hint_text(hint)
+                        .desired_width((ui.available_width() - room).max(20.0)),
+                );
+                if let Some((case, regex)) = toggles {
+                    let r = field_toggle(ui, "Aa", *case, "Match case");
+                    widgets.insert(ids[1].into(), (&r).into());
+                    if r.clicked() {
+                        *case = !*case;
+                        toggled = true;
+                    }
+                    let r = field_toggle(ui, ".*", *regex, "Regular expression, as git log -G and git grep -E read it");
+                    widgets.insert(ids[2].into(), (&r).into());
+                    if r.clicked() {
+                        *regex = !*regex;
+                        toggled = true;
+                    }
+                }
+                edit
+            })
+            .inner
+        })
+        .inner;
+    widgets.insert(ids[0].into(), (&field).into());
+    (field, toggled)
+}
+
+/// A folder-limit field with a clear button. Returns whether the path changed.
+pub(crate) fn path_field(
+    ui: &mut Ui,
+    value: &mut String,
+    width: f32,
+    id: &str,
+    widgets: &mut std::collections::HashMap<String, UiControl>,
+) -> bool {
+    let mut changed = false;
+    // The same 30 points as the query field it sits beside.
+    Frame::new()
+        .fill(RAISED())
+        .stroke(Stroke::new(1.0, BORDER()))
+        .corner_radius(6)
+        .inner_margin(Margin { left: 10, right: 4, top: 3, bottom: 3 })
+        .show(ui, |ui| {
+            ui.set_width((width - 16.0).max(30.0));
+            ui.spacing_mut().interact_size.y = 22.0;
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 4.0;
+                let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+                icon(ui.painter(), rect, Icon::Folder, MUTED());
+                let room = if value.is_empty() { 0.0 } else { 26.0 };
+                let edit = ui
+                    .add(
+                        TextEdit::singleline(value)
+                            .frame(Frame::NONE)
+                            .char_limit(4096)
+                            .min_size(vec2(0.0, 22.0))
+                            .hint_text("In path")
+                            .desired_width((ui.available_width() - room).max(20.0)),
+                    )
+                    .on_hover_text("Only this file or folder, as written in the repository: case matters, \\ reads as /");
+                widgets.insert(id.into(), (&edit).into());
+                changed |= edit.changed();
+                if !value.is_empty() {
+                    let clear = crate::chrome::icon_button(ui, Icon::Close, true, false, 22.0)
+                        .on_hover_text("Clear the path");
+                    widgets.insert(format!("{id}-clear"), (&clear).into());
+                    if clear.clicked() {
+                        value.clear();
+                        changed = true;
+                    }
+                }
+            });
+        });
+    changed
+}
+
 /// Chooses what the commit search compares its text with. Changing it restarts a
 /// search that has text.
 fn search_kind_selector(
@@ -1135,7 +1381,7 @@ fn search_kind_selector(
     let label = match tab.search_kind {
         HistorySearchKind::Text => "Text",
         HistorySearchKind::Path => "Path",
-        HistorySearchKind::Content => "Content",
+        HistorySearchKind::Content => "Code",
     };
     let selector_width = if width < 900.0 { 86.0 } else { 100.0 };
     let selector = ui.add(
@@ -1173,24 +1419,34 @@ fn search_kind_selector(
     });
     let selector = selector.on_hover_text("Choose what the commit search looks at");
     Popup::menu(&selector).show(|ui| {
-        for (kind, key, text) in [
+        for (kind, key, text, detail) in [
             (
                 HistorySearchKind::Text,
                 "search-kind-text",
                 "Messages, authors and IDs",
+                "",
             ),
             (
                 HistorySearchKind::Path,
                 "search-kind-path",
                 "Changed file paths",
+                "",
             ),
             (
                 HistorySearchKind::Content,
                 "search-kind-content",
-                "Changed text (git log -S)",
+                "Changed code",
+                "   git log -S / -G",
             ),
         ] {
-            let choice = ui.add(Button::selectable(tab.search_kind == kind, text));
+            let mut job = text::LayoutJob::default();
+            job.append(text, 0.0, TextFormat::simple(FontId::proportional(13.0), TEXT()));
+            job.append(detail, 0.0, TextFormat::simple(FontId::monospace(11.5), FAINT()));
+            // A preview lacks most file versions, which Changed code reads.
+            let enabled = !(kind == HistorySearchKind::Content && tab.is_preview());
+            let choice = ui
+                .add_enabled(enabled, Button::selectable(tab.search_kind == kind, job))
+                .on_disabled_hover_text("Needs every file version: keep this preview to search changed code");
             widgets.insert(key.into(), (&choice).into());
             if choice.clicked() {
                 if tab.search_kind != kind {
@@ -1423,18 +1679,19 @@ fn history_table(
     if count == 0 {
         ui.spacing_mut().item_spacing.y = previous_spacing;
         Frame::new().inner_margin(16).show(ui, |ui| {
-            ui.label(
-                RichText::new(if !query.is_empty() {
-                    if tab.search_state.complete {
-                        "No commits match this search in the selected history."
-                    } else {
-                        "No matches yet. The history search is not complete."
-                    }
-                } else {
-                    "No commits yet. Stage files in Changes and create your first commit."
-                })
-                .color(MUTED()),
-            );
+            if query.is_empty() {
+                ui.label(
+                    RichText::new("No commits yet. Stage files in Changes and create your first commit.")
+                        .color(MUTED()),
+                );
+                return;
+            }
+            let (title, hint) = empty_search(tab);
+            let r = ui.label(RichText::new(title).color(if hint.is_some() { TEXT() } else { MUTED() }));
+            widgets.insert("history-empty".into(), (&r).into());
+            if let Some(hint) = hint {
+                ui.label(RichText::new(hint).color(MUTED()));
+            }
         });
         return;
     }
@@ -1531,9 +1788,12 @@ fn history_table(
                     }
                 }
                 let mut x = rect.left() + graph_width;
+                // A matched hosting repository keeps a slot for the CI mark at the
+                // message's end, so marks line up and arriving ones move nothing.
+                let mark_room = if tab.ci.active() { 26.0 } else { 0.0 };
                 let message_clip = Rect::from_min_max(
                     pos2(x, rect.top()),
-                    pos2(rect.left() + message_end - 8.0, rect.bottom()),
+                    pos2(rect.left() + message_end - 8.0 - mark_room, rect.bottom()),
                 );
                 let message = painter.with_clip_rect(message_clip);
                 if let Some(snapshot) = &tab.snapshot {
@@ -1616,6 +1876,16 @@ fn history_table(
                     galley,
                     color,
                 );
+                if let Some(state) = tab.ci.mark(commit.id.as_str()) {
+                    let center = pos2(rect.left() + message_end - 8.0 - 13.0, rect.center().y);
+                    crate::ci_checks::paint_mark(&painter, center, state, tab.ci.faded);
+                    let hit = Rect::from_center_size(center, vec2(22.0, 22.0));
+                    let mark = ui.interact(hit, Id::new(("ci-mark", tab.id, commit.id.as_str())), Sense::click());
+                    crate::pages::control(widgets, format!("ci-mark-{}", commit.id), &mark, ui.clip_rect());
+                    if mark.on_hover_text(crate::ci_checks::mark_tip(state, tab.ci.host())).clicked() {
+                        intents.push(Intent::CiChecks(commit.id.as_str().to_owned(), hit));
+                    }
+                }
                 if show_author {
                     let author_clip = Rect::from_min_max(
                         pos2(rect.left() + message_end, rect.top()),
@@ -1702,20 +1972,35 @@ fn fold_menu(
         intents.push(Intent::Compare(crate::compare::CompareIntent::Selected));
         ui.close();
     }
-    let r = ui.button("Export as commit series");
-    pages::control(widgets, "commit-menu-series", &r, ui.clip_rect());
+    // A preview's menu has only what reads; changes come with Keep.
+    let preview = tab.is_preview();
+    if !preview {
+        let r = ui.button("Export as commit series");
+        pages::control(widgets, "commit-menu-series", &r, ui.clip_rect());
+        if r.clicked() {
+            intents.push(Intent::ExportSeries(Some(series_range(tab, commit))));
+            ui.close();
+        }
+    }
+    let r = ui.button("Search files at this commit");
+    pages::control(widgets, "commit-menu-search-files", &r, ui.clip_rect());
     if r.clicked() {
-        intents.push(Intent::ExportSeries(Some(series_range(tab, commit))));
+        intents.push(Intent::Tree(crate::tree::TreeIntent::SearchAt(commit.id.clone())));
         ui.close();
     }
     ui.separator();
     // The selection when the row is part of it, otherwise the row.
     let selected = tab.selected_commits.contains(&commit.id) || tab.selected_commit.as_ref() == Some(&commit.id);
     let free = tab.snapshot.as_ref().and_then(|s| s.state.as_ref()).is_some_and(OperationState::is_idle) && !tab.loading();
-    for (operation, word, key) in [
-        (CommitOperation::CherryPick, "Cherry-pick", "commit-menu-cherry-pick"),
-        (CommitOperation::Revert, "Revert", "commit-menu-revert"),
-    ] {
+    let actions: &[(CommitOperation, &str, &str)] = if preview {
+        &[]
+    } else {
+        &[
+            (CommitOperation::CherryPick, "Cherry-pick", "commit-menu-cherry-pick"),
+            (CommitOperation::Revert, "Revert", "commit-menu-revert"),
+        ]
+    };
+    for &(operation, word, key) in actions {
         let targets = if selected { tab.commit_targets(operation) } else { vec![commit.id.clone()] };
         let label = if targets.len() > 1 { format!("{word} {} commits", targets.len()) } else { format!("{word} commit") };
         let r = ui.add_enabled(free, Button::new(label));
@@ -1725,7 +2010,9 @@ fn fold_menu(
             ui.close();
         }
     }
-    ui.separator();
+    if !actions.is_empty() {
+        ui.separator();
+    }
     if commit.parents.len() > 1 {
         let collapsed = tab.folding.collapsed(commit);
         let r = ui.button(if collapsed {
@@ -1764,11 +2051,13 @@ fn series_range(tab: &Tab, commit: &Commit) -> (String, String) {
     let oldest = shown.next_back().map_or(newest, |c| &c.id);
     (short(oldest), short(newest))
 }
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn changes(
     ui: &mut Ui,
     tab: &mut Tab,
     writable: bool,
     spelling: &mut crate::spell::Spelling,
+    commit_height: &mut Option<f32>,
     intents: &mut Vec<Intent>,
     widgets: &mut std::collections::HashMap<String, UiControl>,
     commands: &[rocket_git::CustomCommand],
@@ -1815,21 +2104,33 @@ pub(crate) fn changes(
                             });
                         Frame::new().inner_margin(12).show(ui, |ui| {
                             commit_editor(
-                                ui, tab, &status, writable, true, spelling, intents, widgets,
+                                ui, tab, &status, writable, None, spelling, intents, widgets,
                             );
                         });
                     });
                 change_viewport(ui, widgets, "changes-scroll", output.inner_rect);
             } else {
+                let area = commit_area(ui, tab, ui.available_height(), *commit_height);
                 let editor = Panel::bottom(Id::new(("commit-editor", tab.id)))
-                    .default_size(206.0)
-                    .size_range(180.0..=340.0)
-                    .resizable(true)
-                    .frame(Frame::new().fill(VIEW_PANEL()).inner_margin(12))
+                    .exact_size(area.height)
+                    .resizable(false)
+                    .frame(Frame::new().fill(VIEW_PANEL()).inner_margin(Margin { left: 12, right: 12, top: 0, bottom: 12 }))
                     .show(ui, |ui| {
+                        let top = ui.min_rect().top();
+                        if let Some(saved) = commit_grip(ui, tab.id, &area, widgets) {
+                            *commit_height = saved;
+                        }
+                        let viewport = (area.height - area.fixed).max(2.0 * area.row);
                         commit_editor(
-                            ui, tab, &status, writable, false, spelling, intents, widgets,
+                            ui, tab, &status, writable, Some(viewport), spelling, intents, widgets,
                         );
+                        // Everything but the description's lines, for the next frame's sizes.
+                        let fixed = ui.min_rect().bottom() - top + 12.0 - viewport;
+                        let key = Id::new(("commit-fixed", tab.id));
+                        if ui.ctx().data(|d| d.get_temp::<f32>(key)).is_none_or(|f| (f - fixed).abs() > 0.5) {
+                            ui.ctx().data_mut(|d| d.insert_temp(key, fixed));
+                            ui.ctx().request_repaint();
+                        }
                     })
                     .response
                     .rect;
@@ -2244,13 +2545,91 @@ fn join_draft(summary: &str, description: &str) -> String {
         format!("{summary}\n\n{description}")
     }
 }
+/// The commit message area's height this frame and the limits of its handle.
+struct CommitArea {
+    height: f32,
+    /// Everything in the area but the description's lines, measured last frame.
+    fixed: f32,
+    /// One line of the description.
+    row: f32,
+    min: f32,
+    max: f32,
+}
+
+/// The handle strip above the summary.
+const COMMIT_GRIP: f32 = 12.0;
+
+/// Until dragged, the area opens at 7 lines of description (4 in a short pane) and
+/// follows the text up to 12, then scrolls. A dragged height stays until reset.
+fn commit_area(ui: &Ui, tab: &Tab, pane: f32, saved: Option<f32>) -> CommitArea {
+    let row = ui.text_style_height(&TextStyle::Body);
+    // First frame: the handle, margins, a 38-point summary, the controls below the
+    // description and its frame. Later frames use what was measured.
+    let fixed = ui.ctx().data(|d| d.get_temp::<f32>(Id::new(("commit-fixed", tab.id)))).unwrap_or(184.0);
+    let (_, description) = split_draft(&tab.draft);
+    // The description wraps inside the area's margins, its frame and a scroll bar.
+    let wrap = (ui.available_width() - 46.0).max(40.0);
+    let rows = ui.painter().layout(description, TextStyle::Body.resolve(ui.style()), Color32::PLACEHOLDER, wrap).rows.len() as f32;
+    let open = if pane < 600.0 { 4.0 } else { 7.0 };
+    let min = fixed + 2.0 * row;
+    // The file list keeps room for its header and a few rows.
+    let max = (pane - 150.0).max(min);
+    let dragging = ui.ctx().data(|d| d.get_temp::<f32>(Id::new(("commit-drag", tab.id))));
+    let height = match dragging.or(saved) {
+        Some(height) => height.clamp(min, max),
+        // Whole lines, so that when the pane limits the area its last line isn't cut.
+        None => fixed + ((max - fixed) / row).floor().min(rows.clamp(open, 12.0)).max(2.0) * row,
+    };
+    CommitArea { height, fixed, row, min, max }
+}
+
+/// The handle above the commit message. Dragging resizes the area; the height is
+/// saved when the drag ends, and a double-click goes back to following the text.
+/// Returns the height to save when that changes.
+fn commit_grip(
+    ui: &mut Ui,
+    tab: u64,
+    area: &CommitArea,
+    widgets: &mut std::collections::HashMap<String, UiControl>,
+) -> Option<Option<f32>> {
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), COMMIT_GRIP), Sense::click_and_drag());
+    let response = response
+        .on_hover_cursor(CursorIcon::ResizeVertical)
+        .on_hover_text("Drag to resize the commit message. Double-click for the default height.");
+    let strong = response.hovered() || response.dragged();
+    ui.painter().rect_filled(
+        Rect::from_center_size(rect.center(), vec2(36.0, 4.0)),
+        2.0,
+        if strong { MUTED() } else { BORDER() },
+    );
+    change_control(widgets, "commit-resize", &response);
+    let key = Id::new(("commit-drag", tab));
+    if response.double_clicked() {
+        ui.ctx().data_mut(|d| d.remove::<f32>(key));
+        return Some(None);
+    }
+    if response.dragged() {
+        let height = (area.height - response.drag_delta().y).clamp(area.min, area.max);
+        ui.ctx().data_mut(|d| d.insert_temp(key, height));
+    }
+    if response.drag_stopped() {
+        let height = ui.ctx().data(|d| d.get_temp::<f32>(key)).unwrap_or(area.height);
+        ui.ctx().data_mut(|d| d.remove::<f32>(key));
+        let height = height.clamp(*crate::persistence::COMMIT_HEIGHTS.start(), *crate::persistence::COMMIT_HEIGHTS.end());
+        return Some(Some(height));
+    }
+    None
+}
+
 #[allow(clippy::too_many_arguments)]
 fn commit_editor(
     ui: &mut Ui,
     tab: &mut Tab,
     status: &Status,
     writable: bool,
-    compact: bool,
+    // The description's height in a pinned area; None in a short pane, where the
+    // form scrolls with the file list.
+    pinned: Option<f32>,
     spelling: &mut crate::spell::Spelling,
     intents: &mut Vec<Intent>,
     widgets: &mut std::collections::HashMap<String, UiControl>,
@@ -2300,17 +2679,17 @@ fn commit_editor(
             ui,
             spelling,
             &mut summary,
-            (semibold(13.0), color),
+            (semibold(14.0), color),
             widgets,
             |text| {
                 TextEdit::singleline(text)
                     .id(Id::new(("commit-message", tab.id)))
                     .interactive(!drafting)
                     .frame(Frame::NONE)
-                    .font(semibold(13.0))
+                    .font(semibold(14.0))
                     .hint_text("Summary (required)")
                     .vertical_align(Align::Center)
-                    .min_size(vec2(width - 64.0, 34.0))
+                    .min_size(vec2(width - 64.0, 36.0))
                     .desired_width(width - 64.0)
             },
         )
@@ -2326,12 +2705,10 @@ fn commit_editor(
         if length > 72 { AMBER() } else { FAINT() },
     );
     change_control(widgets, "commit-message", &summary_edit);
-    let reserved = 34.0 + 28.0 + 36.0 + 18.0 + 4.0 * 8.0 + 12.0;
-    let description_height = if compact {
-        52.0
-    } else {
-        (ui.available_height() - reserved).clamp(36.0, 160.0)
-    };
+    let compact = pinned.is_none();
+    let description_height = pinned.unwrap_or(52.0);
+    // Enough rows to fill the box, so a click anywhere in it reaches the text.
+    let rows = if compact { 2 } else { ((description_height / ui.text_style_height(&TextStyle::Body)).floor() as usize).max(2) };
     // TextEdit's desired rows are a minimum, not a height limit. Bound the
     // viewport so a long draft cannot push the action outside its panel.
     let mut description_changed = false;
@@ -2369,7 +2746,7 @@ fn commit_editor(
                                 .id(Id::new(("commit-description", tab.id)))
                                 .interactive(!drafting)
                                 .desired_width(f32::INFINITY)
-                                .desired_rows(if compact { 2 } else { 3 })
+                                .desired_rows(rows)
                                 .frame(Frame::NONE)
                                 .text_color(MUTED())
                                 .hint_text(guidance.unwrap_or("Description (optional)"))

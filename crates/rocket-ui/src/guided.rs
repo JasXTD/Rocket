@@ -22,6 +22,21 @@ pub struct Setup {
 mod tests {
     use super::*;
     #[test]
+    fn summary_says_refreshing_only_while_a_refresh_is_queued_or_running() {
+        let mut tab = Tab::new("synthetic".into(), None);
+        assert!(!refreshing(&tab));
+        // A file change queues an automatic refresh, which then runs in the background.
+        tab.refresh_pending = Some(std::time::Instant::now());
+        assert!(refreshing(&tab));
+        tab.refresh_pending = None;
+        tab.background_refresh = true;
+        tab.refresh = Some(crate::read_task::spawn(&Context::default(), |_| Err(Error::Cancelled)).unwrap());
+        assert!(refreshing(&tab));
+        // Finished: the tab still remembers that the refresh ran in the background.
+        tab.refresh = None;
+        assert!(!refreshing(&tab), "Summary kept saying Refreshing after an automatic refresh finished");
+    }
+    #[test]
     fn undo_subject_preview_is_bounded_without_changing_utf8() {
         assert_eq!(preview_subject("commit 中文 🚀".as_bytes()), "commit 中文 🚀");
         let shown = preview_subject("資料🚀".repeat(500).as_bytes());
@@ -263,6 +278,12 @@ fn tile(ui: &mut Ui, width: f32, count: usize, label: &str, color: Color32) -> R
     response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("{count} {label}")));
     response
 }
+/// A refresh is queued or running, so Summary's numbers may be out of date.
+/// `background_refresh` can't tell: it says how the latest refresh started and stays
+/// set after that refresh finishes.
+pub fn refreshing(tab: &Tab) -> bool {
+    tab.refresh.is_some() || tab.refresh_pending.is_some()
+}
 pub fn summary(
     ui: &mut Ui,
     tab: &Tab,
@@ -287,7 +308,7 @@ pub fn summary(
         Frame::new().inner_margin(Margin { left: 24, right: 24, top: 4, bottom: 24 }).show(ui, |ui| {
             ui.set_width(ui.available_width().min(960.0));
             ui.spacing_mut().item_spacing.y = 12.0;
-            if tab.loading() || tab.background_refresh || tab.refresh_pending.is_some() {
+            if refreshing(tab) {
                 pages::busy_line(ui, "Refreshing; the numbers below may be out of date.");
             }
             let Some(snapshot) = &tab.snapshot else { pages::callout(ui, AMBER(), "Repository information is unavailable."); return; };

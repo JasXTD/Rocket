@@ -166,6 +166,8 @@ fn dialog_header(dialog: &Dialog) -> (Icon, String, String) {
             "Commit drafts and settings will be saved before exit.".into(),
         ),
         DialogKind::RepositoryManager
+        | DialogKind::Explore
+        | DialogKind::KeepPreview(_)
         | DialogKind::UndoCommit
         | DialogKind::CommitAction(_)
         | DialogKind::Rebase(_)
@@ -553,6 +555,11 @@ impl Rocket {
                 if clone.clicked() {
                     intents.push(Intent::Dialog(DialogKind::Clone));
                 }
+                let explore = item_response(ui, "Explore Repositories", "Ctrl+Shift+E", self.backend.is_some());
+                self.frame_widgets.insert("file-explore".into(), (&explore).into());
+                if explore.clicked() {
+                    intents.push(Intent::Explore(None));
+                }
                 let manager = item_response(ui, "Repository Manager…", "Ctrl+Shift+M", self.backend.is_some() && idle);
                 self.frame_widgets.insert("repository-manager".into(), (&manager).into());
                 if manager.clicked() { intents.push(Intent::Dialog(DialogKind::RepositoryManager)); }
@@ -899,6 +906,7 @@ impl Rocket {
                 (To::View(View::Compare), "Compare", "goto-compare"),
                 (To::View(View::Map), "Repository map", "goto-map"),
                 (To::View(View::BranchReview), "AI review", "goto-review"),
+                (To::View(View::Actions), "Actions", "goto-actions"),
                 (To::View(View::Tree), "Files", "goto-files"),
                 (To::Line, "", ""),
                 (To::View(View::Branches), "Branches", "goto-branches"),
@@ -1098,6 +1106,9 @@ impl Rocket {
                     if keyed_item(ui, widgets, "repository-tree", "Browse Files at Commit…", "", opened && !interaction_busy) {
                         intents.push(Intent::Tree(crate::tree::TreeIntent::OpenSelected));
                     }
+                    if keyed_item(ui, widgets, "repository-search-files", "Search in Files", "", opened && !interaction_busy) {
+                        intents.push(Intent::Tree(crate::tree::TreeIntent::FocusSearch));
+                    }
                     if keyed_item(ui, widgets, "repository-bisect", "Bisect…", "", opened && !interaction_busy) {
                         intents.push(Intent::Dialog(DialogKind::Bisect));
                     }
@@ -1171,9 +1182,13 @@ impl Rocket {
         if self
             .dialog
             .as_ref()
-            .is_some_and(|d| matches!(d.kind, DialogKind::Clone | DialogKind::NewRepository))
+            .is_some_and(|d| matches!(d.kind, DialogKind::Clone | DialogKind::NewRepository | DialogKind::KeepPreview(_)))
         {
             self.repository_form_dialog(ctx);
+            return;
+        }
+        // Explore is a page; Preview opens a tab and nothing here is modal.
+        if self.dialog.as_ref().is_some_and(|d| matches!(d.kind, DialogKind::Explore)) {
             return;
         }
         self.drop_menu(ctx);
@@ -1365,7 +1380,7 @@ impl Rocket {
             |ui: &mut Ui, part: pages::Part, widgets: &mut std::collections::HashMap<String, UiControl>| match part {
                 pages::Part::Body => {
                     match &dialog.kind {
-                        DialogKind::RepositoryManager | DialogKind::UndoCommit => unreachable!("separate manager review"),
+                        DialogKind::RepositoryManager | DialogKind::UndoCommit | DialogKind::Explore | DialogKind::KeepPreview(_) => unreachable!("separate manager review"),
                         DialogKind::Signing(_)
                         | DialogKind::CommitAction(_)
                         | DialogKind::Rebase(_)

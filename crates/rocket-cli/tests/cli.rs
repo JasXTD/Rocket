@@ -1784,6 +1784,66 @@ fn history_reads_blame_follow_renames_search_and_compare_without_writes() {
 }
 
 #[test]
+fn code_search_matches_expressions_case_and_paths_in_history_and_files_without_writes() {
+    let f = Fixture::new();
+    f.seed();
+    for folder in ["src", "docs"] {
+        fs::create_dir_all(f.repo.join(folder)).unwrap();
+    }
+    f.commit_file("src/lib.rs", "fn alpha() {}\n", "Add alpha");
+    let alpha = f.g(&["rev-parse", "HEAD"]);
+    f.commit_file("src/lib.rs", "fn alpha() {}\nfn beta_42() {}\n", "Add beta");
+    let beta = f.g(&["rev-parse", "HEAD"]);
+    f.commit_file("docs/notes.md", "Beta_42 notes\n", "Document beta");
+    let docs = f.g(&["rev-parse", "HEAD"]);
+    let ids = |v: &Value| -> Vec<String> {
+        v["data"]["commits"].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap().to_owned()).collect()
+    };
+    // Changed code: an expression, letters as typed, and one folder.
+    let regex = f.cli(&["search", "beta_[0-9]+", "--kind", "content", "--regex"], 0);
+    assert_eq!(ids(&regex), [docs.as_str(), beta.as_str()]);
+    assert_eq!(regex["data"]["content"]["regex"], true);
+    assert_eq!(ids(&f.cli(&["search", "beta_42", "--kind", "content", "--match-case"], 0)), [beta.as_str()]);
+    let folder = f.cli(&["search", "beta_42", "--kind", "content", "--path", "docs"], 0);
+    assert_eq!(ids(&folder), [docs.as_str()]);
+    assert_eq!(folder["data"]["content"]["path"]["text"], "docs");
+    assert!(f.cli(&["search", "beta"], 0)["data"]["content"].is_null());
+    let bad = f.cli(&["search", "beta_(", "--kind", "content", "--regex"], 1);
+    assert_eq!(bad["error"]["code"], "invalid_pattern");
+    assert!(bad["error"]["reason"].as_str().is_some_and(|r| !r.is_empty()), "{bad}");
+    assert_eq!(f.cli(&["search", "beta", "--regex"], 2)["error"]["code"], "usage");
+    // Search in files: untracked files count at the checkout, ignored ones don't.
+    fs::write(f.repo.join(".gitignore"), "ignored.txt\n").unwrap();
+    fs::write(f.repo.join("ignored.txt"), "beta_42 ignored\n").unwrap();
+    fs::write(f.repo.join("draft.txt"), "untracked beta_42\n").unwrap();
+    let index = f.g(&["ls-files", "--stage"]);
+    let paths = |v: &Value| -> Vec<String> {
+        let mut found: Vec<String> = v["data"]["files"].as_array().unwrap().iter()
+            .map(|file| file["path"]["text"].as_str().unwrap().to_owned()).collect();
+        found.sort();
+        found
+    };
+    let found = f.cli(&["grep", "beta_42"], 0);
+    assert_eq!(paths(&found), ["docs/notes.md", "draft.txt", "src/lib.rs"]);
+    assert_eq!((found["data"]["matches"].as_u64(), found["data"]["end"].as_str()), (Some(3), Some("complete")));
+    assert!(found["data"]["revision"].is_null());
+    let lib = found["data"]["files"].as_array().unwrap().iter().find(|file| file["path"]["text"] == "src/lib.rs").unwrap();
+    let line = &lib["lines"][0];
+    assert_eq!((line["line"].as_u64(), line["preview"].as_str()), (Some(2), Some("fn beta_42() {}")));
+    assert_eq!(line["marks"], serde_json::json!([[3, 10]]));
+    assert_eq!(paths(&f.cli(&["grep", "beta_42", "--match-case"], 0)), ["draft.txt", "src/lib.rs"]);
+    assert_eq!(paths(&f.cli(&["grep", "BETA", "--path", "src"], 0)), ["src/lib.rs"]);
+    let old = f.cli(&["grep", "beta_[0-9]+", "--regex", "--revision", &alpha], 0);
+    assert!(old["data"]["files"].as_array().unwrap().is_empty());
+    assert_eq!(old["data"]["revision"], alpha.as_str());
+    assert_eq!(paths(&f.cli(&["grep", "alpha|beta", "--regex", "--revision", &beta], 0)), ["src/lib.rs"]);
+    assert_eq!(f.cli(&["grep", "beta_(", "--regex"], 1)["error"]["code"], "invalid_pattern");
+    // Reads only: nothing was committed, staged or changed.
+    assert_eq!(f.g(&["rev-parse", "HEAD"]), docs);
+    assert_eq!(f.g(&["ls-files", "--stage"]), index);
+}
+
+#[test]
 fn remote_maintenance_prunes_deletes_renames_fast_forwards_and_fetches_tags() {
     let f = Fixture::new();
     f.seed();

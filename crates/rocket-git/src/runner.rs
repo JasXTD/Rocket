@@ -73,6 +73,10 @@ impl Default for CommandLimits {
 pub(crate) mod http_safety;
 mod privilege;
 
+/// Receives a streamed read's standard output as it arrives. Returning false
+/// ends the command: the process tree is stopped and nothing more is read.
+pub(crate) type StdoutSink<'a> = &'a mut (dyn FnMut(&[u8]) -> bool + Send);
+
 #[derive(Clone, Debug)]
 pub(crate) struct Runner {
     pub executable: PathBuf,
@@ -433,6 +437,23 @@ impl Runner {
         )
     }
 
+    /// A read whose standard output goes to `sink` as it arrives instead of being
+    /// collected. `limits.stdout_bytes` bounds the total streamed. When the sink
+    /// returns false the process tree is stopped and the result is `Ok` with empty
+    /// stdout; the caller knows it asked to stop. A timeout or cancellation still
+    /// returns its error, after the sink has seen everything that arrived.
+    pub(crate) fn read_streamed(
+        &self,
+        cwd: &Path,
+        args: &[OsString],
+        input: Vec<u8>,
+        cancel: &CancellationToken,
+        limits: &CommandLimits,
+        sink: StdoutSink<'_>,
+    ) -> Result<Output> {
+        self.execute_with(cwd, args, input, cancel, ExecutionKind::Read, None, Some((sink, limits)))
+    }
+
     fn execute(
         &self,
         cwd: &Path,
@@ -442,6 +463,24 @@ impl Runner {
         kind: ExecutionKind<'_>,
         progress: Option<ProgressSink<'_>>,
     ) -> Result<Output> {
+        self.execute_with(cwd, args, input, cancel, kind, progress, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn execute_with(
+        &self,
+        cwd: &Path,
+        args: &[OsString],
+        input: Vec<u8>,
+        cancel: &CancellationToken,
+        kind: ExecutionKind<'_>,
+        progress: Option<ProgressSink<'_>>,
+        stream: Option<(StdoutSink<'_>, &CommandLimits)>,
+    ) -> Result<Output> {
+        let (sink, limits) = match stream {
+            Some((sink, limits)) => (Some(sink), limits),
+            None => (None, &self.limits),
+        };
         let writing = !matches!(
             kind,
             ExecutionKind::Read
@@ -740,17 +779,18 @@ impl Runner {
                 if helper || tool { &helper_args } else { args },
                 writing,
                 input.len(),
-                &self.limits,
+                limits,
                 |timings| {
                     run_process_tracked(
                         command,
                         input,
-                        &self.limits,
+                        limits,
                         cancel,
                         progress,
                         timings,
                         started,
                         if tool { None } else { self.managed_git.as_deref() },
+                        sink,
                     )
                 },
             )
@@ -758,12 +798,13 @@ impl Runner {
             run_process_tracked(
                 command,
                 input,
-                &self.limits,
+                limits,
                 cancel,
                 progress,
                 &mut ProcessTimings::default(),
                 started,
                 if tool { None } else { self.managed_git.as_deref() },
+                sink,
             )
         }
     }
@@ -915,7 +956,7 @@ pub(crate) fn collect_worker_process(
     pipes: ProcessPipes<impl Write + Send, impl Read + Send, impl Read + Send>,
     input: Vec<u8>, limits: &CommandLimits, cancel: &CancellationToken,
 ) -> Result<Output> {
-    collect_process(process, pipes, input, limits, cancel, None, &mut ProcessTimings::default())
+    collect_process(process, pipes, input, limits, cancel, None, &mut ProcessTimings::default(), None)
 }
 
 fn run_process_with_progress(
@@ -926,7 +967,7 @@ fn run_process_with_progress(
     progress: Option<ProgressSink<'_>>,
     timings: &mut ProcessTimings,
 ) -> Result<Output> {
-    run_process_tracked(command, input, limits, cancel, progress, timings, None, None)
+    run_process_tracked(command, input, limits, cancel, progress, timings, None, None, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -939,6 +980,7 @@ fn run_process_tracked(
     timings: &mut ProcessTimings,
     started: Option<&AtomicBool>,
     runtime: Option<&crate::ManagedGitRuntime>,
+    sink: Option<StdoutSink<'_>>,
 ) -> Result<Output> {
     cancel.check()?;
     privilege::check()?;
@@ -987,34 +1029,77 @@ fn run_process_tracked(
     let stderr = child.stderr.take().expect("stderr was piped");
     let stdin = child.stdin.take().expect("stdin was piped");
     collect_process(&mut GitProcess { child, tree }, ProcessPipes { stdin, stdout, stderr },
-        input, limits, cancel, progress, timings)
+        input, limits, cancel, progress, timings, sink)
 }
 
+/// A streamed read's stdout: each chunk goes to `sink` and nothing is kept.
+/// The sink returning false sets `stop`, and the caller then stops the process.
+fn stream(
+    mut reader: impl Read,
+    limit: usize,
+    faults: mpsc::Sender<Error>,
+    sink: StdoutSink<'_>,
+    stop: &AtomicBool,
+) -> Result<Vec<u8>> {
+    let mut buffer = [0u8; 8192];
+    let mut total = 0usize;
+    loop {
+        let count = match reader.read(&mut buffer) {
+            Ok(count) => count,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => {
+                let _ = faults.send(Error::io(
+                    "read Git output",
+                    std::io::Error::new(error.kind(), error.to_string()),
+                ));
+                return Err(Error::io("read Git output", error));
+            }
+        };
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+        if count > limit.saturating_sub(total) {
+            let _ = faults.send(Error::OutputLimit { stream: "stdout", limit });
+            return Err(Error::OutputLimit { stream: "stdout", limit });
+        }
+        total += count;
+        if !sink(&buffer[..count]) {
+            stop.store(true, Ordering::Release);
+            return Ok(Vec::new());
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn collect_process(
     process: &mut impl RunningProcess,
     pipes: ProcessPipes<impl Write + Send, impl Read + Send, impl Read + Send>,
     input: Vec<u8>, limits: &CommandLimits, cancel: &CancellationToken,
     progress: Option<ProgressSink<'_>>, timings: &mut ProcessTimings,
+    sink: Option<StdoutSink<'_>>,
 ) -> Result<Output> {
     let ProcessPipes { mut stdin, stdout, stderr } = pipes;
     let started = Instant::now();
+    let stop = AtomicBool::new(false);
     // Scoped workers always join before returning. Draining both pipes concurrently avoids
     // the classic deadlock when Git fills stderr while the caller waits for stdout.
     thread::scope(|scope| {
         let (faults, fault_receiver) = mpsc::channel();
         let stdout_reader = scope.spawn({
             let faults = faults.clone();
+            let stop = &stop;
             // Git LFS writes forced transfer progress to stdout. Git's ordinary
             // progress remains stderr-only; never parse file/blob stdout as status.
             let stdout_progress = progress.filter(|p| matches!(p, ProgressSink::Lfs(_)));
-            move || {
-                drain(
+            move || match sink {
+                Some(sink) => stream(stdout, limits.stdout_bytes, faults, sink, stop),
+                None => drain(
                     stdout,
                     limits.stdout_bytes,
                     "stdout",
                     faults,
                     stdout_progress.map(ProgressParser::new),
-                )
+                ),
             }
         });
         let stderr_reader = scope.spawn(move || {
@@ -1032,6 +1117,7 @@ fn collect_process(
             result
         });
         let mut failure = None;
+        let mut stopped = false;
         let status = loop {
             if cancel.is_cancelled() {
                 failure = Some(Error::Cancelled);
@@ -1039,8 +1125,11 @@ fn collect_process(
                 failure = Some(Error::TimedOut);
             } else if let Ok(error) = fault_receiver.try_recv() {
                 failure = Some(error);
+            } else if stop.load(Ordering::Acquire) {
+                // The streamed read has what it needs; nothing else is read.
+                stopped = true;
             }
-            if failure.is_some() {
+            if failure.is_some() || stopped {
                 process.terminate()
                     .map_err(|e| Error::io("terminate Git process tree", e))?;
                 break process.wait().map_err(|e| Error::io("reap Git", e))?;
@@ -1159,6 +1248,18 @@ mod tests {
             "flood" => loop {
                 std::io::stderr().write_all(&[b'e'; 8192]).unwrap();
             },
+            // Endless stdout; a streamed read must be able to end it early.
+            "stdout-flood" => loop {
+                if std::io::stdout().write_all(&[b'o'; 8192]).is_err() {
+                    return;
+                }
+            },
+            // Some stdout, then silence until a time limit or Stop ends it.
+            "stdout-then-wait" => {
+                std::io::stdout().write_all(b"first part\n").unwrap();
+                std::io::stdout().flush().unwrap();
+                thread::sleep(Duration::from_secs(30));
+            }
             "wait" => {
                 if let Some(path) = std::env::var_os("ROCKET_FIXTURE_READY") {
                     std::fs::write(path, b"ready").unwrap();
@@ -1267,17 +1368,67 @@ mod tests {
         ));
     }
 
+    fn streamed(command: Command, limits: &CommandLimits, cancel: &CancellationToken, sink: StdoutSink<'_>) -> Result<Output> {
+        run_process_tracked(command, Vec::new(), limits, cancel, None, &mut ProcessTimings::default(), None, None, Some(sink))
+    }
+
+    #[test]
+    fn streamed_read_hands_output_over_and_stops_when_the_sink_has_enough() {
+        let mut seen = 0usize;
+        let started = Instant::now();
+        // The child is this test binary, so libtest's own header comes first.
+        let output = streamed(fixture("stdout-flood"), &CommandLimits::default(), &CancellationToken::new(), &mut |chunk: &[u8]| {
+            seen += chunk.iter().filter(|b| **b == b'o').count();
+            seen < 100_000
+        })
+        .unwrap();
+        assert!(seen >= 100_000, "the sink saw {seen} bytes");
+        assert!(output.stdout.is_empty(), "streamed output is never collected");
+        assert!(!output.status.success(), "the endless writer was stopped");
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn streamed_read_keeps_what_arrived_before_a_time_limit_or_byte_cap() {
+        let limits = CommandLimits { timeout: Duration::from_millis(1500), ..Default::default() };
+        let mut text = Vec::new();
+        let result = streamed(fixture("stdout-then-wait"), &limits, &CancellationToken::new(), &mut |chunk: &[u8]| {
+            text.extend_from_slice(chunk);
+            true
+        });
+        assert!(matches!(result, Err(Error::TimedOut)));
+        assert!(text.windows(11).any(|w| w == b"first part\n"), "{}", String::from_utf8_lossy(&text));
+        let limits = CommandLimits { stdout_bytes: 64 * 1024, ..Default::default() };
+        let mut seen = 0usize;
+        let result = streamed(fixture("stdout-flood"), &limits, &CancellationToken::new(), &mut |chunk: &[u8]| {
+            seen += chunk.len();
+            true
+        });
+        assert!(matches!(result, Err(Error::OutputLimit { stream: "stdout", .. })));
+        assert!(seen <= 64 * 1024 && seen > 0);
+        let cancel = CancellationToken::new();
+        let mut calls = 0;
+        let result = streamed(fixture("stdout-flood"), &CommandLimits::default(), &cancel, &mut |_: &[u8]| {
+            calls += 1;
+            if calls == 3 {
+                cancel.cancel();
+            }
+            true
+        });
+        assert!(matches!(result, Err(Error::Cancelled)));
+    }
+
     #[test]
     fn tracked_spawn_distinguishes_early_refusal_from_late_timeout() {
         let started = AtomicBool::new(false);
         let cancelled = CancellationToken::new();
         cancelled.cancel();
-        assert!(matches!(run_process_tracked(fixture("wait"), vec![], &CommandLimits::default(), &cancelled, None, &mut ProcessTimings::default(), Some(&started), None), Err(Error::Cancelled)));
+        assert!(matches!(run_process_tracked(fixture("wait"), vec![], &CommandLimits::default(), &cancelled, None, &mut ProcessTimings::default(), Some(&started), None, None), Err(Error::Cancelled)));
         assert!(!started.load(Ordering::Acquire));
-        assert!(run_process_tracked(Command::new("rocket-nonexistent-security-fixture.exe"), vec![], &CommandLimits::default(), &CancellationToken::new(), None, &mut ProcessTimings::default(), Some(&started), None).is_err());
+        assert!(run_process_tracked(Command::new("rocket-nonexistent-security-fixture.exe"), vec![], &CommandLimits::default(), &CancellationToken::new(), None, &mut ProcessTimings::default(), Some(&started), None, None).is_err());
         assert!(!started.load(Ordering::Acquire));
         let limits = CommandLimits { timeout: Duration::from_millis(300), ..Default::default() };
-        assert!(matches!(run_process_tracked(fixture("wait"), vec![], &limits, &CancellationToken::new(), None, &mut ProcessTimings::default(), Some(&started), None), Err(Error::TimedOut)));
+        assert!(matches!(run_process_tracked(fixture("wait"), vec![], &limits, &CancellationToken::new(), None, &mut ProcessTimings::default(), Some(&started), None, None), Err(Error::TimedOut)));
         assert!(started.load(Ordering::Acquire));
     }
 

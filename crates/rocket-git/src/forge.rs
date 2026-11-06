@@ -12,6 +12,8 @@ use std::{
 };
 mod adapter;
 mod azure_server;
+mod checks;
+pub use checks::*;
 mod bitbucket_server;
 mod pagination;
 mod protection;

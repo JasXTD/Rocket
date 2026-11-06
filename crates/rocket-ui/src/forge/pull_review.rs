@@ -25,6 +25,14 @@ pub struct State {
     pub unknown: Option<(ForgeRepository, u64)>,
     pub checked_unknown: bool,
     pub submission: Option<(ForgeRepository, u64)>,
+    /// The head's checks, as the marks read them, for hosts that can re-run.
+    pub ci: Option<std::sync::Arc<ForgeCommitChecks>>,
+    pub ci_error: Option<String>,
+    /// The head `ci` belongs to, or is being read for.
+    pub ci_for: Option<String>,
+    pub ci_task: Option<ReadTask<ForgeCommitChecks>>,
+    /// The repository tab whose Actions lists this pull request's repository.
+    pub actions_tab: Option<u64>,
 }
 impl State {
     pub fn has_draft(&self) -> bool { !self.threads.body.is_empty() || !self.body.is_empty() || !self.comments.is_empty() || !self.inline_body.is_empty() || self.inline_selection.is_some() || self.inline_editing.is_some() }
@@ -321,6 +329,29 @@ pub(super) fn section(
                         p.commits, p.files, p.additions, p.deletions
                     )).size(12.5).color(MUTED()));
                 }
+                // Whether the head's checks pass, without opening the Checks tab.
+                if let Some(ci) = s.pull.ci.as_ref().filter(|c| c.commit() == p.head)
+                    && !ci.checks.is_empty()
+                {
+                    let state = ci.state();
+                    let failed = ci.count(ForgeCheckState::Failed) + ci.count(ForgeCheckState::Cancelled);
+                    let running = ci.count(ForgeCheckState::Running) + ci.count(ForgeCheckState::Queued);
+                    let text = match state {
+                        ForgeCiState::Failed => format!("{failed} failed check{}{}", if failed == 1 { "" } else { "s" }, if running > 0 { format!(" · {running} running") } else { String::new() }),
+                        ForgeCiState::Running => format!("{running} running"),
+                        ForgeCiState::Passed => "Checks passed".into(),
+                        ForgeCiState::NotChecked => "No checks".into(),
+                    };
+                    let color = match state { ForgeCiState::Failed => RED(), ForgeCiState::Running => AMBER(), ForgeCiState::Passed => GREEN(), ForgeCiState::NotChecked => MUTED() };
+                    // Room for the mark left of the pill, clear of the counts.
+                    ui.add_space(14.0);
+                    let r = ui.add(Button::new(RichText::new(text).size(12.0).color(color).strong()).corner_radius(12).stroke(Stroke::new(1.0, color.gamma_multiply(0.45))).fill(color.gamma_multiply(0.08)).min_size(vec2(0.0, 24.0)));
+                    crate::ci_checks::paint_mark(ui.painter(), pos2(r.rect.left() - 10.0, r.rect.center().y), state, false);
+                    control(widgets, "hosting-checks-pill", &r, ui.clip_rect());
+                    if r.on_hover_text("Open the Checks tab").clicked() {
+                        s.pull.tab = 5;
+                    }
+                }
             });
         });
     if s.pull.composing {
@@ -333,7 +364,13 @@ pub(super) fn section(
         p.counts_available.then_some(p.files as usize),
         Some(details.discussion.items.len() + details.inline_comments.items.len()),
         Some(details.reviews.items.len()),
-        Some(details.checks.items.len() + details.statuses.items.len()),
+        // No count when checks couldn't be read, so 0 always means none.
+        match s.pull.ci.as_ref().filter(|c| c.commit() == p.head) {
+            Some(ci) if ci.error.is_none() || !ci.checks.is_empty() => Some(ci.checks.len()),
+            Some(_) => None,
+            None if details.checks.error.is_some() && details.statuses.error.is_some() => None,
+            None => Some(details.checks.items.len() + details.statuses.items.len()),
+        },
     ];
     let names = [
         ("hosting-pull-tab-overview", "Overview"),
@@ -410,13 +447,7 @@ pub(super) fn section(
                 ui.separator();
             }
         }
-        _ => {
-            ui.colored_label(MUTED(), "Checks and commit statuses for this head in the base repository. Fork checks may be absent. This does not establish merge readiness or required branch rules.");
-            ui.strong("Check runs");
-            checks(ui, &details.checks);
-            ui.strong("Commit statuses");
-            checks(ui, &details.statuses);
-        }
+        _ => checks_tab(ui, s, &details, widgets, out),
     }
 }
 fn composer(
@@ -458,6 +489,145 @@ fn composer(
         }
     });
 }
+/// The Checks tab: the head's checks in one list, failures first, under a summary
+/// bar with Re-run failed jobs and Open in browser. Hosts without a re-run read
+/// show the PR's statuses the same way, without the buttons.
+fn checks_tab(ui: &mut Ui, s: &mut super::State, details: &ForgePullDetails, widgets: &mut HashMap<String, UiControl>, out: &mut PageOut) {
+    let head = details.summary().head.clone();
+    let provider = details.repository().config().provider();
+    if let Some(ci) = s.pull.ci.clone().filter(|c| c.commit() == head) {
+        let reading = s.pull.ci_task.is_some();
+        Frame::new().fill(PANEL()).stroke(Stroke::new(1.0, CARD_STROKE())).corner_radius(8).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 0.0;
+            Frame::new().fill(CARD()).inner_margin(Margin { left: 14, right: 10, top: 8, bottom: 8 }).show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    let (rect, _) = ui.allocate_exact_size(vec2(18.0, 22.0), Sense::hover());
+                    crate::ci_checks::paint_mark(ui.painter(), rect.center(), ci.state(), false);
+                    ui.label(RichText::new(crate::ci_checks::summary(&ci)).font(semibold(13.0)));
+                    ui.label(RichText::new(format!("for head {}", &head[..7])).size(12.0).color(HINT()));
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        let r = pages::ghost(ui, true, "Open in browser");
+                        control(widgets, "hosting-checks-open", &r, ui.clip_rect());
+                        if r.clicked() {
+                            out.open = Some(crate::ci_checks::browser_url(&ci));
+                        }
+                        let failed = ci.failed_runs().next().is_some();
+                        if failed || ci.rerun.is_some() {
+                            let r = pages::primary(ui, failed && ci.rerun.is_none() && !reading, crate::ci_checks::rerun_label(provider));
+                            let r = match ci.rerun {
+                                Some(why) => r.on_disabled_hover_text(ci_rerun_refusal(why)),
+                                None => r,
+                            };
+                            control(widgets, "hosting-checks-rerun", &r, ui.clip_rect());
+                            out.ci_rerun |= r.clicked();
+                        }
+                        all_runs(ui, s.pull.actions_tab, &details.summary().source, widgets, out);
+                    });
+                });
+            });
+            let hidden = ci.error.map(|e| match (e, &ci.missing) {
+                (ForgeFailure::Forbidden, Some(p)) => format!("Some checks are hidden: this token needs {p}."),
+                (ForgeFailure::Forbidden, None) => "Some checks are hidden: this token can't read them.".to_string(),
+                (other, _) => format!("Some checks couldn't be read ({}).", other.code()),
+            });
+            if let Some(text) = hidden {
+                Frame::new().inner_margin(Margin::symmetric(10, 8)).show(ui, |ui| {
+                    pages::notice_strip(ui, MUTED(), &text, None);
+                });
+            }
+            if let Some(why) = ci.rerun.filter(|w| *w != ForgeRerunBlock::Unsupported || ci.state() == ForgeCiState::Failed) {
+                Frame::new().inner_margin(Margin { left: 14, right: 10, top: 8, bottom: 2 }).show(ui, |ui| {
+                    ui.label(RichText::new(ci_rerun_refusal(why)).size(12.0).color(HINT()));
+                });
+            }
+            if ci.checks.is_empty() {
+                Frame::new().inner_margin(14).show(ui, |ui| {
+                    ui.label(RichText::new("No checks ran for this head.").color(HINT()));
+                });
+            }
+            if let Some(url) = crate::ci_checks::list(ui, &ci.checks, provider, widgets, "hosting-checks", crate::ci_checks::ListStyle::Wide) {
+                out.open = Some(url);
+            }
+            if ci.limited {
+                Frame::new().inner_margin(10).show(ui, |ui| {
+                    ui.label(RichText::new(format!("Showing {}: open the head on the host for the rest.", ci.checks.len())).size(12.0).color(HINT()));
+                });
+            }
+        });
+        return;
+    }
+    if s.pull.ci_task.is_some() && s.pull.ci_for.as_deref() == Some(head.as_str()) {
+        pages::busy_line(ui, "Reading the head's checks");
+        return;
+    }
+    if let Some(error) = &s.pull.ci_error {
+        pages::notice_strip(ui, AMBER(), error, None);
+    }
+    // Hosts without a re-run read: the PR's statuses as the details read them.
+    Frame::new().fill(PANEL()).stroke(Stroke::new(1.0, CARD_STROKE())).corner_radius(8).inner_margin(Margin::symmetric(4, 4)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        let all: Vec<&ForgePullCheck> = details.checks.items.iter().chain(details.statuses.items.iter()).collect();
+        for c in &all {
+            let state = pull_check_state(c);
+            let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
+            crate::ci_checks::paint_check(ui.painter(), pos2(rect.left() + 14.0, rect.center().y), state);
+            ui.painter().text(pos2(rect.left() + 30.0, rect.center().y), Align2::LEFT_CENTER, &c.name, FontId::proportional(13.0), TEXT());
+            ui.painter().text(pos2(rect.right() - 10.0, rect.center().y), Align2::RIGHT_CENTER, c.conclusion.as_deref().unwrap_or(&c.status), FontId::proportional(12.0), HINT());
+        }
+        let mut failed = false;
+        for c in [&details.checks, &details.statuses] {
+            if let Some(e) = c.error.filter(|e| *e != ForgeFailure::Unsupported) {
+                failed = true;
+                pages::notice_strip(ui, AMBER(), &format!("Some checks couldn't be read: {} ({})", e.guidance(), e.code()), None);
+            }
+        }
+        // Bitbucket Server has no checks read here: say so rather than show an empty card.
+        let unsupported = [&details.checks, &details.statuses].iter().all(|c| c.error == Some(ForgeFailure::Unsupported));
+        if all.is_empty() && !failed {
+            let words = if provider == ForgeProvider::BitbucketServer && unsupported {
+                "Bitbucket Server doesn't report CI to Rocket. Builds from Jenkins or Bamboo show on the pull request's page."
+            } else {
+                "No checks ran for this head."
+            };
+            Frame::new().inner_margin(10).show(ui, |ui| {
+                ui.add(Label::new(RichText::new(words).color(HINT())).wrap());
+            });
+        }
+        if provider != ForgeProvider::BitbucketServer {
+            ui.horizontal(|ui| {
+                ui.add_space(6.0);
+                all_runs(ui, s.pull.actions_tab, &details.summary().source, widgets, out);
+            });
+        }
+    });
+}
+/// "All runs for feature/sign-in": Actions in the repository's tab, on that branch.
+fn all_runs(ui: &mut Ui, tab: Option<u64>, branch: &str, widgets: &mut HashMap<String, UiControl>, out: &mut PageOut) {
+    if tab.is_none() || branch.is_empty() {
+        return;
+    }
+    ui.add_space(4.0);
+    let r = ui.add(Label::new(RichText::new(format!("All runs for {branch}")).size(12.5).color(BLUE())).sense(Sense::click()).truncate())
+        .on_hover_cursor(CursorIcon::PointingHand)
+        .on_hover_text("Opens Actions on this branch");
+    control(widgets, "hosting-checks-all-runs", &r, ui.clip_rect());
+    if r.clicked() {
+        out.ci_runs = Some(branch.to_owned());
+    }
+}
+fn pull_check_state(c: &ForgePullCheck) -> ForgeCheckState {
+    let word = c.conclusion.as_deref().unwrap_or(&c.status).to_ascii_lowercase();
+    match word.as_str() {
+        "success" | "successful" | "succeeded" | "passed" => ForgeCheckState::Passed,
+        "failure" | "failed" | "error" | "timed_out" => ForgeCheckState::Failed,
+        "running" | "in_progress" | "inprogress" | "pending" => ForgeCheckState::Running,
+        "queued" | "created" | "waiting" | "manual" | "scheduled" => ForgeCheckState::Queued,
+        "cancelled" | "canceled" | "stopped" => ForgeCheckState::Cancelled,
+        _ => ForgeCheckState::Skipped,
+    }
+}
 fn collection_note<T>(ui: &mut Ui, c: &ForgePullCollection<T>) {
     if let Some(e) = c.error {
         ui.colored_label(
@@ -495,20 +665,6 @@ fn comments(ui: &mut Ui, comments: &ForgePullCollection<ForgePullComment>) {
         }
         ui.label(&c.body);
         ui.separator();
-    }
-}
-fn checks(ui: &mut Ui, checks: &ForgePullCollection<ForgePullCheck>) {
-    collection_note(ui, checks);
-    for c in &checks.items {
-        ui.label(format!(
-            "{} · {}{}",
-            c.name,
-            c.status,
-            c.conclusion
-                .as_ref()
-                .map(|x| format!(" · {x}"))
-                .unwrap_or_default()
-        ));
     }
 }
 /// A branch name or commit ID on a raised fill.

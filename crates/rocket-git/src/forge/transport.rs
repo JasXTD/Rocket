@@ -5,6 +5,16 @@ use crate::{
 };
 use std::ffi::OsString;
 static SESSION: AtomicU64 = AtomicU64::new(1);
+thread_local! {
+    /// The permission GitHub named for the last refused request on this thread
+    /// (X-Accepted-GitHub-Permissions). Requests run synchronously on their
+    /// worker thread, so a caller reads it right after its own refusal.
+    static REFUSAL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+/// Takes what GitHub said the last refused request on this thread needed.
+pub(super) fn take_refusal() -> Option<String> {
+    REFUSAL.with(|r| r.borrow_mut().take())
+}
 fn credential_text(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 4096
@@ -195,6 +205,8 @@ impl ForgeSession {
         cancel: &CancellationToken,
     ) -> Result<(Json, Vec<(String, String)>)> {
         let run = || self.runner.step(operation,step,||{
+            // A refusal names only its own request's permission.
+            REFUSAL.with(|r|*r.borrow_mut()=None);
             cancel.check()?;
             if !self.config.allows_request(method, path, body.is_some(), mutation) {
                 return Err(invalid("hosting_account_check_only: this live test session only permits GET /user; repository requests and writes are disabled."));
@@ -241,10 +253,18 @@ impl ForgeSession {
                 405 if operation == "hosting-merge-submit" => Some(ForgeFailure::Rejected),
                 _=>Some(if mutation{ForgeFailure::OutcomeUnknown}else{ForgeFailure::InvalidResponse})
             };
-            if let Some(f)=failure{return fail(f);}
+            if let Some(f)=failure{
+                if f==ForgeFailure::Forbidden && self.config.provider().is_github() {
+                    let named=header(&response.headers,"x-accepted-github-permissions").filter(|v|v.len()<=256&&v.is_ascii()).map(str::to_owned);
+                    REFUSAL.with(|r|*r.borrow_mut()=named);
+                }
+                return fail(f);
+            }
             // Gitea confirms synchronous merges with 200 or 204 and no body.
             // The merge adapter must verify the resulting PR with a scoped GET.
-            let value=if self.config.provider()==ForgeProvider::Gitea && operation=="hosting-merge-submit" && mutation && matches!(response.status,200|204) && response.body.is_empty() { Json::Null } else {json::parse(response.body).ok_or(Error::Forge(if mutation{ForgeFailure::OutcomeUnknown}else{ForgeFailure::InvalidResponse}))?};
+            // A re-run is confirmed by 201 alone: GitHub and Gitea send no body.
+            let value=if (self.config.provider()==ForgeProvider::Gitea && operation=="hosting-merge-submit" && mutation && matches!(response.status,200|204) && response.body.is_empty())
+                || (operation==super::checks::RERUN && mutation && matches!(response.status,201|202|204) && response.body.iter().all(u8::is_ascii_whitespace)) { Json::Null } else {json::parse(response.body).ok_or(Error::Forge(if mutation{ForgeFailure::OutcomeUnknown}else{ForgeFailure::InvalidResponse}))?};
             Ok((value,response.headers))
         });
         self.runner.step(operation, self.config.provider().diagnostic_step(), || {

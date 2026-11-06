@@ -117,6 +117,7 @@ impl State {
             self.creating = false;
             self.discovered_choice = None;
             self.review_after_create = false;
+            self.authentication = SshAuthentication::Agent;
         }
         (self.selected, self.found) = chosen;
     }
@@ -248,22 +249,38 @@ impl Rocket {
 
 /// ssh-agent's state, what is running, and Rescan.
 fn status_row(ui: &mut Ui, s: &State, widgets: &mut HashMap<String, UiControl>, busy: bool, out: &mut Out) {
-    ui.horizontal(|ui| {
+    ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
-        if s.loaded {
-            if s.agent_running {
-                let text = match s.loaded_keys.len() {
-                    0 => "ssh-agent running".to_owned(),
-                    1 => "ssh-agent running · 1 key unlocked".to_owned(),
-                    n => format!("ssh-agent running · {n} keys unlocked"),
-                };
-                pages::pill(ui, &text, GREEN());
-            } else {
-                pages::pill(ui, "ssh-agent isn't running", AMBER());
-                ui.label(RichText::new("Keys can't be unlocked until it runs.").size(12.0).color(HINT()));
-            }
+        // Reserve the action before laying out status text. The busy message
+        // gets its own row so compact windows cannot paint it over Rescan.
+        let width = (ui.available_width() - 104.0).max(120.0);
+        ui.allocate_ui_with_layout(
+            vec2(width, 28.0),
+            Layout::left_to_right(Align::Center).with_main_wrap(true),
+            |ui| {
+                if s.loaded {
+                    if s.agent_running {
+                        let text = match s.loaded_keys.len() {
+                            0 => "ssh-agent running".to_owned(),
+                            1 => "ssh-agent running · 1 key unlocked".to_owned(),
+                            n => format!("ssh-agent running · {n} keys unlocked"),
+                        };
+                        pages::pill(ui, &text, GREEN());
+                    } else {
+                        pages::pill(ui, "ssh-agent isn't running", AMBER());
+                        ui.label(RichText::new("Direct key mode works without it.").size(12.0).color(HINT()));
+                    }
+                }
+            },
+        );
+        let r = pages::tool(ui, Icon::Refresh, "Rescan", !busy);
+        control(widgets, "ssh-scan", &r, ui.clip_rect());
+        if r.clicked() {
+            out.action = Some("scan");
         }
-        if busy {
+    });
+    if busy {
+        ui.horizontal_wrapped(|ui| {
             ui.add(Spinner::new().size(14.0));
             let text = if s.stopping {
                 "Stopping OpenSSH and checking the result"
@@ -273,15 +290,8 @@ fn status_row(ui: &mut Ui, s: &State, widgets: &mut HashMap<String, UiControl>, 
                 "Working. OpenSSH may ask for a passphrase."
             };
             ui.label(RichText::new(text).size(12.5).color(MUTED()));
-        }
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let r = pages::tool(ui, Icon::Refresh, "Rescan", !busy);
-            control(widgets, "ssh-scan", &r, ui.clip_rect());
-            if r.clicked() {
-                out.action = Some("scan");
-            }
         });
-    });
+    }
 }
 
 /// Problems and results, then what the last scan couldn't use.
@@ -551,7 +561,7 @@ fn right_side(
 /// repository's use of it.
 fn key_card(
     ui: &mut Ui,
-    s: &State,
+    s: &mut State,
     widgets: &mut HashMap<String, UiControl>,
     k: &Listed,
     repository: &Option<String>,
@@ -567,9 +577,9 @@ fn key_card(
         card_header(ui, Icon::Key, &k.name, &kind, |ui| {
             if s.loaded && s.agent_running {
                 if s.loaded_keys.contains(&k.fingerprint) {
-                    pages::pill(ui, "Unlocked", GREEN());
+                    pages::pill(ui, "In agent", GREEN());
                 } else {
-                    pages::pill(ui, "Locked", HINT());
+                    pages::pill(ui, "Not in agent", HINT());
                 }
             }
         });
@@ -603,6 +613,29 @@ fn key_card(
                 }
                 ui.add(Label::new(RichText::new("Paste it into your Git host's SSH key settings.").size(12.0).color(HINT())).truncate());
             });
+            ui.separator();
+            ui.label(RichText::new("Use this key through").font(semibold(13.0)));
+            ui.horizontal_wrapped(|ui| {
+                for (id,label,mode) in [("ssh-mode-agent","Windows agent",SshAuthentication::Agent),("ssh-mode-direct","Direct key",SshAuthentication::Direct)] {
+                    let r=ui.selectable_value(&mut s.authentication,mode,label);
+                    control(widgets,id,&r,ui.clip_rect());
+                }
+            });
+            if s.authentication==SshAuthentication::Direct {
+                ui.label(RichText::new("Uses this key directly. Unknown or changed host keys are rejected.").size(12.0).color(HINT()));
+                if let Some(p)=s.profile() {
+                    let saved=p.passphrase_saved;
+                    ui.label(RichText::new(if saved {"Passphrase saved with Windows user encryption."} else if p.encrypted {"Save this key's passphrase before using it directly."} else {"This key has no passphrase."}).size(12.0).color(if saved {GREEN()}else{HINT()}));
+                    ui.horizontal_wrapped(|ui| {
+                        if btn(ui,widgets,"ssh-remember","Save passphrase",p.encrypted&&!saved){out.action=Some("remember");}
+                        if btn(ui,widgets,"ssh-forget","Forget passphrase",saved){out.action=Some("forget");}
+                    });
+                } else {
+                    ui.label(RichText::new("First use the repository action below to set up this key's host profile.").size(12.0).color(HINT()));
+                }
+            } else {
+                ui.label(RichText::new("The key's tick controls Windows ssh-agent. Rocket does not save its passphrase in this mode.").size(12.0).color(HINT()));
+            }
             // The repository box sits at the card's foot when the card fills the page. Its
             // buttons go beside the repository when they fit, otherwise under it.
             let beside = buttons_beside(ui, k);
@@ -804,6 +837,7 @@ fn prompt_card(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiContr
     let title = match prompt {
         Prompt::New | Prompt::Confirm | Prompt::NewRetry => "ssh-keygen asks for a passphrase",
         Prompt::Unlock | Prompt::UnlockRetry => "ssh-add asks for the passphrase",
+        Prompt::Remember => "Verify and save this key's passphrase",
     };
     let label = match prompt {
         Prompt::New => "Enter a new passphrase, at least 10 characters".to_owned(),
@@ -811,6 +845,7 @@ fn prompt_card(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiContr
         Prompt::NewRetry => "The passphrases didn't match. Enter a new passphrase.".to_owned(),
         Prompt::Unlock => format!("Passphrase for {name}"),
         Prompt::UnlockRetry => "Passphrase rejected. Try again.".to_owned(),
+        Prompt::Remember => format!("Passphrase for {name} — saved only after OpenSSH verifies it"),
     };
     pages::titled_card(
         ui,
@@ -831,7 +866,7 @@ fn prompt_card(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiContr
 fn send_passphrase(s: &mut State, prompt: Prompt) {
     let valid = s.passphrase.len() <= 1024
         && !s.passphrase.chars().any(char::is_control)
-        && (matches!(prompt, Prompt::Unlock | Prompt::UnlockRetry) || s.passphrase.chars().count() >= 10);
+        && (matches!(prompt, Prompt::Unlock | Prompt::UnlockRetry | Prompt::Remember) || s.passphrase.chars().count() >= 10);
     if !valid {
         s.error = Some("Use at least 10 characters for a new key, at most 1024 bytes, without control characters.".into());
     } else if s.input.as_ref().is_some_and(|c| c.try_send(std::mem::take(&mut s.passphrase)).is_ok()) {
@@ -871,6 +906,7 @@ fn review_card(
                 ui.label(repository);
             });
             if let Some(p) = &review.profile {
+                pages::key_value(ui,"Authentication",96.0,|ui|{ui.label(if review.authentication==SshAuthentication::Direct {"Direct key · host verification required"}else{"Windows agent / OpenSSH"});});
                 pages::key_value(ui, "Key", 96.0, |ui| {
                     ui.label(&name);
                 });

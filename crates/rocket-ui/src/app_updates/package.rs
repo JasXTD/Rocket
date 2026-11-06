@@ -19,13 +19,14 @@ use std::{
 
 pub const MAX_FILE: u64 = 256 * 1024 * 1024;
 pub const MAX_TREE: u64 = 1024 * 1024 * 1024;
-pub const BINARIES: [&str; 6] = [
+pub const BINARIES: [&str; 7] = [
     "rocket.exe",
     "rocket-mcp.exe",
     "rocket-cli.exe",
     "rocket-rebase-editor.exe",
     "rocket-terminal-host.exe",
     "rocket-lua-host.exe",
+    "rocket-ssh.exe",
 ];
 pub fn error(message: &str) -> Error {
     Error::InvalidInput(message.into())
@@ -446,6 +447,22 @@ mod tests {
         assert_eq!(result, installed(&root, &token).unwrap());
         assert!(result.contains_key("資料/README.md"));
         assert!(manifest(&root, UpdateVersion(9, 0, 1), &token).is_err());
+        cleanup(root);
+    }
+    #[test]
+    fn update_missing_ssh_helper_is_rejected_even_with_matching_manifests() {
+        let root = fixture();
+        fs::remove_file(root.join("rocket-ssh.exe")).unwrap();
+        let update = root.join("rocket-update.json");
+        let mut json: Value = serde_json::from_slice(&fs::read(&update).unwrap()).unwrap();
+        json["files"].as_array_mut().unwrap().retain(|entry| entry["path"] != "rocket-ssh.exe");
+        fs::write(update, serde_json::to_vec(&json).unwrap()).unwrap();
+        let token = CancellationToken::new();
+        let sums = inventory(&root, &token).unwrap().iter()
+            .map(|(name, sha)| format!("{sha}  {name}\n")).collect::<String>();
+        fs::write(root.join("SHA256SUMS.txt"), sums).unwrap();
+        assert!(manifest(&root, UpdateVersion(9, 0, 0), &token).is_err());
+        assert!(installed(&root, &token).is_err());
         cleanup(root);
     }
     #[test]

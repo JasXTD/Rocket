@@ -28,6 +28,8 @@ pub enum View {
     Compare,
     Map,
     BranchReview,
+    /// The repository's CI runs from its host.
+    Actions,
     FileHistory,
     Tree,
     Conflict,
@@ -58,6 +60,14 @@ pub struct Tab {
     pub search: String,
     /// What the commit search compares `search` with.
     pub search_kind: HistorySearchKind,
+    /// Changed code only: a regular expression (git log -G) instead of exact text.
+    pub search_regex: bool,
+    /// Changed code only: letters must match exactly.
+    pub search_case: bool,
+    /// Changed code only: the file or folder typed in the path field.
+    pub search_path: String,
+    /// The diff find text a Changed code search filled in, so it can clear it again.
+    pub(crate) search_find: Option<String>,
     pub branch_filter: String,
     pub worktree_view: crate::worktree_view::Settings,
     pub history_ref: Option<String>,
@@ -115,6 +125,12 @@ pub struct Tab {
     pub refresh_count: u64,
     /// Issue-tracker link rules for commit messages.
     pub issue_links: crate::issue_links::State,
+    /// CI marks for pushed commits and branches, read from the hosting account.
+    pub ci: crate::ci_checks::State,
+    /// Someone else's repository opened read-only from Rocket's preview cache.
+    pub preview: Option<Box<crate::preview_tab::Preview>>,
+    /// The Actions page: the repository's runs from its host.
+    pub actions: crate::actions::State,
 }
 
 impl Tab {
@@ -132,6 +148,10 @@ impl Tab {
             view: View::Commits,
             search: String::new(),
             search_kind: HistorySearchKind::Text,
+            search_regex: false,
+            search_case: false,
+            search_path: String::new(),
+            search_find: None,
             branch_filter: String::new(),
             worktree_view: Default::default(),
             history_ref: None,
@@ -181,7 +201,14 @@ impl Tab {
             composer: Default::default(),
             refresh_count: 0,
             issue_links: Default::default(),
+            ci: Default::default(),
+            preview: None,
+            actions: Default::default(),
         }
+    }
+    /// A read-only preview tab: no writes, terminal, tools or extensions.
+    pub fn is_preview(&self) -> bool {
+        self.preview.is_some()
     }
     pub fn loading(&self) -> bool {
         self.refresh.is_some() && !self.background_refresh
@@ -190,6 +217,35 @@ impl Tab {
         self.snapshot
             .as_ref()
             .is_some_and(|s| s.info.worktree.is_some() && s.status.is_some())
+    }
+    /// The Changed code options in the search bar, or why the path can't be used.
+    pub(crate) fn content_match(&self) -> std::result::Result<ContentMatch, String> {
+        Ok(ContentMatch {
+            regex: self.search_regex,
+            match_case: self.search_case,
+            path: crate::history::search_path(&self.search_path)?,
+        })
+    }
+    /// Start the commit search over from the bar. An exact Changed code search also
+    /// fills the diff's Find, so the selected commit shows where the text changed.
+    pub(crate) fn restart_search(&mut self) {
+        self.search_state
+            .reset(&self.search, self.search_kind, self.content_match());
+        let exact = self.search_kind == HistorySearchKind::Content
+            && !self.search_regex
+            && !self.search.trim().is_empty();
+        let mine = self
+            .search_find
+            .as_ref()
+            .is_some_and(|filled| *filled == self.diff_tools.query);
+        if exact && (self.diff_tools.query.is_empty() || mine) {
+            let text: String = self.search.chars().take(512).collect();
+            self.diff_tools.query = text.clone();
+            self.search_find = Some(text);
+        } else if !exact && mine {
+            self.diff_tools.query.clear();
+            self.search_find = None;
+        }
     }
     pub fn commits(&self) -> &[Commit] {
         if !self.search.trim().is_empty() {
@@ -349,9 +405,12 @@ pub enum Intent {
     File(crate::file_history::FileIntent),
     Tree(crate::tree::TreeIntent),
     Map(crate::repository_map::MapIntent),
+    Actions(crate::actions::ActionsIntent),
     Compare(crate::compare::CompareIntent),
     BranchReview(crate::branch_review::ReviewIntent),
     Open(PathBuf),
+    /// Open Explore, searching for or showing this text when given.
+    Explore(Option<String>),
     Dialog(DialogKind),
     RunContextCommand { index: usize, context: rocket_git::CommandContext },
     /// Preferences, opened at this page.
@@ -388,6 +447,8 @@ pub enum Intent {
     CommitLink(ObjectId),
     /// Collapse (true) or expand a merge commit in the history list.
     FoldMerge(ObjectId, bool),
+    /// Show a commit's CI checks beside where its mark was clicked.
+    CiChecks(String, Rect),
     /// Collapse or expand every merge commit in the history list.
     FoldAllMerges(bool),
     /// Shift-click: select the listed commits between the anchor and this one.
@@ -415,6 +476,8 @@ pub enum Intent {
     History(Option<String>),
     AllBranches,
     Search,
+    /// Open Commits with a Changed code search for the Files search text in this file.
+    FindInCommits(Vec<u8>),
     StopSearch,
     Execute(u64, Action),
     CloseTab(u64),
@@ -425,6 +488,10 @@ pub enum Intent {
 pub enum DialogKind {
     UndoCommit,
     RepositoryManager,
+    /// The Explore page: search GitHub or paste an address.
+    Explore,
+    /// Keep the preview in tab N as a normal clone.
+    KeepPreview(u64),
     Open,
     NewRepository,
     RepositorySettings,
@@ -709,6 +776,8 @@ pub struct Rocket {
     pub background_reviews: bool,
     pub pending_review: Option<(PathBuf, crate::reviews::Request)>,
     pub commit_link: Option<crate::commit_links::State>,
+    /// CI marks' accounts, the checks popover and the re-run review.
+    pub ci: crate::ci_checks::Shared,
     pub active: usize,
     pub recent: Vec<PathBuf>,
     pub recent_heads: RecentHeads,
@@ -763,6 +832,9 @@ pub struct Rocket {
     pub(crate) guide: Option<crate::guide::Topic>,
     pub show_details: bool,
     pub row_height: f32,
+    /// Persisted: the commit message area's height after its handle was dragged;
+    /// None follows the message's length.
+    pub commit_height: Option<f32>,
     /// Persisted: the theme chosen in Preferences → Appearance.
     pub theme: crate::theme::Settings,
     /// The Custom theme's picture behind the main window's panes.
@@ -797,6 +869,13 @@ pub struct Rocket {
     pub dependencies: crate::dependency_security::State,
     previous_auto_refresh: bool,
     pub state_directory: PathBuf,
+    /// Explore's search, results and limits; kept while previews are open.
+    pub explore: crate::explore::State,
+    pub(crate) preview_cache: Option<rocket_git::PreviewCache>,
+    /// Where previews stop downloading unless lifted for one preview.
+    pub preview_limit: u64,
+    /// The preview tab Keep is running for.
+    pub(crate) keeping_preview: Option<u64>,
     pub state_error: Option<String>,
     state_store: Option<Arc<Store>>,
     saved: SavedState,
@@ -893,6 +972,7 @@ impl Rocket {
             guide: None,
             show_details: true,
             row_height: 33.0,
+            commit_height: None,
             theme: Default::default(),
             backdrop: Default::default(),
             look: None,
@@ -912,6 +992,7 @@ impl Rocket {
             background_reviews: false,
             pending_review: None,
             commit_link: None,
+            ci: Default::default(),
             context: ctx.clone(),
             auto_refresh: true,
             secret_protection: true,
@@ -920,6 +1001,10 @@ impl Rocket {
             dependencies: Default::default(),
             previous_auto_refresh: true,
             state_directory,
+            explore: Default::default(),
+            preview_cache: None,
+            preview_limit: rocket_git::PREVIEW_LIMIT,
+            keeping_preview: None,
             state_error: None,
             state_store: None,
             saved: SavedState::default(),
@@ -929,10 +1014,25 @@ impl Rocket {
             save_last_change: Instant::now(),
         };
         app.start_backend();
+        app.remove_stale_previews();
         // Font discovery stays complete before the first frame, while Git and
         // saved-state discovery can run alongside this cold-start disk work.
         style::install(ctx);
         app
+    }
+    /// Previews a crashed Rocket left behind: delete those no running Rocket holds.
+    /// Only looks when the folder exists, on a worker.
+    fn remove_stale_previews(&self) {
+        let root = self.preview_root();
+        if root.is_dir() {
+            let _ = std::thread::Builder::new()
+                .name("rocket-preview-cleanup".into())
+                .spawn(move || {
+                    if let Ok(cache) = rocket_git::PreviewCache::open(root) {
+                        cache.remove_stale();
+                    }
+                });
+        }
     }
     pub fn start_backend(&mut self) {
         if self.startup.is_some() {
@@ -965,13 +1065,13 @@ impl Rocket {
     pub fn can_write(&self) -> bool {
         self.write.is_none()
             && !self.quitting
-            && self.tab().is_some_and(|t| t.worktree() && !t.loading())
+            && self.tab().is_some_and(|t| t.worktree() && !t.loading() && !t.is_preview())
     }
     /// Metadata operations such as tags and linked worktrees also support bare repositories.
     /// Keep working-file actions on can_write(), including staging, commits and checkout.
     pub fn can_write_repository(&self) -> bool {
         self.write.is_none() && !self.quitting
-            && self.tab().is_some_and(|t| t.snapshot.is_some() && !t.loading())
+            && self.tab().is_some_and(|t| t.snapshot.is_some() && !t.loading() && !t.is_preview())
     }
     pub fn busy(&self) -> bool {
         self.working() || self.state_pending() || self.forge.drafts.saving()
@@ -993,6 +1093,7 @@ impl Rocket {
             || (self.quitting && self.updates.running())
             || (self.quitting && self.crash_reports.exporting())
             || (self.quitting && self.spelling.waiting())
+            || (self.quitting && self.manager.status.batch.is_some())
             || self.dialog.as_ref().is_some_and(|d| {
                 d.identity_task.is_some()
                     || d.undo.as_ref().is_some_and(|s| s.task.is_some())
@@ -1138,6 +1239,9 @@ impl Rocket {
         let Some(tab) = self.tabs.iter_mut().find(|t| t.id == id) else {
             return;
         };
+        if tab.preview.as_ref().is_some_and(|p| !p.ready()) {
+            return;
+        }
         if tab.refresh.is_some() {
             if !background && tab.background_refresh {
                 tab.refresh = None; // Explicit refresh/history changes supersede automatic reads.
@@ -1230,7 +1334,7 @@ impl Rocket {
         tab.diff_tools.cancel();
         tab.patch = None;
         tab.patch_error = None;
-        if matches!(tab.view, View::Summary | View::FileHistory | View::Conflict | View::Tree | View::Map) {
+        if matches!(tab.view, View::Summary | View::FileHistory | View::Conflict | View::Tree | View::Map | View::Actions) {
             return;
         }
         if tab.view == View::Changes {
@@ -1490,7 +1594,7 @@ impl Rocket {
             return;
         }
         let tab = self.tab();
-        let owner = if matches!(kind, DialogKind::RepositoryManager) { None } else { tab.map(|t| t.id) };
+        let owner = if matches!(kind, DialogKind::RepositoryManager | DialogKind::Explore) { None } else { tab.map(|t| t.id) };
         let remotes = tab
             .and_then(|t| t.snapshot.as_ref())
             .map_or_else(Vec::new, |s| {
@@ -1630,6 +1734,16 @@ impl Rocket {
         if self.quitting {
             return;
         }
+        if self.tab().is_some_and(Tab::is_preview) && crate::preview_tab::refused(&intent) {
+            self.notice = Some("This is a read-only preview. Keep it to change it.".into());
+            return;
+        }
+        // Searching changed code reads every version of every file, which a preview
+        // doesn't have; Git would otherwise fail on the first missing one.
+        if matches!(intent, Intent::FindInCommits(_)) && self.tab().is_some_and(Tab::is_preview) {
+            self.notice = Some("Changed code search needs every file version. Keep this preview to search it.".into());
+            return;
+        }
         match intent {
             Intent::GuidedSetup => {
                 self.close_browsing_page();
@@ -1656,6 +1770,7 @@ impl Rocket {
             Intent::File(intent) => self.file_intent(intent),
             Intent::Tree(intent) => self.tree_intent(intent),
             Intent::Map(intent) => self.map_intent(intent),
+            Intent::Actions(intent) => self.actions_intent(intent),
             Intent::Compare(intent) => self.compare_intent(intent),
             Intent::BranchReview(intent) => self.branch_review_intent(intent),
             Intent::Stash(intent) => self.stash_intent(intent),
@@ -1689,6 +1804,11 @@ impl Rocket {
                 }
             }
             Intent::FoldMerge(id, collapse) => self.fold_merges(Some(id), collapse),
+            Intent::CiChecks(commit, anchor) => {
+                if let Some(id) = self.tab().map(|t| t.id) {
+                    self.open_ci_checks(id, commit, anchor);
+                }
+            }
             Intent::FoldAllMerges(collapse) => self.fold_merges(None, collapse),
             Intent::ReopenTab => self.reopen_closed_tab(),
             Intent::RunContextCommand { index, context } => {
@@ -1697,6 +1817,7 @@ impl Rocket {
                     if let Some(d) = &mut self.dialog { d.command_context = Some(context); }
                 }
             }
+            Intent::Explore(query) => self.open_explore(query),
             Intent::Dialog(kind) => self.show_dialog(kind),
             Intent::Preferences(page) => self.show_preferences(page),
             Intent::Extension(id) => self.open_extension(id),
@@ -1880,7 +2001,7 @@ impl Rocket {
             }
             Intent::Search => {
                 if let Some(tab) = self.tabs.get_mut(self.active) {
-                    tab.search_state.reset(&tab.search, tab.search_kind);
+                    tab.restart_search();
                     tab.diff = None;
                     tab.patch = None;
                     tab.selected_commit = None;
@@ -1891,6 +2012,21 @@ impl Rocket {
                         self.current_diff(id);
                     }
                 }
+            }
+            Intent::FindInCommits(path) => {
+                let Some(tab) = self.tabs.get_mut(self.active) else { return };
+                let search = &tab.tree.search;
+                let (text, regex, case) = match &search.ran {
+                    Some((query, _)) => (query.text.clone(), query.regex, query.match_case),
+                    None => (search.query.clone(), search.regex, search.match_case),
+                };
+                tab.search = text;
+                tab.search_kind = HistorySearchKind::Content;
+                tab.search_regex = regex;
+                tab.search_case = case;
+                tab.search_path = String::from_utf8_lossy(&path).into_owned();
+                self.dispatch(Intent::View(View::Commits));
+                self.dispatch(Intent::Search);
             }
             Intent::StopSearch => {
                 if let Some(tab) = self.tabs.get_mut(self.active) {
@@ -1958,7 +2094,9 @@ impl Rocket {
             self.closing_terminals.push(terminal);
         }
         // Closing a repository retains its draft for the next open.
-        if let Some(tab) = self.tabs.iter().find(|t| t.id == id) {
+        if let Some(tab) = self.tabs.iter().find(|t| t.id == id)
+            && !tab.is_preview()
+        {
             if tab.draft_loaded {
                 self.saved.worktree_views.insert(tab.path.clone(), crate::worktree_view::Settings::capture(tab));
                 // An unopened or failed tab has not restored its saved draft yet.
@@ -1975,6 +2113,13 @@ impl Rocket {
             }
         }
         let active_id = self.tab().map(|t| t.id);
+        if let Some(preview) = self.tabs.iter_mut().find(|t| t.id == id).and_then(|t| t.preview.take()) {
+            if self.keeping_preview == Some(id) {
+                self.keeping_preview = None;
+            }
+            self.note_discard(&preview);
+            self.release_preview(preview);
+        }
         self.tabs.retain(|t| t.id != id);
         self.active = self
             .tabs
@@ -2136,9 +2281,11 @@ impl Rocket {
             || self.integrations.running()
             || self.integrations.exit_pending()
             || self.forge.running()
+            || self.ci.rerun.as_ref().is_some_and(|r| r.sending())
             || self.forge.pull.has_draft()
             || self.ssh.running()
             || self.write.is_some()
+            || self.manager.status.batch.is_some()
             || self
                 .tabs
                 .iter()
@@ -2259,7 +2406,11 @@ impl Rocket {
         self.poll_submodule_read();
         self.poll_lfs_read();
         self.poll_github();
+        self.poll_explore(ctx);
+        self.poll_previews(ctx);
         self.poll_forge();
+        self.poll_ci(ctx);
+        self.poll_actions(ctx);
         self.poll_hosting_drafts();
         self.poll_ssh();
         self.poll_composer();
@@ -2325,6 +2476,7 @@ impl Rocket {
                             self.dependencies.before_push = p.dependency_before_push;
                             self.previous_auto_refresh = p.auto_refresh;
                             self.row_height = p.row_height;
+                            self.commit_height = p.commit_height;
                             self.theme = p.theme.clone();
                             self.sidebar_labels = p.sidebar_labels;
                             self.repository_list = p.repository_list;
@@ -2430,7 +2582,7 @@ impl Rocket {
                                 .unwrap_or_default();
                             tab.draft_loaded = true;
                         }
-                        if !self.recent.contains(&tab.path) {
+                        if !tab.is_preview() && !self.recent.contains(&tab.path) {
                             self.recent.insert(0, tab.path.clone());
                             self.recent.truncate(12);
                         }
@@ -2482,7 +2634,7 @@ impl Rocket {
                         if !history_retained {
                             tab.more = None; // A late page belongs to the old set of tips.
                             if !tab.search.trim().is_empty() {
-                                tab.search_state.reset(&tab.search, tab.search_kind);
+                                tab.restart_search();
                                 tab.selected_commit = None;
                             }
                         } else if !tab.search.trim().is_empty() {
@@ -2630,8 +2782,20 @@ impl Rocket {
                 }
                 match progress {
                     CloneProgress::Phase(phase) => {
-                        write.progress = format!("{phase:?}…");
+                        write.progress = match phase {
+                            ClonePhase::Preparing => "Preparing…",
+                            ClonePhase::Cloning => "Cloning…",
+                            ClonePhase::Verifying => "Verifying…",
+                            ClonePhase::Publishing => "Publishing…",
+                            ClonePhase::Opening => "Opening…",
+                            ClonePhase::DownloadingFiles => "Downloading files…",
+                        }
+                        .into();
                         write.fraction = None;
+                    }
+                    CloneProgress::Files { done, total } => {
+                        write.progress = format!("Downloading files: {} of {}", crate::explore::group(done), crate::explore::group(total));
+                        write.fraction = (total > 0).then(|| (done as f32 / total as f32).clamp(0.0, 1.0));
                     }
                     CloneProgress::Transfer(progress) => transfer(write, progress),
                     CloneProgress::Checkout { current, total } => {
@@ -2648,6 +2812,7 @@ impl Rocket {
         }
         if let Some(result) = self.write.as_mut().and_then(|w| w.task.try_finish()) {
             let write = self.write.take().expect("completed write");
+            let errored = result.is_err();
             let mut outcome = result.unwrap_or_else(|error| {
                 let mut raw = String::new();
                 if let Error::Git { stdout, stderr, .. } = &error {
@@ -2730,6 +2895,14 @@ impl Rocket {
                     }
                 }
             }
+            if write.label == "keep-preview" {
+                // A Keep that errored says why; its summary only says that it failed.
+                let reason = match outcome.details.first() {
+                    Some(detail) if errored => detail.clone(),
+                    _ => outcome.summary.clone(),
+                };
+                self.finish_keep(outcome.command_succeeded, &reason);
+            }
             if !self.quitting
                 && let Some(path) = outcome.open_repository.clone()
             {
@@ -2777,6 +2950,7 @@ impl Rocket {
             ctx.request_repaint_after(Duration::from_millis(50));
         }
         if self.quitting && !self.busy() {
+            self.release_all_previews();
             ctx.send_viewport_cmd(ViewportCommand::Close);
         }
     }
@@ -2894,6 +3068,7 @@ impl Rocket {
             theme: self.theme.clone(),
             general: self.general.clone(),
             shell: self.terminal_shell.saved.clone(),
+            commit_height: self.commit_height,
         };
         let mut changed = self.saved.preferences != preferences
             || self.saved.recent != self.recent
@@ -2913,7 +3088,7 @@ impl Rocket {
         self.saved.preferences = preferences;
         self.saved.recent = self.recent.clone();
         for tab in &self.tabs {
-            if !tab.draft_loaded {
+            if !tab.draft_loaded || tab.is_preview() {
                 continue;
             }
             let view = crate::worktree_view::Settings::capture(tab);
@@ -3105,13 +3280,15 @@ impl eframe::App for Rocket {
         }
         self.dialog_ui(&ctx);
         self.extension_review_dialog(&ctx);
+        // Crash reports open their Browse picker, which must draw above them.
+        self.crash_reports_ui(&ctx);
         // A Browse picker sits above Preferences; the tool dialog shows only alone.
         self.picker_dialog(&ctx);
         self.tool_launch_dialog(&ctx);
         self.guide_ui(&ctx);
         self.commit_link_ui(&ctx);
+        self.ci_ui(&ctx);
         self.app_updates_ui(&ctx);
-        self.crash_reports_ui(&ctx);
         self.dependency_push_review_ui(&ctx);
         if let Some((path, _)) = &self.pending_review
             && let Some(index) = self.tabs.iter().position(|t| &t.path == path && t.snapshot.is_some()) {

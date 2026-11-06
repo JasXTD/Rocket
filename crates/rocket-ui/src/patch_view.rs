@@ -28,14 +28,20 @@ pub(crate) fn patch_view(
             .and_then(|p| p.files.get(tab.patch_file))
             .is_some_and(|f| f.image.is_none());
     let writable = writable && !reloading;
+    let downloads = crate::preview_tab::downloads(tab);
     if tab.diff.is_some() && !reloading {
         let mut stop = false;
-        crate::pages::loading_with(ui, "Loading diff…", 34.0, |ui| {
-            ui.add_space(6.0);
-            let r = ui.button("Stop");
-            widgets.insert("diff-cancel".into(), (&r).into());
-            stop = r.clicked();
-        });
+        // A preview first downloads the file versions this diff needs.
+        if let Some(clicked) = crate::preview_tab::downloading(ui, downloads.as_ref(), "Downloading the changed files", "diff-cancel", widgets) {
+            stop = clicked;
+        } else {
+            crate::pages::loading_with(ui, "Loading diff…", 34.0, |ui| {
+                ui.add_space(6.0);
+                let r = ui.button("Stop");
+                widgets.insert("diff-cancel".into(), (&r).into());
+                stop = r.clicked();
+            });
+        }
         if stop {
             tab.diff = None;
             tab.patch_error = Some("Diff loading cancelled. Refresh or select a file to retry.".into());
@@ -43,6 +49,10 @@ pub(crate) fn patch_view(
         return None;
     }
     if let Some(error) = &tab.patch_error {
+        // Refresh reads the selected diff again, downloading what it needs.
+        if let Some(retry) = crate::preview_tab::not_downloaded(ui, downloads.as_ref(), "diff-retry", widgets) {
+            return retry.then_some(Intent::Refresh);
+        }
         placeholder.show(ui, |ui| ui.colored_label(MUTED(), error));
         return None;
     }

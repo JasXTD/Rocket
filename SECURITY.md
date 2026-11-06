@@ -6,6 +6,35 @@ see the reports for the first pass in `work/security-remediation-20261023/REPORT
 and the follow-up in `work/security-remediation-20261024-v2/REPORT.md` for tested
 artifacts and limits.
 
+## Direct SSH and Preview audit fixes (unreleased, 2026-11-06)
+
+Direct SSH accepts exactly one fixed Git service and one shell-quoted repository
+path; only Git's escaped apostrophe/exclamation continuations are permitted
+outside quoted spans. LFS requests additionally require exactly `upload` or
+`download`; simple unquoted LFS paths use a literal-character allowlist. Controls,
+option-like/empty paths, extra arguments, trailing shell syntax and interactive
+shell requests are refused. The no-connection `-G` configuration probe remains
+available. Host/key checks, disabled forwarding and strict host trust remain active.
+
+Profile binding refuses effective `remote.*.uploadpack`, `remote.*.receivepack`
+and `remote.*.vcs` overrides. The helper repeats this check immediately before
+launching OpenSSH, including effective global/system/includes/worktree config.
+Whole-command validation remains the independent boundary against a config
+change after review or an invocation-supplied service override. This closes the
+audited path to the remote account's shell; it does not authenticate unsigned
+Rocket binaries or make arbitrary user-replaced SSH/Git programs trusted.
+
+Preview enumeration now retains at most 100,000 missing IDs, accepts at most
+32 MiB of streamed object output (or the caller's smaller cap), and bounds each
+partial SHA-1/SHA-256 record to 65 bytes. Oversized, invalid or truncated records
+fail closed, and the runner stops/reaps Git on refusal. Open, on-demand reads and
+Keep use the same limits, independently of the optional preview disk limit.
+Oversized graphs can be cloned normally instead. No oversized enumeration is
+passed to fetch or published as a kept repository.
+
+Protocol references: [Git shell quoting](https://github.com/git/git/blob/v2.56.0/quote.c)
+and [Git LFS SSH request construction](https://github.com/git-lfs/git-lfs/blob/main/ssh/ssh.go).
+
 ## Local crash reports (0.92.0)
 
 Desktop, operational CLI commands and the MCP host install a process-local Rust

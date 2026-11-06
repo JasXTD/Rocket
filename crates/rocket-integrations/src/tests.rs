@@ -372,6 +372,7 @@ fn bundled_jira_lists_before_it_is_on_disk_and_lands_on_its_own_folder() {
     assert_eq!(list.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(), ["jira", "playground"]);
     assert_eq!(list[1].name, "PlayGround");
     assert!(list[0].network && list[0].writes && list[0].repository);
+    assert!(list[0].settings.iter().any(|s| s.id == "cloud" && s.default.is_empty()), "a classic token needs no cloud ID");
     assert!(list[0].verify().is_err(), "not on disk yet");
     let landed = install_package(&root, &list[0], None).unwrap();
     assert_eq!(landed.directory, root.join("jira"));
@@ -895,6 +896,36 @@ mod scripts {
         assert!(reads.is_empty());
         assert!(shows(&view(&none), "main has no issue key in its name."));
         assert!(shows(&view(&none), "No issues match."));
+    }
+
+    /// A token with scopes only works through Atlassian's gateway, so every read and write,
+    /// and the check before a write, goes under the cloud ID.
+    #[test]
+    fn jira_scoped_tokens_go_through_the_gateway_under_the_cloud_id() {
+        const GATEWAY: &str = "/ex/jira/1a2b3c4d-1111-2222-3333-444455556666";
+        let gateway = |path: &str| jira_service(path.strip_prefix(GATEWAY).unwrap_or_else(|| panic!("not through the gateway: {path}")));
+        let scoped = |event: &str, state: &Value| {
+            let mut c = context(event, state);
+            c["settings"]["cloud"] = json!(" 1A2B3C4D-1111-2222-3333-444455556666 ");
+            c
+        };
+        let (first, reads) = drive(JIRA, &scoped("open", &json!({})), &gateway);
+        assert!(reads[0].starts_with(&format!("{GATEWAY}/rest/api/3/search/jql?")), "{reads:?}");
+        let mut click = scoped("issues", &first["state"]);
+        click["row"] = json!("ROCKET-7");
+        let (issue, reads) = drive(JIRA, &click, &gateway);
+        assert_eq!(reads.len(), 4, "the list and three reads of the issue: {reads:?}");
+        let mut transition = scoped("transition_issue", &issue["state"]);
+        transition["values"] = json!({"transition_ROCKET-7":"In review"});
+        let request = write(&drive(JIRA, &transition, &gateway).0);
+        assert_eq!(request.path, format!("{GATEWAY}/rest/api/3/issue/ROCKET-7/transitions"));
+        assert_eq!(request.check.as_ref().unwrap().path, format!("{GATEWAY}/rest/api/3/issue/ROCKET-7?fields=updated"));
+
+        let mut wrong = context("open", &json!({}));
+        wrong["settings"]["cloud"] = json!("yoursite.atlassian.net");
+        let (configure, reads) = drive(JIRA, &wrong, &gateway);
+        assert!(reads.is_empty(), "nothing is sent to a made-up address: {reads:?}");
+        assert!(shows(&view(&configure), "Check the Cloud ID"));
     }
 
     #[test]

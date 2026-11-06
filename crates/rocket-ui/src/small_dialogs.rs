@@ -1520,6 +1520,9 @@ impl Rocket {
         if let Some(write) = &self.write {
             rows.push((AMBER(), Icon::Stop, format!("{} is still running. Exiting stops it first.", write.title)));
         }
+        if let Some(batch) = &self.manager.status.batch {
+            rows.push((AMBER(), Icon::Stop, format!("{} is still running. Exiting stops it first.", batch.kind.title())));
+        }
         if self.external.running() {
             rows.push((AMBER(), Icon::External, "The running external tool will be stopped.".into()));
         }

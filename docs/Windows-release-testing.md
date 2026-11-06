@@ -25,7 +25,7 @@ Use the package runner with an existing reviewed bundle directory.
 In PowerShell 7:
 
     $result = Join-Path ([IO.Path]::GetTempPath()) ('Rocket-package-' + [guid]::NewGuid().ToString('N'))
-    .\tools\Test-WindowsPackage.ps1 -Bundle .\tools\releases\0.89.6 -OutputDirectory $result
+    .\tools\Test-WindowsPackage.ps1 -Bundle .\tools\releases\0.92.0 -OutputDirectory $result
 
 The output directory must be new and outside any Git checkout. This matters:
 Rocket correctly refuses to initialize a new repository inside another one.

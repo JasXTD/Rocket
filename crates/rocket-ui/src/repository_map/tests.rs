@@ -1,5 +1,6 @@
 use super::*;
 
+/// Folders only: the folder tree shows no file cards (files count towards their folder).
 fn data(count: usize) -> RepositoryMap {
     RepositoryMap {
         nodes: (0..count)
@@ -7,13 +8,14 @@ fn data(count: usize) -> RepositoryMap {
                 key: i.to_string().into_bytes(),
                 label: format!("file {i}").into_bytes(),
                 detail: Vec::new(),
-                kind: MapNodeKind::File,
+                kind: MapNodeKind::Directory,
                 path: Some(format!("src/file-{i}").into_bytes()),
                 commit: None,
                 count: 0,
                 files: 1,
                 evidence: Vec::new(),
                 refs: Vec::new(),
+                time: 0,
             })
             .collect(),
         ..Default::default()
@@ -173,6 +175,8 @@ fn unicode_search_keeps_direct_match_ahead_of_bounded_neighbor_context() {
 #[test]
 fn hidden_nodes_are_not_exposed_as_clickable_controls_at_compact_sizes() {
     let ctx = Context::default();
+    // Card titles use the semibold face the app installs.
+    crate::style::install(&ctx);
     let mut s = MapPage {
         data: Some(Arc::new(data(500))),
         ..Default::default()
@@ -206,8 +210,10 @@ fn hidden_nodes_are_not_exposed_as_clickable_controls_at_compact_sizes() {
 }
 
 #[test]
-fn explicit_fit_contains_every_node_and_long_titles_use_two_rows() {
+fn explicit_fit_contains_every_node_and_long_titles_stay_on_one_row() {
     let ctx = Context::default();
+    // Card titles use the semibold face the app installs.
+    crate::style::install(&ctx);
     let mut s = MapPage {
         data: Some(Arc::new(data(500))),
         ..Default::default()
@@ -222,7 +228,7 @@ fn explicit_fit_contains_every_node_and_long_titles_use_two_rows() {
     for &i in &s.visible {
         let node = Rect::from_min_size(
             rect.min + s.pan + s.positions[i].to_vec2() * s.zoom,
-            vec2(214., 66.) * s.zoom,
+            drawing::CARD * s.zoom,
         );
         assert!(rect.contains_rect(node));
     }
@@ -230,7 +236,7 @@ fn explicit_fit_contains_every_node_and_long_titles_use_two_rows() {
         let galley = ui
             .painter()
             .layout_job(drawing::title_job("界🚀".repeat(4000), 1., 196.));
-        assert!(galley.rows.len() <= 2);
+        assert_eq!(galley.rows.len(), 1);
     });
     output.textures_delta.clear();
     s.finish(Ok(data(1)));
@@ -399,4 +405,205 @@ fn search_keeps_keyboard_focus_when_loaded_history_adds_paging_controls() {
         tab.map.page().query.contains('x'),
         "Search lost focus when the paging row appeared"
     );
+}
+
+/// History whose commit `i` has `parents[i]`, first parent first.
+fn history(parents: &[&[usize]]) -> RepositoryMap {
+    let mut d = data(parents.len());
+    d.kind = MapKind::History;
+    for (i, n) in d.nodes.iter_mut().enumerate() {
+        n.kind = MapNodeKind::Commit;
+        n.label = format!("commit {i}").into_bytes();
+        n.count = parents[i].len();
+    }
+    for (child, list) in parents.iter().enumerate() {
+        for &parent in list.iter() {
+            d.links.push(MapLink {
+                from: parent,
+                to: child,
+                kind: MapLinkKind::Parent,
+                weight: 1,
+                evidence: vec![],
+            });
+        }
+    }
+    d
+}
+
+#[test]
+fn branches_and_merges_fold_plain_commits_and_list_merged_and_unmerged_work() {
+    // 0 merges 3 and 4 (which started at 2); 2 is tagged; topic is one commit ahead of 5.
+    let mut d = history(&[&[1, 3], &[2], &[5], &[4], &[2], &[], &[5]]);
+    d.nodes[2].refs = vec![b"refs/tags/v1".to_vec()];
+    d.nodes[6].refs = vec![b"refs/heads/topic".to_vec()];
+    let t = lists::build(&d);
+    let lines: Vec<(bool, Vec<usize>)> = t
+        .lines
+        .iter()
+        .map(|l| match l {
+            lists::Line::Commit { node, merged } => {
+                (true, std::iter::once(*node).chain(merged.iter().copied()).collect())
+            }
+            lists::Line::Run { nodes } => (false, nodes.clone()),
+        })
+        .collect();
+    assert_eq!(
+        lines,
+        [(true, vec![0, 3, 4]), (false, vec![1]), (true, vec![2]), (true, vec![5])]
+    );
+    assert_eq!(t.tips, [(6, vec![6])]);
+}
+
+#[test]
+fn merge_lines_name_the_branch_and_its_authors() {
+    assert_eq!(lists::merge_name("Merge branch 'feature/x' into main"), "feature/x");
+    assert_eq!(lists::merge_name("Merge pull request #12 from user/fix-thing"), "user/fix-thing");
+    assert_eq!(lists::merge_name("Merge remote-tracking branch 'origin/dev'"), "origin/dev");
+    assert_eq!(lists::merge_name("Merge topic"), "topic");
+    assert_eq!(lists::merge_name("Fix the build"), "Fix the build");
+    let mut d = history(&[&[], &[], &[], &[]]);
+    for (i, name) in ["Ada", "Ben", "Ada", "Cy"].iter().enumerate() {
+        d.nodes[i].detail = name.as_bytes().to_vec();
+    }
+    assert_eq!(lists::authors(&d, &[0, 2]), "Ada");
+    assert_eq!(lists::authors(&d, &[0, 1]), "Ada and Ben");
+    assert_eq!(lists::authors(&d, &[0, 1, 2, 3]), "Ada, Ben and 1 more");
+}
+
+#[test]
+fn people_cells_keep_files_inside_their_folder() {
+    use details::in_area;
+    assert!(in_area(b"docs/wiki/a.md", b"docs"));
+    assert!(!in_area(b"docs2/a.md", b"docs"));
+    assert!(!in_area(b"docs", b"docs"));
+    assert!(in_area(b"README.md", b"/"));
+    assert!(!in_area(b"src/main.rs", b"/"));
+    assert!(in_area(b"crates/rocket-ui/src/app.rs", b"crates/rocket-ui"));
+}
+
+#[test]
+fn folder_tree_counts_files_in_their_folder_and_opens_a_path() {
+    let mut d = data(5);
+    let entries = [
+        ("crates", MapNodeKind::Directory),
+        ("crates/a", MapNodeKind::Directory),
+        ("crates/a/x.rs", MapNodeKind::File),
+        ("crates/b.rs", MapNodeKind::File),
+        ("README.md", MapNodeKind::File),
+    ];
+    for (i, (path, kind)) in entries.into_iter().enumerate() {
+        d.nodes[i].kind = kind;
+        d.nodes[i].key = path.as_bytes().to_vec();
+        d.nodes[i].path = Some(path.as_bytes().to_vec());
+        d.nodes[i].label = path.rsplit('/').next().unwrap().as_bytes().to_vec();
+    }
+    d.links = [(0, 1), (1, 2), (0, 3)]
+        .into_iter()
+        .map(|(from, to)| MapLink {
+            from,
+            to,
+            kind: MapLinkKind::Contains,
+            weight: 1,
+            evidence: vec![],
+        })
+        .collect();
+    let mut s = MapPage {
+        data: Some(Arc::new(d)),
+        selected: Some(2),
+        ..Default::default()
+    };
+    s.rebuild();
+    // Files get no card of their own: a selected file selects its folder, and each
+    // folder's own files are summed up beside it.
+    assert_eq!(s.visible, [0, 1]);
+    assert_eq!(s.selected, Some(1));
+    let mut groups: Vec<(Option<usize>, usize, &str)> =
+        s.file_groups.iter().map(|g| (g.folder, g.files, g.about.as_str())).collect();
+    groups.sort();
+    // A few files are named on their card.
+    assert_eq!(groups, [(None, 1, "README.md"), (Some(0), 1, "b.rs"), (Some(1), 1, "x.rs")]);
+    s.toggle_group(0);
+    s.rebuild();
+    assert_eq!(s.visible, [0]);
+    assert_eq!(s.selected, Some(0));
+    let groups: Vec<(Option<usize>, usize)> = s.file_groups.iter().map(|g| (g.folder, g.files)).collect();
+    assert_eq!(groups, [(None, 1)]);
+    // Show folders / a changed path opens every folder on the way.
+    s.open_path(b"crates/a/x.rs");
+    s.rebuild();
+    assert!(s.collapsed.is_empty());
+    assert_eq!(s.selected, Some(1));
+}
+
+#[test]
+fn a_narrow_toolbar_wraps_inside_the_window_and_leaves_room_for_the_map() {
+    // History with every chip showing: the toolbar has to take a second row. It once
+    // stacked its revision field over the map, and later ran off the right edge.
+    let ctx = Context::default();
+    crate::style::install(&ctx);
+    let mut tab = Tab::new(std::path::PathBuf::from("synthetic"), None);
+    tab.map.kind = MapKind::History;
+    let p = tab.map.page_mut();
+    p.data = Some(Arc::new(history(&[&[1], &[2], &[]])));
+    p.condensed = false;
+    p.all_branches = true;
+    p.query = "commit".into();
+    let screen = Rect::from_min_size(Pos2::ZERO, vec2(560., 480.));
+    let mut controls = HashMap::new();
+    for _ in 0..3 {
+        controls.clear();
+        let mut output = ctx.run_ui(
+            RawInput {
+                screen_rect: Some(screen),
+                ..Default::default()
+            },
+            |ui| view(ui, &mut tab, &mut Vec::new(), &mut controls),
+        );
+        output.textures_delta.clear();
+    }
+    assert!(controls.contains_key("map-canvas"), "the map keeps its body");
+    let mut rects: Vec<_> = controls.iter().map(|(k, c)| (k.clone(), c.rect)).collect();
+    rects.sort_by(|a, b| a.1.top().total_cmp(&b.1.top()));
+    assert!(controls.contains_key("map-revision-pick"), "{rects:?}");
+    for (id, c) in &controls {
+        assert!(c.rect.right() <= screen.right() + 1., "{id} runs off the window: {:?}", c.rect);
+    }
+    let search = controls["map-search"].rect;
+    let revision = controls["map-revision-pick"].rect;
+    assert!((revision.top() - search.top()).abs() < 2., "the revision stays on the first row");
+    assert!(controls["map-neighbors"].rect.top() > search.bottom(), "the last chip wraps to a new row");
+    // One height per row: the search and the picker are a control high, and the
+    // segmented options are 22 points, so their framed group is one too.
+    assert!((revision.height() - search.height()).abs() < 1., "{revision:?} {search:?}");
+    let option = controls["map-mode-commits"].rect;
+    assert!((option.height() - 22.).abs() < 0.6, "{option:?}");
+    assert!((option.height() + 6. - search.height()).abs() < 0.6, "{option:?} {search:?}");
+}
+
+#[test]
+fn a_wide_toolbar_keeps_one_centre_line() {
+    // With room for one row, every control sits on the search box's centre line. A
+    // segmented group one row taller than its options once pushed it 3 points down.
+    let ctx = Context::default();
+    crate::style::install(&ctx);
+    let mut tab = Tab::new(std::path::PathBuf::from("synthetic"), None);
+    tab.map.kind = MapKind::History;
+    let p = tab.map.page_mut();
+    p.data = Some(Arc::new(history(&[&[1], &[2], &[]])));
+    p.condensed = false;
+    let screen = Rect::from_min_size(Pos2::ZERO, vec2(1480., 900.));
+    let mut controls = HashMap::new();
+    for _ in 0..3 {
+        controls.clear();
+        let mut output = ctx.run_ui(
+            RawInput { screen_rect: Some(screen), ..Default::default() },
+            |ui| view(ui, &mut tab, &mut Vec::new(), &mut controls),
+        );
+        output.textures_delta.clear();
+    }
+    let search = controls["map-search"].rect;
+    for id in ["map-mode-topology", "map-mode-commits", "map-all-branches", "map-neighbors", "map-revision-pick"] {
+        let r = controls[id].rect;
+        assert!((r.center().y - search.center().y).abs() < 1., "{id} {r:?} is off the line of {search:?}");
+    }
 }

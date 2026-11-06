@@ -1,6 +1,6 @@
-//! Read-only views of signatures, the reflog and file history. Nothing here takes
-//! repository write ownership. Pages are the first bounded window: the backend's
-//! continuation cursors stay in-process, so JSON reports whether more exists.
+//! Read-only views of signatures, the reflog, file history and code search. Nothing
+//! here takes repository write ownership. Pages are the first bounded window: the
+//! backend's continuation cursors stay in-process, so JSON reports whether more exists.
 use crate::{
     args::Command,
     output::{self as out, Outcome, Problem},
@@ -61,16 +61,42 @@ pub fn execute(
                     "previous_path":e.previous_path.as_ref().map(|p|out::bytes(p.as_bytes())),"deleted":e.deleted})).collect::<Vec<_>>(),
                 "has_more":page.next.is_some(),"limited":page.limited})))
         }
-        Command::Search { query, kind, all, revision } => {
+        Command::Search { query, kind, all, revision, regex, match_case, path } => {
             let start = match (all, revision) {
                 (true, _) => HistoryStart::AllBranches,
                 (false, Some(revision)) => HistoryStart::Revision(revision.clone()),
                 (false, None) => HistoryStart::Head,
             };
-            let page = repo.search_history(HistorySearchStart::Query { start, query: query.clone(), kind: *kind }, cancel)?;
+            let content = ContentMatch { regex: *regex, match_case: *match_case, path: path.as_deref().map(repo_path).transpose()? };
+            let page = repo.search_history(HistorySearchStart::Query { start, query: query.clone(), kind: *kind, content: content.clone() }, cancel)?;
             // A next cursor means the bounded window ended before the history did.
             Ok(Outcome::success(json!({"kind":match kind {HistorySearchKind::Text=>"text",HistorySearchKind::Path=>"path",HistorySearchKind::Content=>"content"},
-                "commits":page.commits.iter().map(out::commit).collect::<Vec<_>>(),"scanned":page.scanned,"complete":page.next.is_none()})))
+                "commits":page.commits.iter().map(out::commit).collect::<Vec<_>>(),"scanned":page.scanned,"complete":page.next.is_none(),
+                // How a content search matched; null for text and path searches.
+                "content":(*kind == HistorySearchKind::Content).then(|| json!({"regex":content.regex,"match_case":content.match_case,
+                    "path":content.path.as_ref().map(|p|out::bytes(p.as_bytes()))}))})))
+        }
+        Command::Grep { pattern, revision, regex, match_case, path } => {
+            let source = match revision {
+                Some(revision) => FileSearchSource::Commit(repo.resolve_commit(revision, cancel)?),
+                None => FileSearchSource::Checkout,
+            };
+            let query = FileSearchQuery { text: pattern.clone(), regex: *regex, match_case: *match_case,
+                path: path.as_deref().map(repo_path).transpose()?, source };
+            let mut files = Vec::new();
+            let summary = repo.search_files(&query, cancel, &mut |file| files.push(file))?;
+            let ranges = |r: &[std::ops::Range<usize>]| r.iter().map(|r| [r.start, r.end]).collect::<Vec<_>>();
+            Ok(Outcome::success(json!({
+                "revision":match &query.source {FileSearchSource::Commit(id)=>Some(id.as_str()),FileSearchSource::Checkout=>None},
+                "regex":query.regex,"match_case":query.match_case,"path":query.path.as_ref().map(|p|out::bytes(p.as_bytes())),
+                // Details come one per reported file; a failed detail read leaves them unknown.
+                "files":files.iter().enumerate().map(|(i,f)|{let d=summary.details.get(i);json!({"path":out::bytes(&f.path),
+                    "size":d.and_then(|d|d.size),"lfs_pointer":d.is_some_and(|d|d.lfs_pointer),"capped":f.capped,
+                    "lines":f.lines.iter().map(|l|json!({"line":l.number,"preview":l.text,"marks":ranges(&l.marks),"columns":ranges(&l.columns),
+                        "cut_start":l.cut_start,"cut_end":l.cut_end,"not_utf8":l.not_utf8})).collect::<Vec<_>>()})}).collect::<Vec<_>>(),
+                "matches":summary.matches,
+                "end":match summary.end {FileSearchEnd::Complete=>"complete",FileSearchEnd::TooMany=>"too_many",FileSearchEnd::TimedOut=>"timed_out"},
+                "complete":summary.end == FileSearchEnd::Complete})))
         }
         Command::Compare { base, target, staged } => {
             let c = match target {

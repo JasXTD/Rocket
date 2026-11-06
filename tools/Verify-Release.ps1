@@ -50,7 +50,7 @@ $vcSignature = Get-AuthenticodeSignature -LiteralPath $vcRuntime
 if ($vcSignature.Status -ne 'Valid' -or -not $vcSignature.SignerCertificate -or $vcSignature.SignerCertificate.Subject -notmatch '(?:^|,\s*)O=Microsoft Corporation(?:,|$)' -or -not $vcSignature.TimeStamperCertificate) { throw 'Visual C++ runtime signature/publisher verification failed.' }
 
 # Current bundles must include the worker. Historical bundles retain their own verifier.
-$rocketBinaries = 'rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-lua-host.exe'
+$rocketBinaries = 'rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-lua-host.exe','rocket-ssh.exe'
 foreach ($name in $rocketBinaries) {
     $full = Join-Path $bundleRoot $name
     if (-not $checked.Contains($full)) { throw "Executable missing from manifest: $name" }

@@ -14,6 +14,7 @@ fn all_matches(repo: &Repository, query: &str, kind: HistorySearchKind) -> Vec<S
         start: HistoryStart::AllBranches,
         query: query.into(),
         kind,
+        content: Default::default(),
     };
     let mut subjects = Vec::new();
     loop {
@@ -138,6 +139,7 @@ fn content_search_is_literal_ignores_case_and_continues_in_bounded_steps() {
                 start: start.clone(),
                 query: "NEEDLE [text].*".into(),
                 kind: HistorySearchKind::Content,
+                content: Default::default(),
             },
             &token(),
         )
@@ -175,6 +177,7 @@ fn content_search_is_literal_ignores_case_and_continues_in_bounded_steps() {
                     start: start.clone(),
                     query: query.into(),
                     kind,
+                    content: Default::default(),
                 },
                 &token(),
             ),
@@ -189,9 +192,74 @@ fn content_search_is_literal_ignores_case_and_continues_in_bounded_steps() {
                 start,
                 query: "needle".into(),
                 kind: HistorySearchKind::Content,
+                content: Default::default(),
             },
             &cancel,
         ),
         Err(Error::Cancelled)
     ));
+}
+
+/// Subjects of every Content match with these options, following cursors, sorted.
+fn content_matches(repo: &Repository, query: &str, content: ContentMatch) -> Result<Vec<String>> {
+    let mut start = HistorySearchStart::Query {
+        start: HistoryStart::AllBranches,
+        query: query.into(),
+        kind: HistorySearchKind::Content,
+        content,
+    };
+    let mut subjects = Vec::new();
+    loop {
+        let page = repo.search_history(start, &token())?;
+        subjects.extend(page.commits.iter().map(|c| c.subject_lossy().into_owned()));
+        match page.next {
+            Some(next) => start = HistorySearchStart::Continue(next),
+            None => break,
+        }
+    }
+    subjects.sort();
+    Ok(subjects)
+}
+
+#[test]
+fn changed_code_finds_edited_lines_by_expression_case_and_path() {
+    let f = Fixture::new();
+    f.write("src/net/retry.rs", "pub const RETRY_LIMIT: u32 = 3;\n");
+    f.write("docs/guide.md", "Retry up to RETRY_LIMIT times.\n");
+    f.commit("PRIVATE_ADD");
+    f.write("src/net/retry.rs", "pub const RETRY_LIMIT: u32 = 5;\n");
+    f.commit("PRIVATE_RAISE");
+    f.write("docs/guide.md", "Retry up to retry_limit times.\n");
+    f.commit("PRIVATE_LOWER");
+    let repo = f.repo();
+    let exact = ContentMatch::default();
+    // -S: editing 3 to 5 keeps the count of RETRY_LIMIT, so PRIVATE_RAISE is missing.
+    assert_eq!(content_matches(&repo, "RETRY_LIMIT", exact.clone()).unwrap(), ["PRIVATE_ADD"]);
+    let regex = ContentMatch { regex: true, ..Default::default() };
+    assert_eq!(
+        content_matches(&repo, "RETRY_LIMIT", regex.clone()).unwrap(),
+        ["PRIVATE_ADD", "PRIVATE_LOWER", "PRIVATE_RAISE"]
+    );
+    assert_eq!(
+        content_matches(&repo, "LIMIT: u32 = [0-9]", regex.clone()).unwrap(),
+        ["PRIVATE_ADD", "PRIVATE_RAISE"]
+    );
+    // Case: lowering the word changes the exact count only when case matters.
+    let case = ContentMatch { match_case: true, ..Default::default() };
+    assert_eq!(
+        content_matches(&repo, "RETRY_LIMIT", case).unwrap(),
+        ["PRIVATE_ADD", "PRIVATE_LOWER"]
+    );
+    // A path keeps only changes under it, exactly as written.
+    let path = |p: &str| ContentMatch { regex: true, path: Some(RepoPath::new(p).unwrap()), ..Default::default() };
+    assert_eq!(content_matches(&repo, "RETRY_LIMIT", path("src")).unwrap(), ["PRIVATE_ADD", "PRIVATE_RAISE"]);
+    assert_eq!(content_matches(&repo, "RETRY_LIMIT", path("docs/guide.md")).unwrap(), ["PRIVATE_ADD", "PRIVATE_LOWER"]);
+    assert!(content_matches(&repo, "RETRY_LIMIT", path("SRC")).unwrap().is_empty());
+    // A bad expression fails at once with Git's reason, and never as literal text,
+    // also when the path keeps Git from reading any diff.
+    let error = content_matches(&repo, "RETRY_(", regex).unwrap_err();
+    assert_eq!(pattern_error(&error), Some(r"Unmatched ( or \("), "{error}");
+    let error = content_matches(&repo, "RETRY_(", path("nowhere")).unwrap_err();
+    assert_eq!(pattern_error(&error), Some(r"Unmatched ( or \("), "{error}");
+    assert_eq!(content_matches(&repo, "RETRY_(", exact).unwrap(), Vec::<String>::new());
 }

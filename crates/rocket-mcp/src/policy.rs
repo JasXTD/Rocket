@@ -53,6 +53,32 @@ impl Policy {
         }
         rocket_git::GitHubEndpoint::loopback(text)
     }
+    /// A runner may lower the 1 GB preview limit (bytes) to test where previews stop.
+    pub fn preview_limit(&self) -> Option<u64> {
+        let text = read_regular(&self.root.join("rocket-preview-limit"), 32).ok()?;
+        let limit = text.trim().parse::<u64>().ok()?;
+        (1..=rocket_git::PREVIEW_LIMIT).contains(&limit).then_some(limit)
+    }
+    /// A preview tab's repository: `<root>/rocket-previews/<slot>/repository.git`
+    /// with no redirected folder on the way. It may not exist yet while the preview
+    /// opens. Previews refuse every write, so they carry no fixture marker.
+    pub fn preview_repository(&self, path: &Path) -> Result<(), String> {
+        let error = "A preview must be in the test root's rocket-previews folder";
+        let cache = self.root.join("rocket-previews");
+        let plain = |p: &Path| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_dir() && !redirected(&m));
+        let rest = path.strip_prefix(&cache).map_err(|_| error)?;
+        let parts: Vec<_> = rest.components().collect();
+        let [std::path::Component::Normal(slot), std::path::Component::Normal(name)] = parts.as_slice() else {
+            return Err(error.into());
+        };
+        if *name != "repository.git" || !slot.to_string_lossy().starts_with('p') {
+            return Err(error.into());
+        }
+        if !plain(&cache) || !plain(&cache.join(slot)) || (path.exists() && !plain(path)) {
+            return Err(error.into());
+        }
+        Ok(())
+    }
     /// App updater fixtures never contact GitHub or replace the running MCP bundle.
     pub fn update_fixture(&self)->Option<u16>{
         let text=read_regular(&self.root.join("rocket-update-api"),128).ok()?;
@@ -704,6 +730,26 @@ fn prune_marker_object(text: &str, branch: &str, source: &str) -> Option<rocket_
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn previews_must_sit_in_the_preview_folder_and_limits_stay_bounded() {
+        let root=std::env::temp_dir().join(format!("rocket-preview-policy-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir(&root).unwrap();let p=Policy::new(&root).unwrap();
+        let cache=p.root.join("rocket-previews");let slot=cache.join("p12-ab-0");
+        assert!(p.preview_repository(&slot.join("repository.git")).is_err(),"no preview folder yet");
+        std::fs::create_dir_all(&slot).unwrap();
+        // Opening: the repository folder doesn't exist yet.
+        assert!(p.preview_repository(&slot.join("repository.git")).is_ok());
+        std::fs::create_dir(slot.join("repository.git")).unwrap();assert!(p.preview_repository(&slot.join("repository.git")).is_ok());
+        for wrong in [slot.join("other.git"),cache.join("repository.git"),slot.join("repository.git/inner"),cache.join("..").join("p12-ab-0").join("repository.git"),p.root.join("q1").join("repository.git"),p.root.join("rocket-previews2/p1/repository.git")] {
+            assert!(p.preview_repository(&wrong).is_err(),"{}",wrong.display());
+        }
+        let other=cache.join("x1");std::fs::create_dir(&other).unwrap();assert!(p.preview_repository(&other.join("repository.git")).is_err(),"slot names start with p");
+        assert_eq!(p.preview_limit(),None);
+        for (text,limit) in [("2000000\n",Some(2_000_000)),("0",None),("abc",None),(&*format!("{}",rocket_git::PREVIEW_LIMIT+1),None),("1",Some(1))] {
+            std::fs::write(p.root.join("rocket-preview-limit"),text).unwrap();assert_eq!(p.preview_limit(),limit,"{text}");
+        }
+        std::fs::remove_dir_all(&p.root).unwrap();
+    }
     #[test]
     fn bare_repository_needs_scoped_metadata_and_ownership_marker() {
         let root=std::env::temp_dir().join(format!("rocket-bare-policy-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));

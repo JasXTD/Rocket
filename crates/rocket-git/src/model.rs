@@ -290,9 +290,23 @@ pub enum HistorySearchKind {
     Text,
     /// A path the commit changed contains the query (ignoring case; `\` matches `/`).
     Path,
-    /// The commit adds or removes occurrences of the query text (Git's `-S`,
-    /// ignoring case). The query is literal, never a regular expression.
+    /// The commit's changes contain the query: by default it adds or removes
+    /// occurrences of the literal text (Git's `-S`); with [`ContentMatch::regex`]
+    /// an added or removed line matches the expression (`-G`).
     Content,
+}
+
+/// How a [`HistorySearchKind::Content`] search matches. Text and Path searches ignore it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ContentMatch {
+    /// A POSIX extended regular expression matched against added and removed
+    /// lines (`git log -G`), instead of literal text whose number of occurrences
+    /// changes (`git log -S`).
+    pub regex: bool,
+    /// Letters must match exactly; otherwise case is ignored.
+    pub match_case: bool,
+    /// Only changes to this file or under this folder, exact and case-sensitive.
+    pub path: Option<RepoPath>,
 }
 impl HistorySearchKind {
     pub fn label(self) -> &'static str {
@@ -309,6 +323,7 @@ pub struct HistorySearchCursor {
     pub(crate) history: HistoryCursor,
     pub(crate) query: String,
     pub(crate) kind: HistorySearchKind,
+    pub(crate) content: ContentMatch,
 }
 
 #[derive(Clone, Debug)]
@@ -317,6 +332,7 @@ pub enum HistorySearchStart {
         start: HistoryStart,
         query: String,
         kind: HistorySearchKind,
+        content: ContentMatch,
     },
     Continue(HistorySearchCursor),
 }

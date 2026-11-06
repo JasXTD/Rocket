@@ -98,7 +98,7 @@ impl FetchFailure {
                 "Check the configured identity filename, format, and file permissions. Use the intended SSH client and key."
             }
             Self::SshKeyUnlockFailed => {
-                "Unlock the intended key in your terminal with that SSH client's ssh-add, then retry explicitly. Do not put the passphrase in commands or logs."
+                "In SSH keys, verify/save the intended key's passphrase for Direct key mode, or unlock it in the intended SSH agent, then retry. Do not put passphrases in commands or logs."
             }
             Self::SshAgentFailure => {
                 "Check that the intended SSH agent is running and the key is loaded and unlocked; approve any required hardware-key interaction, then retry explicitly."
@@ -175,6 +175,7 @@ impl FetchFailure {
             Self::SsoRequired
         } else if has("incorrect passphrase supplied to decrypt private key")
             || has("bad passphrase")
+            || has("ssh_passphrase_unavailable:")
         {
             Self::SshKeyUnlockFailed
         } else if has("sign_and_send_pubkey: signing failed") || has("agent refused operation") {
@@ -268,6 +269,7 @@ mod tests {
                 "Load key \"PRIVATE\": incorrect passphrase supplied to decrypt private key\nPermission denied (publickey).",
                 SshKeyUnlockFailed,
             ),
+            ("ssh_passphrase_unavailable: No usable saved passphrase exists for this exact key and profile.", SshKeyUnlockFailed),
             (
                 "sign_and_send_pubkey: signing failed for ED25519 from agent: agent refused operation\nPermission denied (publickey).",
                 SshAgentFailure,

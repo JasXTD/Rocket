@@ -1,9 +1,10 @@
 {
-  "api": 1, "id": "jira", "name": "Jira", "version": "1.2.0",
+  "api": 1, "id": "jira", "name": "Jira", "version": "1.3.0",
   "description": "Jira Cloud search, details, reviewed creation, edits, transitions and comments.",
   "permissions": {"network": true, "write": true, "repository": true},
   "settings": [
-    {"id": "project", "label": "Project key", "default": "ROCKET"}
+    {"id": "project", "label": "Project key", "default": "ROCKET"},
+    {"id": "cloud", "label": "Cloud ID for scoped tokens", "default": ""}
   ],
   "commands": [
     {"id": "create-issue", "label": "Create issue"},

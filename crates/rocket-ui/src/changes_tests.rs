@@ -104,6 +104,77 @@ fn image_comparison_keeps_both_previews_visible_above_terminal() {
 }
 
 #[test]
+fn commit_message_opens_at_seven_lines_follows_the_text_and_keeps_a_dragged_height() {
+    common::isolated(
+        "ROCKET_COMMIT_AREA_CASE",
+        "changes_tests::commit_message_opens_at_seven_lines_follows_the_text_and_keeps_a_dragged_height",
+        || {
+            let fixture = common::Fixture::new();
+            fixture.write("file.txt", "base\n");
+            fixture.commit("base");
+            fixture.write("file.txt", "changed\n");
+            let ctx = Context::default();
+            let mut app = Rocket::with_log_directory(
+                &ctx,
+                vec![fixture.repository.clone()],
+                fixture.root.join("logs"),
+            );
+            let deadline = Instant::now() + Duration::from_secs(40);
+            while app.busy() {
+                app.poll(&ctx);
+                assert!(Instant::now() < deadline);
+                thread::sleep(Duration::from_millis(10));
+            }
+            app.auto_refresh = false;
+            app.tabs[0].view = View::Changes;
+            let message = |lines: usize| {
+                let body: Vec<String> = (1..=lines).map(|i| format!("line {i}")).collect();
+                format!("Summary\n\n{}", body.join("\n"))
+            };
+            let row = std::cell::Cell::new(0.0f32);
+            // The description's height in lines of its font, after the area has
+            // measured itself.
+            let lines = |app: &mut Rocket, size: Vec2, draft: &str| -> f32 {
+                app.tabs[0].draft = draft.into();
+                for _ in 0..4 {
+                    app.poll(&ctx);
+                    app.frame_widgets.clear();
+                    let mut output = ctx.run_ui(
+                        RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            row.set(ui.text_style_height(&TextStyle::Body));
+                            app.shell(ui, &mut Vec::new());
+                        },
+                    );
+                    output.textures_delta.clear();
+                }
+                (app.frame_widgets["commit-message-scroll"].rect.height() / row.get()).round()
+            };
+            let wide = vec2(1480.0, 960.0);
+            assert_eq!(lines(&mut app, wide, &message(1)), 7.0, "opens at 7 lines");
+            assert_eq!(lines(&mut app, wide, &message(9)), 9.0, "follows the text");
+            assert_eq!(lines(&mut app, wide, &message(40)), 12.0, "up to 12, then scrolls");
+            assert!(app.frame_widgets.contains_key("commit-resize"), "the handle is there");
+            assert!(app.frame_widgets["commit-message"].rect.height() >= 36.0);
+            assert_eq!(lines(&mut app, vec2(780.0, 620.0), &message(1)), 4.0, "a short pane opens at 4");
+            // A long message in a short pane takes the room left, in whole lines.
+            let short = app.frame_widgets["commit-message-scroll"].rect.height();
+            let long = lines(&mut app, vec2(780.0, 620.0), &message(9));
+            let exact = app.frame_widgets["commit-message-scroll"].rect.height() / row.get();
+            assert!(long > 4.0 && (exact - exact.round()).abs() < 0.05, "{long} lines, {exact} exactly, from {short}");
+            // A dragged height stays, whatever the text.
+            app.commit_height = Some(520.0);
+            let dragged = lines(&mut app, wide, &message(1));
+            assert!(dragged > 12.0, "{dragged}");
+            assert_eq!(lines(&mut app, wide, &message(40)), dragged);
+        },
+    );
+}
+
+#[test]
 fn changes_controls_stay_inside_short_repository_pane_with_long_drafts() {
     common::isolated(
         "ROCKET_CHANGES_LAYOUT_CASE",

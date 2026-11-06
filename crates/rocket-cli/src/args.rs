@@ -25,6 +25,8 @@ Read commands:
   blame REV --path PATH [--first N] [--size N]
   file-history PATH [--revision REV] [--limit N]
   search TEXT [--kind text|path|content] [--all | --revision REV]
+    [--regex] [--match-case] [--path PATH] (these three need --kind content)
+  grep PATTERN [--revision REV] [--regex] [--match-case] [--path PATH] (lines in files)
   compare BASE (TARGET | --staged | --worktree)
   reflog [--scope head|all|deleted-branches|retained|unreachable] [--limit N]
   verify commit REV | verify tag NAME [--require-valid]
@@ -169,7 +171,14 @@ pub enum Command {
     Hunks { path: OsString, staged: bool },
     Blame { revision: String, path: OsString, first: usize, size: usize },
     FileHistory { path: OsString, revision: Option<String>, limit: usize },
-    Search { query: String, kind: rocket_git::HistorySearchKind, all: bool, revision: Option<String> },
+    /// `regex`, `match_case` and `path` apply to content searches only; the parser
+    /// refuses them for the other kinds rather than ignoring them.
+    Search {
+        query: String, kind: rocket_git::HistorySearchKind, all: bool, revision: Option<String>,
+        regex: bool, match_case: bool, path: Option<OsString>,
+    },
+    /// Lines in files: the checkout's files, or a commit's with `revision`.
+    Grep { pattern: String, revision: Option<String>, regex: bool, match_case: bool, path: Option<OsString> },
     /// Without a target, compare BASE with the index (`staged`) or the working tree.
     Compare { base: String, target: Option<String>, staged: bool },
     Reflog { scope: rocket_git::ReflogScope, limit: usize },
@@ -326,6 +335,7 @@ impl Command {
             Self::Blame { .. } => "file-blame",
             Self::FileHistory { .. } => "file-history",
             Self::Search { .. } => "history-search",
+            Self::Grep { .. } => "file-search",
             Self::Compare { .. } => "compare",
             Self::Reflog { .. } => "reflog",
             Self::Verify { .. } => "signature-verify",
@@ -682,7 +692,8 @@ fn command(mut args: Vec<OsString>) -> Parsed<Command> {
         ("hunks", _) => (&["--staged"], &[]),
         ("blame", _) => (&[], &["--path", "--first", "--size"]),
         ("file-history", _) => (&[], &["--revision", "--limit"]),
-        ("search", _) => (&["--all"], &["--kind", "--revision"]),
+        ("search", _) => (&["--all", "--regex", "--match-case"], &["--kind", "--revision", "--path"]),
+        ("grep", _) => (&["--regex", "--match-case"], &["--revision", "--path"]),
         ("compare", _) => (&["--staged", "--worktree"], &[]),
         ("reflog", _) => (&[], &["--scope", "--limit"]),
         ("verify", _) => (&["--require-valid"], &[]),
@@ -822,18 +833,33 @@ fn command(mut args: Vec<OsString>) -> Parsed<Command> {
             if t.flag("--all") && t.values.contains_key("--revision") {
                 return Err("--all conflicts with --revision");
             }
+            let kind = match t.text("--kind")?.as_deref() {
+                None | Some("text") => rocket_git::HistorySearchKind::Text,
+                Some("path") => rocket_git::HistorySearchKind::Path,
+                Some("content") => rocket_git::HistorySearchKind::Content,
+                _ => return Err("--kind must be text, path or content"),
+            };
+            let (regex, match_case, path) = (t.flag("--regex"), t.flag("--match-case"), t.values.get("--path").cloned());
+            if kind != rocket_git::HistorySearchKind::Content && (regex || match_case || path.is_some()) {
+                return Err("--regex, --match-case and --path need --kind content");
+            }
             Command::Search {
                 query: text(&one()?)?,
-                kind: match t.text("--kind")?.as_deref() {
-                    None | Some("text") => rocket_git::HistorySearchKind::Text,
-                    Some("path") => rocket_git::HistorySearchKind::Path,
-                    Some("content") => rocket_git::HistorySearchKind::Content,
-                    _ => return Err("--kind must be text, path or content"),
-                },
+                kind,
                 all: t.flag("--all"),
                 revision: t.text("--revision")?,
+                regex,
+                match_case,
+                path,
             }
         }
+        ("grep", _) => Command::Grep {
+            pattern: text(&one()?)?,
+            revision: t.text("--revision")?,
+            regex: t.flag("--regex"),
+            match_case: t.flag("--match-case"),
+            path: t.values.get("--path").cloned(),
+        },
         ("compare", _) => {
             let local = usize::from(t.flag("--staged")) + usize::from(t.flag("--worktree"));
             match (t.positional.len(), local) {
@@ -1677,6 +1703,15 @@ mod tests {
             vec!["compare", "a", "--staged", "--worktree"],
             vec!["search", "x", "--all", "--revision", "main"],
             vec!["search", "x", "--kind", "regex"],
+            vec!["search", "x", "--regex"],
+            vec!["search", "x", "--kind", "path", "--match-case"],
+            vec!["search", "x", "--kind", "text", "--path", "src"],
+            vec!["search", "x", "--kind", "content", "--path"],
+            vec!["grep"],
+            vec!["grep", "a", "b"],
+            vec!["grep", "x", "--all"],
+            vec!["grep", "x", "--kind", "content"],
+            vec!["grep", "x", "--revision"],
             vec!["file-history", "a", "--limit", "201"],
             vec!["blame", "HEAD"],
             vec!["blame", "HEAD", "--path", "a", "--size", "501"],
@@ -1698,6 +1733,12 @@ mod tests {
             Command::RebaseStart { interactive: true, plan: Some(_), expected: Some((_, onto)), .. } if onto == id));
         assert!(matches!(parse(args(&["compare", "main", "--worktree"])).unwrap().command,
             Command::Compare { target: None, staged: false, .. }));
+        assert!(matches!(parse(args(&["search", "a(b", "--kind", "content", "--regex", "--match-case", "--path", "src"])).unwrap().command,
+            Command::Search { regex: true, match_case: true, path: Some(p), .. } if p == "src"));
+        assert!(matches!(parse(args(&["grep", "--", "-x"])).unwrap().command,
+            Command::Grep { pattern, revision: None, regex: false, .. } if pattern == "-x"));
+        assert!(matches!(parse(args(&["grep", "x", "--revision", "main", "--path", "src"])).unwrap().command,
+            Command::Grep { revision: Some(r), path: Some(_), .. } if r == "main"));
         assert!(matches!(parse(args(&["undo-commit", "--branch", "main", "--expect", id, "--index-sha256", &sha.to_ascii_uppercase()])).unwrap().command,
             Command::UndoCommit { index, .. } if index == sha));
         for values in [

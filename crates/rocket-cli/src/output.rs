@@ -46,6 +46,16 @@ impl Problem {
         if let Some(f) = error.lfs_lock_failure() {
             return Self::new(f.code(), "The LFS lock request did not complete.", f.guidance(), 1);
         }
+        if let Some(reason) = rocket_git::pattern_error(error) {
+            let mut problem = Self::new(
+                "invalid_pattern",
+                format!("Not a valid regular expression: {reason}"),
+                "Fix the expression, or leave out --regex to search for the text as typed. Nothing was searched.",
+                1,
+            );
+            problem.value["reason"] = json!(reason);
+            return problem;
+        }
         match error {
             Error::ForcePush(f) => Self::new(f.code(), "Reviewed push could not complete.", f.guidance(), 1),
             Error::AtomicPush(f) => Self::new(f.code(), "Atomic push could not complete.", f.guidance(), 1),
@@ -576,6 +586,23 @@ pub fn render(
                         out,
                         "More commits exist; increase --limit or select --revision."
                     )?;
+                }
+            }
+            // One line per match, as git grep prints them.
+            "file-search" => {
+                for file in data["files"].as_array().into_iter().flatten() {
+                    let path = field(&file["path"]);
+                    for line in file["lines"].as_array().into_iter().flatten() {
+                        writeln!(out, "{path}:{}: {}", line["line"], display_safe(line["preview"].as_str().unwrap_or("")))?;
+                    }
+                    if file["capped"] == true {
+                        writeln!(out, "{path}: more matching lines; only the first {} are shown", rocket_git::FILE_SEARCH_FILE_MATCHES)?;
+                    }
+                }
+                match data["end"].as_str() {
+                    Some("too_many") => writeln!(out, "Stopped at the match limit; narrow the search with --path or a longer pattern.")?,
+                    Some("timed_out") => writeln!(out, "Stopped at the time limit; only files before that were searched.")?,
+                    _ => (),
                 }
             }
             "clone" | "init" => {

@@ -31,6 +31,7 @@ mod tests {
                     &mut timings,
                     Some(&started),
                     None,
+                    None,
                 );
                 assert!(matches!(result, Err(Error::InvalidInput(_))));
                 assert!(!started.load(Ordering::Acquire));
@@ -52,6 +53,7 @@ mod tests {
                         None,
                         &mut timings,
                         Some(&started),
+                        None,
                         None
                     ),
                     Err(Error::Cancelled)

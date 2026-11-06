@@ -268,7 +268,7 @@ pub fn execute(
         }
         Command::UndoCommit { .. } | Command::CommitAction { .. } | Command::RebaseStart { .. }
         | Command::Reset { .. } => crate::commits::execute(&options.command, &repo, cancel)?,
-        Command::Blame { .. } | Command::FileHistory { .. } | Command::Search { .. }
+        Command::Blame { .. } | Command::FileHistory { .. } | Command::Search { .. } | Command::Grep { .. }
         | Command::Compare { .. } | Command::Reflog { .. } | Command::Verify { .. }
         | Command::SigningShow => crate::reads::execute(&options.command, &repo, cancel)?,
         Command::RemoteRename { .. } | Command::RemotePrune { .. } | Command::BranchDeleteRemote { .. }

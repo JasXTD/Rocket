@@ -327,6 +327,7 @@ fn history_search_reads_beyond_loaded_rows_and_keeps_cursors_literal_and_pinned(
                     start: first.start(),
                     query: query.into(),
                     kind: HistorySearchKind::Text,
+                    content: Default::default(),
                 },
                 &token(),
             )
@@ -345,6 +346,7 @@ fn history_search_reads_beyond_loaded_rows_and_keeps_cursors_literal_and_pinned(
         start: first.start(),
         query: target.as_str()[..10].into(),
         kind: HistorySearchKind::Text,
+        content: Default::default(),
     };
     loop {
         let page = repo.search_history(query, &token()).unwrap();
@@ -361,6 +363,7 @@ fn history_search_reads_beyond_loaded_rows_and_keeps_cursors_literal_and_pinned(
                 start: first.start(),
                 query: "synthetic".into(),
                 kind: HistorySearchKind::Text,
+                content: Default::default(),
             },
             &token(),
         )
@@ -388,6 +391,7 @@ fn history_search_reads_beyond_loaded_rows_and_keeps_cursors_literal_and_pinned(
                 start: first.start(),
                 query: "x".into(),
                 kind: HistorySearchKind::Text,
+                content: Default::default(),
             },
             &cancel
         ),
@@ -411,6 +415,7 @@ fn history_search_keeps_byte_limits_and_retries_a_smaller_batch() {
         start: HistoryStart::Head,
         query: "[literal].*".into(),
         kind: HistorySearchKind::Text,
+        content: Default::default(),
     };
     let first = repo.search_history(start, &token()).unwrap();
     // 4096 raw commits exceed the configured cap; the old 1000-commit read fits.
@@ -446,7 +451,8 @@ fn history_search_keeps_byte_limits_and_retries_a_smaller_batch() {
             HistorySearchStart::Query {
                 start: HistoryStart::Head,
                 query: "absent".into(),
-                kind: HistorySearchKind::Text
+                kind: HistorySearchKind::Text,
+                content: Default::default(),
             },
             &token()
         ),
@@ -474,6 +480,7 @@ fn all_branch_history_works_before_first_commit_and_search_rejects_invalid_queri
                     start: HistoryStart::AllBranches,
                     query: query.into(),
                     kind: HistorySearchKind::Text,
+                    content: Default::default(),
                 },
                 &token()
             )

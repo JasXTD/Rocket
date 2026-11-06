@@ -94,6 +94,8 @@ pub struct MapNode {
     pub files: usize,
     pub evidence: Vec<Vec<u8>>,
     pub refs: Vec<Vec<u8>>,
+    /// Committer time of a commit node, in seconds since 1970; zero for other kinds.
+    pub time: i64,
 }
 #[derive(Clone, Debug)]
 pub struct MapLink {
@@ -128,6 +130,8 @@ pub struct MapContinuation {
     tip: Option<ObjectId>,
     base: Option<ObjectId>,
     branches: Vec<Branch>,
+    /// Tag names and the commits they name, for history decorations.
+    tags: Vec<(Vec<u8>, ObjectId)>,
     options: MapOptions,
     limit: usize,
 }
@@ -143,6 +147,7 @@ fn node(kind: MapNodeKind, key: Vec<u8>, label: Vec<u8>, detail: Vec<u8>) -> Map
         files: 0,
         evidence: Vec::new(),
         refs: Vec::new(),
+        time: 0,
     }
 }
 fn link(from: usize, to: usize, kind: MapLinkKind) -> MapLink {
@@ -174,6 +179,21 @@ impl Repository {
         let head = self.head(cancel)?;
         let branches = if options.kind != MapKind::Code {
             self.branches(cancel)?
+        } else {
+            Vec::new()
+        };
+        // Tags only decorate history; a failed tag read leaves them out.
+        let tags = if options.kind == MapKind::History {
+            match self.tags(2000, cancel) {
+                Ok(page) => page
+                    .entries
+                    .into_iter()
+                    .zip(page.summaries)
+                    .filter_map(|(entry, summary)| Some((entry.name, summary.target?)))
+                    .collect(),
+                Err(Error::Cancelled) => return Err(Error::Cancelled),
+                Err(_) => Vec::new(),
+            }
         } else {
             Vec::new()
         };
@@ -212,6 +232,7 @@ impl Repository {
             tip,
             base,
             branches,
+            tags,
             options: options.clone(),
             limit: options.page_size,
         };
@@ -281,6 +302,7 @@ impl Repository {
                         &commits,
                         &paths,
                         &cursor.branches,
+                        &cursor.tags,
                         &aliases,
                         cancel,
                     )
@@ -398,6 +420,7 @@ impl Repository {
     }
     fn map_code(&self, map: &mut RepositoryMap, cancel: &CancellationToken) -> Result<()> {
         let tip = map.tip.as_ref().ok_or_else(malformed)?.clone();
+        self.prepare_tree(tip.as_str(), cancel)?;
         let output = self.runner.step("map-code", "list-tree", || {
             self.map_read(
                 &args(&["ls-tree", "-r", "-l", "-z", "--full-tree", tip.as_str()]),
@@ -517,6 +540,7 @@ impl Repository {
         } else {
             Vec::new()
         };
+        let split = crowded_areas(commits, paths, since);
         let mut people: BTreeMap<Vec<u8>, usize> = BTreeMap::new();
         let mut areas: BTreeMap<Vec<u8>, usize> = BTreeMap::new();
         let mut edges: BTreeMap<(usize, usize), AreaChanges> = BTreeMap::new();
@@ -558,12 +582,7 @@ impl Repository {
             for path in changed {
                 cancel.check()?;
                 files.insert(path.clone());
-                let area = path.split(|b| *b == b'/').next().unwrap_or(path);
-                let area = if path.contains(&b'/') {
-                    area.to_vec()
-                } else {
-                    b"/".to_vec()
-                };
+                let area = area_of(path, &split);
                 let target = if let Some(i) = areas.get(&area) {
                     *i
                 } else {
@@ -576,7 +595,7 @@ impl Repository {
                         MapNodeKind::Area,
                         area.clone(),
                         area.clone(),
-                        b"Changed paths in this top-level area".to_vec(),
+                        b"Changed paths in this folder".to_vec(),
                     );
                     n.path = Some(area.clone());
                     map.nodes.push(n);
@@ -635,6 +654,13 @@ impl Repository {
         Ok(())
     }
     fn map_aliases(&self, tip: &ObjectId, cancel: &CancellationToken) -> Result<Vec<Alias>> {
+        if self.is_preview() {
+            // ls-tree -l needs the blob for its size: fetch .mailmap alone first.
+            let entry = self.map_read(&args(&["ls-tree", "-z", tip.as_str(), "--", ".mailmap"]), Vec::new(), cancel)?;
+            if let Some(id) = entry.split(|b| *b == b' ' || *b == b'\t').nth(2) {
+                self.prepare_objects(&[parse::oid(id, "map-people")?], cancel)?;
+            }
+        }
         let out = self.map_read(
             &args(&["ls-tree", "-l", "-z", tip.as_str(), "--", ".mailmap"]),
             Vec::new(),
@@ -668,6 +694,52 @@ impl Repository {
         )?;
         Ok(parse_aliases(&bytes))
     }
+}
+
+/// Top-level folders holding at least half the changed paths, with two or more
+/// subfolders: People counts their subfolders separately, so one folder such as
+/// crates/ doesn't take every commit.
+fn crowded_areas(commits: &[Commit], paths: &[Vec<Vec<u8>>], since: Option<i64>) -> BTreeSet<Vec<u8>> {
+    let mut total = 0usize;
+    let mut counts: BTreeMap<&[u8], (usize, BTreeSet<&[u8]>)> = BTreeMap::new();
+    for (commit, changed) in commits.iter().zip(paths) {
+        if since.is_some_and(|s| commit.author.timestamp < s) {
+            continue;
+        }
+        for path in changed {
+            total += 1;
+            let mut parts = path.split(|b| *b == b'/');
+            let (Some(top), Some(second)) = (parts.next(), parts.next()) else {
+                continue;
+            };
+            let entry = counts.entry(top).or_default();
+            entry.0 += 1;
+            if parts.next().is_some() {
+                entry.1.insert(second);
+            }
+        }
+    }
+    counts
+        .into_iter()
+        .filter(|(_, (count, subfolders))| *count * 2 >= total && subfolders.len() >= 2)
+        .map(|(top, _)| top.to_vec())
+        .collect()
+}
+/// The People area of a changed path: its top-level folder, a subfolder of a crowded
+/// one, or "/" for files at the top.
+fn area_of(path: &[u8], split: &BTreeSet<Vec<u8>>) -> Vec<u8> {
+    let mut parts = path.split(|b| *b == b'/');
+    let top = parts.next().unwrap_or(path);
+    if !path.contains(&b'/') {
+        return b"/".to_vec();
+    }
+    if split.contains(top) {
+        let rest: Vec<&[u8]> = parts.collect();
+        if rest.len() >= 2 {
+            return [top, b"/", rest[0]].concat();
+        }
+    }
+    top.to_vec()
 }
 
 fn shorten_label(bytes: &mut Vec<u8>) -> bool {
@@ -741,6 +813,7 @@ fn map_history(
     commits: &[Commit],
     paths: &[Vec<Vec<u8>>],
     branches: &[Branch],
+    tags: &[(Vec<u8>, ObjectId)],
     aliases: &[Alias],
     cancel: &CancellationToken,
 ) -> Result<()> {
@@ -770,6 +843,12 @@ fn map_history(
             .filter(|b| b.target == c.id)
             .map(|b| b.reference.clone())
             .collect();
+        n.refs.extend(
+            tags.iter()
+                .filter(|(_, target)| *target == c.id)
+                .map(|(name, _)| [&b"refs/tags/"[..], name].concat()),
+        );
+        n.time = c.committer.timestamp;
         map.nodes.push(n);
     }
     for (i, c) in commits.iter().enumerate() {

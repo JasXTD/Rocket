@@ -225,6 +225,7 @@ impl Rocket {
         }
     }
     pub(crate) fn statistics_page(&mut self, ui: &mut Ui) {
+        let downloads = self.tab().and_then(crate::preview_tab::downloads);
         let Some(mut d) = self.dialog.take() else {
             return;
         };
@@ -281,7 +282,7 @@ impl Rocket {
         }
         reload |= match s.section {
             Section::Activity => activity_section(ui, s, widgets),
-            Section::Treemap => treemap_section(ui, s, widgets),
+            Section::Treemap => treemap_section(ui, s, widgets, downloads.as_ref()),
         };
         if close {
             s.cancel();
@@ -879,7 +880,13 @@ pub(crate) fn most_changed(node: &TreemapNode, limit: usize) -> Vec<(String, usi
 
 /// Period choice, breadcrumb, the treemap of the shown folder one level deep and its
 /// most changed files. Returns true to read again.
-fn treemap_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>) -> bool {
+fn treemap_section(
+    ui: &mut Ui,
+    s: &mut State,
+    widgets: &mut HashMap<String, UiControl>,
+    // A preview's downloads, for a commit whose files it doesn't have yet.
+    preview: Option<&crate::preview_tab::Downloads>,
+) -> bool {
     let mut reload = false;
     let mut zoom_to = None;
     let crumbs: Vec<String> = std::iter::once("Repository".to_owned())
@@ -919,12 +926,25 @@ fn treemap_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiC
     let map = s.treemap.clone();
     let folder = map.as_deref().and_then(|m| folder_at(m, &s.zoom));
     let (Some(map), Some(folder)) = (map.as_deref(), folder) else {
+        let (mut stop, mut retry) = (false, false);
         Frame::new()
             .inner_margin(Margin::symmetric(24, 14))
-            .show(ui, |ui| match &s.treemap_error {
-                Some(e) => pages::callout(ui, AMBER(), e),
-                None => pages::loading(ui, "Reading files and history…"),
+            .show(ui, |ui| {
+                if let Some(e) = &s.treemap_error {
+                    match crate::preview_tab::not_downloaded(ui, preview, "treemap-download-retry", widgets) {
+                        Some(clicked) => retry = clicked,
+                        None => pages::callout(ui, AMBER(), e),
+                    }
+                } else if let Some(clicked) = crate::preview_tab::downloading(ui, preview, "Downloading the files of this commit", "treemap-download-stop", widgets) {
+                    stop = clicked;
+                } else {
+                    pages::loading(ui, "Reading files and history…");
+                }
             });
+        if stop {
+            s.cancel();
+        }
+        reload |= retry;
         if let Some(i) = zoom_to {
             s.zoom.truncate(i);
         }

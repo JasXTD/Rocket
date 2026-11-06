@@ -1,4 +1,6 @@
+//! Export as Mermaid: the text of what the map shows, copied or saved as a new file.
 use super::*;
+use crate::pages::{Part, ReviewHeader};
 use std::{
     fs,
     io::Write,
@@ -8,17 +10,40 @@ use std::{
 
 pub struct Export {
     pub text: String,
-    pub path: String,
+    /// Save writes `name` into `dir`.
+    pub dir: String,
+    pub name: String,
+    /// What the text holds: nodes and the links between them, as shown.
+    pub nodes: usize,
+    pub links: usize,
+    /// "packages", "folders", "commits" or "nodes", for the dialog's subtitle.
+    noun: &'static str,
     pub error: Option<String>,
     pub notice: Option<String>,
     pub stopping: bool,
     task: Option<ReadTask<()>>,
 }
 impl Export {
-    pub fn new(text: String) -> Self {
+    pub fn new(
+        text: String,
+        dir: String,
+        kind: MapKind,
+        alternate: bool,
+        nodes: usize,
+        links: usize,
+    ) -> Self {
         Self {
             text,
-            path: String::new(),
+            dir,
+            name: default_name(kind, alternate).into(),
+            nodes,
+            links,
+            noun: match (kind, alternate) {
+                (MapKind::Code, true) => "packages",
+                (MapKind::Code, false) => "folders",
+                (MapKind::History, _) => "commits",
+                (MapKind::People, _) => "nodes",
+            },
             error: None,
             notice: None,
             stopping: false,
@@ -38,15 +63,28 @@ impl Export {
         if self.running() {
             return;
         }
-        let path = PathBuf::from(&self.path);
-        let text = self.text.clone();
         self.error = None;
         self.notice = None;
+        let name = self.name.trim();
+        if name.is_empty()
+            || name.contains(['/', '\\', ':'])
+            || !Path::new(name)
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("mmd"))
+        {
+            self.error = Some("Use a file name ending in .mmd.".into());
+            return;
+        }
+        let dir = Path::new(self.dir.trim());
+        if !dir.is_absolute() {
+            self.error = Some("Choose a folder with Browse, or type its full path.".into());
+            return;
+        }
+        let path = dir.join(name);
+        let text = self.text.clone();
         self.stopping = false;
         match crate::read_task::spawn(ctx, move |cancel| {
-            log.request("map-export", |_| {
-                save(&path, &text, scope.as_deref(), &cancel)
-            })
+            log.request("map-export", |_| save(&path, &text, scope.as_deref(), &cancel))
         }) {
             Ok(t) => self.task = Some(t),
             Err(e) => self.error = Some(map_error(&e)),
@@ -57,17 +95,31 @@ impl Export {
             self.task = None;
             self.stopping = false;
             match result {
-                Ok(()) => {
-                    self.notice = Some("Mermaid file saved. Existing files were preserved.".into())
-                }
-                Err(Error::Cancelled) => {
-                    self.notice = Some(
-                        "Export stopped before publication. No destination file created.".into(),
+                Ok(()) => self.notice = Some(format!("Saved {}", self.name.trim())),
+                Err(Error::Cancelled) => self.notice = Some("Stopped. No file was made.".into()),
+                Err(Error::Io { source, .. })
+                    if source.kind() == std::io::ErrorKind::AlreadyExists =>
+                {
+                    self.error = Some(
+                        "That file already exists. Choose another name; nothing was replaced."
+                            .into(),
                     )
                 }
                 Err(e) => self.error = Some(map_error(&e)),
             }
         }
+    }
+}
+/// Where Save puts the file until another folder is chosen.
+pub(super) fn default_folder(scope: Option<&Path>) -> String {
+    crate::folder_browser::save_folder(scope)
+}
+pub(super) fn default_name(kind: MapKind, alternate: bool) -> &'static str {
+    match (kind, alternate) {
+        (MapKind::Code, true) => "rocket-packages.mmd",
+        (MapKind::Code, false) => "rocket-folders.mmd",
+        (MapKind::History, _) => "rocket-history.mmd",
+        (MapKind::People, _) => "rocket-people.mmd",
     }
 }
 fn save(path: &Path, text: &str, scope: Option<&Path>, cancel: &CancellationToken) -> Result<()> {
@@ -144,95 +196,175 @@ fn save_before_publish(
     cleanup.map_err(|_|Error::Unsupported("Mermaid file was saved, but its temporary link could not be removed. Do not retry the export to the same filename.".into()))
 }
 
-pub(super) fn panel(
-    ui: &mut Ui,
+
+#[derive(Default)]
+struct Act {
+    copy: bool,
+    save: bool,
+    browse: bool,
+    stop: bool,
+}
+/// The export dialog over the map.
+pub(super) fn dialog(
+    ctx: &Context,
     s: &mut MapPage,
     intents: &mut Vec<Intent>,
     widgets: &mut HashMap<String, UiControl>,
 ) {
     let Some(e) = &mut s.export else { return };
-    ui.heading("Export Mermaid");
-    ui.label(
-        "Visible nodes and connections from the pinned snapshot. Review the text before sharing.",
+    let noun = if e.nodes == 1 { e.noun.trim_end_matches('s') } else { e.noun };
+    let subtitle = format!(
+        "The {} {noun} and {} {} in view",
+        pages::number_text(e.nodes),
+        pages::number_text(e.links),
+        if e.links == 1 { "link" } else { "links" }
     );
-    let mut close = false;
-    ui.horizontal_wrapped(|ui| {
-        if button(ui, widgets, "map-export-copy", "Copy text", !e.running()) {
-            ui.ctx().copy_text(e.text.clone());
-            e.notice = Some("Mermaid text copied.".into());
-        }
-        if button(
-            ui,
-            widgets,
-            "map-export-save",
-            "Save new .mmd",
-            !e.running() && !e.path.is_empty(),
-        ) {
-            emit(intents, MapIntent::SaveExport);
-        }
-        if button(
-            ui,
-            widgets,
-            "map-export-stop",
-            if e.stopping {
-                "Stopping"
-            } else {
-                "Stop export"
-            },
-            e.running() && !e.stopping,
-        ) {
-            e.stop();
-        }
-        close = button(ui, widgets, "map-export-close", "Close", !e.running());
-    });
-    ui.label("New file path · existing files will not be overwritten");
-    let r = ui.add_enabled(
-        !e.running(),
-        TextEdit::singleline(&mut e.path)
-            .id_salt("map-export-path")
-            .char_limit(4096)
-            .desired_width(f32::INFINITY)
-            .hint_text("Absolute path ending in .mmd"),
-    );
-    register(ui, widgets, "map-export-path", &r);
-    if let Some(message) = e.error.as_ref().or(e.notice.as_ref()) {
-        ui.add(
-            Label::new(RichText::new(message).color(if e.error.is_some() {
-                RED()
-            } else {
-                MUTED()
-            }))
-            .wrap(),
-        );
-    }
-    if e.running() {
-        ui.label(if e.stopping {
-            "Stopping export…"
-        } else {
-            "Saving a new file…"
-        });
-    }
-    let mut text = e.text.as_str();
-    let scroll = ScrollArea::both()
-        .id_salt("map-export-scroll")
-        .max_height((ui.available_height() - 10.).max(30.))
-        .show(ui, |ui| {
-            ui.add(
-                TextEdit::multiline(&mut text)
-                    .font(TextStyle::Monospace)
-                    .desired_width(f32::INFINITY),
-            );
-        });
-    widgets.insert(
-        "map-export-scroll".into(),
-        UiControl {
-            rect: scroll.inner_rect.intersect(ui.clip_rect()),
-            enabled: true,
+    let mut act = Act::default();
+    let response = pages::review_at(
+        ctx,
+        "map-export-dialog",
+        720.,
+        ReviewHeader {
+            image: Icon::Map,
+            title: "Export as Mermaid",
+            subtitle: &subtitle,
+            danger: false,
+        },
+        widgets,
+        "map-export-body",
+        true,
+        |ui, part, widgets| match part {
+            Part::Body => body(ui, e, widgets, &mut act),
+            Part::Footer => footer(ui, e, widgets, &mut act),
         },
     );
-    if close {
-        s.export = None;
+    // Automation closes this dialog by its own name, as before it was a dialog.
+    if let Some(close) = widgets.get("dialog-close").copied() {
+        widgets.insert("map-export-close".into(), close);
     }
+    if act.copy {
+        ctx.copy_text(e.text.clone());
+        e.error = None;
+        e.notice = Some("Copied the Mermaid text".into());
+    }
+    if act.stop {
+        e.stop();
+    }
+    if act.save {
+        emit(intents, MapIntent::SaveExport);
+    }
+    if act.browse {
+        emit(intents, MapIntent::BrowseExport);
+    }
+    // Esc and × stop a save first, then close.
+    if response.should_close() {
+        if e.running() {
+            e.stop();
+        } else {
+            s.export = None;
+        }
+    }
+}
+fn body(ui: &mut Ui, e: &mut Export, widgets: &mut HashMap<String, UiControl>, act: &mut Act) {
+    let lines: Vec<&str> = e.text.lines().collect();
+    let digits = lines.len().max(1).to_string().len() as f32;
+    let row = 18.;
+    let frame = Frame::new()
+        .fill(WELL())
+        .stroke(Stroke::new(1., CARD_STROKE()))
+        .corner_radius(8)
+        .inner_margin(Margin::symmetric(10, 8))
+        .show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ScrollArea::both()
+                .id_salt("map-export-scroll")
+                .auto_shrink([false, false])
+                .max_height(300.)
+                .show_rows(ui, row, lines.len(), |ui, range| {
+                    // One text line per row, as tall as show_rows counts them.
+                    ui.spacing_mut().item_spacing.y = 0.;
+                    ui.spacing_mut().interact_size.y = row;
+                    for k in range {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 12.;
+                            ui.add_sized(
+                                [digits * 8. + 6., row],
+                                Label::new(
+                                    RichText::new((k + 1).to_string())
+                                        .monospace()
+                                        .size(12.)
+                                        .color(DIM()),
+                                ),
+                            );
+                            ui.add(
+                                Label::new(
+                                    RichText::new(lines[k])
+                                        .monospace()
+                                        .size(12.5)
+                                        .color(TEXT_SOFT()),
+                                )
+                                .extend(),
+                            );
+                        });
+                    }
+                })
+                .inner_rect
+        });
+    pages::region(widgets, "map-export-scroll", frame.inner.intersect(ui.clip_rect()), true);
+    ui.add_space(6.);
+    let busy = e.running();
+    let field = (ui.available_width() - 160.).max(120.);
+    ui.horizontal(|ui| {
+        ui.add_sized([60., CONTROL], Label::new(RichText::new("Save in").color(HINT())));
+        let r = ui.add_enabled(
+            !busy,
+            TextEdit::singleline(&mut e.dir)
+                .id_salt("map-export-folder")
+                .char_limit(4096)
+                .desired_width(field)
+                .hint_text("Folder"),
+        );
+        pages::control(widgets, "map-export-folder", &r, ui.clip_rect());
+        let r = ui.add_enabled(!busy, Button::new("Browse"));
+        pages::control(widgets, "map-export-browse", &r, ui.clip_rect());
+        act.browse |= r.clicked();
+    });
+    ui.horizontal(|ui| {
+        ui.add_sized([60., CONTROL], Label::new(RichText::new("Name").color(HINT())));
+        let r = ui.add_enabled(
+            !busy,
+            TextEdit::singleline(&mut e.name)
+                .id_salt("map-export-name")
+                .char_limit(255)
+                .desired_width(field)
+                .hint_text("File name.mmd"),
+        );
+        pages::control(widgets, "map-export-name", &r, ui.clip_rect());
+    });
+    if let Some(error) = &e.error {
+        ui.add(Label::new(RichText::new(error).color(RED())).wrap());
+    } else if let Some(notice) = &e.notice {
+        ui.add(Label::new(RichText::new(notice).color(GREEN())).wrap());
+    }
+}
+fn footer(ui: &mut Ui, e: &mut Export, widgets: &mut HashMap<String, UiControl>, act: &mut Act) {
+    let busy = e.running();
+    let ready = !busy && !e.dir.trim().is_empty() && !e.name.trim().is_empty();
+    let r = pages::primary(ui, ready, if busy { "Saving" } else { "Save" });
+    pages::control(widgets, "map-export-save", &r, ui.clip_rect());
+    act.save |= r.clicked();
+    if busy {
+        let r = ui.add_enabled(
+            !e.stopping,
+            Button::new(if e.stopping { "Stopping" } else { "Stop" }),
+        );
+        pages::control(widgets, "map-export-stop", &r, ui.clip_rect());
+        act.stop |= r.clicked();
+    }
+    let r = ui.add_enabled(!busy, Button::new("Copy"));
+    pages::control(widgets, "map-export-copy", &r, ui.clip_rect());
+    act.copy |= r.clicked();
+    pages::footer_status(ui, busy, "Names and paths only, no file contents");
 }
 
 #[cfg(test)]

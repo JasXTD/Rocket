@@ -14,6 +14,8 @@ pub enum CloneFailure {
     OpenFailed,
     CommandFailed,
     TransportNotAllowed,
+    /// A preview stopped at its size limit; nothing was published.
+    SizeLimit,
     Transport(FetchFailure),
 }
 
@@ -43,6 +45,7 @@ impl CloneFailure {
             Self::OpenFailed => "clone_open_failed",
             Self::CommandFailed => "clone_command_failed",
             Self::TransportNotAllowed => "clone_transport_not_allowed",
+            Self::SizeLimit => "clone_size_limit",
             Self::Transport(failure) => failure.code(),
         }
     }
@@ -67,6 +70,7 @@ impl CloneFailure {
             Self::TransportNotAllowed => {
                 "Git refused a transport outside this clone's allowed protocols."
             }
+            Self::SizeLimit => "The download passed its size limit and was stopped; nothing was kept.",
             Self::Transport(failure) => failure.summary(),
         }
     }
@@ -104,6 +108,9 @@ impl CloneFailure {
             }
             Self::TransportNotAllowed => {
                 "Check the source type and Git URL rewrites. Local clones allow file; URL clones allow HTTPS/SSH, further limited by inherited GIT_ALLOW_PROTOCOL. Rocket does not widen that policy."
+            }
+            Self::SizeLimit => {
+                "Clone the repository instead, or preview it again without the limit."
             }
             Self::Transport(FetchFailure::CredentialsUnavailable) => {
                 "Sign in with the configured credential helper outside this clone, then start a new request explicitly. Existing saved credentials are not erased by Rocket."

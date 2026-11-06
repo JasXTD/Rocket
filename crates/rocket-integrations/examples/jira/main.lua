@@ -1,5 +1,8 @@
 -- Jira Cloud API v3. Credentials and the approved origin belong to Rocket.
 -- Rich descriptions remain unchanged unless the user requests replacement.
+-- Where the API starts. A token with scopes reaches it through Atlassian's gateway,
+-- under the site's cloud ID; each run sets this from the connection's settings.
+local rest = "/rest/api/3"
 local function text(value, limit)
     if type(value) ~= "string" then return "" end
     value = value:gsub("\r\n", "\n"):gsub("[%z\1-\8\11-\31\127]", " ")
@@ -40,11 +43,11 @@ local function can_set(meta, name)
     return false
 end
 local function checked(issue, method, suffix, body)
-    return rocket.http{method=method,path="/rest/api/3/issue/"..rocket.url_encode(issue.key)..(suffix or ""),body=body,
-        check={path="/rest/api/3/issue/"..rocket.url_encode(issue.key).."?fields=updated",pointer="/fields/updated",expected=issue.updated}}
+    return rocket.http{method=method,path=rest.."/issue/"..rocket.url_encode(issue.key)..(suffix or ""),body=body,
+        check={path=rest.."/issue/"..rocket.url_encode(issue.key).."?fields=updated",pointer="/fields/updated",expected=issue.updated}}
 end
 local function comment_on(key, body)
-    return rocket.http{method="POST",path="/rest/api/3/issue/"..rocket.url_encode(key).."/comment",body={body=document(body)}}
+    return rocket.http{method="POST",path=rest.."/issue/"..rocket.url_encode(key).."/comment",body={body=document(body)}}
 end
 local function tone(status)
     local category = ((status or {}).statusCategory or {}).key
@@ -65,7 +68,7 @@ local function search_query(typed, project)
     return 'project = "'..project..'" AND text ~ "'..(typed:gsub('[\\"]',"\\%0"))..'" ORDER BY updated DESC'
 end
 local function load_issue(key)
-    local base="/rest/api/3/issue/"..rocket.url_encode(key)
+    local base=rest.."/issue/"..rocket.url_encode(key)
     local detail=get(base.."?fields=summary,description,status,updated,assignee,issuetype")
     local transitions=get(base.."/transitions?expand=transitions.fields")
     local comments=get(base.."/comment?maxResults=5&orderBy=-created")
@@ -101,7 +104,7 @@ local function comment_id(s, key)
     return "comment_body_"..key..(s.sent and "_"..s.sent or "")
 end
 local function issue_types(project)
-    local meta=get("/rest/api/3/issue/createmeta/"..rocket.url_encode(project).."/issuetypes?maxResults=50")
+    local meta=get(rest.."/issue/createmeta/"..rocket.url_encode(project).."/issuetypes?maxResults=50")
     local types={}
     for i,t in ipairs(meta.issueTypes or meta.createMetaIssueType or meta.results or meta.values or {}) do
         if i > 32 then break end
@@ -112,7 +115,7 @@ local function issue_types(project)
 end
 -- Required fields this form has no control for.
 local function unfilled(project, type_id)
-    local meta=get("/rest/api/3/issue/createmeta/"..rocket.url_encode(project).."/issuetypes/"..type_id.."?maxResults=50")
+    local meta=get(rest.."/issue/createmeta/"..rocket.url_encode(project).."/issuetypes/"..type_id.."?maxResults=50")
     local names={}
     for i,field in ipairs(meta.fields or meta.results or meta.values or {}) do
         if i > 50 then break end
@@ -186,6 +189,12 @@ return function(ctx)
     if not project:match("^[A-Z][A-Z0-9_]*$") then
         return ui.page{title="Configure Jira",children={ui.text("Set a valid project key in this connection's settings, then refresh.")}}
     end
+    -- A pasted cloud ID may carry spaces or capitals.
+    local cloud = text(ctx.settings.cloud,64):match("^%s*(.-)%s*$"):lower()
+    if cloud ~= "" and not cloud:match("^%x%x%x%x%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%-%x%x%x%x%x%x%x%x%x%x%x%x$") then
+        return ui.page{title="Configure Jira",children={ui.text("Check the Cloud ID in this connection's settings, or clear it to use a classic token, then refresh.")}}
+    end
+    rest = cloud == "" and "/rest/api/3" or "/ex/jira/"..cloud.."/rest/api/3"
     local warning, issue, event = "", s.issue, ctx.event
     -- The request went through, so its form is done.
     if ctx.confirmed then s.pane=nil;s.sent=(s.sent or 0)+1 end
@@ -207,7 +216,7 @@ return function(ctx)
             else
                 local fields={project={key=project},summary=summary,issuetype={id=chosen.id}}
                 if values.description and #values.description > 0 then fields.description=document(values.description) end
-                rocket.http{method="POST",path="/rest/api/3/issue",body={fields=fields}}
+                rocket.http{method="POST",path=rest.."/issue",body={fields=fields}}
             end
         end
     elseif event == "comment" and issue then
@@ -250,7 +259,7 @@ return function(ctx)
         issue=load_issue(key);s.issue=issue;s.pane=nil
     end
     local function edit()
-        local meta=get("/rest/api/3/issue/"..rocket.url_encode(issue.key).."/editmeta")
+        local meta=get(rest.."/issue/"..rocket.url_encode(issue.key).."/editmeta")
         issue.summary_editable=can_set(meta,"summary");issue.description_editable=can_set(meta,"description")
         s.issue=issue;s.pane="edit"
     end
@@ -294,7 +303,7 @@ return function(ctx)
     local rows,keys={},{}
     if s.query then
         local token=(s.tokens or {})[s.page] or ""
-        local query="/rest/api/3/search/jql?maxResults=25&fields=summary,status&jql="..rocket.url_encode(s.query)
+        local query=rest.."/search/jql?maxResults=25&fields=summary,status&jql="..rocket.url_encode(s.query)
         if token ~= "" then query=query.."&nextPageToken="..rocket.url_encode(token) end
         local response=get(query)
         s.next_token=type(response.nextPageToken) == "string" and #response.nextPageToken > 0 and #response.nextPageToken <= 512 and response.isLast ~= true and response.nextPageToken or nil

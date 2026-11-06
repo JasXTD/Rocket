@@ -21,6 +21,22 @@ impl Repository {
         progress: Option<&SyncSender<FetchProgress>>,
         cancel: &CancellationToken,
     ) -> Result<PullReport> {
+        self.pull_fast_forward(progress, false, cancel)
+    }
+
+    /// [`Repository::pull_ff_only`] for pulling many repositories at once: its fetch
+    /// never asks for input. No askpass program runs and Git Credential Manager is told
+    /// not to ask, so a remote that needs a sign-in fails this repository instead.
+    pub fn pull_ff_only_quietly(&self, cancel: &CancellationToken) -> Result<PullReport> {
+        self.pull_fast_forward(None, true, cancel)
+    }
+
+    fn pull_fast_forward(
+        &self,
+        progress: Option<&SyncSender<FetchProgress>>,
+        quiet: bool,
+        cancel: &CancellationToken,
+    ) -> Result<PullReport> {
         self.require_worktree(cancel)?;
         let _permit = self.acquire_write(cancel)?;
         let (branch, before) = self
@@ -33,7 +49,15 @@ impl Repository {
 
         // From here onward, never return an outer error: fetch may have changed
         // objects/refs even if its process failed, was cancelled, or never spawned.
-        let fetch = self.execute_fetch(&arguments, input, progress, cancel);
+        let fetch = if quiet {
+            // As automatic fetch: Git Credential Manager reads this, and the runner
+            // removes every askpass route.
+            let mut quiet_arguments = args(&["-c", "credential.interactive=never"]);
+            quiet_arguments.extend(arguments);
+            self.execute_quiet_fetch(&quiet_arguments, input, cancel)
+        } else {
+            self.execute_fetch(&arguments, input, progress, cancel)
+        };
         let update = match &fetch {
             Ok(FetchOutput {
                 updates: Ok(updates),

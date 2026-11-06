@@ -3,7 +3,7 @@ use crate::{
     folder_browser::scope::pin_directory,
     repository_library::{MAX_REPOSITORIES, same_path},
 };
-use rocket_git::{CancellationToken, Error, GitClient, Result};
+use rocket_git::{CancellationToken, Error, GitClient, Head, Result, SummaryReads};
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -16,10 +16,20 @@ pub struct Progress {
     pub found: AtomicUsize,
     pub checked: AtomicUsize,
 }
+/// What a scan row shows beside its name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Tip {
+    /// The branch HEAD is on; None while HEAD is detached.
+    pub branch: Option<Vec<u8>>,
+    /// The checked-out commit's committer time, in Unix seconds.
+    pub time: i64,
+}
 #[derive(Clone, Debug)]
 pub struct Found {
     pub path: PathBuf,
     pub kind: &'static str,
+    /// Branch and latest commit time, read while scanning; None without a commit.
+    pub tip: Option<Tip>,
 }
 #[derive(Default)]
 pub struct Report {
@@ -78,10 +88,13 @@ pub fn check_root(path: &Path, scope: Option<&Path>) -> Result<PathBuf> {
     Ok(root)
 }
 /// Git is authoritative. Reject discovery that falls back to a parent repository.
+/// `tip` also reads the branch and latest commit time: one more Git call, which the
+/// recheck before adding skips.
 pub fn verify(
     client: &GitClient,
     path: &Path,
     scope: Option<&Path>,
+    tip: bool,
     cancel: &CancellationToken,
 ) -> Result<Found> {
     cancel.check()?;
@@ -155,8 +168,30 @@ pub fn verify(
         let _git = pin_directory(&info.git_dir, scope)?;
         let _common = pin_directory(&info.common_dir, scope)?;
     }
+    // The Repository manager's own short read: the branch and one commit time, never
+    // the working tree. A repository without commits, or an unreadable HEAD, is
+    // still listed.
+    let tip = if tip {
+        let reads = SummaryReads { status: false, last_commit: true };
+        match repo.summary(reads, cancel) {
+            Ok(summary) => summary.last_commit.map(|time| Tip {
+                branch: match summary.head {
+                    Head::Branch { name, .. } => Some(
+                        name.strip_prefix(b"refs/heads/").map_or(name.clone(), <[u8]>::to_vec),
+                    ),
+                    _ => None,
+                },
+                time,
+            }),
+            Err(Error::Cancelled) => return Err(Error::Cancelled),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
     cancel.check()?;
     Ok(Found {
+        tip,
         path: root,
         kind: if info.worktree.is_none() {
             "Bare repository"
@@ -225,7 +260,7 @@ fn scan_limited(
         let candidate = normal(&dotgit, true) || normal(&dotgit, false) || bare;
         let mut verified_bare = false;
         if candidate {
-            match verify(client, &folder, scope, cancel) {
+            match verify(client, &folder, scope, true, cancel) {
                 Ok(found) => {
                     verified_bare = found.kind == "Bare repository";
                     if !report
@@ -444,6 +479,12 @@ mod tests {
         assert_eq!(report.repositories.len(), 4);
         assert_eq!(report.invalid, 1);
         assert!(!report.limited);
+        // Committed repositories carry their branch and commit time; an empty one none.
+        let at = |p: &Path| report.repositories.iter().find(|r| same_path(&r.path, &p.canonicalize().unwrap())).unwrap();
+        let tip = at(&f.repository).tip.as_ref().expect("committed repository has a tip");
+        assert!(tip.branch.is_some() && tip.time > 1_600_000_000);
+        assert_eq!(at(&linked).tip.as_ref().and_then(|t| t.branch.as_deref()), Some(&b"linked"[..]));
+        assert!(at(&nested).tip.is_none());
         assert!(
             report
                 .repositories
@@ -507,7 +548,7 @@ mod tests {
         );
         let sub = f.repository.join("ordinary");
         fs::create_dir(&sub).unwrap();
-        assert!(verify(&f.git, &sub, None, &cancel).is_err());
+        assert!(verify(&f.git, &sub, None, false, &cancel).is_err());
         let report = scan_limited(
             &f.git,
             &f.root,

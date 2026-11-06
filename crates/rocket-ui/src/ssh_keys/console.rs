@@ -13,6 +13,7 @@ pub enum Prompt {
     Unlock,
     NewRetry,
     UnlockRetry,
+    Remember,
 }
 pub(super) fn console(
     directory: &Path,

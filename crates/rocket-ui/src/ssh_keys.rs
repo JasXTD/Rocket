@@ -26,6 +26,7 @@ enum Done {
     Checked(String),
     /// A key's fingerprint and whether it is unlocked now.
     Agent(String, bool),
+    Passphrase(SshProfile, bool),
 }
 pub struct State {
     pub enabled: bool,
@@ -59,6 +60,7 @@ pub struct State {
     pub preview: Option<Arc<SshBindingReview>>,
     pub prompt: Option<Prompt>,
     pub passphrase: String,
+    pub authentication: SshAuthentication,
     task: Option<WriteTask<Done>>,
     input: Option<mpsc::SyncSender<String>>,
     prompts: Option<mpsc::Receiver<Prompt>>,
@@ -98,6 +100,7 @@ impl Default for State {
             preview: None,
             prompt: None,
             passphrase: String::new(),
+            authentication: SshAuthentication::Agent,
             task: None,
             input: None,
             prompts: None,
@@ -105,6 +108,11 @@ impl Default for State {
     }
 }
 impl State {
+    fn clear_passphrase(&mut self) {
+        let mut bytes = std::mem::take(&mut self.passphrase).into_bytes();
+        bytes.fill(0);
+        std::hint::black_box(&bytes);
+    }
     pub fn running(&self) -> bool {
         self.task.is_some()
     }
@@ -119,7 +127,7 @@ impl State {
             t.cancel();
             self.stopping = true;
             self.prompt = None;
-            self.passphrase.clear();
+            self.clear_passphrase();
             self.notice = Some(if self.operation == "ssh-discover" || self.operation == "ssh-list" {
                 "Stopping the scan. The previous list will be retained."
             } else { "Stopping… waiting for OpenSSH, then checking the result." }.into())
@@ -138,12 +146,10 @@ impl Rocket {
         }
     }
     pub(crate) fn poll_ssh(&mut self) {
-        if let Some(receiver) = &self.ssh.prompts {
-            while let Ok(p) = receiver.try_recv() {
-                if !self.ssh.stopping {
-                    self.ssh.prompt = Some(p);
-                    self.ssh.passphrase.clear();
-                }
+        while let Some(p) = self.ssh.prompts.as_ref().and_then(|receiver| receiver.try_recv().ok()) {
+            if !self.ssh.stopping {
+                self.ssh.prompt = Some(p);
+                self.ssh.clear_passphrase();
             }
         }
         let Some(result) = self.ssh.task.as_mut().and_then(WriteTask::try_finish) else {
@@ -154,7 +160,7 @@ impl Rocket {
         s.input = None;
         s.prompts = None;
         s.prompt = None;
-        s.passphrase.clear();
+        s.clear_passphrase();
         let stopped = s.stopping;
         let reading = matches!(s.operation, "ssh-list" | "ssh-discover");
         // A failed or cancelled initial read is retried explicitly, never every frame.
@@ -166,7 +172,13 @@ impl Rocket {
         match result {
             Ok(Done::Inventory(i,discovery))=>{s.profiles=i.profiles;s.agent_running=i.agent_running;s.loaded_keys=i.loaded;s.invalid=i.invalid;s.loaded=true;s.selected=s.selected.filter(|i|*i<s.profiles.len());s.receive_discovery(discovery);}
             Ok(Done::Discovered(d,agent))=>{if let Some((running,keys))=agent{s.agent_running=running;s.loaded_keys=keys;}s.receive_discovery(Ok(d));}
-            Ok(Done::Created(p))=>{review=s.review_after_create;s.profiles.push(p);s.select(page::Source::Profile(s.profiles.len()-1));s.creating=false;s.discovered_choice=None;s.review_after_create=false;s.loaded=true;s.notice=Some("Key added. Copy its public key to your Git host.".into());}
+            Ok(Done::Created(p))=>{
+                let mode=s.authentication;
+                review=s.review_after_create && !(mode==SshAuthentication::Direct && p.encrypted && !p.passphrase_saved);
+                s.profiles.push(p);s.select(page::Source::Profile(s.profiles.len()-1));s.authentication=mode;
+                s.creating=false;s.discovered_choice=None;s.review_after_create=false;s.loaded=true;
+                s.notice=Some(if mode==SshAuthentication::Direct&&!review {"Key profile ready. Save its passphrase for direct use, then review the repository setting."}else{"Key added. Copy its public key to your Git host."}.into());
+            }
             Ok(Done::Review(r))=>{s.preview=Some(r);s.notice=None;}
             Ok(Done::Saved(path))=>{s.preview=None;s.notice=Some(format!("Repository SSH setting saved. Recovery backup: {}. Working files and remote URLs are unchanged.",path.display()));}
             Ok(Done::Checked(v))=>s.notice=Some(v),
@@ -175,6 +187,10 @@ impl Rocket {
                 s.notice=Some(if stopped&&unlocked{"Stopped. OpenSSH had already unlocked this key; the result was checked. Untick it to remove it from ssh-agent."}
                     else if unlocked{"Key unlocked in Windows ssh-agent. Only this key was added."}
                     else if stopped{"Cancelled. The key is still locked."}else{"Key removed from ssh-agent. Key files and other unlocked keys are unchanged."}.into());
+            }
+            Ok(Done::Passphrase(p,saved))=>{
+                if let Some(old)=s.profiles.iter_mut().find(|old|old.alias==p.alias){*old=p;}
+                s.notice=Some(if saved {"Passphrase verified by OpenSSH and saved with Windows user encryption. Windows ssh-agent and key files were not changed."} else {"Saved passphrase forgotten. The private key, public key and agent are unchanged."}.into());
             }
             Err(Error::Cancelled)=>s.notice=Some(if reading {"Scan cancelled. The previous list is retained; keys and settings are unchanged."} else {"Cancelled. No profile or repository setting was published. Any incomplete key folder is retained for recovery."}.into()),
             Err(e)=>{s.error=Some(user_error(&e));s.preview=None;}
@@ -198,7 +214,7 @@ impl Rocket {
         s.error = None;
         s.notice = None;
         s.prompt = None;
-        s.passphrase.clear();
+        s.clear_passphrase();
         if !s.enabled {
             s.error=Some("SSH management is disabled in this MCP window. Use a marked disposable SSH fixture.".into());
             return;
@@ -216,6 +232,8 @@ impl Rocket {
                 "check" => "ssh-check",
                 "review" | "restore" => "ssh-binding-review",
                 "apply" => "ssh-binding-save",
+                "remember" => "ssh-remember",
+                "forget" => "ssh-forget",
                 _ => return Err(Error::Ssh(SshFailure::InvalidProfile)),
             };
             s.operation = op;
@@ -228,6 +246,7 @@ impl Rocket {
             let discovered = s.discovered_choice.clone();
             let scan_directory = s.scan_directory.clone();
             let review = s.preview.clone();
+            let authentication = s.authentication;
             let (input, receive) = mpsc::sync_channel(1);
             let (prompts, prompt_receive) = mpsc::sync_channel(4);
             s.input = Some(input);
@@ -280,6 +299,26 @@ impl Rocket {
                             }
                             prepared.finish(&cancel).map(Done::Created)
                         }
+                        "remember" => {
+                            let p = profile.ok_or(Error::Ssh(SshFailure::InvalidProfile))?;
+                            let _guard = manager.guard(&p, &cancel)?;
+                            prompts.try_send(Prompt::Remember).map_err(|_| Error::Cancelled)?;
+                            let start = std::time::Instant::now();
+                            let secret = loop {
+                                cancel.check()?;
+                                match receive.recv_timeout(std::time::Duration::from_millis(25)) {
+                                    Ok(secret) => break secret,
+                                    Err(mpsc::RecvTimeoutError::Disconnected) => return Err(Error::Cancelled),
+                                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                                }
+                                if start.elapsed() > std::time::Duration::from_secs(180) {
+                                    return Err(Error::Cancelled);
+                                }
+                            };
+                            manager.remember_passphrase(&p, secret, &cancel)
+                                .map(|p| Done::Passphrase(p, true))
+                        }
+                        "forget" => manager.forget_passphrase(&profile.ok_or(Error::Ssh(SshFailure::InvalidProfile))?,&cancel).map(|p|Done::Passphrase(p,false)),
                         "unlock" => {
                             // A profile's key, or a found key while its files are the
                             // ones the scan read. Either stays held until ssh-add ends.
@@ -342,8 +381,9 @@ impl Rocket {
                             (None, None) => Err(Error::Ssh(SshFailure::InvalidProfile)),
                         },
                         "check" => manager
-                            .check_config(
+                            .check_authentication(
                                 &profile.ok_or(Error::Ssh(SshFailure::InvalidProfile))?,
+                                authentication,
                                 &cancel,
                             )
                             .map(Done::Checked),
@@ -355,7 +395,7 @@ impl Rocket {
                             };
                             repo.ok_or(Error::WorktreeRequired)?
                                 .with_log(log.clone())
-                                .preview_ssh_binding(&manager, p.as_ref(), &cancel)
+                                .preview_ssh_authentication(&manager, p.as_ref(), authentication, &cancel)
                                 .map(|r| Done::Review(Arc::new(r)))
                         }
                         "apply" => repo

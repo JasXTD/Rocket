@@ -11,18 +11,33 @@ use std::time::{Duration, Instant};
 pub struct SearchState {
     pub query: String,
     pub kind: HistorySearchKind,
+    /// How a Changed code search matches; ignored by the other kinds.
+    pub content: ContentMatch,
     pub commits: Vec<Commit>,
     pub next: Option<HistorySearchCursor>,
     pub scanned: usize,
     pub complete: bool,
     pub paused: bool,
+    /// Paused by Stop, rather than by an error.
+    pub stopped: bool,
     pub error: Option<String>,
+    /// `error` is Git refusing the regular expression.
+    pub bad_pattern: bool,
+    /// The path couldn't be used, so nothing ran and nothing can resume.
+    pub refused: bool,
     pub task: Option<ReadTask<HistorySearchPage>>,
     pub due: Option<Instant>,
     target: usize,
 }
 impl SearchState {
-    pub fn reset(&mut self, query: &str, kind: HistorySearchKind) {
+    /// Start over with this query. `content` is the Changed code options, or why
+    /// the typed path can't be used; then nothing runs and the reason shows.
+    pub fn reset(
+        &mut self,
+        query: &str,
+        kind: HistorySearchKind,
+        content: std::result::Result<ContentMatch, String>,
+    ) {
         // Dropping the old receiver cancels it and rejects any late result.
         *self = Self {
             query: query.trim().into(),
@@ -30,27 +45,58 @@ impl SearchState {
             target: 200,
             ..Default::default()
         };
-        if !self.query.is_empty() {
-            self.due = Some(Instant::now() + Duration::from_millis(300));
+        if self.query.is_empty() {
+            return;
+        }
+        match content {
+            Ok(content) => {
+                self.content = content;
+                self.due = Some(Instant::now() + Duration::from_millis(300));
+            }
+            // Only Changed code reads the path; the other kinds run without it.
+            Err(_) if kind != HistorySearchKind::Content => {
+                self.due = Some(Instant::now() + Duration::from_millis(300));
+            }
+            Err(reason) => {
+                self.error = Some(reason);
+                self.paused = true;
+                self.refused = true;
+            }
         }
     }
     pub fn scanning(&self) -> bool {
         self.task.is_some() || self.due.is_some()
     }
     pub fn stop(&mut self) {
+        self.stopped = self.scanning() && !self.complete;
         self.task = None;
         self.due = None;
         self.paused = !self.complete;
     }
     pub fn more(&mut self) {
-        if self.scanning() || self.complete {
+        if self.scanning() || self.complete || self.bad_pattern || self.refused {
             return;
         }
         self.paused = false;
+        self.stopped = false;
         self.error = None;
         self.target = self.commits.len().saturating_add(200);
         self.due = Some(Instant::now());
     }
+}
+
+/// The path typed in a search's path field: exact, `\` read as `/`, outer slashes
+/// and spaces dropped. Empty means the whole repository.
+pub(crate) fn search_path(text: &str) -> std::result::Result<Option<RepoPath>, String> {
+    let text = text.trim().replace('\\', "/");
+    let text = text.trim_matches('/');
+    let text = text.strip_prefix("./").unwrap_or(text);
+    if text.is_empty() {
+        return Ok(None);
+    }
+    RepoPath::new(text.as_bytes().to_vec())
+        .map(Some)
+        .map_err(|_| "Use a path inside the repository, like src/net.".to_owned())
 }
 
 impl Rocket {
@@ -84,7 +130,11 @@ impl Rocket {
                         }
                     }
                     Err(error) => {
-                        state.error = Some(user_error(&error));
+                        state.bad_pattern = rocket_git::pattern_error(&error).is_some();
+                        state.error = Some(match &error {
+                            Error::InvalidInput(message) => message.clone(),
+                            _ => user_error(&error),
+                        });
                         state.paused = true;
                     }
                 }
@@ -127,6 +177,7 @@ impl Rocket {
                 start: history.start(),
                 query: state.query.clone(),
                 kind: state.kind,
+                content: state.content.clone(),
             },
             HistorySearchStart::Continue,
         );
@@ -225,6 +276,28 @@ mod flow_tests {
                     ["docs: readme"]
                 );
                 assert!(search(&ctx, &mut app, "needle", HistorySearchKind::Text).is_empty());
+                // Changed code: a path keeps changes under it, and exact text fills
+                // the diff's Find so the selected commit shows where it changed.
+                app.tabs[0].search_path = "src\\".into();
+                assert_eq!(search(&ctx, &mut app, "needle", HistorySearchKind::Content), ["call it"]);
+                assert_eq!(app.tabs[0].diff_tools.query, "needle");
+                // An expression (git log -G) clears the Find it filled.
+                app.tabs[0].search_regex = true;
+                assert_eq!(search(&ctx, &mut app, "needle\\(", HistorySearchKind::Content), ["call it"]);
+                assert!(app.tabs[0].diff_tools.query.is_empty());
+                app.tabs[0].search = "needle(".into();
+                app.dispatch(Intent::Search);
+                settle(&ctx, &mut app);
+                let state = &app.tabs[0].search_state;
+                assert!(state.bad_pattern && state.commits.is_empty());
+                assert!(state.error.as_deref().is_some_and(|e| e.starts_with("Not a valid regular expression: ")), "{:?}", state.error);
+                // A path outside the repository never runs.
+                app.tabs[0].search_regex = false;
+                app.tabs[0].search_path = "../other".into();
+                app.tabs[0].search = "needle".into();
+                app.dispatch(Intent::Search);
+                settle(&ctx, &mut app);
+                assert_eq!(app.tabs[0].search_state.error.as_deref(), Some("Use a path inside the repository, like src/net."));
             },
         );
     }

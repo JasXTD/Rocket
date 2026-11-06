@@ -149,6 +149,7 @@ impl Repository {
                 "Select a file or symbolic link to preview its contents.".into(),
             ));
         }
+        self.prepare_objects(std::slice::from_ref(entry.object()), cancel)?;
         let size = self.runner.step("tree-content", "check-blob-size", || {
             let bytes = self.read_tree_object(
                 "tree-content",

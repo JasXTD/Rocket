@@ -122,6 +122,8 @@ impl Repository {
             return self.directory_history_page(tip, path, offset, size, cancel);
         }
         let count = offset.saturating_add(size).min(HISTORY_LIMIT);
+        // --follow compares file contents to find renames.
+        self.prepare_path(tip.as_str(), &path, cancel)?;
         let mut arguments = args(&[
             "-c",
             "log.showSignature=false",
@@ -347,6 +349,15 @@ impl Repository {
         cancel: &CancellationToken,
     ) -> Result<HistoricalFile> {
         cancel.check()?;
+        if self.is_preview() {
+            // ls-tree -l reads the blob for its size: download this version first.
+            let mut entry = args(&["ls-tree", "-z", "--full-tree", commit.as_str(), "--"]);
+            entry.push(path.argument()?);
+            let listed = self.read_diff("file-content", &entry, cancel)?;
+            if let Some(id) = listed.split(|b| *b == b' ' || *b == b'\t').nth(2) {
+                self.prepare_objects(&[parse::oid(id, "file-content")?], cancel)?;
+            }
+        }
         let mut arguments = args(&["ls-tree", "-l", "-z", "--full-tree", commit.as_str(), "--"]);
         arguments.push(path.argument()?);
         let output = self.read_diff("file-content", &arguments, cancel)?;
@@ -447,6 +458,7 @@ impl Repository {
             ));
         }
         let last = first.saturating_add(size - 1).min(total);
+        self.prepare_path(commit.as_str(), path, cancel)?;
         let mut arguments = args(&[
             "-c",
             "blame.ignoreRevsFile=",

@@ -21,6 +21,10 @@ pub use urls::{GitHubRemote, github_web_url};
 
 /// Repositories per page (GitHub's maximum).
 pub const GITHUB_REPOSITORY_PAGE: usize = 100;
+/// Search results per page.
+pub const GITHUB_SEARCH_PAGE: usize = 30;
+/// GitHub returns at most this many results for any search.
+pub const GITHUB_SEARCH_LIMIT: u64 = 1_000;
 /// Notifications per page.
 pub const GITHUB_NOTIFICATION_PAGE: usize = 50;
 const RESPONSE_LIMIT: usize = 16 * 1024 * 1024;
@@ -131,6 +135,62 @@ pub struct GitHubRepository {
     /// when one repository is read directly.
     pub parent: Option<(GitHubRemote, String)>,
 }
+/// One repository in GitHub's search results.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GitHubSearchItem {
+    pub remote: GitHubRemote,
+    pub description: Option<String>,
+    pub stars: u64,
+    pub forks: u64,
+    pub open_issues: u64,
+    pub language: Option<String>,
+    /// The SPDX identifier, or the license's name when it has none.
+    pub license: Option<String>,
+    pub topics: Vec<String>,
+    pub default_branch: String,
+    /// GitHub's size of the whole repository, in kilobytes.
+    pub size_kb: u64,
+    pub pushed_at: Option<String>,
+    pub updated_at: Option<String>,
+    pub private: bool,
+    pub fork: bool,
+    pub archived: bool,
+    pub html_url: String,
+    pub clone_url: String,
+}
+
+/// How GitHub orders search results.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GitHubSearchSort {
+    #[default]
+    BestMatch,
+    Stars,
+    Updated,
+}
+
+/// One page of a repository search, with GitHub's own count of searches left.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GitHubSearchPage {
+    pub total: u64,
+    /// GitHub stopped early (a timeout); the results it found are still here.
+    pub incomplete: bool,
+    pub items: Vec<GitHubSearchItem>,
+    pub next_page: Option<u32>,
+    pub remaining: Option<u64>,
+    /// When the search limit resets, in Unix seconds.
+    pub reset_at: Option<u64>,
+}
+
+/// What a search returned. A rate limit and a refused query are answers, not errors.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GitHubSearchOutcome {
+    Page(GitHubSearchPage),
+    /// Wait until `reset_at` (Unix seconds) or for `retry_after` seconds.
+    RateLimited { reset_at: Option<u64>, retry_after: Option<u64> },
+    /// GitHub's 422: too long, too many AND/OR/NOT, or an unknown user or organization.
+    Refused,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GitHubNotification {
     pub id: String,
@@ -165,7 +225,8 @@ pub struct GitHubSession {
     curl: PathBuf,
     cwd: PathBuf,
     endpoint: GitHubEndpoint,
-    token: Arc<str>,
+    /// None for a session without sign-in: public data only, at GitHub's lower limits.
+    token: Option<Arc<str>>,
     account: GitHubAccount,
 }
 impl fmt::Debug for GitHubSession {
@@ -281,7 +342,7 @@ impl GitClient {
             curl,
             cwd,
             endpoint,
-            token,
+            token: Some(token),
             account: GitHubAccount {
                 login: String::new(),
                 name: None,
@@ -293,6 +354,34 @@ impl GitClient {
             .0;
         session.account = account(&user).ok_or(Error::Hosting(HostingFailure::InvalidResponse))?;
         Ok(session)
+    }
+}
+
+impl GitClient {
+    /// A session without sign-in, for searching public repositories. No credential
+    /// helper runs and no account is read.
+    pub fn github_anonymous(&self, endpoint: GitHubEndpoint) -> Result<GitHubSession> {
+        let cwd = neutral_directory()?;
+        let curl = find_curl(&self.runner.executable)
+            .ok_or(Error::Hosting(HostingFailure::Unavailable))?;
+        let mut runner = self.runner.clone();
+        runner.limits = CommandLimits {
+            timeout: Duration::from_secs(60),
+            stdout_bytes: RESPONSE_LIMIT,
+            stderr_bytes: 64 * 1024,
+        };
+        Ok(GitHubSession {
+            runner,
+            curl,
+            cwd,
+            endpoint,
+            token: None,
+            account: GitHubAccount {
+                login: String::new(),
+                name: None,
+                html_url: String::new(),
+            },
+        })
     }
 }
 
@@ -333,6 +422,80 @@ fn repository(item: &Json) -> Option<GitHubRepository> {
         remote,
     })
 }
+fn search_item(item: &Json, endpoint: GitHubEndpoint) -> Option<GitHubSearchItem> {
+    let owner = item.get("owner")?.str("login")?;
+    let remote = GitHubRemote::new(owner, item.str("name")?)?;
+    let text = |key: &str, limit: usize| {
+        item.str(key)
+            .filter(|t| !t.is_empty() && t.len() <= limit && !t.chars().any(char::is_control))
+            .map(str::to_owned)
+    };
+    let license = item.get("license").and_then(|l| {
+        l.str("spdx_id")
+            .filter(|id| !id.is_empty() && *id != "NOASSERTION")
+            .or_else(|| l.str("name"))
+            .filter(|t| !t.is_empty() && t.len() <= 100)
+            .map(str::to_owned)
+    });
+    let topics = item
+        .get("topics")
+        .and_then(Json::array)
+        .map(|list| {
+            list.iter()
+                .filter_map(|t| match t {
+                    Json::String(t) if !t.is_empty() && t.len() <= 50 => Some(t.clone()),
+                    _ => None,
+                })
+                .take(20)
+                .collect()
+        })
+        .unwrap_or_default();
+    // GitHub's own clone address is rebuilt from the owner and name, as everywhere
+    // else here. Only the loopback test server may name a local fixture instead.
+    let clone_url = match endpoint {
+        GitHubEndpoint::Loopback(_) => item.str("clone_url").map(str::to_owned),
+        GitHubEndpoint::Public => None,
+    }
+    .unwrap_or_else(|| format!("https://github.com/{}.git", remote.full_name()));
+    Some(GitHubSearchItem {
+        description: text("description", 2_000),
+        stars: item.u64("stargazers_count").unwrap_or(0),
+        forks: item.u64("forks_count").unwrap_or(0),
+        open_issues: item.u64("open_issues_count").unwrap_or(0),
+        language: text("language", 60),
+        license,
+        topics,
+        default_branch: text("default_branch", 255).unwrap_or_else(|| "main".into()),
+        size_kb: item.u64("size").unwrap_or(0),
+        pushed_at: text("pushed_at", 40),
+        updated_at: text("updated_at", 40),
+        private: item.bool("private").unwrap_or(false),
+        fork: item.bool("fork").unwrap_or(false),
+        archived: item.bool("archived").unwrap_or(false),
+        html_url: item
+            .str("html_url")
+            .and_then(github_web_url)
+            .map_or_else(|| remote.web_url(), Into::into),
+        clone_url,
+        remote,
+    })
+}
+
+/// A search query as GitHub's `q` parameter. GitHub counts at most 256 characters
+/// without its qualifiers and judges the rest itself; Rocket only refuses what can
+/// never be a query.
+fn search_query(text: &str) -> Result<String> {
+    let text = text.trim();
+    if text.is_empty() || text.chars().count() > 1_000 || text.chars().any(char::is_control) {
+        return Err(Error::InvalidInput("enter up to 1,000 characters to search for".into()));
+    }
+    Ok(urls::encode(text, false))
+}
+
+fn number_header(headers: &[(String, String)], name: &str) -> Option<u64> {
+    header(headers, name)?.trim().parse().ok()
+}
+
 fn notification(item: &Json) -> Option<GitHubNotification> {
     let repo = item.get("repository")?;
     let repository = GitHubRemote::new(repo.get("owner")?.str("login")?, repo.str("name")?)?;
@@ -439,6 +602,10 @@ impl GitHubSession {
         session.runner.log = Some(log);
         session
     }
+    /// Whether requests carry the account's token.
+    pub fn signed_in(&self) -> bool {
+        self.token.is_some()
+    }
     fn get(
         &self,
         operation: &'static str,
@@ -447,13 +614,27 @@ impl GitHubSession {
         cancel: &CancellationToken,
     ) -> Result<(Json, Vec<(String, String)>)> {
         self.runner.step(operation, step, || {
+            let (code, headers, body) = self.send(path, cancel)?;
+            classify(code, &headers)?;
+            let value = json::parse(&body).ok_or(Error::Hosting(HostingFailure::InvalidResponse))?;
+            Ok((value, headers))
+        })
+    }
+    /// One GET: the final status, headers and body, without judging the status.
+    #[allow(clippy::type_complexity)]
+    fn send(&self, path: &str, cancel: &CancellationToken) -> Result<(u16, Vec<(String, String)>, Vec<u8>)> {
+        {
             cancel.check()?;
             let base = self.endpoint.base();
             // curl config syntax; every value here is validated ASCII without quotes
             // or backslashes. The token never appears in arguments or logs.
+            let authorization = self
+                .token
+                .as_ref()
+                .map(|token| format!("header = \"Authorization: Bearer {token}\"\n"))
+                .unwrap_or_default();
             let config = format!(
-                "url = \"{base}{path}\"\nheader = \"Authorization: Bearer {}\"\nheader = \"Accept: application/vnd.github+json\"\nheader = \"X-GitHub-Api-Version: 2022-11-28\"\nuser-agent = \"Rocket/{}\"\n",
-                self.token,
+                "url = \"{base}{path}\"\n{authorization}header = \"Accept: application/vnd.github+json\"\nheader = \"X-GitHub-Api-Version: 2022-11-28\"\nuser-agent = \"Rocket/{}\"\n",
                 env!("CARGO_PKG_VERSION")
             );
             let protocol = match self.endpoint {
@@ -497,9 +678,66 @@ impl GitHubSession {
                 headers,
                 body,
             } = split_response(&stdout).ok_or(Error::Hosting(HostingFailure::InvalidResponse))?;
-            classify(code, &headers)?;
-            let value = json::parse(body).ok_or(Error::Hosting(HostingFailure::InvalidResponse))?;
-            Ok((value, headers))
+            Ok((code, headers, body.to_vec()))
+        }
+    }
+    /// Search the repositories this session can see: public ones, and private ones
+    /// when signed in. `page` starts at 1; GitHub stops after 1,000 results.
+    pub fn search_repositories(
+        &self,
+        query: &str,
+        sort: GitHubSearchSort,
+        page: u32,
+        cancel: &CancellationToken,
+    ) -> Result<GitHubSearchOutcome> {
+        let q = search_query(query)?;
+        let page = page.max(1);
+        let order = match sort {
+            GitHubSearchSort::BestMatch => "",
+            GitHubSearchSort::Stars => "&sort=stars&order=desc",
+            GitHubSearchSort::Updated => "&sort=updated&order=desc",
+        };
+        let path = format!("/search/repositories?q={q}{order}&per_page={GITHUB_SEARCH_PAGE}&page={page}");
+        self.runner.step("github-search", "search_github_repositories", || {
+            let (code, headers, body) = self.send(&path, cancel)?;
+            let remaining = number_header(&headers, "x-ratelimit-remaining");
+            let reset_at = number_header(&headers, "x-ratelimit-reset");
+            match code {
+                200..=299 => {}
+                403 | 429
+                    if code == 429
+                        || remaining == Some(0)
+                        || header(&headers, "retry-after").is_some() =>
+                {
+                    return Ok(GitHubSearchOutcome::RateLimited {
+                        reset_at,
+                        retry_after: number_header(&headers, "retry-after"),
+                    });
+                }
+                422 => return Ok(GitHubSearchOutcome::Refused),
+                _ => classify(code, &headers)?,
+            }
+            let value = json::parse(&body).ok_or(Error::Hosting(HostingFailure::InvalidResponse))?;
+            let items: Vec<_> = value
+                .get("items")
+                .and_then(Json::array)
+                .ok_or(Error::Hosting(HostingFailure::InvalidResponse))?
+                .iter()
+                .filter_map(|item| search_item(item, self.endpoint))
+                .collect();
+            let total = value.u64("total_count").unwrap_or(items.len() as u64);
+            let shown = (page as u64 - 1) * GITHUB_SEARCH_PAGE as u64 + items.len() as u64;
+            let next_page = (items.len() == GITHUB_SEARCH_PAGE
+                && shown < total.min(GITHUB_SEARCH_LIMIT))
+            .then_some(page + 1);
+            Ok(GitHubSearchOutcome::Page(GitHubSearchPage {
+                total,
+                incomplete: value.bool("incomplete_results").unwrap_or(false),
+                items,
+                next_page,
+                remaining,
+                reset_at,
+            }))
         })
     }
     fn list<T>(

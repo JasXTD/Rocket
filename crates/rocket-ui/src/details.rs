@@ -34,7 +34,8 @@ pub(crate) fn commit_details(
     };
     Panel::top(Id::new(("commit-review-actions",tab.id))).frame(Frame::new().fill(VIEW_PANEL()).inner_margin(6)).show(ui,|ui| {
         ui.horizontal_wrapped(|ui| {
-            let review=ui.button("Open review window");widgets.insert("commit-open-review".into(),(&review).into());
+            // A preview's review window would outlive the preview and its downloads.
+            let review=ui.add_enabled(!tab.is_preview(),Button::new("Open review window")).on_disabled_hover_text("Keep this preview to open commits in their own window");widgets.insert("commit-open-review".into(),(&review).into());
             if review.clicked(){intents.push(Intent::OpenReview(crate::reviews::Request{commit:commit.id.clone(),path:None,blame:false}));}
             let link=ui.button("Commit link");widgets.insert("commit-browser-link".into(),(&link).into());
             if link.clicked(){intents.push(Intent::CommitLink(commit.id.clone()));}
@@ -57,6 +58,7 @@ pub(crate) fn commit_details(
                         if header.clicked() {
                             tab.detail_tab = DetailTab::Details;
                         }
+                        crate::ci_checks::details_line(ui, tab, commit.id.as_str(), widgets, intents);
                         merge_fold(ui, tab, &commit, widgets, intents);
                         file_list(ui, tab, widgets, intents, commands);
                     });
@@ -121,6 +123,7 @@ pub(crate) fn commit_details(
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 commit_header(ui, &commit, &mut tab.issue_links, widgets, intents);
+                crate::ci_checks::details_line(ui, tab, commit.id.as_str(), widgets, intents);
                 merge_fold(ui, tab, &commit, widgets, intents);
                 if file_list(ui, tab, widgets, intents, commands) {
                     tab.detail_tab = DetailTab::Files;

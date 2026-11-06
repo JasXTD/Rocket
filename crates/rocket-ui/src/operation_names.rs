@@ -140,6 +140,8 @@ const NAMES: &[(&str, &str, &str)] = &[
     ("gitflow-start", "Starting Git Flow branch", "Start Git Flow branch"),
     ("gitflow-finish", "Finishing Git Flow branch", "Finish Git Flow branch"),
     ("clone", "Cloning repository", "Clone repository"),
+    ("keep-preview", "Keeping preview", "Keep preview"),
+    ("discard-preview", "Discarding preview", "Discard preview"),
     ("init", "Creating repository", "Create repository"),
 ];
 
@@ -148,6 +150,7 @@ const NAMES: &[(&str, &str, &str)] = &[
 /// that is in neither counts as an action, so diagnostics never hide a write.
 const READS: &[(&str, &str)] = &[
     ("status", "Read status"),
+    ("github-search", "Search GitHub"),
     ("diff", "Read diff"),
     ("diff-words", "Read diff words"),
     ("history", "Read history"),
@@ -173,6 +176,7 @@ const READS: &[(&str, &str)] = &[
     ("integration-discover", "Find extensions"),
     ("hosting-drafts-load", "Load pull request drafts"),
     ("library-check", "Check saved repositories"),
+    ("repository-summary", "Read repository status"),
     ("lfs-status", "Read LFS status"),
     ("lfs-locks", "Read LFS locks"),
     ("lost-commits", "Find lost commits"),
@@ -196,6 +200,8 @@ const READS: &[(&str, &str)] = &[
     ("head", "Read current commit"),
     ("tree-list", "Read files"),
     ("tree-content", "Read file"),
+    ("file-search", "Search in files"),
+    ("file-search-open", "Open a search match"),
     ("map-code", "Read code map"),
     ("map-export", "Export Mermaid map"),
     ("map-history", "Read history map"),
@@ -204,20 +210,30 @@ const READS: &[(&str, &str)] = &[
     ("image-difference", "Compare images"),
     ("hosting-accounts", "Read hosting accounts"),
     ("hosting-list", "Read hosting list"),
+    ("hosting-ci-marks", "Read CI marks"),
+    ("hosting-ci-details", "Read checks"),
+    ("hosting-ci-rerun-preview", "Review re-run"),
+    ("hosting-ci-runs", "Read CI runs"),
+    ("hosting-ci-run", "Read CI run"),
     ("managed-git-verify", "Verify bundled Git"),
 ];
 
 /// Other operations named for diagnostics that have no title as an action.
 const OTHERS: &[(&str, &str)] = &[
     ("auto-fetch", "Automatic fetch"),
+    ("fetch-all", "Fetch all"),
+    ("pull-all", "Pull all"),
     ("commit-draft", "Draft commit message"),
     ("github-sign-in", "GitHub sign-in"),
+    ("preview-open", "Open preview"),
+    ("preview-sign-in", "Sign in for a preview"),
     ("hosting-browser-sign-in", "Browser sign-in"),
     ("hosting-connect", "Connect hosting account"),
     ("hosting-create", "Create pull request"),
     ("hosting-merge-submit", "Merge pull request"),
     ("hosting-review-submit", "Submit pull request review"),
     ("hosting-thread-submit", "Reply in review thread"),
+    ("hosting-ci-rerun", "Re-run failed jobs"),
     ("global-identity-save", "Save Git identity"),
 ];
 

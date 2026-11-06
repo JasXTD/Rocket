@@ -8,6 +8,7 @@ pub enum Action {
     New,
     Open,
     Clone,
+    Explore,
     Manager,
     Close,
     Reopen,
@@ -26,6 +27,7 @@ pub enum Action {
     Push,
     Changes,
     History,
+    SearchFiles,
 }
 pub struct Command {
     pub action: Action,
@@ -55,6 +57,13 @@ pub const COMMANDS: &[Command] = &[
         label: "Clone repository",
         group: "Repositories",
         default: "Ctrl+Shift+O",
+    },
+    Command {
+        action: Action::Explore,
+        id: "explore",
+        label: "Explore repositories",
+        group: "Repositories",
+        default: "Ctrl+Shift+E",
     },
     Command {
         action: Action::Manager,
@@ -141,6 +150,13 @@ pub const COMMANDS: &[Command] = &[
         default: "",
     },
     Command {
+        action: Action::SearchFiles,
+        id: "search-files",
+        label: "Search in files",
+        group: "Panels",
+        default: "Ctrl+Shift+F",
+    },
+    Command {
         action: Action::Commit,
         id: "commit",
         label: "Commit staged changes",
@@ -204,6 +220,7 @@ impl Action {
                 | Self::Preferences
                 | Self::Changes
                 | Self::History
+                | Self::SearchFiles
                 | Self::Refresh
         )
     }

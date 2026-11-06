@@ -13,6 +13,8 @@ mod enterprise_tests;
 mod azure_server_tests;
 #[path = "forge/pr_collaboration.rs"]
 mod pr_collaboration_tests;
+#[path = "forge/ci_checks.rs"]
+mod ci_checks_tests;
 use common::{Fixture, isolated};
 use rocket_git::*;
 use std::{

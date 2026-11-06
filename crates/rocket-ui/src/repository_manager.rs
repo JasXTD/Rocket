@@ -9,6 +9,7 @@ use crate::{
     pages::{self, Part},
     preferences::card_foot,
     repository_library::*,
+    repository_status::{BatchKind, Cell, Row, chip, icon_button, paint_cell},
     style::*,
 };
 use eframe::egui::*;
@@ -86,27 +87,34 @@ pub struct State {
     outcome: Outcome,
     /// The details card's full height last frame, so a list stacked above it leaves it room.
     details_height: f32,
+    /// Each repository's status, and Fetch all / Pull all.
+    pub status: crate::repository_status::Status,
 }
 impl State {
     fn select(&mut self, selection: Selection) {
         self.selection = selection;
         self.selected = None;
         self.include_nested = false;
+        self.status.result = None;
         self.clear_result();
     }
     /// Select a repository row. The last result belonged to the previous selection.
     fn pick(&mut self, id: u64) {
+        self.status.result = None;
         if self.selected != Some(id) {
             self.selected = Some(id);
             self.clear_result();
         }
     }
-    fn clear_result(&mut self) {
+    pub(crate) fn clear_result(&mut self) {
         self.error = None;
         self.notice = None;
     }
     pub fn running(&self) -> bool {
-        self.check.is_some() || self.opening.is_some() || self.scan.as_ref().is_some_and(|s|s.running())
+        self.check.is_some()
+            || self.opening.is_some()
+            || self.status.batch.is_some()
+            || self.scan.as_ref().is_some_and(|s| s.running())
     }
     pub fn opening(&self) -> bool {
         self.opening.is_some()
@@ -138,8 +146,52 @@ const ACTIVE: f32 = 84.0;
 fn count(n: usize, one: &str, many: &str) -> String {
     format!("{n} {}", if n == 1 { one } else { many })
 }
+/// The repositories a selection lists, in list order: a workspace's members (with its
+/// nested workspaces' when asked), or the saved ones in a folder, ungrouped or all.
+pub(crate) fn selection_repositories(
+    library: &Library,
+    selection: Selection,
+    include_nested: bool,
+) -> Result<Vec<&SavedRepository>, &'static str> {
+    if let Selection::Workspace(id) = selection {
+        if !library.workspaces.iter().any(|w| w.id == id) {
+            return Ok(Vec::new());
+        }
+        return Ok(library
+            .workspace_members(id, include_nested)?
+            .iter()
+            .filter_map(|id| library.repositories.iter().find(|r| r.id == *id))
+            .collect());
+    }
+    Ok(library
+        .repositories
+        .iter()
+        .filter(|r| match selection {
+            Selection::Ungrouped => r.folder.is_none(),
+            Selection::Folder(id) => r.folder == Some(id),
+            _ => true,
+        })
+        .collect())
+}
+/// The selection's name, as the list's bar shows it.
+pub(crate) fn selection_title(library: &Library, selection: Selection) -> String {
+    match selection {
+        Selection::All => "All saved".to_owned(),
+        Selection::Ungrouped => "Ungrouped".to_owned(),
+        Selection::Folder(id) => library
+            .folders
+            .iter()
+            .find(|f| f.id == id)
+            .map_or_else(|| "Folder".to_owned(), |f| f.name.clone()),
+        Selection::Workspace(id) => library
+            .workspaces
+            .iter()
+            .find(|w| w.id == id)
+            .map_or_else(|| "Workspace".to_owned(), |w| w.name.clone()),
+    }
+}
 /// A failed library check: a missing repository in plain words, anything else as Git said it.
-fn check_error(error: &rocket_git::Error) -> String {
+pub(crate) fn check_error(error: &rocket_git::Error) -> String {
     match error {
         rocket_git::Error::Git { operation: "discovery", code: Some(128), .. } => {
             "No Git repository at this location (Git discovery, exit 128).".into()
@@ -160,6 +212,13 @@ struct Asked {
     open: bool,
     stop: bool,
     close: bool,
+    /// Check again: read the listed repositories' status now.
+    check: bool,
+    /// Fetch all or Pull all.
+    batch: Option<BatchKind>,
+    /// The result card's Open N in tabs, and its ×.
+    result_open: bool,
+    result_close: bool,
 }
 /// What the page's parts read and report to.
 struct Parts<'a> {
@@ -169,6 +228,8 @@ struct Parts<'a> {
     widgets: &'a mut HashMap<String, UiControl>,
     busy: bool,
     editable: bool,
+    /// A Git write runs in a tab: Fetch all and Pull all wait for it.
+    writing: bool,
     asked: Asked,
 }
 fn add_actions(ui: &mut Ui, p: &mut Parts<'_>) {
@@ -210,7 +271,8 @@ fn caption(
     r.clicked()
 }
 /// A sidebar row: icon, name and count, `indent` points in; the selection is filled with a bar.
-fn nav_row(ui: &mut Ui, image: Icon, label: &str, count: usize, indent: f32, selected: bool) -> Response {
+/// `attention` puts an amber dot before the count.
+fn nav_row(ui: &mut Ui, image: Icon, label: &str, count: usize, indent: f32, selected: bool, attention: bool) -> Response {
     let enabled = ui.is_enabled();
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
     let hot = enabled && (response.hovered() || response.has_focus());
@@ -235,8 +297,12 @@ fn nav_row(ui: &mut Ui, image: Icon, label: &str, count: usize, indent: f32, sel
     // The count sits at the right edge and the name is cut before it.
     let number = painter.layout_no_wrap(count.to_string(), FontId::proportional(12.0), FAINT());
     let right = rect.right() - 10.0;
-    let width = number.size().x;
+    let mut width = number.size().x;
     painter.galley(pos2(right - width, rect.center().y - number.size().y / 2.0), number, FAINT());
+    if attention {
+        painter.circle_filled(pos2(right - width - 9.5, rect.center().y), 3.5, AMBER());
+        width += 13.0;
+    }
     let color = if !enabled {
         MUTED()
     } else if selected || hot {
@@ -266,6 +332,27 @@ fn none_yet(ui: &mut Ui) {
 /// The library's sidebar: Library, Folders and Workspaces, each row with its count.
 fn navigation(ui: &mut Ui, p: &mut Parts) {
     let (library, editable) = (p.library, p.editable);
+    // A dot on each folder and workspace where a repository already checked needs attention.
+    let needs = |r: &SavedRepository| p.s.status.attention(r.id, &r.path);
+    let dots: (BTreeSet<u64>, BTreeSet<u64>) = (
+        library
+            .folders
+            .iter()
+            .filter(|f| library.repositories.iter().any(|r| r.folder == Some(f.id) && needs(r)))
+            .map(|f| f.id)
+            .collect(),
+        library
+            .workspaces
+            .iter()
+            .filter(|w| {
+                w.repositories
+                    .iter()
+                    .filter_map(|id| library.repositories.iter().find(|r| r.id == *id))
+                    .any(needs)
+            })
+            .map(|w| w.id)
+            .collect(),
+    );
     let output = ScrollArea::vertical()
         .id_salt("manager-navigation")
         .auto_shrink([false, false])
@@ -280,7 +367,7 @@ fn navigation(ui: &mut Ui, p: &mut Parts) {
                     (Selection::All, "manager-all", Icon::Database, "All saved", library.repositories.len()),
                     (Selection::Ungrouped, "manager-ungrouped", Icon::Layout, "Ungrouped", ungrouped),
                 ] {
-                    let r = nav_row(ui, image, label, n, 0.0, p.s.selection == selection);
+                    let r = nav_row(ui, image, label, n, 0.0, p.s.selection == selection, false);
                     pages::control(p.widgets, key, &r, ui.clip_rect());
                     if r.clicked() {
                         p.s.select(selection);
@@ -292,7 +379,8 @@ fn navigation(ui: &mut Ui, p: &mut Parts) {
                 for folder in &library.folders {
                     let n = library.repositories.iter().filter(|r| r.folder == Some(folder.id)).count();
                     let selected = p.s.selection == Selection::Folder(folder.id);
-                    let r = nav_row(ui, Icon::Folder, &folder.name, n, 0.0, selected);
+                    let dot = dots.0.contains(&folder.id);
+                    let r = nav_row(ui, Icon::Folder, &folder.name, n, 0.0, selected, dot);
                     pages::control(p.widgets, format!("manager-folder-{}", folder.id), &r, ui.clip_rect());
                     if r.clicked() {
                         p.s.select(Selection::Folder(folder.id));
@@ -316,7 +404,8 @@ fn navigation(ui: &mut Ui, p: &mut Parts) {
                     // Workspace icons sit right of a chevron column; each level indents 16 points.
                     let indent = 10.0 + depth as f32 * 16.0;
                     let selected = p.s.selection == Selection::Workspace(id);
-                    let r = nav_row(ui, Icon::Modules, &w.name, w.repositories.len(), indent, selected)
+                    let dot = dots.1.contains(&id);
+                    let r = nav_row(ui, Icon::Modules, &w.name, w.repositories.len(), indent, selected, dot)
                         .on_hover_text(library.workspace_path(id).unwrap_or_else(|| w.name.clone()));
                     pages::control(p.widgets, format!("manager-workspace-{id}"), &r, ui.clip_rect());
                     let collapsed = p.s.collapsed.contains(&id);
@@ -423,10 +512,11 @@ fn bar_title(bar: &mut Ui, image: Option<Icon>, title: &str, detail: &str) {
         }
     });
 }
-/// A pill on a repository row: its text, colour and whether a spinner leads it.
-type Pill = (String, Color32, bool);
-/// A 50-point repository row: its tile, the name over the path, and pills at the right edge.
-fn repo_row(ui: &mut Ui, repo: &SavedRepository, pills: &[Pill], selected: bool, unavailable: bool, click: bool) -> Response {
+/// A tag beside a repository's name, such as Open or Active tab: its text and colour.
+type Pill = (String, Color32);
+/// A 50-point repository row: its tile; the name with its tags over the branch and path;
+/// then the Changes and Upstream columns at the right edge.
+fn repo_row(ui: &mut Ui, repo: &SavedRepository, tags: &[Pill], status: &Row, selected: bool, click: bool) -> Response {
     let enabled = ui.is_enabled();
     let sense = if click { Sense::click() } else { Sense::hover() };
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 50.0), sense);
@@ -441,54 +531,69 @@ fn repo_row(ui: &mut Ui, repo: &SavedRepository, pills: &[Pill], selected: bool,
         .hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, ROW_LINE()));
     let tile = Rect::from_min_size(pos2(rect.left() + 14.0, rect.center().y - 15.0), vec2(30.0, 30.0));
     ui.painter().rect_filled(tile, 7.0, RAISED());
-    let ink = if selected {
-        BLUE()
-    } else if unavailable {
-        AMBER()
+    let (image, ink) = if status.problem {
+        (Icon::Folder, RED())
+    } else if selected {
+        (Icon::Branch, BLUE())
     } else {
-        MUTED()
+        (Icon::Branch, MUTED())
     };
-    icon(ui.painter(), tile.shrink(8.0), Icon::Branch, ink);
-    // Pills from the right edge; the text column is cut before them.
-    let mut right = rect.right() - 14.0;
-    for (text, color, spinner) in pills.iter().rev() {
-        let galley = ui.painter().layout_no_wrap(text.clone(), semibold(11.0), *color);
-        let lead = if *spinner { 14.0 } else { 0.0 };
-        let pill = Rect::from_min_max(
-            pos2(right - galley.size().x - 16.0 - lead, rect.center().y - 10.0),
-            pos2(right, rect.center().y + 10.0),
-        );
-        if pill.left() < tile.right() + 120.0 {
+    icon(ui.painter(), tile.shrink(8.0), image, ink);
+    // Two columns at the right edge, narrower in a narrow window, so their contents line
+    // up from row to row.
+    let (changes, upstream, gap) = if rect.width() >= 600.0 { (104.0, 116.0, 12.0) } else { (80.0, 92.0, 10.0) };
+    let right = rect.right() - 14.0;
+    let upstream_column = Rect::from_min_max(pos2(right - upstream, rect.top()), pos2(right, rect.bottom()));
+    let changes_column = Rect::from_min_max(
+        pos2(upstream_column.left() - gap - changes, rect.top()),
+        pos2(upstream_column.left() - gap, rect.bottom()),
+    );
+    for (column, cell) in [(changes_column, &status.changes), (upstream_column, &status.upstream)] {
+        if let Some(cell) = cell {
+            paint_cell(ui, column, cell);
+        }
+    }
+    let left = tile.right() + 12.0;
+    let width = (changes_column.left() - 12.0 - left).max(0.0);
+    let color = if enabled { TEXT() } else { MUTED() };
+    // The tags follow the name; the name is cut first.
+    let tag_galleys: Vec<_> = tags
+        .iter()
+        .map(|(text, color)| (ui.painter().layout_no_wrap(text.clone(), semibold(10.5), *color), *color))
+        .collect();
+    let tags_width: f32 = tag_galleys.iter().map(|(g, _)| g.size().x + 14.0 + 6.0).sum();
+    let mut job = text::LayoutJob::simple_singleline(repo.name.clone(), semibold(13.0), color);
+    job.wrap = text::TextWrapping::truncate_at_width((width - tags_width).max(width.min(60.0)));
+    let name = ui.painter().layout_job(job);
+    let line = rect.center().y - 9.0;
+    let mut x = left + name.size().x + 7.0;
+    ui.painter().galley(pos2(left, line - name.size().y / 2.0), name, color);
+    for (galley, tint) in tag_galleys {
+        let tag = Rect::from_min_size(pos2(x, line - 9.0), vec2(galley.size().x + 14.0, 18.0));
+        if tag.right() > left + width {
             break;
         }
-        ui.painter().rect_filled(pill, 10.0, color.gamma_multiply(0.14));
-        if *spinner {
-            Spinner::new().size(10.0).color(*color).paint_at(
-                ui,
-                Rect::from_center_size(pos2(pill.left() + 13.0, pill.center().y), vec2(10.0, 10.0)),
-            );
-        }
-        ui.painter().galley(
-            pos2(pill.left() + 8.0 + lead, pill.center().y - galley.size().y / 2.0),
-            galley,
-            *color,
-        );
-        right = pill.left() - 6.0;
+        ui.painter().rect_filled(tag, 9.0, tint.gamma_multiply(0.14));
+        ui.painter().galley(pos2(tag.left() + 7.0, line - galley.size().y / 2.0), galley, tint);
+        x = tag.right() + 6.0;
     }
-    let width = (right - 6.0 - (tile.right() + 12.0)).max(0.0);
-    let color = if enabled { TEXT() } else { MUTED() };
-    let mut job = text::LayoutJob::simple_singleline(repo.name.clone(), semibold(13.0), color);
-    job.wrap = text::TextWrapping::truncate_at_width(width);
-    let name = ui.painter().layout_job(job);
-    ui.painter().galley(pos2(tile.right() + 12.0, rect.center().y - 9.0 - name.size().y / 2.0), name, color);
-    let mut job = text::LayoutJob::simple_singleline(
-        crate::views::display_path(&repo.path),
-        FontId::proportional(11.5),
-        FAINT(),
-    );
-    job.wrap = text::TextWrapping::truncate_at_width(width);
-    let path = ui.painter().layout_job(job);
-    ui.painter().galley(pos2(tile.right() + 12.0, rect.center().y + 9.0 - path.size().y / 2.0), path, FAINT());
+    // The branch, then the path, on the second line.
+    let line = rect.center().y + 9.0;
+    let mut job = text::LayoutJob::default();
+    let mut at = left;
+    if let Some(branch) = &status.branch {
+        icon(ui.painter(), Rect::from_center_size(pos2(left + 5.5, line), vec2(11.0, 11.0)), Icon::Branch, MUTED());
+        at += 15.0;
+        let soft = TextFormat { font_id: FontId::proportional(11.5), color: TEXT_SOFT(), ..Default::default() };
+        let faint = TextFormat { font_id: FontId::proportional(11.5), color: FAINT(), ..Default::default() };
+        job.append(branch, 0.0, soft);
+        job.append(" · ", 0.0, faint);
+    }
+    let faint = TextFormat { font_id: FontId::proportional(11.5), color: FAINT(), ..Default::default() };
+    job.append(&crate::views::display_path(&repo.path), 0.0, faint);
+    job.wrap = text::TextWrapping::truncate_at_width((left + width - at).max(0.0));
+    let second = ui.painter().layout_job(job);
+    ui.painter().galley(pos2(at, line - second.size().y / 2.0), second, FAINT());
     response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, &repo.name));
     response
 }
@@ -533,24 +638,10 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
         Selection::Workspace(id) => library.workspaces.iter().find(|w| w.id == id),
         _ => None,
     };
-    let membership = workspace.map(|w| library.workspace_members(w.id, p.s.include_nested));
-    let in_selection: Vec<&SavedRepository> = if let Some(Ok(ids)) = &membership {
-        ids.iter()
-            .filter_map(|id| library.repositories.iter().find(|r| r.id == *id))
-            .collect()
-    } else if workspace.is_some() {
-        Vec::new()
-    } else {
-        library
-            .repositories
-            .iter()
-            .filter(|r| match p.s.selection {
-                Selection::Ungrouped => r.folder.is_none(),
-                Selection::Folder(id) => r.folder == Some(id),
-                _ => true,
-            })
-            .collect()
-    };
+    let membership = selection_repositories(library, p.s.selection, p.s.include_nested);
+    let in_selection: Vec<&SavedRepository> = membership.as_ref().map_or_else(|_| Vec::new(), Clone::clone);
+    // Each listed repository's status is read once a visit, a few at a time.
+    p.s.status.want(in_selection.iter().map(|r| (r.id, r.path.as_path())));
     // A workspace's nested workspaces in tree order: where a repository it opens comes from.
     let nested: Vec<&Workspace> = workspace.map_or_else(Vec::new, |w| {
         library
@@ -565,16 +656,7 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
             .filter(|a| w.repositories.contains(a))
             .or_else(|| w.repositories.first().copied())
     });
-    let title = match p.s.selection {
-        Selection::All => "All saved".to_owned(),
-        Selection::Ungrouped => "Ungrouped".to_owned(),
-        Selection::Folder(id) => library
-            .folders
-            .iter()
-            .find(|f| f.id == id)
-            .map_or_else(|| "Folder".to_owned(), |f| f.name.clone()),
-        Selection::Workspace(_) => workspace.map_or_else(|| "Workspace".to_owned(), |w| w.name.clone()),
-    };
+    let title = selection_title(library, p.s.selection);
     let editable = p.editable;
     card(ui, true, |ui| {
         // The filter and folder tools come first, so the rows below use what was just typed.
@@ -621,6 +703,10 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
             }
         }
         let query = p.s.filter.to_lowercase();
+        let status = &p.s.status;
+        let attention = in_selection.iter().filter(|r| status.attention(r.id, &r.path)).count();
+        let pullable = status.pullable(in_selection.iter().map(|r| (r.id, r.path.as_path())));
+        let attention_only = status.attention_only;
         let shown: Vec<&SavedRepository> = in_selection
             .iter()
             .filter(|r| {
@@ -628,6 +714,7 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
                     || r.name.to_lowercase().contains(&query)
                     || r.path.to_string_lossy().to_lowercase().contains(&query)
             })
+            .filter(|r| !attention_only || status.attention(r.id, &r.path))
             .copied()
             .collect();
         let counted = if !query.is_empty() {
@@ -655,12 +742,29 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
             });
             return;
         }
-        if let Some(Err(error)) = &membership {
+        if let Err(error) = &membership {
             Frame::new().inner_margin(14).show(ui, |ui| pages::callout(ui, AMBER(), error));
             return;
         }
+        if !in_selection.is_empty() {
+            status_strip(ui, p, in_selection.len(), attention, pullable);
+        }
         if shown.is_empty() {
-            if !query.is_empty() {
+            if attention_only && in_selection.iter().any(|r| {
+                query.is_empty()
+                    || r.name.to_lowercase().contains(&query)
+                    || r.path.to_string_lossy().to_lowercase().contains(&query)
+            }) {
+                let width = buttons_width(ui, &["Show all"]);
+                empty(ui, None, "Nothing here needs attention", width, |ui| {
+                    let r = pages::ghost(ui, true, "Show all");
+                    pages::control(p.widgets, "manager-attention-clear", &r, ui.clip_rect());
+                    if r.clicked() {
+                        p.s.status.attention_only = false;
+                        ui.ctx().request_repaint();
+                    }
+                });
+            } else if !query.is_empty() {
                 let width = buttons_width(ui, &["Clear filter"]);
                 empty(ui, None, &format!("No repositories match “{}”", p.s.filter), width, |ui| {
                     let r = pages::ghost(ui, true, "Clear filter");
@@ -697,33 +801,33 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
                         .map_or_else(Vec::new, |o| o.pending.iter().map(|(id, _)| *id).collect());
                     let mut picked = None;
                     for repo in &shown {
-                        let mut pills: Vec<Pill> = Vec::new();
+                        let mut tags: Vec<Pill> = Vec::new();
                         if let Some(w) = workspace {
                             if !w.repositories.contains(&repo.id) {
                                 if let Some(from) = nested.iter().find(|x| x.repositories.contains(&repo.id)) {
-                                    pills.push((from.name.clone(), pages::NEUTRAL(), false));
+                                    tags.push((from.name.clone(), pages::NEUTRAL()));
                                 }
                             } else if active == Some(repo.id) {
-                                pills.push(("Active tab".into(), pages::INFO(), false));
+                                tags.push(("Active tab".into(), pages::INFO()));
                             }
                         }
-                        let unavailable = p.s.unavailable.contains_key(&repo.id);
+                        if p.tabs.iter().any(|t| same_path(&t.path, &repo.path)) {
+                            tags.push(("Open".into(), pages::INFO()));
+                        }
+                        let mut status = p.s.status.row(repo.id, &repo.path);
+                        // Opening repositories one by one shows in the Upstream column.
                         if checking == Some(repo.id) {
-                            pills.push(("Opening".into(), pages::INFO(), true));
+                            status.upstream = Some(Cell::Busy("Opening".into()));
                         } else if waiting.contains(&repo.id) {
-                            pills.push(("Waiting".into(), pages::NEUTRAL(), false));
-                        } else if unavailable {
-                            pills.push(("Unavailable".into(), pages::WARN(), false));
-                        } else if p.tabs.iter().any(|t| same_path(&t.path, &repo.path)) {
-                            pills.push(("Open".into(), pages::INFO(), false));
+                            status.upstream = Some(Cell::Pill("Waiting".into(), pages::NEUTRAL()));
                         }
                         // A workspace lists what it opens; its card on the right is the selection.
                         if workspace.is_some() {
-                            repo_row(ui, repo, &pills, false, unavailable, false);
+                            repo_row(ui, repo, &tags, &status, false, false);
                             continue;
                         }
                         let selected = p.s.selected == Some(repo.id);
-                        let r = repo_row(ui, repo, &pills, selected, unavailable, true);
+                        let r = repo_row(ui, repo, &tags, &status, selected, true);
                         pages::control(p.widgets, format!("manager-repo-{}", repo.id), &r, ui.clip_rect());
                         if r.clicked() {
                             picked = Some(repo.id);
@@ -737,6 +841,81 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
                 });
             });
         pages::region(p.widgets, "manager-repositories", output.inner_rect.intersect(ui.clip_rect()), !p.busy);
+    });
+}
+/// Under the list's bar: the All and Needs attention chips, then the status reads'
+/// progress or the last run's result, Check again, Fetch all and Pull all. While a run
+/// goes, its progress and Stop instead.
+fn status_strip(ui: &mut Ui, p: &mut Parts, all: usize, attention: usize, pullable: bool) {
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 44.0), Sense::hover());
+    ui.painter().rect_filled(rect, 0.0, FOOTER());
+    ui.painter()
+        .hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, CARD_LINE()));
+    let mut row = ui.new_child(
+        UiBuilder::new()
+            .max_rect(rect.shrink2(vec2(12.0, 0.0)))
+            .layout(Layout::left_to_right(Align::Center)),
+    );
+    row.spacing_mut().item_spacing.x = 8.0;
+    let on = p.s.status.attention_only;
+    let r = chip(&mut row, "All", all, !on, false);
+    pages::control(p.widgets, "manager-chip-all", &r, row.clip_rect());
+    if r.clicked() {
+        p.s.status.attention_only = false;
+        row.ctx().request_repaint();
+    }
+    let r = chip(&mut row, "Needs attention", attention, on, attention > 0);
+    pages::control(p.widgets, "manager-chip-attention", &r, row.clip_rect());
+    if r.clicked() {
+        p.s.status.attention_only = true;
+        row.ctx().request_repaint();
+    }
+    let busy_line = |ui: &mut Ui, text: &str| {
+        ui.add(Label::new(RichText::new(text).size(12.5).color(TEXT_SOFT())).truncate());
+        ui.add(Spinner::new().size(13.0));
+    };
+    row.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = 8.0;
+        if let Some(batch) = &p.s.status.batch {
+            let r = pages::danger_ghost(ui, !batch.stopping, "Stop");
+            pages::control(p.widgets, "manager-stop", &r, ui.clip_rect());
+            p.asked.stop |= r.clicked();
+            busy_line(ui, &batch.progress());
+            return;
+        }
+        let (ready, writing) = (p.editable && !p.writing, p.writing);
+        let wait = |r: Response| {
+            if writing { r.on_disabled_hover_text("Waiting for the current Git operation") } else { r }
+        };
+        let r = wait(icon_button(ui, Icon::Pull, "Pull all", ready && pullable));
+        let r = if pullable { r } else { r.on_disabled_hover_text("No repository here has an upstream") };
+        pages::control(p.widgets, "manager-pull-all", &r, ui.clip_rect());
+        if r.clicked() {
+            p.asked.batch = Some(BatchKind::Pull);
+        }
+        let r = wait(icon_button(ui, Icon::Fetch, "Fetch all", ready));
+        pages::control(p.widgets, "manager-fetch-all", &r, ui.clip_rect());
+        if r.clicked() {
+            p.asked.batch = Some(BatchKind::Fetch);
+        }
+        let r = crate::chrome::icon_button(ui, Icon::Refresh, p.editable && !p.s.status.checking(), false, 28.0)
+            .on_hover_text("Check again");
+        pages::control(p.widgets, "manager-check", &r, ui.clip_rect());
+        p.asked.check |= r.clicked();
+        // What the reads or the last run say, in the room that is left.
+        if let Some(text) = p.s.status.progress() {
+            busy_line(ui, &text);
+        } else if let Some(result) = p.s.status.result.as_ref().filter(|r| r.selection == p.s.selection) {
+            let (short, _, tone) = result.summary();
+            ui.add(Label::new(RichText::new(&short).size(12.5).color(tone.color())).truncate())
+                .on_hover_text(&short);
+            let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+            icon(ui.painter(), rect, tone.icon(), tone.color());
+        } else if let Some(at) = p.s.status.checked
+            && ui.available_width() > 150.0
+        {
+            ui.add(Label::new(RichText::new(crate::repository_status::checked_text(at)).size(12.0).color(HINT())).truncate());
+        }
     });
 }
 /// [`pages::tool`] with a trash icon and red ink, for removing the selected folder.
@@ -810,9 +989,164 @@ fn opening_foot(ui: &mut Ui, p: &mut Parts) -> bool {
     pages::footer_status(ui, true, &format!("Opening {} of {}{name}", (done + 1).min(total.max(1)), total.max(1)));
     true
 }
+/// After Fetch all or Pull all, in the details card's place: what happened to each
+/// repository, failures and skips first, and Open N in tabs for those. Returns the card's
+/// natural height.
+fn result_card(ui: &mut Ui, p: &mut Parts, room: f32) -> f32 {
+    use crate::repository_status::Outcome;
+    let Some(result) = p.s.status.result.as_ref() else {
+        return 0.0;
+    };
+    let library = p.library;
+    let status = &p.s.status;
+    let (_, long, tone) = result.summary();
+    let kind = result.kind;
+    let detail = format!(
+        "{} · {}",
+        result.scope,
+        crate::repository_status::plural(result.total, "repository", "repositories")
+    );
+    let took = format!("Took {} s", result.took.as_secs().max(1));
+    // Each group's rows: the name, what happened in words and colour, and a pill.
+    type Line = (String, String, Color32, Option<(String, Color32)>);
+    let mut groups: Vec<(&str, Vec<Line>)> = Vec::new();
+    let order: [(&str, &str); 6] = match kind {
+        BatchKind::Pull => [("Failed", "failed"), ("Skipped", "skipped"), ("Pulled", "pulled"), ("Nothing to pull", "up_to_date"), ("Stopped", "stopped"), ("", "fetched")],
+        BatchKind::Fetch => [("Failed", "failed"), ("Skipped", "skipped"), ("Fetched", "fetched"), ("Stopped", "stopped"), ("", "pulled"), ("", "up_to_date")],
+    };
+    for (label, code) in order.into_iter().filter(|(label, _)| !label.is_empty()) {
+        let mut lines = Vec::new();
+        for (id, outcome) in result.outcomes.iter().filter(|(_, o)| o.code() == code) {
+            let Some(repo) = library.repositories.iter().find(|r| r.id == *id) else {
+                continue;
+            };
+            // The status read after the run: its Upstream pill says where it stands now.
+            let now = match status.row(repo.id, &repo.path).upstream {
+                Some(Cell::Pill(text, color)) if text.starts_with('↑') || text.starts_with('↓') => Some((text, color)),
+                _ => None,
+            };
+            let line = match outcome {
+                Outcome::Failed(why) => (why.clone(), RED(), None),
+                Outcome::Skipped(why) if why == "Diverged" => (why.clone(), TEXT_SOFT(), now),
+                Outcome::Skipped(why) => (why.clone(), TEXT_SOFT(), None),
+                Outcome::Pulled { commits, head } => (
+                    format!("now at {head}"),
+                    FAINT(),
+                    commits.map(|n| (format!("↓{n}"), GREEN())),
+                ),
+                Outcome::UpToDate => match now {
+                    Some((text, _)) if text.starts_with('↑') => (format!("Up to date, {text} to push"), FAINT(), None),
+                    _ => ("Up to date".into(), FAINT(), None),
+                },
+                Outcome::Fetched { changed: true } => ("Updated".into(), TEXT_SOFT(), now),
+                Outcome::Fetched { changed: false } => ("Nothing new".into(), FAINT(), None),
+                Outcome::Stopped => ("Stopped".into(), FAINT(), None),
+            };
+            lines.push((repo.name.clone(), line.0, line.1, line.2));
+        }
+        if !lines.is_empty() {
+            groups.push((label, lines));
+        }
+    }
+    let need_you = {
+        let ids = result.need_you();
+        library
+            .repositories
+            .iter()
+            .filter(|r| ids.contains(&r.id) && !matches!(r.path.try_exists(), Ok(false)))
+            .count()
+    };
+    let mut natural = 0.0;
+    card(ui, false, |ui| {
+        let image = if kind == BatchKind::Pull { Icon::Pull } else { Icon::Fetch };
+        bar(ui, Some(image), kind.title(), &detail, |ui| {
+            let r = crate::chrome::icon_button(ui, Icon::Close, true, false, 24.0).on_hover_text("Close");
+            pages::control(p.widgets, "manager-result-close", &r, ui.clip_rect());
+            p.asked.result_close |= r.clicked();
+        });
+        Frame::new().inner_margin(Margin { left: 14, right: 14, top: 10, bottom: 2 }).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+                icon(ui.painter(), rect, tone.icon(), tone.color());
+                ui.add(Label::new(RichText::new(&long).size(12.5).color(tone.color())).truncate());
+            });
+        });
+        let output = ScrollArea::vertical()
+            .id_salt("manager-result")
+            .max_height((room - 40.0 - 34.0 - 46.0 - 2.0).max(48.0))
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                for (label, lines) in &groups {
+                    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
+                    let caption = ui.painter().text(
+                        pos2(rect.left() + 14.0, rect.center().y + 2.0),
+                        Align2::LEFT_CENTER,
+                        label.to_uppercase(),
+                        semibold(11.0),
+                        HINT(),
+                    );
+                    ui.painter().text(
+                        pos2(caption.right() + 8.0, rect.center().y + 2.0),
+                        Align2::LEFT_CENTER,
+                        lines.len().to_string(),
+                        FontId::proportional(12.0),
+                        FAINT(),
+                    );
+                    for (name, what, color, pill) in lines {
+                        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::hover());
+                        let column = 132.0_f32.min(rect.width() * 0.4);
+                        let mut job = text::LayoutJob::simple_singleline(name.clone(), semibold(13.0), TEXT());
+                        job.wrap = text::TextWrapping::truncate_at_width(column - 8.0);
+                        let galley = ui.painter().layout_job(job);
+                        ui.painter().galley(pos2(rect.left() + 14.0, rect.center().y - galley.size().y / 2.0), galley, TEXT());
+                        let mut x = rect.left() + 14.0 + column;
+                        if let Some((text, tint)) = pill {
+                            let cell = Rect::from_min_max(pos2(x, rect.top()), pos2(x + 60.0, rect.bottom()));
+                            let galley = ui.painter().layout_no_wrap(text.clone(), semibold(12.5), *tint);
+                            let pill = Rect::from_min_size(pos2(cell.left(), rect.center().y - 10.0), vec2(galley.size().x + 18.0, 20.0));
+                            ui.painter().rect_filled(pill, 10.0, tint.gamma_multiply(0.14));
+                            ui.painter().galley(pos2(pill.left() + 9.0, rect.center().y - galley.size().y / 2.0), galley, *tint);
+                            x = pill.right() + 8.0;
+                        }
+                        let room = (rect.right() - 14.0 - x).max(0.0);
+                        let font = FontId::proportional(12.5);
+                        let cut = ui.painter().layout_no_wrap(what.clone(), font.clone(), *color).size().x > room;
+                        let mut job = text::LayoutJob::simple_singleline(what.clone(), font, *color);
+                        job.wrap = text::TextWrapping::truncate_at_width(room);
+                        let galley = ui.painter().layout_job(job);
+                        ui.painter().galley(pos2(x, rect.center().y - galley.size().y / 2.0), galley, *color);
+                        // A reason cut short shows in full on hover.
+                        if cut {
+                            ui.interact(rect, ui.id().with(("manager-result-row", name.as_str())), Sense::hover())
+                                .on_hover_text(what.as_str());
+                        }
+                    }
+                }
+                ui.add_space(8.0);
+            });
+        pages::region(p.widgets, "manager-result-scroll", output.inner_rect.intersect(ui.clip_rect()), true);
+        natural = 40.0 + 34.0 + output.content_size.y + 46.0 + 2.0;
+        card_foot(ui, None, |ui| {
+            if need_you > 0 {
+                let label = if need_you == 1 { "Open 1 in a tab".to_owned() } else { format!("Open {need_you} in tabs") };
+                let r = icon_button(ui, Icon::Folder, &label, p.editable && !p.writing);
+                pages::control(p.widgets, "manager-result-open", &r, ui.clip_rect());
+                p.asked.result_open |= r.clicked();
+            }
+            pages::footer_status(ui, false, &took);
+        });
+    });
+    natural
+}
 /// The selected repository or workspace: a header bar, its rows and the foot with Open, or a
-/// placeholder while nothing is selected. Returns the card's natural height.
-fn details(ui: &mut Ui, p: &mut Parts, room: f32) -> f32 {
+/// placeholder while nothing is selected. After Fetch all or Pull all, its result instead.
+/// `stacked`: under the list in a narrow window. Returns the card's natural height.
+fn details(ui: &mut Ui, p: &mut Parts, room: f32, stacked: bool) -> f32 {
+    if p.s.status.result.as_ref().is_some_and(|r| r.selection == p.s.selection) {
+        return result_card(ui, p, room);
+    }
     let library = p.library;
     let workspace = match p.s.selection {
         Selection::Workspace(id) => library.workspaces.iter().find(|w| w.id == id),
@@ -824,13 +1158,16 @@ fn details(ui: &mut Ui, p: &mut Parts, room: f32) -> f32 {
         p.s.selected.and_then(|id| library.repositories.iter().find(|r| r.id == id))
     };
     let editable = p.editable;
+    let missing = repository.is_some_and(|r| {
+        matches!(p.s.status.entry(r.id, &r.path).map(|e| &e.known), Some(crate::repository_status::Known::Missing))
+    });
     let mut natural = 0.0;
     card(ui, false, |ui| {
         if let Some(w) = workspace {
             bar(ui, Some(Icon::Modules), &w.name, "Workspace", |_| {});
         } else if let Some(repo) = repository {
-            let status = if p.s.unavailable.contains_key(&repo.id) {
-                Some(("Unavailable", pages::WARN()))
+            let status = if missing {
+                Some(("Folder missing", RED()))
             } else if p.tabs.iter().any(|t| same_path(&t.path, &repo.path)) {
                 Some(("Open", pages::INFO()))
             } else {
@@ -841,6 +1178,13 @@ fn details(ui: &mut Ui, p: &mut Parts, room: f32) -> f32 {
                     pages::pill(ui, text, color);
                 }
             });
+        } else if stacked {
+            // Under the list in a narrow window, an empty card keeps to its bar.
+            bar(ui, None, "", "No selection", |ui| {
+                ui.label(RichText::new("Select a repository").size(12.0).color(FAINT()));
+            });
+            natural = 40.0 + 2.0;
+            return;
         } else {
             bar(ui, None, "", "No selection", |_| {});
             let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 96.0), Sense::hover());
@@ -872,6 +1216,29 @@ fn details(ui: &mut Ui, p: &mut Parts, room: f32) -> f32 {
                         .filter(|w| w.repositories.contains(&repo.id))
                         .map(|w| w.name.as_str())
                         .collect();
+                    // Where it stands first: branch, upstream, changes and last fetch,
+                    // two to a line when the card is wide.
+                    let (rows, note) = p.s.status.details(repo.id, &repo.path);
+                    if ui.available_width() >= 520.0 && rows.len() > 1 {
+                        for pair in rows.chunks(2) {
+                            ui.columns(2, |columns| {
+                                for (column, (label, value, color)) in columns.iter_mut().zip(pair) {
+                                    detail(column, label, value, *color);
+                                }
+                            });
+                        }
+                    } else {
+                        for (label, value, color) in &rows {
+                            detail(ui, label, value, *color);
+                        }
+                    }
+                    if !rows.is_empty() {
+                        ui.add_space(4.0);
+                        let top = ui.cursor().top();
+                        ui.painter()
+                            .hline(ui.max_rect().x_range(), top, Stroke::new(1.0, ROW_LINE()));
+                        ui.add_space(4.0);
+                    }
                     detail(ui, "Location", &crate::views::display_path(&repo.path), TEXT_SOFT());
                     detail(ui, "Folder", folder.map_or("Ungrouped", |f| f.name.as_str()), TEXT());
                     if workspaces.is_empty() {
@@ -879,10 +1246,11 @@ fn details(ui: &mut Ui, p: &mut Parts, room: f32) -> f32 {
                     } else {
                         detail(ui, "Workspaces", &workspaces.join(", "), TEXT());
                     }
-                    if let Some(error) = p.s.unavailable.get(&repo.id) {
+                    // The status read's note, or why the last Open failed.
+                    if let Some((color, text)) = note.or_else(|| p.s.unavailable.get(&repo.id).map(|e| (AMBER(), e.clone()))) {
                         Frame::new()
                             .inner_margin(Margin { left: 14, right: 14, top: 6, bottom: 4 })
-                            .show(ui, |ui| pages::callout(ui, AMBER(), error));
+                            .show(ui, |ui| pages::callout(ui, color, &text));
                     }
                 }
                 ui.add_space(6.0);
@@ -900,7 +1268,7 @@ fn details(ui: &mut Ui, p: &mut Parts, room: f32) -> f32 {
                 (ready, "Open workspace", FormKind::Workspace(Some(w.id)), FormKind::RemoveWorkspace(w.id))
             } else {
                 let id = repository.map_or(0, |r| r.id);
-                (true, "Open", FormKind::Repository(Some(id)), FormKind::RemoveRepository(id))
+                (!missing, "Open", FormKind::Repository(Some(id)), FormKind::RemoveRepository(id))
             };
             let r = pages::primary(ui, open && !p.busy, label);
             pages::control(p.widgets, "manager-open", &r, ui.clip_rect());
@@ -1262,6 +1630,10 @@ impl Rocket {
                     .map(|r| (r.id, path))
             })
             .collect();
+        self.start_opening(pending, active);
+    }
+    /// Open these saved repositories one by one, then make `active` the active tab.
+    fn start_opening(&mut self, pending: VecDeque<(u64, PathBuf)>, active: Option<PathBuf>) {
         if let Some(d) = &mut self.dialog {
             d.flag = true;
         }
@@ -1273,13 +1645,29 @@ impl Rocket {
         });
         self.manager.clear_result();
     }
+    /// The result card's Open N in tabs: the repositories Fetch all or Pull all left for
+    /// someone, opened like a workspace.
+    fn open_result(&mut self) {
+        if self.manager.running() || self.write.is_some() || self.quitting {
+            return;
+        }
+        let pending: VecDeque<(u64, PathBuf)> = self.manager_result_paths().into();
+        if pending.is_empty() {
+            return;
+        }
+        let active = pending.front().map(|(_, path)| path.clone());
+        self.manager.status.result = None;
+        self.start_opening(pending, active);
+    }
     pub(crate) fn poll_manager(&mut self, ctx: &Context) {
         if self.quitting {
             self.manager.cancel();
             self.manager.cancel_form();
+            self.poll_repository_status(ctx);
             return;
         }
         self.poll_manager_scan();
+        self.poll_repository_status(ctx);
         if let Some(result) = self.manager.check.as_mut().and_then(ReadTask::try_finish) {
             self.manager.check = None;
             if let Some(id) = self.manager.checking_id.take() {
@@ -1293,13 +1681,13 @@ impl Rocket {
                     }
                     Err(e) => {
                         let error = check_error(&e);
-                        let name = self
-                            .library
-                            .repositories
-                            .iter()
-                            .find(|r| r.id == id)
-                            .map_or("A saved repository", |r| r.name.as_str());
+                        let saved = self.library.repositories.iter().find(|r| r.id == id);
+                        let name = saved.map_or("A saved repository", |r| r.name.as_str());
                         self.manager.error = Some(format!("Couldn't open {name}: {error}"));
+                        // The row says so too: Folder missing, or Couldn't check.
+                        if let Some(path) = saved.map(|r| r.path.clone()) {
+                            self.manager.status.record_failure(id, &path, &error);
+                        }
                         self.manager.unavailable.insert(id, error);
                         if let Some(o) = &mut self.manager.opening {
                             o.failed += 1;
@@ -1378,6 +1766,7 @@ impl Rocket {
             widgets: &mut self.frame_widgets,
             busy,
             editable: self.backend.is_some() && self.state_error.is_none() && !busy,
+            writing: self.write.is_some(),
             asked: Asked::default(),
         };
         // The library's sidebar, in the app sidebar's place.
@@ -1455,14 +1844,23 @@ impl Rocket {
                     .max_rect(rect)
                     .layout(Layout::top_down(Align::Min)),
             );
-            let natural = details(&mut card_ui, &mut p, rect.height());
+            let natural = details(&mut card_ui, &mut p, rect.height(), area.width() < 700.0);
             p.s.details_height = natural;
         }
         ui.advance_cursor_after_rect(full);
         let asked = p.asked;
         if asked.scan { self.manager_scan(); ui.ctx().request_repaint(); }
         // Applied after drawing: the next frame shows what they changed.
-        if asked.form.is_some() || asked.workspace.is_some() || asked.stop || asked.open || asked.close {
+        if asked.form.is_some()
+            || asked.workspace.is_some()
+            || asked.stop
+            || asked.open
+            || asked.close
+            || asked.check
+            || asked.batch.is_some()
+            || asked.result_open
+            || asked.result_close
+        {
             ui.ctx().request_repaint();
         }
         if let Some(kind) = asked.form {
@@ -1472,13 +1870,31 @@ impl Rocket {
             self.begin_manager_form(FormKind::Workspace(None), Some(parent));
         }
         if asked.stop {
-            self.manager.cancel();
-            if let Some(d) = &mut self.dialog {
-                d.flag = false;
+            if self.manager.status.batch.is_some() {
+                // Stop skips what hasn't started; a running pull finishes first.
+                self.stop_batch();
+            } else {
+                self.manager.cancel();
+                if let Some(d) = &mut self.dialog {
+                    d.flag = false;
+                }
             }
         }
         if asked.open {
             self.start_manager_open();
+        }
+        if asked.check {
+            let rows = self.manager_batch_rows();
+            self.manager.status.check_again(rows.iter().map(|(id, path)| (*id, path.as_path())));
+        }
+        if let Some(kind) = asked.batch {
+            self.start_batch(kind);
+        }
+        if asked.result_close {
+            self.manager.status.result = None;
+        }
+        if asked.result_open {
+            self.open_result();
         }
         if asked.close {
             self.dialog = None;
@@ -2018,6 +2434,150 @@ mod tests {
                 app.manager.form.as_mut().unwrap().name = "My name".into();
                 app.library_repository_picked(&fixture.root.join("another"));
                 assert_eq!(app.manager.form.as_ref().unwrap().name, "My name", "a typed name stays");
+            },
+        );
+    }
+
+    // Opening the page reads each listed repository in the background and its row says where it
+    // stands; Needs attention lists only the ones that need it; the strip and a result card keep
+    // their controls in the window at both sizes; Fetch all skips what it can't fetch.
+    #[test]
+    fn status_rows_strip_and_results_stay_in_view() {
+        use crate::repository_status::{BatchResult, Outcome};
+        common::isolated(
+            "ROCKET_MANAGER_STATUS_UI_CASE",
+            "repository_manager::tests::status_rows_strip_and_results_stay_in_view",
+            || {
+                let fixture = common::Fixture::new();
+                fixture.write("file", "first");
+                fixture.commit("first");
+                // A clone of it with an edit it hasn't committed, and a folder that is gone.
+                let edited = fixture.root.join("edited");
+                fixture.run(&["clone", "--quiet", fixture.repository.to_str().unwrap(), edited.to_str().unwrap()]);
+                std::fs::write(edited.join("file"), "changed").unwrap();
+                let gone = fixture.root.join("gone");
+                let ctx = Context::default();
+                let mut app = Rocket::with_log_directory(&ctx, vec![fixture.repository.clone()], fixture.root.join("logs"));
+                let deadline = Instant::now() + Duration::from_secs(40);
+                while app.busy() {
+                    app.poll(&ctx);
+                    assert!(Instant::now() < deadline);
+                    thread::sleep(Duration::from_millis(10));
+                }
+                app.auto_refresh = false;
+                let mut library = Library::default();
+                let ids = [
+                    library.save_repository(fixture.repository.clone(), "clean".into(), None).unwrap(),
+                    library.save_repository(edited.clone(), "edited".into(), None).unwrap(),
+                    library.save_repository(gone.clone(), "gone".into(), None).unwrap(),
+                ];
+                let paths = [fixture.repository.clone(), edited.clone(), gone.clone()];
+                app.library = library;
+                app.dispatch(Intent::Dialog(DialogKind::RepositoryManager));
+                let frame = |app: &mut Rocket, size: Vec2| {
+                    app.frame_widgets.clear();
+                    let mut output = ctx.run_ui(
+                        RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), ..Default::default() },
+                        |ui| app.shell(ui, &mut Vec::new()),
+                    );
+                    output.textures_delta.clear();
+                };
+                let inside = |app: &Rocket, id: &str, size: Vec2| {
+                    let rect = app.frame_widgets.get(id).unwrap_or_else(|| panic!("{id} at {size:?}")).rect;
+                    assert!(
+                        rect.min.x >= 0.0 && rect.min.y >= 0.0 && rect.max.x <= size.x && rect.max.y <= size.y,
+                        "{id} leaves the window: {rect:?} at {size:?}"
+                    );
+                };
+                let wide = vec2(1440.0, 900.0);
+                let settle = |app: &mut Rocket, done: &dyn Fn(&Rocket) -> bool| {
+                    let deadline = Instant::now() + Duration::from_secs(40);
+                    loop {
+                        frame(app, wide);
+                        app.poll(&ctx);
+                        if done(app) {
+                            break;
+                        }
+                        assert!(Instant::now() < deadline, "the manager's background work");
+                        thread::sleep(Duration::from_millis(20));
+                    }
+                };
+                settle(&mut app, &|app| {
+                    !app.manager.status.checking() && (0..3).all(|n| app.manager.status.entry(ids[n], &paths[n]).is_some())
+                });
+                let upstream = |app: &Rocket, n: usize| app.manager.status.row(ids[n], &paths[n]).upstream.unwrap();
+                assert_eq!(upstream(&app, 0), Cell::Pill("No upstream".into(), pages::NEUTRAL()));
+                assert_eq!(upstream(&app, 1), Cell::Quiet("Up to date".into()));
+                assert_eq!(app.manager.status.row(ids[1], &paths[1]).changes, Some(Cell::Pill("1 change".into(), AMBER())));
+                assert_eq!(upstream(&app, 2), Cell::Pill("Folder missing".into(), RED()));
+                assert!(app.manager.status.checked.is_some());
+                // Needs attention: the edited clone and the missing folder only.
+                app.manager.status.attention_only = true;
+                frame(&mut app, wide);
+                let listed = |app: &Rocket| ids.map(|id| app.frame_widgets.contains_key(&format!("manager-repo-{id}")));
+                assert_eq!(listed(&app), [false, true, true]);
+                app.manager.status.attention_only = false;
+                for size in [wide, vec2(780.0, 620.0)] {
+                    for _ in 0..3 {
+                        frame(&mut app, size);
+                    }
+                    for id in ["manager-chip-all", "manager-chip-attention", "manager-check", "manager-fetch-all", "manager-pull-all"] {
+                        inside(&app, id, size);
+                    }
+                    inside(&app, &format!("manager-repo-{}", ids[1]), size);
+                }
+                // Fetch all: the clone fetches from its origin; nothing to fetch for the others.
+                app.start_batch(crate::repository_status::BatchKind::Fetch);
+                assert!(app.manager.running(), "a run keeps the page busy");
+                settle(&mut app, &|app| app.manager.status.result.is_some() && !app.manager.status.checking());
+                let result = app.manager.status.result.as_ref().unwrap();
+                assert!(!app.manager.running());
+                assert_eq!(
+                    result.outcomes,
+                    [
+                        (ids[0], Outcome::Skipped("No remotes".into())),
+                        (ids[1], Outcome::Fetched { changed: false }),
+                        (ids[2], Outcome::Skipped("Folder missing".into())),
+                    ]
+                );
+                // The result card takes the details card's place, with Open 2 in tabs in its foot.
+                app.manager.status.result = Some(BatchResult {
+                    kind: crate::repository_status::BatchKind::Pull,
+                    selection: Selection::All,
+                    scope: "All saved".into(),
+                    total: 3,
+                    outcomes: vec![
+                        (ids[0], Outcome::Skipped("No upstream".into())),
+                        (ids[1], Outcome::Skipped("1 change uncommitted".into())),
+                        (ids[2], Outcome::Skipped("Folder missing".into())),
+                    ],
+                    took: Duration::from_secs(2),
+                    stopped: false,
+                });
+                assert_eq!(app.manager_result_paths().len(), 2, "a missing folder isn't opened");
+                for size in [wide, vec2(780.0, 620.0)] {
+                    for _ in 0..3 {
+                        frame(&mut app, size);
+                    }
+                    inside(&app, "manager-result-close", size);
+                    inside(&app, "manager-result-open", size);
+                }
+                // Picking a row closes the result.
+                app.manager.pick(ids[1]);
+                assert!(app.manager.status.result.is_none());
+                // Exit names a running run, stops it as it stops any write, and stays open
+                // until its Git has reported back.
+                app.start_batch(crate::repository_status::BatchKind::Fetch);
+                assert!(app.quit_rows().iter().any(|(_, _, text)| text == "Fetch all is still running. Exiting stops it first."));
+                app.begin_quit();
+                assert!(app.working(), "Rocket stays open while the run reports back");
+                let deadline = Instant::now() + Duration::from_secs(40);
+                while app.manager.status.batch.is_some() {
+                    app.poll(&ctx);
+                    assert!(Instant::now() < deadline, "the stopped run reports back");
+                    thread::sleep(Duration::from_millis(10));
+                }
+                assert!(app.manager.status.result.as_ref().is_some_and(|r| r.stopped));
             },
         );
     }

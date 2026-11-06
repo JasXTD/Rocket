@@ -412,3 +412,98 @@ fn live_read_only_github_api() {
         notifications.items.len()
     );
 }
+
+fn search_body(count: usize, total: u64) -> String {
+    let items: Vec<String> = (0..count)
+        .map(|i| {
+            format!(
+                r#"{{"name":"tool{i}","owner":{{"login":"acme"}},"description":"Fuzzy {i} 界","stargazers_count":{},"forks_count":3,"open_issues_count":2,"language":"Rust","license":{{"spdx_id":"MIT","name":"MIT License"}},"topics":["cli","fuzzy"],"default_branch":"main","size":4096,"pushed_at":"2026-11-01T00:00:00Z","updated_at":"2026-11-02T00:00:00Z","private":false,"fork":false,"archived":{},"html_url":"https://github.com/acme/tool{i}","clone_url":"C:/fixture/tool{i}"}}"#,
+                1000 - i,
+                i == 1
+            )
+        })
+        .collect();
+    format!(r#"{{"total_count":{total},"incomplete_results":false,"items":[{}]}}"#, items.join(","))
+}
+
+#[test]
+fn search_reads_results_rate_limits_and_refusals_with_or_without_sign_in() {
+    isolated(
+        CASE,
+        "search_reads_results_rate_limits_and_refusals_with_or_without_sign_in",
+        || {
+            let f = Fixture::new();
+            helper(&f, Some(TOKEN));
+            let fake = serve(Box::new(|path| {
+                if path.contains("q=limited") {
+                    let mut r = status(403);
+                    r.1.push(("X-RateLimit-Remaining", "0".into()));
+                    r.1.push(("X-RateLimit-Reset", "1900000000".into()));
+                    return r;
+                }
+                if path.contains("q=bad") {
+                    return status(422);
+                }
+                if path.starts_with("/search/repositories?q=fuzzy%20finder%20language%3Arust&sort=stars&order=desc&per_page=30&page=1") {
+                    let mut r = ok(&search_body(30, 45));
+                    r.1.push(("X-RateLimit-Remaining", "27".into()));
+                    r.1.push(("X-RateLimit-Reset", "1900000060".into()));
+                    return r;
+                }
+                if path.contains("&page=2") {
+                    return ok(&search_body(15, 45));
+                }
+                match path {
+                    "/user" => ok(USER),
+                    _ => status(404),
+                }
+            }));
+            let cancel = CancellationToken::new();
+            let anonymous = f.git.github_anonymous(fake.endpoint).unwrap();
+            assert!(!anonymous.signed_in());
+            let page = match anonymous
+                .search_repositories("fuzzy finder language:rust", GitHubSearchSort::Stars, 1, &cancel)
+                .unwrap()
+            {
+                GitHubSearchOutcome::Page(page) => page,
+                other => panic!("{other:?}"),
+            };
+            assert_eq!((page.total, page.items.len(), page.next_page), (45, 30, Some(2)));
+            assert_eq!((page.remaining, page.reset_at), (Some(27), Some(1_900_000_060)));
+            let first = &page.items[0];
+            assert_eq!(first.remote.full_name(), "acme/tool0");
+            assert_eq!((first.stars, first.forks, first.open_issues, first.size_kb), (1000, 3, 2, 4096));
+            assert_eq!(first.language.as_deref(), Some("Rust"));
+            assert_eq!(first.license.as_deref(), Some("MIT"));
+            assert_eq!(first.topics, vec!["cli".to_owned(), "fuzzy".to_owned()]);
+            assert_eq!(first.description.as_deref(), Some("Fuzzy 0 界"));
+            // Only the loopback test server may name its own clone source.
+            assert_eq!(first.clone_url, "C:/fixture/tool0");
+            assert!(page.items[1].archived);
+            let last = match anonymous.search_repositories("fuzzy finder language:rust", GitHubSearchSort::Stars, 2, &cancel).unwrap() {
+                GitHubSearchOutcome::Page(page) => page,
+                other => panic!("{other:?}"),
+            };
+            assert_eq!((last.items.len(), last.next_page), (15, None));
+            assert_eq!(
+                anonymous.search_repositories("limited", GitHubSearchSort::BestMatch, 1, &cancel).unwrap(),
+                GitHubSearchOutcome::RateLimited { reset_at: Some(1_900_000_000), retry_after: None }
+            );
+            assert_eq!(
+                anonymous.search_repositories("bad", GitHubSearchSort::Updated, 1, &cancel).unwrap(),
+                GitHubSearchOutcome::Refused
+            );
+            assert!(anonymous.search_repositories("  ", GitHubSearchSort::BestMatch, 1, &cancel).is_err());
+            assert!(anonymous.search_repositories("a\nb", GitHubSearchSort::BestMatch, 1, &cancel).is_err());
+            let signed = f.git.github_session(fake.endpoint, false, &cancel).unwrap();
+            assert!(signed.signed_in());
+            signed.search_repositories("bad", GitHubSearchSort::BestMatch, 1, &cancel).unwrap();
+            let requests = fake.requests.lock().unwrap().clone();
+            let searches: Vec<_> = requests.iter().filter(|r| r.contains("/search/repositories")).collect();
+            assert_eq!(searches.len(), 5);
+            // Signed-out searches carry no token; the signed-in one does.
+            assert!(searches[..4].iter().all(|r| !r.to_ascii_lowercase().contains("authorization:")));
+            assert!(searches[4].contains(TOKEN));
+        },
+    );
+}

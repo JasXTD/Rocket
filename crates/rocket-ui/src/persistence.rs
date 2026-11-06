@@ -32,6 +32,11 @@ const PUSH_CHECK_MAGIC: &[u8] = b"ROCKET-STATE\0\x18";
 // Default-on settings retain their older representation. Older binaries reject
 // v25 rather than silently losing a user's explicit security preference.
 const AI_KEYS_MAGIC: &[u8] = b"ROCKET-STATE\0\x19";
+// v26 appends the commit message area's height after its handle was dragged. Without
+// one the earlier layout is kept, so only a dragged height makes older binaries refuse.
+const COMMIT_HEIGHT_MAGIC: &[u8] = b"ROCKET-STATE\0\x1a";
+/// Heights the commit message area can be dragged to and saved at.
+pub const COMMIT_HEIGHTS: std::ops::RangeInclusive<f32> = 120.0..=2000.0;
 // v15 uses the v14 layout and version-2 definitions for context-specific commands.
 const SCOPED_MAGIC: &[u8] = b"ROCKET-STATE\0\x0f";
 const URL_MAGIC: &[u8] = b"ROCKET-STATE\0\x10";
@@ -91,6 +96,8 @@ pub struct Preferences {
     pub theme: crate::theme::Settings,
     pub general: crate::general::Settings,
     pub shell: crate::terminal_settings::Settings,
+    /// The commit message area's height once its handle is dragged; None follows the text.
+    pub commit_height: Option<f32>,
 }
 impl Default for Preferences {
     fn default() -> Self {
@@ -114,6 +121,7 @@ impl Default for Preferences {
             theme: Default::default(),
             general: Default::default(),
             shell: Default::default(),
+            commit_height: None,
         }
     }
 }
@@ -321,7 +329,11 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     if !p.general.valid() || !p.shell.valid() {
         return Err(invalid());
     }
-    let ai_keys = !p.guard_ai_api_keys;
+    if p.commit_height.is_some_and(|h| !COMMIT_HEIGHTS.contains(&h)) {
+        return Err(invalid());
+    }
+    let commit_height = p.commit_height.is_some();
+    let ai_keys = commit_height || !p.guard_ai_api_keys;
     let push_check = ai_keys || p.dependency_before_push;
     let shell = push_check || p.shell != crate::terminal_settings::Settings::default();
     let general = shell || p.general != crate::general::Settings::default();
@@ -331,7 +343,7 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     let orders = shortcuts || state.worktree_views.values().any(|v| v.history_order != rocket_git::HistoryOrder::default());
     let urls = orders || state.commands.iter().any(|c| c.action == rocket_git::CommandAction::Url);
     let scoped = urls || state.commands.iter().any(|c| c.scope != rocket_git::CommandScope::Repository);
-    let mut bytes = if ai_keys { AI_KEYS_MAGIC } else if push_check { PUSH_CHECK_MAGIC } else if shell { SHELL_MAGIC } else if general { GENERAL_MAGIC } else if nested_workspaces { WORKSPACES_MAGIC } else if themes { THEME_MAGIC } else if shortcuts { SHORTCUT_MAGIC } else if orders { ORDER_MAGIC } else if urls { URL_MAGIC } else if scoped { SCOPED_MAGIC } else if state.hosting_searches.is_empty() { DEPENDENCIES_MAGIC } else { SEARCH_MAGIC }.to_vec();
+    let mut bytes = if commit_height { COMMIT_HEIGHT_MAGIC } else if ai_keys { AI_KEYS_MAGIC } else if push_check { PUSH_CHECK_MAGIC } else if shell { SHELL_MAGIC } else if general { GENERAL_MAGIC } else if nested_workspaces { WORKSPACES_MAGIC } else if themes { THEME_MAGIC } else if shortcuts { SHORTCUT_MAGIC } else if orders { ORDER_MAGIC } else if urls { URL_MAGIC } else if scoped { SCOPED_MAGIC } else if state.hosting_searches.is_empty() { DEPENDENCIES_MAGIC } else { SEARCH_MAGIC }.to_vec();
     bytes.extend([
         u8::from(p.sidebar),
         u8::from(p.details),
@@ -473,6 +485,7 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     }
     if push_check { bytes.push(u8::from(p.dependency_before_push)); }
     if ai_keys { bytes.push(u8::from(p.guard_ai_api_keys)); }
+    if let Some(height) = p.commit_height { bytes.extend(height.to_le_bytes()); }
     if bytes.len() as u64 > MAX_BYTES {
         return Err(invalid());
     }
@@ -613,7 +626,8 @@ impl<'a> Reader<'a> {
 fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     let mut r = Reader(bytes);
     let magic = r.take(MAGIC.len())?;
-    let ai_keys = magic == AI_KEYS_MAGIC;
+    let commit_height = magic == COMMIT_HEIGHT_MAGIC;
+    let ai_keys = commit_height || magic == AI_KEYS_MAGIC;
     let push_check = ai_keys || magic == PUSH_CHECK_MAGIC;
     let shell = push_check || magic == SHELL_MAGIC;
     let general = shell || magic == GENERAL_MAGIC;
@@ -665,6 +679,7 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
         theme: Default::default(),
         general: Default::default(),
         shell: Default::default(),
+        commit_height: None,
     };
     let mut state = SavedState {
         preferences,
@@ -893,6 +908,7 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     }
     if push_check { state.preferences.dependency_before_push = r.boolean()?; }
     if ai_keys { state.preferences.guard_ai_api_keys = r.boolean()?; }
+    if commit_height { state.preferences.commit_height = Some(f32::from_bits(r.u32()?)); }
     if !r.0.is_empty() {
         return Err(invalid());
     }
@@ -1178,6 +1194,28 @@ mod tests {
         assert!(decode(&encode(&state).unwrap()).unwrap().preferences.secret_protection);
     }
 
+    #[test]
+    fn a_dragged_commit_height_persists_and_an_undragged_one_keeps_the_old_layout() {
+        let mut state = SavedState::default();
+        let plain = encode(&state).unwrap();
+        assert_ne!(&plain[..MAGIC.len()], COMMIT_HEIGHT_MAGIC);
+        assert_eq!(decode(&plain).unwrap().preferences.commit_height, None);
+        state.preferences.commit_height = Some(318.5);
+        let bytes = encode(&state).unwrap();
+        assert_eq!(&bytes[..MAGIC.len()], COMMIT_HEIGHT_MAGIC);
+        assert_eq!(decode(&bytes).unwrap(), state);
+        for length in 0..bytes.len() { assert!(decode(&bytes[..length]).is_err()); }
+        let mut old_version = bytes.clone(); old_version[MAGIC.len() - 1] = 0x19;
+        assert!(decode(&old_version).is_err(), "the new field cannot be silently ignored");
+        for bad in [f32::NAN, 40.0, 9000.0] {
+            state.preferences.commit_height = Some(bad);
+            assert!(encode(&state).is_err(), "{bad}");
+            let mut forged = bytes.clone();
+            let at = forged.len() - 4;
+            forged[at..].copy_from_slice(&bad.to_le_bytes());
+            assert!(decode(&forged).is_err(), "{bad}");
+        }
+    }
     #[test]
     fn ai_key_guard_migrates_old_profiles_and_persists_independently() {
         for secrets in [false,true] {

@@ -36,6 +36,12 @@ impl MapPage {
         self.filter_key = None;
         self.display_offset = 0;
     }
+    /// The folder tree shows folders only: a file counts towards its folder.
+    fn folders_view(&self) -> bool {
+        self.data
+            .as_ref()
+            .is_some_and(|d| d.kind == MapKind::Code && !self.alternate)
+    }
     pub(super) fn rebuild(&mut self) {
         let key = (self.query.clone(), self.alternate);
         if self.filter_key.as_ref() == Some(&key) {
@@ -49,6 +55,7 @@ impl MapPage {
             self.display_offset = 0;
         }
         self.filter_key = Some(key);
+        let folders = self.folders_view();
         let Some(data) = &self.data else { return };
         let mut parent = vec![None; data.nodes.len()];
         for e in &data.links {
@@ -70,6 +77,15 @@ impl MapPage {
                 result
             })
             .collect::<Vec<_>>();
+        // Where a node shows: its collapsed ancestor, and in the folder tree a file's
+        // folder. Files at the top have no card.
+        let shown = |i: usize| -> Option<usize> {
+            if folders && data.nodes[i].kind == MapNodeKind::File {
+                parent[i].map(|p| representative[p])
+            } else {
+                Some(representative[i])
+            }
+        };
         self.projected_links = if self.collapsed.is_empty() || self.alternate {
             data.links.clone()
         } else {
@@ -98,7 +114,7 @@ impl MapPage {
             .neighbor_anchor
             .as_ref()
             .and_then(|key| data.nodes.iter().position(|n| &n.key == key))
-            .map(|i| representative[i]);
+            .and_then(shown);
         let mut neighborhood = HashSet::new();
         if let Some(i) = anchor {
             neighborhood.insert(i);
@@ -114,17 +130,20 @@ impl MapPage {
             }
         }
         let allowed = |i: usize| anchor.is_none() || neighborhood.contains(&i);
+        let kept = |i: usize| -> bool {
+            !(folders && data.nodes[i].kind == MapNodeKind::File)
+        };
         let mut matched = HashSet::new();
         let query = self.query.to_lowercase();
         for (i, n) in data.nodes.iter().enumerate() {
-            let r = representative[i];
+            let Some(r) = shown(i) else { continue };
             if !allowed(r) {
                 continue;
             }
             if match data.kind {
                 MapKind::Code => self.alternate && n.kind != MapNodeKind::Crate,
                 MapKind::People => self.alternate && n.kind != MapNodeKind::Person,
-                MapKind::History => self.alternate && n.count < 2,
+                MapKind::History => false,
             } {
                 continue;
             }
@@ -137,6 +156,7 @@ impl MapPage {
                         .as_ref()
                         .map(ToString::to_string)
                         .unwrap_or_default(),
+                    n.refs.iter().map(|r| label(r)).collect::<Vec<_>>().join(" "),
                     n.evidence
                         .iter()
                         .map(|p| label(p))
@@ -151,14 +171,14 @@ impl MapPage {
             }
         }
         let mut context = matched.clone();
-        if !query.is_empty() || data.kind == MapKind::History && self.alternate {
+        if !query.is_empty() {
             for e in &self.projected_links {
                 if self.edge_kind(e.kind) && (matched.contains(&e.from) || matched.contains(&e.to))
                 {
-                    if allowed(e.from) {
+                    if allowed(e.from) && kept(e.from) {
                         context.insert(e.from);
                     }
-                    if allowed(e.to) {
+                    if allowed(e.to) && kept(e.to) {
                         context.insert(e.to);
                     }
                 }
@@ -188,7 +208,7 @@ impl MapPage {
             .collect();
         self.visible.sort_unstable();
         if let Some(i) = self.selected {
-            self.selected = Some(representative[i]);
+            self.selected = shown(i);
         }
         if !self.selected.is_some_and(|i| self.visible.contains(&i)) {
             self.selected = self.visible.first().copied();
@@ -201,6 +221,7 @@ impl MapPage {
         let layout_nodes = (0..data.nodes.len())
             .filter(|i| {
                 representative[*i] == *i
+                    && kept(*i)
                     && match data.kind {
                         MapKind::Code => {
                             !self.alternate || data.nodes[*i].kind == MapNodeKind::Crate
@@ -212,7 +233,15 @@ impl MapPage {
                     }
             })
             .collect::<Vec<_>>();
-        self.positions = drawing::layout(data, &layout_nodes, self.alternate);
+        let (positions, groups) = drawing::layout(data, &layout_nodes, self.alternate, &self.collapsed);
+        self.positions = positions;
+        // A folder's files card shows only while the folder does.
+        let visible: HashSet<usize> = self.visible.iter().copied().collect();
+        self.file_groups = groups
+            .into_iter()
+            .filter(|g| g.folder.is_none_or(|p| visible.contains(&p)) && (query.is_empty() || g.folder.is_some()))
+            .collect();
+        self.topology = None;
         self.fit = true;
     }
 }

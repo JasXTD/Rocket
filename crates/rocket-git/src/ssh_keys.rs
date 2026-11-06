@@ -1,7 +1,11 @@
 //! Windows OpenSSH profiles. Private key material is never logged or returned.
 mod binding;
 mod discovery;
+mod direct;
+mod launcher;
 mod files;
+pub use direct::SshAuthentication;
+pub use launcher::ssh_helper_main;
 use crate::{
     local_files,
     runner::{Runner, args, git_path},
@@ -31,6 +35,8 @@ pub enum SshFailure {
     RecoveryRequired,
     NoRecovery,
     Overrides,
+    PassphraseUnavailable,
+    HelperUnavailable,
 }
 impl SshFailure {
     pub fn code(self) -> &'static str {
@@ -48,6 +54,8 @@ impl SshFailure {
             Self::RecoveryRequired => "ssh_recovery_required",
             Self::NoRecovery => "ssh_no_matching_recovery",
             Self::Overrides => "ssh_config_overrides",
+            Self::PassphraseUnavailable => "ssh_passphrase_unavailable",
+            Self::HelperUnavailable => "ssh_helper_unavailable",
         }
     }
     pub fn guidance(self) -> &'static str {
@@ -55,6 +63,8 @@ impl SshFailure {
             Self::Unavailable => {
                 "Windows OpenSSH Client is unavailable. Enable the Windows optional feature, then refresh."
             }
+            Self::PassphraseUnavailable => "No usable saved passphrase exists for this exact key and profile. Open SSH keys, select the key, and verify/save its passphrase, or use Windows agent mode.",
+            Self::HelperUnavailable => "Rocket's SSH helper is missing or invalid. Use a complete Rocket bundle; existing SSH settings and keys were preserved.",
             Self::InvalidProfile => {
                 "Use a unique rocket- alias, a DNS hostname, a simple SSH username and a port from 1 to 65535."
             }
@@ -86,7 +96,7 @@ impl SshFailure {
                 "The operation finished only partially. Inspect the retained profile folder or repository SSH recovery backup before retrying; Rocket will not overwrite it."
             }
             Self::Overrides => {
-                "This repository has include/worktree SSH settings or an inherited GIT_SSH override. Review those with Git before binding a profile; Rocket preserved all settings."
+                "Git has custom remote-service commands, include/worktree SSH settings or an inherited GIT_SSH override. Review those settings with Git before using this profile; Rocket preserved all settings."
             }
             Self::NoRecovery => {
                 "No backup matches the current repository config. External edits were preserved. Use the saved recovery files for a manual review."
@@ -108,6 +118,7 @@ pub struct SshProfile {
     pub fingerprint: String,
     pub encrypted: bool,
     pub public_key: String,
+    pub passphrase_saved: bool,
     record: Vec<u8>,
 }
 #[derive(Clone, Debug)]
@@ -269,6 +280,7 @@ impl SshManager {
             fingerprint,
             encrypted,
             public_key,
+            passphrase_saved: directory.join("passphrase.dpapi").exists(),
             record,
         })
     }

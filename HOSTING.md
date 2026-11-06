@@ -374,6 +374,91 @@ synthetic API/native MCP checks do not establish real GitHub review/merge scopes
 organization policy or cross-fork acceptance. Existing live Git transport and
 sign-in evidence is separate.
 
+## CI status on commits and branches (unreleased)
+
+Commits shows a mark at the end of each pushed commit's message, and the sidebar
+shows one beside each branch: passed (check), failed (cross), running or queued
+(dot), or not checked (ring: on the host, no check ran; no rings show while no
+loaded commit has a check). Unpushed commits have no mark; a local branch's mark is for its upstream's last pushed commit. Click a mark,
+or **Show checks** in the commit details, for that commit's checks with failures
+first, **Re-run failed jobs** and **Open in browser**. The PR **Checks** tab shows
+the head's checks the same way, with a pass/fail pill in the PR header.
+
+Marks appear when a connected or remembered account's server matches a remote.
+A remembered account signs in by itself when its repository opens, for reads only;
+Hosting itself stays disconnected. Bitbucket Server / Data Center has no CI read.
+
+| Provider | Marks come from | Re-run | Token permissions (marks / re-run) |
+| --- | --- | --- | --- |
+| GitHub, GitHub Enterprise Server | Check runs and commit statuses: GitHub's `statusCheckRollup`, one GraphQL request for up to 50 commits; Actions runs when a token can't read it | Re-run failed jobs: `POST /repos/{owner}/{repo}/actions/runs/{id}/rerun-failed-jobs`, which also runs the jobs that need them; within 30 days, 50 attempts per run | Fine-grained: Actions Read and Commit statuses Read / Actions Read and write. Classic or browser sign-in: `repo` for private repositories / `repo`. Re-running also needs write access |
+| GitLab | The newest 100 pipelines, one request | Retry: `POST /projects/:id/pipelines/:id/retry`, which also retries canceled jobs | `read_api` / `api` and the Developer role (Maintainer on a protected branch) |
+| Gitea | Combined commit status, one request per commit (up to 20) | Re-run failed jobs: `POST /repos/{owner}/{repo}/actions/runs/{run}/rerun-failed-jobs` on a Gitea with the Actions API; older servers show results only | `read:repository` / `write:repository` |
+| Bitbucket Cloud | Commit statuses, which include Pipelines; one request per commit (up to 20) | None: the API can only start a new pipeline | `read:repository:bitbucket`, `read:pipeline:bitbucket` |
+| Azure DevOps Services and Server | The newest 100 builds of the repository plus commit statuses; two requests per refresh | None in this version | Code (Read) and Build (Read); Code (Status) also reads statuses |
+
+Reads run on their own worker after history is drawn, one request at a time, and
+history never waits for them. A repository refreshes when it opens, when its
+remote branches change (after a fetch, pull or push), every 30 seconds while a
+check runs and Rocket is in front, and every 5 minutes otherwise; nothing refreshes
+in the background. Links a response supplies are kept only as plain HTTPS without
+credentials and are never followed with the token; a status linking to another
+site shows that site's name before it opens in the browser.
+
+**Re-run failed jobs** is offered only when the run has finished and failed and the
+host says the account can write to the repository (GitHub and Gitea:
+`permissions.push`, as Merge checks; GitLab: Developer access or above). A classic
+GitHub token's scopes and a GitLab token's scopes are read when the host reports
+them. The review names host, repository, account, run, commit and failed jobs, and
+is single-use for two minutes. Sending rechecks the run and the account first. A
+refusal is shown with the permission the host named (GitHub's
+`X-Accepted-GitHub-Permissions`). A request that may have reached the host without
+a confirmed answer is **Outcome unknown**: refresh the checks before trying again.
+Rocket never retries automatically.
+
+The status bar reports a repository's whole state: **Checks hidden** when the
+account can't read checks (naming the permission when GitHub does), **Checks paused
+until** a time when the rate limit is used up, and **Checks from** a time when the
+last refresh failed, with faded marks. Checks hidden and Checks paused open
+Actions, which says what to do; a token the host rejected opens Accounts.
+
+### Actions page (unreleased)
+
+**Actions**, in the sidebar after AI review, lists the repository's runs from its
+host, newest first: every workflow, branch, pull request and schedule. It shows for
+every repository. Without a connected or remembered account for the remote's host
+it names the host and offers **Connect** (Preferences → Accounts on that host). It
+also says when the repository has no workflow, when the token can't read runs
+(naming the permission when GitHub does), when the rate limit is used up, when no
+remote is on a host Rocket reads, and that Bitbucket Server doesn't report CI. A
+dot on Actions says the current branch's newest run failed (red) or is running
+(amber), from the branch's mark.
+
+| Provider | Runs list (30 a page) | One run | Token permission |
+| --- | --- | --- | --- |
+| GitHub, GitHub Enterprise Server | `GET /repos/{owner}/{repo}/actions/runs?per_page=30&page=N`, with `branch` | The run, and its `jobs?filter=latest` | Fine-grained: Actions Read. Classic or browser sign-in: `repo` for private repositories |
+| GitLab | `GET /projects/:id/pipelines?per_page=30&page=N&order_by=id&sort=desc`, with `ref` | The pipeline (its duration) and its jobs | `read_api` |
+| Gitea | `GET /repos/{owner}/{repo}/actions/runs?limit=30&page=N`, with `branch` | The run and its jobs | `read:repository` |
+| Bitbucket Cloud | `GET /repositories/{workspace}/{repo}/pipelines?sort=-created_on&pagelen=30&page=N`, with `target.branch` | The pipeline (by UUID) and its steps | `read:pipeline:bitbucket` |
+| Azure DevOps Services and Server | The repository, then `GET /{project}/_apis/build/builds?repositoryId=…&$top=30×N`, with `branchName` | The build and its timeline's jobs | Code (Read) and Build (Read) |
+
+Actions reads only while it shows: the newest page when it opens (again when the
+list is older than a minute), one request for each branch filter or **Load more**
+(up to five pages, 150 runs), the chosen run and its jobs when it is chosen, and the
+newest page every 30 seconds while a run runs and Rocket is in front. Failed and
+Running filter the runs already read. Bitbucket's next-page URL is only a sign that
+there is one; it is never followed. **Re-run failed jobs** reviews and re-runs only
+the chosen run; sending checks that run again (still failed, the same attempt, the
+account can still write). The popover's **All runs** opens Actions on the run's
+branch with that run chosen; the PR Checks tab's **All runs for** a branch does the
+same.
+
+These adapters are checked against provider-shaped mock services and the native
+`test-mcp-ci-checks` and `test-mcp-actions` runners only. No live GitHub, GitLab, Gitea, Bitbucket or Azure
+DevOps project, organization policy or token scope has been accepted end to end.
+Unconfirmed from the providers' documentation: whether GitHub fine-grained tokens
+read check runs, which Gitea version first offers the Actions re-run API, and the
+Bitbucket Data Center build-status API, which is not used.
+
 ## Publish a local repository to GitHub
 
 With a local repository open, connect a GitHub account in **Preferences → Accounts**,

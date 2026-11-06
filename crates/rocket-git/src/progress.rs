@@ -43,6 +43,8 @@ pub enum ClonePhase {
     Verifying,
     Publishing,
     Opening,
+    /// Previews and Keep: downloading file contents after the clone itself.
+    DownloadingFiles,
 }
 
 /// Bounded, best-effort events without source/destination names or helper prose.
@@ -52,6 +54,8 @@ pub enum CloneProgress {
     Phase(ClonePhase),
     Transfer(FetchProgress),
     Checkout { current: u64, total: Option<u64> },
+    /// Previews and Keep: file contents downloaded so far, of `total`.
+    Files { done: u64, total: u64 },
 }
 
 #[derive(Clone, Copy)]

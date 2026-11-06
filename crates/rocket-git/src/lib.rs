@@ -28,6 +28,14 @@ mod branch_workflow;
 pub use branch_workflow::{BranchWorkflowKind, BranchWorkflowOptions, BranchWorkflowPreview, BranchWorkflowReport};
 mod clone;
 mod clone_failure;
+mod preview;
+mod code_search;
+pub use code_search::{
+    FILE_SEARCH_FILE_MATCHES, FILE_SEARCH_LINE_CHARS, FILE_SEARCH_MATCHES, FILE_SEARCH_TIME,
+    FILE_WINDOW_LINE_BYTES, FILE_WINDOW_LINES, FileSearchDetail, FileSearchEnd, FileSearchFile,
+    FileSearchLine, FileSearchQuery, FileSearchSource, FileSearchSummary, FileWindow,
+    SearchFileContent, pattern_error,
+};
 mod commit_actions;
 mod commit_draft;
 mod commit_message;
@@ -108,6 +116,8 @@ pub use remote_management::{RemoteRenamePreview, RemoteRenameReport};
 mod repository;
 mod repository_map;
 pub use repository_map::{MapKind, MapOptions, MapNodeKind, MapLinkKind, MapNode, MapLink, MapContinuation, RepositoryMap, MAP_COMMITS, MAP_HISTORY_MAX, MAP_NODES, map_mermaid};
+mod repository_summary;
+pub use repository_summary::{RepositorySummary, SummaryChanges, SummaryReads};
 mod review;
 mod runner;
 mod secret_guard;
@@ -140,7 +150,7 @@ pub use worktree_status::WorktreeStatus;
 mod write;
 mod write_gate;
 
-pub use ssh_keys::{SshBindingReview, SshDiscoveredKey, SshDiscovery, SshFailure, SshInventory, SshKeyGuard, SshManager, SshPrepared, SshProfile};
+pub use ssh_keys::{SshAuthentication, SshBindingReview, SshDiscoveredKey, SshDiscovery, SshFailure, SshInventory, SshKeyGuard, SshManager, SshPrepared, SshProfile, ssh_helper_main};
 pub use auto_fetch::QuietFetchReport;
 pub use bisect::{
     BisectAction, BisectDecision, BisectFailure, BisectPhase, BisectPreview, BisectSession,
@@ -148,7 +158,11 @@ pub use bisect::{
     BisectTestCommand, BisectAutoPreview, BisectAutoProgress, BisectTestResult,
     BisectAutoReport, BisectTestOutcome,
 };
-pub use clone::{CloneDestination, check_clone_destination};
+pub use clone::{CloneDestination, CloneOptions, check_clone_destination};
+pub use preview::{
+    DownloadStatus, KeptPreview, PREVIEW_LIMIT, PreviewCache, PreviewDownloads, PreviewOpened,
+    PreviewSlot,
+};
 pub use clone_failure::CloneFailure;
 pub use commit_actions::{
     CommitActionRequest, CommitFailure, CommitOperation, CommitPreview, CommitRecovery,
@@ -187,9 +201,10 @@ pub use gitflow::{
     GitFlowStepReport,
 };
 pub use hosting::{
-    GITHUB_NOTIFICATION_PAGE, GITHUB_REPOSITORY_PAGE, GitHubAccount, GitHubEndpoint, GitHubList,
-    GitHubNotification, GitHubPullRequest, GitHubRemote, GitHubRepository, GitHubSession,
-    HostingFailure, github_web_url,
+    GITHUB_NOTIFICATION_PAGE, GITHUB_REPOSITORY_PAGE, GITHUB_SEARCH_LIMIT, GITHUB_SEARCH_PAGE,
+    GitHubAccount, GitHubEndpoint, GitHubList, GitHubNotification, GitHubPullRequest, GitHubRemote,
+    GitHubRepository, GitHubSearchItem, GitHubSearchOutcome, GitHubSearchPage, GitHubSearchSort,
+    GitHubSession, HostingFailure, github_web_url,
 };
 pub use identity::{IdentityWriteReport, LocalIdentity, RepositoryIdentity};
 pub use image_compare::{IMAGE_FILE_LIMIT, ImageComparison, ImageVersions, image_path};

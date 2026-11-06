@@ -1779,6 +1779,90 @@ impl Backend {
             .request(operation, |log| read(&session.with_log(log.clone())))
     }
 
+    /// Sign in on a preview's refused card: Git's credential helper for `host`.
+    pub fn preview_sign_in(&self, host: &str, cancel: &CancellationToken) -> Result<()> {
+        self.request("preview-sign-in", false, |git| git.preview_sign_in(host, cancel))
+    }
+
+    /// A GitHub session without sign-in, for searching public repositories.
+    pub fn github_anonymous(&self, endpoint: GitHubEndpoint) -> Result<GitHubSession> {
+        self.client.github_anonymous(endpoint)
+    }
+
+    /// Clone `source` as a read-only preview into `slot` and download the files of
+    /// its default branch; see `GitClient::open_preview`.
+    pub fn open_preview(
+        &self,
+        source: &CloneSource,
+        slot: &PreviewSlot,
+        limit: Option<u64>,
+        meter: &PreviewDownloads,
+        progress: &SyncSender<CloneProgress>,
+        cancel: &CancellationToken,
+    ) -> Result<PreviewOpened> {
+        self.request("preview-open", true, |git| {
+            git.open_preview(source, slot, limit, meter, Some(progress), cancel)
+        })
+    }
+
+    /// Let reads of an opened preview download the file contents they need.
+    pub fn register_preview(&self, repository: &Path, meter: Arc<PreviewDownloads>) -> Result<()> {
+        self.client.register_preview(repository, meter)
+    }
+
+    pub fn unregister_preview(&self, repository: &Path) {
+        self.client.unregister_preview(repository);
+    }
+
+    /// Keep a preview: download the rest, clone it to `destination` with the verified
+    /// clone, and point origin at `url`. Reported like a clone.
+    pub fn keep_preview(
+        &self,
+        preview: PathBuf,
+        url: String,
+        name: String,
+        destination: PathBuf,
+        progress: &SyncSender<CloneProgress>,
+        cancel: &CancellationToken,
+    ) -> Result<Outcome> {
+        self.request("keep-preview", true, |git| {
+            let kept = git.keep_preview(&preview, &url, &destination, Some(progress), cancel)?;
+            let report = kept.clone;
+            let mut out = Outcome::default();
+            if let Some(output) = out.observe("Clone", report.command) {
+                out.keep_output(output);
+            }
+            if let Some(verification) = report.verification {
+                out.observe("Verify clone", verification);
+            }
+            let published = report
+                .publication
+                .is_some_and(|result| out.observe("Publish destination", result).is_some());
+            if let Some(repo) = report.repository {
+                out.observe("Open repository", repo);
+            }
+            if let Some(cleanup) = report.cleanup {
+                out.observe("Clean empty workspace", cleanup);
+            }
+            let origin = kept
+                .origin
+                .is_some_and(|result| out.observe("Point origin at the original address", result).is_some());
+            out.command_succeeded = published && origin;
+            if published {
+                out.summary = if origin {
+                    format!("Kept {name} in {}", destination.display())
+                } else {
+                    format!("Kept {name} in {}, but origin still names the preview; set it in Remotes", destination.display())
+                };
+                out.open_repository = Some(destination);
+            } else {
+                out.retained_workspace = Some(report.staging_directory);
+                out.summary = "The preview was not kept; existing destination files were preserved".into();
+            }
+            Ok(out)
+        })
+    }
+
     pub fn init_repository(
         &self,
         destination: &Path,
@@ -1820,6 +1904,38 @@ impl Backend {
             let repository = client.open(root, cancel)?;
             cancel.check()?;
             Ok(repository.info().worktree.clone().unwrap_or_else(|| repository.info().git_dir.clone()))
+        })
+    }
+
+    /// A saved repository's row in the Repository manager: local reads only, each Git
+    /// command limited to `limit`.
+    pub fn repository_summary(&self, root: &Path, limit: Duration, cancel: &CancellationToken) -> Result<RepositorySummary> {
+        self.log.request("repository-summary", |log| {
+            let limits = CommandLimits { timeout: limit, ..Default::default() };
+            let repository = self.client.for_request(limits, log.clone())?.open(root, cancel)?;
+            repository.summary(SummaryReads { status: true, last_commit: false }, cancel)
+        })
+    }
+
+    /// Fetch all: one repository fetched by automatic fetch's rules (every remote, no
+    /// pruning or merging, never a prompt), logged as its own operation.
+    pub fn fetch_all_listed(&self, root: &Path, tags: FetchTags, cancel: &CancellationToken) -> Result<QuietFetchReport> {
+        self.request("fetch-all", true, |client| client.open(root, cancel)?.fetch_all_quietly(tags, cancel))
+    }
+
+    /// Pull all: one repository's fast-forward pull that never asks for a sign-in,
+    /// and how many commits it brought when it moved the branch.
+    pub fn pull_ff_only_quietly(&self, root: &Path, cancel: &CancellationToken) -> Result<(PullReport, Option<u64>)> {
+        self.request("pull-all", true, |client| {
+            let repository = client.open(root, cancel)?;
+            let report = repository.pull_ff_only_quietly(cancel)?;
+            let commits = match &report.update {
+                Some(Ok(update)) if update.kind == PullUpdateKind::FastForward => repository
+                    .commits_between(&update.before, &update.fetched, &CancellationToken::new())
+                    .ok(),
+                _ => None,
+            };
+            Ok((report, commits))
         })
     }
 

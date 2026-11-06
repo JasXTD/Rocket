@@ -455,6 +455,7 @@ impl Rocket {
             let mut list = vec![
                 entry("Start", Icon::Folder, "Open repository", "Ctrl+O", unmet(&[git]), go(Intent::Dialog(DialogKind::Open))),
                 entry("Start", Icon::Fetch, "Clone repository", "Ctrl+Shift+O", unmet(&[git, idle]), go(Intent::Dialog(DialogKind::Clone))),
+                entry("Start", Icon::Compass, "Explore repositories", "Ctrl+Shift+E", unmet(&[git]), go(Intent::Explore(None))),
                 entry("Start", Icon::Plus, "New repository", "Ctrl+N", unmet(&[git, idle]), go(Intent::Dialog(DialogKind::NewRepository))),
                 entry("Start", Icon::Database, "Repository manager", "Ctrl+Shift+M", unmet(&[git, idle]), go(Intent::Dialog(DialogKind::RepositoryManager))),
                 entry("Start", Icon::Info, "Setup Guide", "", unmet(&[idle]), go(Intent::GuidedSetup)),
@@ -500,6 +501,8 @@ impl Rocket {
             "Wait for the current operation"
         } else if tab.loading() {
             "Wait for the repository to load"
+        } else if tab.is_preview() {
+            "Keep this preview to change it"
         } else if !tab.worktree() {
             "Needs a working tree"
         } else {
@@ -532,13 +535,15 @@ impl Rocket {
             ("Changes", View::Changes, Icon::File),
             ("Commits", View::Commits, Icon::Commit),
             ("Compare commits and branches", View::Compare, Icon::Columns),
-            ("Repository map", View::Map, Icon::Branch),
+            ("Repository map", View::Map, Icon::Map),
             ("Files", View::Tree, Icon::Folder),
             ("Branches", View::Branches, Icon::Branch),
             ("Remotes", View::Remotes, Icon::Remote),
             ("Stashes", View::Stashes, Icon::Stash),
             ("File history", View::FileHistory, Icon::Clock),
             ("AI review", View::BranchReview, Icon::Sparkle),
+            // Found by the host's words too: CI, runs, pipelines.
+            ("Actions: CI runs and pipelines", View::Actions, Icon::Actions),
         ] {
             list.push(entry("Go to", image, label, "", "", go(Intent::View(view))).key(format!("view:{label}")));
         }
@@ -620,6 +625,7 @@ impl Rocket {
             entry("Repository", Icon::File, "File backups & restore", "", unmet(&[free]), go(Intent::Dialog(DialogKind::FileEdit(None)))),
             entry("Repository", Icon::Search, "Bisect", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Bisect))),
             entry("Repository", Icon::Folder, "Browse files at commit", "", unmet(&[calm]), go(Intent::Tree(crate::tree::TreeIntent::OpenSelected))),
+            entry("Repository", Icon::Search, "Search in files", "", unmet(&[calm]), go(Intent::Tree(crate::tree::TreeIntent::FocusSearch))),
             entry("Repository", Icon::File, "Import patch", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Patch(crate::patches::Mode::Import)))),
             entry("Repository", Icon::File, "Apply patch from clipboard", "Ctrl+V", unmet(&[free]), go(Intent::PastePatch)),
             entry("Repository", Icon::File, "Export patch", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Patch(crate::patches::Mode::Export)))),
@@ -681,6 +687,7 @@ impl Rocket {
             entry("View", Icon::Search, "Zoom out", "Ctrl+−", "", Effect::Zoom(-0.1)),
             entry("App", Icon::Folder, "Open repository", "Ctrl+O", unmet(&[git]), go(Intent::Dialog(DialogKind::Open))),
             entry("App", Icon::Fetch, "Clone repository", "Ctrl+Shift+O", unmet(&[git, idle]), go(Intent::Dialog(DialogKind::Clone))),
+            entry("App", Icon::Compass, "Explore repositories", "Ctrl+Shift+E", unmet(&[git]), go(Intent::Explore(None))),
             entry("App", Icon::Plus, "New repository", "Ctrl+N", unmet(&[git, idle]), go(Intent::Dialog(DialogKind::NewRepository))),
             entry("App", Icon::Database, "Repository manager", "Ctrl+Shift+M", unmet(&[git, idle]), go(Intent::Dialog(DialogKind::RepositoryManager))),
             entry("App", Icon::Close, "Close repository", "Ctrl+W", "", go(Intent::CloseTab(tab.id))),
@@ -712,6 +719,7 @@ impl Rocket {
                 Intent::Dialog(DialogKind::Push) => Some(Action::Push),
                 Intent::View(View::Changes) => Some(Action::Changes),
                 Intent::View(View::Commits) => Some(Action::History),
+                Intent::Tree(crate::tree::TreeIntent::FocusSearch) => Some(Action::SearchFiles),
                 _ => None,
             }} else {None};
             entry.shortcut = action.map_or_else(||crate::shortcuts::hint(ctx, &entry.shortcut), |a|self.keybindings.bindings.label(a));

@@ -17,12 +17,48 @@ pub enum TreeIntent {
     Ancestor(usize),
     Cancel,
     Retry,
+    /// Search inside files with what the search row holds.
+    Search,
+    StopSearch,
+    /// Show results (true) or folders in the left pane.
+    Pane(bool),
+    ToggleGroup(usize),
+    OpenMatch(usize, usize),
+    StepMatch(i32),
+    /// Narrow window: back from the file to the results.
+    ShowResults,
+    /// Open Files with the keyboard in the search field (Ctrl+Shift+F).
+    FocusSearch,
+    /// Browse this commit and search its files next.
+    SearchAt(ObjectId),
 }
 pub struct Content {
     pub kind: HistoricalFileKind,
     pub bytes: usize,
     pub lines: Vec<String>,
     pub limited: bool,
+    /// The line number of `lines[0]`.
+    pub first: usize,
+    /// Only lines around a match: the file is too large to show whole.
+    pub window: bool,
+    /// Not UTF-8: bytes that aren't valid UTF-8 show as U+FFFD.
+    pub lossy: bool,
+    /// Matches to mark, as character ranges, by index into `lines`.
+    pub marks: HashMap<usize, Vec<std::ops::Range<usize>>>,
+}
+impl Content {
+    fn empty(kind: HistoricalFileKind, bytes: usize) -> Self {
+        Self {
+            kind,
+            bytes,
+            lines: Vec::new(),
+            limited: false,
+            first: 1,
+            window: false,
+            lossy: false,
+            marks: HashMap::new(),
+        }
+    }
 }
 #[derive(Default)]
 pub struct State {
@@ -35,6 +71,8 @@ pub struct State {
     pub notice: Option<String>,
     pub show_list: bool,
     pub cancelling: bool,
+    /// Search inside files, shown as the Results pane.
+    pub search: crate::code_search::State,
     directory_task: Option<ReadTask<(TreeListing, Vec<TreeDirectory>)>>,
     content_task: Option<ReadTask<Content>>,
 }
@@ -166,6 +204,50 @@ impl Rocket {
                     tab.tree.file(backend, repo, index);
                 }
             }
+            TreeIntent::Search => {
+                // The revision shown is still loading: searching now would read the old one.
+                if tab.tree.search.scope == crate::code_search::Scope::Revision && tab.tree.directory_running() {
+                    return;
+                }
+                let revision = tab.tree.listing.as_ref().map(|l| l.directory.commit().clone());
+                tab.tree.search.start(backend, repo, revision.as_ref());
+            }
+            TreeIntent::StopSearch => tab.tree.search.stop(),
+            TreeIntent::Pane(results) => tab.tree.search.results = results,
+            TreeIntent::ToggleGroup(index) => {
+                if let Some(group) = tab.tree.search.groups.get_mut(index) {
+                    group.open = !group.open;
+                }
+            }
+            TreeIntent::OpenMatch(group, line) => tab.tree.search.open(backend, repo, group, line),
+            TreeIntent::StepMatch(delta) => {
+                if let Some((group, line)) = tab.tree.search.step(delta) {
+                    if let Some(found) = tab.tree.search.groups.get_mut(group) {
+                        found.open = true;
+                    }
+                    tab.tree.search.open(backend, repo, group, line);
+                }
+            }
+            TreeIntent::ShowResults => tab.tree.search.show_file = false,
+            TreeIntent::FocusSearch => {
+                tab.view = View::Tree;
+                tab.diff = None;
+                if tab.tree.listing.is_none() && !tab.tree.running() {
+                    tab.tree.revision = "HEAD".into();
+                    tab.tree.load(backend, repo, Vec::new());
+                }
+                tab.tree.search.results = true;
+                tab.tree.search.focus = true;
+            }
+            TreeIntent::SearchAt(commit) => {
+                tab.view = View::Tree;
+                tab.diff = None;
+                tab.tree.revision = commit.to_string();
+                tab.tree.load(backend, repo, Vec::new());
+                tab.tree.search.scope = crate::code_search::Scope::Revision;
+                tab.tree.search.results = true;
+                tab.tree.search.focus = true;
+            }
         }
     }
     pub(crate) fn poll_tree(&mut self, ctx: &Context) {
@@ -202,16 +284,18 @@ impl Rocket {
                     Err(e) => s.error = Some(tree_error(&e, true)),
                 }
             }
-            if s.running() {
+            let searching = s.search.poll();
+            if s.running() || searching {
                 ctx.request_repaint_after(std::time::Duration::from_millis(30));
-            } else {
+            }
+            if !s.running() {
                 s.cancelling = false;
             }
         }
     }
 }
 
-fn tree_error(error: &Error, content: bool) -> String {
+pub(crate) fn tree_error(error: &Error, content: bool) -> String {
     match error {
         Error::Git { code, .. } => format!(
             "{} [git_exit_{}]",
@@ -226,47 +310,163 @@ fn tree_error(error: &Error, content: bool) -> String {
     }
 }
 
+/// Lines a preview shows; bytes kept of one line.
+const PREVIEW_LINES: usize = 50_000;
+const LINE_BYTES: usize = 8192;
+
+/// A line for display, cut at [`LINE_BYTES`]: tabs as four spaces, controls escaped
+/// so they can't change row geometry, bytes that aren't UTF-8 as U+FFFD. Also the
+/// byte in `raw` where each shown character starts, and whether the line was cut.
+fn display_line(raw: &[u8]) -> (String, Vec<usize>, bool) {
+    let shown = crate::text::prefix(raw, LINE_BYTES);
+    let mut text = String::new();
+    let mut starts = Vec::new();
+    let mut offset = 0;
+    for chunk in shown.utf8_chunks() {
+        for (i, c) in chunk.valid().char_indices() {
+            let at = offset + i;
+            if c == '\t' {
+                text.push_str("    ");
+                starts.extend([at; 4]);
+            } else if c.is_control() {
+                for e in c.escape_default() {
+                    text.push(e);
+                    starts.push(at);
+                }
+            } else {
+                text.push(c);
+                starts.push(at);
+            }
+        }
+        offset += chunk.valid().len();
+        if !chunk.invalid().is_empty() {
+            text.push('\u{fffd}');
+            starts.push(offset);
+            offset += chunk.invalid().len();
+        }
+    }
+    (text, starts, shown.len() < raw.len())
+}
+
+/// Lines as `str::lines` splits them: a `\r` before `\n` isn't part of the line,
+/// and a final newline doesn't start an empty line.
+fn split_lines(bytes: &[u8]) -> Vec<&[u8]> {
+    let mut lines: Vec<&[u8]> = bytes.split(|b| *b == b'\n').collect();
+    if lines.last().is_some_and(|l| l.is_empty()) {
+        lines.pop();
+    }
+    lines
+        .into_iter()
+        .map(|l| l.strip_suffix(b"\r").unwrap_or(l))
+        .collect()
+}
+
+/// Byte ranges of a line as ranges of its shown characters.
+fn char_marks(starts: &[usize], columns: &[std::ops::Range<usize>]) -> Vec<std::ops::Range<usize>> {
+    columns
+        .iter()
+        .filter_map(|c| {
+            let from = starts.partition_point(|&s| s < c.start);
+            let to = starts.partition_point(|&s| s < c.end);
+            (from < to).then_some(from..to)
+        })
+        .collect()
+}
+
+/// Text when valid UTF-8; otherwise still text, with replacement marks, unless Git
+/// would call it binary (a NUL in the first 8,000 bytes).
+fn text_kind(file: &HistoricalFile) -> Option<bool> {
+    match file.kind {
+        HistoricalFileKind::Text => Some(false),
+        HistoricalFileKind::Binary if !file.bytes[..file.bytes.len().min(8000)].contains(&0) => Some(true),
+        _ => None,
+    }
+}
+
+/// Add `raw` lines numbered from `content.first`, marking `columns` where given.
+fn push_lines(
+    content: &mut Content,
+    raw: &[&[u8]],
+    columns: Option<&HashMap<u64, Vec<std::ops::Range<usize>>>>,
+    cancel: &CancellationToken,
+) -> rocket_git::Result<()> {
+    for line in raw {
+        cancel.check()?;
+        if content.lines.len() == PREVIEW_LINES {
+            content.limited = true;
+            break;
+        }
+        let (mut shown, starts, cut) = display_line(line);
+        let number = (content.first + content.lines.len()) as u64;
+        if let Some(found) = columns.and_then(|c| c.get(&number)) {
+            content.marks.insert(content.lines.len(), char_marks(&starts, found));
+        }
+        if cut {
+            content.limited = true;
+            shown.push_str("… [display limited]");
+        }
+        content.lines.push(shown);
+    }
+    Ok(())
+}
+
 fn prepare_content(
     file: HistoricalFile,
     cancel: &CancellationToken,
 ) -> rocket_git::Result<Content> {
-    let mut lines = Vec::new();
-    let mut limited = false;
-    if file.kind == HistoricalFileKind::Text {
-        for line in std::str::from_utf8(&file.bytes)
-            .expect("backend validated UTF-8")
-            .lines()
-        {
-            cancel.check()?;
-            if lines.len() == 50_000 {
-                limited = true;
-                break;
+    let mut content = Content::empty(file.kind, file.bytes.len());
+    if let Some(lossy) = text_kind(&file) {
+        content.kind = HistoricalFileKind::Text;
+        content.lossy = lossy;
+        push_lines(&mut content, &split_lines(&file.bytes), None, cancel)?;
+    }
+    Ok(content)
+}
+
+/// A file opened at a search match: its lines with that file's matches marked. A
+/// file with more lines than a preview shows opens around the match instead.
+pub(crate) fn prepare_search(
+    file: SearchFileContent,
+    focus: u64,
+    columns: &HashMap<u64, Vec<std::ops::Range<usize>>>,
+    cancel: &CancellationToken,
+) -> rocket_git::Result<Content> {
+    match file {
+        SearchFileContent::Whole(file) => {
+            let mut content = Content::empty(file.kind, file.bytes.len());
+            let Some(lossy) = text_kind(&file) else {
+                return Ok(content);
+            };
+            content.kind = HistoricalFileKind::Text;
+            content.lossy = lossy;
+            let lines = split_lines(&file.bytes);
+            let mut range = 0..lines.len();
+            if lines.len() > PREVIEW_LINES {
+                let first = focus.saturating_sub(FILE_WINDOW_LINES).max(1) as usize;
+                let last = (focus.saturating_add(FILE_WINDOW_LINES) as usize).min(lines.len());
+                range = (first - 1).min(lines.len())..last.max(first - 1).min(lines.len());
+                content.first = first;
+                content.window = true;
             }
-            let bytes = crate::text::prefix(line.as_bytes(), 8192);
-            let mut display = String::new();
-            // Controls must not change row geometry; preserve ordinary Unicode.
-            for c in String::from_utf8_lossy(bytes).chars() {
-                if c == '\t' {
-                    display.push_str("    ");
-                } else if c.is_control() {
-                    display.extend(c.escape_default());
-                } else {
-                    display.push(c);
+            push_lines(&mut content, &lines[range], Some(columns), cancel)?;
+            Ok(content)
+        }
+        SearchFileContent::Window(window) => {
+            let mut content = Content::empty(HistoricalFileKind::Text, window.size as usize);
+            content.first = window.first as usize;
+            content.window = true;
+            content.lossy = window.lines.iter().any(|l| std::str::from_utf8(l).is_err());
+            let lines: Vec<&[u8]> = window.lines.iter().map(Vec::as_slice).collect();
+            push_lines(&mut content, &lines, Some(columns), cancel)?;
+            for &i in &window.cut {
+                if let Some(line) = content.lines.get_mut(i) {
+                    line.push_str("… [display limited]");
+                    content.limited = true;
                 }
             }
-            if bytes.len() < line.len() {
-                limited = true;
-                display.push_str("… [display limited]");
-            }
-            lines.push(display);
+            Ok(content)
         }
     }
-    Ok(Content {
-        kind: file.kind,
-        bytes: file.bytes.len(),
-        lines,
-        limited,
-    })
 }
 
 /// Display-only, bounded and escaped. Exact original bytes remain in TreeEntry.
@@ -331,6 +531,7 @@ pub(crate) fn view(
     commands:&[rocket_git::CustomCommand],
 ) {
     let context=crate::custom_commands::context(tab);
+    let downloads = crate::preview_tab::downloads(tab);
     ui.set_clip_rect(ui.clip_rect().intersect(ui.available_rect_before_wrap()));
     let narrow = ui.available_width() < 800.0;
     let short = ui.available_height() < 340.0;
@@ -340,7 +541,7 @@ pub(crate) fn view(
             ui,
             Icon::Folder,
             "Repository files",
-            "Read only · files as committed at a commit, branch or tag; the working tree is untouched",
+            "Read only · browse a commit, or search the checkout or a commit",
             |_| {},
         );
         pages::divider(ui);
@@ -417,25 +618,114 @@ pub(crate) fn view(
                 .on_hover_text(message);
                 register(ui, widgets, "tree-message", &r);
             }
+            ui.add_space(4.0);
+            let revision = s.listing.as_ref().map(|l| l.directory.commit().clone());
+            let loading = s.directory_running();
+            crate::code_search::search_row(ui, &mut s.search, revision.as_ref(), loading, narrow, intents, widgets);
         });
     pages::divider(ui);
+    let results = s.search.results;
     if narrow {
-        if s.show_list || s.listing.is_none() {
+        if results {
+            if s.search.show_file && s.search.opened.is_some() {
+                crate::code_search::viewer(ui, &mut s.search, narrow, intents, widgets);
+            } else {
+                crate::code_search::pane_tabs(ui, &s.search, intents, widgets);
+                crate::code_search::results_pane(ui, &mut s.search, narrow, intents, widgets);
+            }
+        } else if s.show_list || s.listing.is_none() {
+            crate::code_search::pane_tabs(ui, &s.search, intents, widgets);
             folder_view(ui, s, intents, widgets, narrow, commands, &context);
         } else {
-            file_view(ui, s, intents, widgets, short, narrow);
+            file_view(ui, s, intents, widgets, short, narrow, downloads.as_ref());
         }
+    } else if results {
+        pages::list_pane(
+            ui,
+            Id::new(("tree-results", tab.id)),
+            430.0,
+            280.0..=640.0,
+            |ui| {
+                crate::code_search::pane_tabs(ui, &s.search, intents, widgets);
+                crate::code_search::results_pane(ui, &mut s.search, narrow, intents, widgets);
+            },
+        );
+        CentralPanel::default()
+            .frame(Frame::new().fill(BG()))
+            .show(ui, |ui| crate::code_search::viewer(ui, &mut s.search, narrow, intents, widgets));
     } else {
         pages::list_pane(
             ui,
             Id::new(("tree-folders", tab.id)),
             285.0,
             190.0..=380.0,
-            |ui| folder_view(ui, s, intents, widgets, narrow, commands, &context),
+            |ui| {
+                crate::code_search::pane_tabs(ui, &s.search, intents, widgets);
+                folder_view(ui, s, intents, widgets, narrow, commands, &context);
+            },
         );
         CentralPanel::default()
             .frame(Frame::new().fill(BG()))
-            .show(ui, |ui| file_view(ui, s, intents, widgets, short, narrow));
+            .show(ui, |ui| file_view(ui, s, intents, widgets, short, narrow, downloads.as_ref()));
+    }
+}
+
+/// Source lines with numbers from `content.first`, matches marked, the `focus` line
+/// banded, scrolled to `scroll` (an index into the lines) once when given. Each row
+/// is exactly 22 points so the virtualized row range stays accurate.
+pub(crate) fn source_rows(
+    ui: &mut Ui,
+    content: &Content,
+    focus: Option<usize>,
+    scroll: Option<usize>,
+    salt: impl AsIdSalt,
+    scroll_id: &str,
+    widgets: &mut HashMap<String, UiControl>,
+) {
+    pages::divider(ui);
+    let last = content.first + content.lines.len().max(1) - 1;
+    let digits = last.to_string().len() as f32;
+    let gutter = (digits * 8.0 + 22.0).max(46.0);
+    let size = ui
+        .style()
+        .text_styles
+        .get(&TextStyle::Monospace)
+        .map_or(13.0, |f| f.size);
+    ui.spacing_mut().item_spacing.y = 0.0;
+    ui.spacing_mut().interact_size.y = 22.0;
+    let mut area = ScrollArea::both()
+        .id_salt(salt)
+        .auto_shrink([false, false])
+        .min_scrolled_height(0.0);
+    if let Some(index) = scroll {
+        // A third of the way down, so the lines before the match show too.
+        let offset = (index as f32 * 22.0 - ui.available_height() / 3.0).max(0.0);
+        area = area.vertical_scroll_offset(offset);
+    }
+    let out = area.show_rows(ui, 22.0, content.lines.len(), |ui, rows| {
+        for i in rows {
+            if Some(i) == focus {
+                let at = ui.available_rect_before_wrap();
+                let band = Rect::from_min_size(at.min, vec2(at.width().max(ui.clip_rect().width()), 22.0));
+                ui.painter().rect_filled(band, 0.0, BLUE().gamma_multiply(0.12));
+                ui.painter().rect_filled(Rect::from_min_size(band.min, vec2(3.0, 22.0)), 0.0, BLUE());
+            }
+            ui.horizontal(|ui| {
+                ui.set_min_height(22.0);
+                ui.spacing_mut().item_spacing.x = 8.0;
+                pages::gutter(ui, &(content.first + i).to_string(), gutter, 22.0);
+                match content.marks.get(&i) {
+                    Some(marks) => ui.add(
+                        Label::new(crate::code_search::marked_job(&content.lines[i], marks, 0, false, false, size)).extend(),
+                    ),
+                    None => ui.add(Label::new(RichText::new(&content.lines[i]).monospace()).extend()),
+                };
+            });
+        }
+    });
+    let rect = out.inner_rect.intersect(ui.clip_rect());
+    if rect.is_positive() {
+        widgets.insert(scroll_id.into(), UiControl { rect, enabled: true });
     }
 }
 
@@ -601,6 +891,8 @@ fn file_view(
     widgets: &mut HashMap<String, UiControl>,
     short: bool,
     narrow: bool,
+    // A preview's downloads: no Restore, and its download and failure cards.
+    preview: Option<&crate::preview_tab::Downloads>,
 ) {
     if narrow {
         trail_bar(ui, s, intents, widgets, narrow);
@@ -622,7 +914,8 @@ fn file_view(
         .map_or(("", label.as_str()), |(d, n)| (d, n));
     pages::strip(ui, |ui| {
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if matches!(
+            if preview.is_none()
+                && matches!(
                 entry.kind(),
                 TreeEntryKind::File | TreeEntryKind::Executable
             ) && let Ok(path) = RepoPath::new(entry.path().to_vec())
@@ -702,17 +995,27 @@ fn file_view(
                 pages::callout(ui, AMBER(), "Link target text only. The link is not followed.");
             }
             let Some(content) = &s.content else {
+                if s.running() {
+                    if let Some(true) = crate::preview_tab::downloading(ui, preview, &format!("Downloading {name}"), "tree-download-stop", widgets) {
+                        emit(intents, TreeIntent::Cancel);
+                    }
+                } else if let Some(true) = crate::preview_tab::not_downloaded(ui, preview, "tree-download-retry", widgets) {
+                    emit(intents, TreeIntent::Retry);
+                }
                 return false;
             };
             if content.kind == HistoricalFileKind::Binary {
                 pages::note(
                     ui,
                     &format!(
-                        "Binary or non-UTF-8 file · {} bytes. Text preview is unavailable.",
+                        "Binary file · {} bytes. Text preview is unavailable.",
                         content.bytes
                     ),
                 );
                 return false;
+            }
+            if content.lossy {
+                pages::callout(ui, MUTED(), "Not UTF-8: bytes that aren't valid UTF-8 show as \u{fffd}.");
             }
             if content.limited {
                 pages::callout(
@@ -730,36 +1033,15 @@ fn file_view(
     let Some(content) = s.content.as_ref().filter(|_| notes) else {
         return;
     };
-    pages::divider(ui);
-    let digits = content.lines.len().max(1).to_string().len() as f32;
-    let gutter = (digits * 8.0 + 22.0).max(46.0);
-    // Each row is exactly 22 points so the virtualized row range stays accurate.
-    ui.spacing_mut().item_spacing.y = 0.0;
-    ui.spacing_mut().interact_size.y = 22.0;
-    let out = ScrollArea::both()
-        .id_salt(("tree-source", entry.commit(), entry.object(), entry.path()))
-        .auto_shrink([false, false])
-        .min_scrolled_height(0.0)
-        .show_rows(ui, 22.0, content.lines.len(), |ui, rows| {
-            for i in rows {
-                ui.horizontal(|ui| {
-                    ui.set_min_height(22.0);
-                    ui.spacing_mut().item_spacing.x = 8.0;
-                    pages::gutter(ui, &(i + 1).to_string(), gutter, 22.0);
-                    ui.add(Label::new(RichText::new(&content.lines[i]).monospace()).extend());
-                });
-            }
-        });
-    let rect = out.inner_rect.intersect(ui.clip_rect());
-    if rect.is_positive() {
-        widgets.insert(
-            "tree-source-scroll".into(),
-            UiControl {
-                rect,
-                enabled: true,
-            },
-        );
-    }
+    source_rows(
+        ui,
+        content,
+        None,
+        None,
+        ("tree-source", entry.commit(), entry.object(), entry.path()),
+        "tree-source-scroll",
+        widgets,
+    );
 }
 
 /// Byte size for the file strip: B, KB or MB with one decimal.
@@ -798,5 +1080,50 @@ mod tests {
             ),
             Err(Error::Cancelled)
         ));
+    }
+
+    #[test]
+    fn non_utf8_text_previews_and_search_hits_open_marked_at_their_line() {
+        let token = CancellationToken::new();
+        // Latin-1 text without NUL previews with a replacement mark; NUL stays binary.
+        let c = prepare_content(
+            HistoricalFile { kind: HistoricalFileKind::Binary, bytes: b"caf\xe9 RETRY\r\nnext\n".to_vec() },
+            &token,
+        )
+        .unwrap();
+        assert!(c.lossy && c.kind == HistoricalFileKind::Text);
+        assert_eq!(c.lines, ["caf\u{fffd} RETRY", "next"]);
+        let c = prepare_content(HistoricalFile { kind: HistoricalFileKind::Binary, bytes: b"a\0b".to_vec() }, &token).unwrap();
+        assert!(c.lines.is_empty() && c.kind == HistoricalFileKind::Binary && !c.lossy);
+        // Byte columns become character marks after a tab and an invalid byte.
+        let columns = HashMap::from([(2u64, vec![4..9])]);
+        let whole = SearchFileContent::Whole(HistoricalFile {
+            kind: HistoricalFileKind::Binary,
+            bytes: b"first\n\tx\xe9 RETRY\n".to_vec(),
+        });
+        let c = prepare_search(whole, 2, &columns, &token).unwrap();
+        assert_eq!((c.first, c.window, c.lossy), (1, false, true));
+        assert_eq!(c.lines[1], "    x\u{fffd} RETRY");
+        assert_eq!(c.marks.get(&1), Some(&vec![7..12]));
+        // A window keeps its first line number; a huge whole file opens around the match.
+        let window = SearchFileContent::Window(FileWindow {
+            first: 498,
+            lines: vec![b"a".to_vec(), b"RETRY b".to_vec()],
+            size: 3_000_000,
+            cut: vec![0],
+            reaches_end: false,
+        });
+        let c = prepare_search(window, 499, &HashMap::from([(499u64, vec![0..5])]), &token).unwrap();
+        assert_eq!((c.first, c.window, c.bytes), (498, true, 3_000_000));
+        assert_eq!(c.marks.get(&1), Some(&vec![0..5]));
+        // A line the window cut says so.
+        assert!(c.limited && c.lines[0] == "a… [display limited]" && c.lines[1] == "RETRY b");
+        let many = SearchFileContent::Whole(HistoricalFile {
+            kind: HistoricalFileKind::Text,
+            bytes: "x\n".repeat(60_000).into_bytes(),
+        });
+        let c = prepare_search(many, 55_000, &HashMap::new(), &token).unwrap();
+        assert!(c.window && !c.limited);
+        assert_eq!((c.first, c.lines.len()), (54_800, 401));
     }
 }

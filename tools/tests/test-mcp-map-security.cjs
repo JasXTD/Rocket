@@ -115,13 +115,13 @@ async function run() {
     await type('map-search', 'PRIVATE_MAP_HISTORY_657'); assert(map().visible.length && map().visible.length < 500);
     await click('map-clear'); assert.equal(map().query, '');
     pass('Dense Load more is refused, previous pinned data is intact and search/clear remain responsive');
-    await type('map-revision', denseBranch); await click('map-load');
+    await click('map-revision-pick'); await type('map-revision', denseBranch); await click('map-load');
     await until(() => !map().running && !!map().error && !state.input_pending, 'Dense initial read refusal');
     assert.match(map().error, /12,000 parent links/); assert.equal(JSON.stringify(map().data), previous);
     pass('Initial 12,001-link scope is refused without replacing the previous graph');
-    await type('map-revision', limitedBranch); await click('map-load'); await finished();
+    await click('map-revision-pick'); await type('map-revision', limitedBranch); await click('map-load'); await finished();
     assert.equal(map().data.node_count, 156); assert.equal(map().data.link_count, 12000); assert(!map().can_more);
-    await click('map-fit'); await capture('exact-budget-wide');
+    await capture('exact-budget-wide');
     await client.tool('rocket_resize', { width: 780, height: 620 }); await until(s => s.viewport[0] === 780 && !s.input_pending);
     await type('map-search', 'PRIVATE_MAP_HISTORY_156'); assert(map().visible.length > 0);
     await click('map-clear'); assert.equal(map().query, ''); await capture('exact-budget-compact');

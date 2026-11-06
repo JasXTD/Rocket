@@ -107,7 +107,12 @@ window open and resolve the file conflict before **Retry saving draft**.
 
 Enable **Jira**, then set your Jira Cloud HTTPS server, authentication and project key on its
 connection. Jira API tokens commonly
-use **Identifier + token**; enter the account identifier locally. Jira shows your issues beside
+use **Identifier + token**; enter the account identifier locally. A classic API token uses your
+site, such as `https://yoursite.atlassian.net`, and leaves **Cloud ID for scoped tokens** empty.
+A token created with scopes only works through Atlassian's gateway: set the server to
+`https://api.atlassian.com` and the Cloud ID to your site's ID, which
+`https://yoursite.atlassian.net/_edge/tenant_info` shows while you're signed in. Give it the
+Jira scopes `read:jira-work` and `write:jira-work`. Jira shows your issues beside
 the one you choose. One search box takes an issue key, words or JQL, and **My issues**, **Project**,
 **This week** and **This branch** switch the list. An issue shows its description and comments,
 with **Move to**, **Edit** and **Add a comment**. These use Jira Cloud's

@@ -73,12 +73,17 @@ runtime into the worker executable.
 
 ### History and branch workflows
 
-- Explore committed code structure, Git ancestry and contributor connections in
-  the native [Repository map](docs/wiki/Repository-map.md). Local, cancellable
-  reads have explicit limits; Code includes literal Cargo path dependencies.
+- See how a repository fits together in the native
+  [Repository map](docs/wiki/Repository-map.md): Cargo packages and the folder tree,
+  branches and merges, and who works where, with a details card and Mermaid export.
+  Local, cancellable reads have explicit limits.
 
 - Browse the commit graph across branches, search beyond the currently loaded
   commits, follow file renames and browse the repository tree at a chosen commit.
+- Find code: commits that add, remove or edit text (`git log -S`, or `-G` for a
+  regular expression, optionally under one path), and **Search in files** at the
+  checkout or any commit (`git grep`), grouped by file and opening each match at its
+  line. Both stream on workers with match, line and time limits and stop at once.
 - Create, switch, rename and clean up branches; merge or rebase with a preview.
   Rebase can preserve merge structure, subject to its documented mode limits.
 - Plan interactive rebases with reorder, reword, edit, squash, fixup and drop,
@@ -91,6 +96,8 @@ runtime into the worker executable.
 - See every SSH key in **Preferences → SSH keys**: keys found in your SSH folder and keys
   Rocket made. Copy a public key, unlock a key in ssh-agent, or make one repository use
   only one key after a review. Existing keys and SSH config stay in place.
+  **Direct key** mode works without ssh-agent, with opt-in Windows-encrypted
+  passphrase storage, a Forget action and strict server host-key verification.
 - Clone over HTTPS, SSH or from a local repository, with progress and cancellation.
   Add, edit, rename or remove remotes from the desktop.
 - Fetch remote changes and choose fast-forward only, merge or rebase when pulling.
@@ -145,7 +152,8 @@ right-click menus.
   playground and developer tools that validate Lua. Optional read-only repository context
   supports dashboards.
 - Jira and PlayGround ship with Rocket and start off. Jira Cloud support includes search,
-  issue edits and transitions, with protected credentials and reviewed remote writes.
+  issue edits and transitions, with classic or scoped API tokens, protected credentials and
+  reviewed remote writes.
 - Named connections keep accounts and saved drafts separate, and an invalid package doesn't
   block healthy extensions.
 
@@ -158,6 +166,18 @@ See the [extensions guide](docs/wiki/Integrations.md).
   folder** to discover repositories and worktrees together, review duplicates and
   save selected shortcuts without opening every repository.
   See the [repository manager guide](docs/wiki/Repository-manager.md).
+- See every saved repository's branch, uncommitted changes and commits to push or
+  pull without opening it, filter to the ones that **Need attention**, and update a
+  folder or workspace with **Fetch all** and **Pull all**. Pull all only fast-forwards
+  a clean branch; anything else is skipped and listed, and neither asks for a password.
+- **Explore** other people's repositories without leaving Rocket (File → Explore
+  Repositories, Ctrl+Shift+E): search GitHub, or paste any repository address, then
+  **Preview** one read-only in a tab where Commits, Files, Map and Statistics work at once.
+  Older file versions download only when a view needs them, nothing from the repository
+  runs, and a preview stops at 1 GB unless you continue without a limit. **Keep** turns it
+  into a normal clone in a folder you choose; **Discard** deletes it. Preview and
+  Keep always limit object enumeration to 100,000 missing objects and 32 MiB of
+  output, even without the disk limit; use **Clone** for larger graphs.
 - Manage linked worktrees, local tags, submodules and nested submodules, including
   reviewed submodule add, move, remove, sync and update operations.
 - Inspect Git LFS files and objects, manage tracking rules and locks, and review
@@ -177,6 +197,12 @@ See the [extensions guide](docs/wiki/Integrations.md).
   development build adds protected review drafts and restart recovery, GitHub
   discussion replies/resolution and multiline reviews, plus provider-supported
   reviews and merges, with [scope and verification limits](HOSTING.md).
+- See CI results where you already look: a mark beside each pushed commit and
+  branch for GitHub, GitHub Enterprise Server, GitLab, Gitea, Bitbucket Cloud and
+  Azure DevOps, the checks behind it, and a reviewed **Re-run failed jobs** on
+  GitHub, GitLab and Gitea. **Actions** in the sidebar lists the repository's runs
+  with each run's jobs, and says how to connect when no account reads them. Token
+  permissions are in [CI status](HOSTING.md#ci-status-on-commits-and-branches-unreleased).
 - Manage Windows OpenSSH keys and repository-specific profiles for multiple
   accounts while preserving your existing keys and main SSH configuration.
 - Use the integrated terminal (Windows PowerShell, Git Bash, Command Prompt, PowerShell 7 or your own shell), command palette, configurable shortcuts,

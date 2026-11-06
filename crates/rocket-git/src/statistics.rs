@@ -142,6 +142,7 @@ impl Repository {
                 ));
             }
         };
+        self.prepare_tree(commit.as_str(), cancel)?;
         let listing = self.runner.step("activity-treemap", "list-files", || {
             self.runner
                 .run(

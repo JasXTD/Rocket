@@ -204,3 +204,84 @@ fn an_export_already_published_is_not_reported_as_cancelled() {
     assert!(!state.stopping);
     fs::remove_dir_all(root).unwrap();
 }
+
+fn line(component: &str, kind: &str, ms: u64, code: u32, fault: &str) -> String {
+    format!(
+        "ROCKET-CRASH-1\t{}\t{component}\t{kind}\t{ms}\t11\t12\t-\t0\t0\t{code}\t{fault}\t\twindows\tx86_64\n",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+#[test]
+fn next_start_offers_only_a_window_app_report_from_just_before_this_start() {
+    let (root, _) = fixture();
+    let start = 1_793_800_000_000u64;
+    fs::write(root.join("crash-10-1-1.rcr"), line("desktop", "windows-exception", start - 300_000, 0xC000_0005, "6:52112")).unwrap();
+    fs::write(root.join("crash-11-1-1.rcr"), line("cli", "rust-panic", start - 60_000, 0, "0:0")).unwrap();
+    fs::write(root.join("crash-12-1-1.rcr"), line("mcp", "rust-panic", start - 20 * 60_000, 0, "0:0")).unwrap();
+    fs::write(root.join("crash-13-1-1.rcr"), line("desktop", "rust-panic", start + 1_000, 0, "0:0")).unwrap();
+    let snapshot = reports::read(&root, &CancellationToken::new()).unwrap();
+    // The CLI report is newer, a report after the start is this session's own.
+    assert_eq!(recent(&snapshot, start).as_deref(), Some("crash-10-1-1-1"));
+    assert_eq!(recent(&snapshot, start + 60 * 60_000), None);
+    // The startup read sets the offer once, and never while the dialog is open.
+    let mut state = State::new(root.clone());
+    state.started_ms = start;
+    state.check_startup(&Context::default(), None);
+    settle(&mut state);
+    assert_eq!(state.recent.as_deref(), Some("crash-10-1-1-1"));
+    assert!(state.error.is_none() && state.notice.is_none());
+    state.recent = None;
+    state.check_startup(&Context::default(), None);
+    assert!(state.read.is_none(), "the startup read runs once per process");
+    let mut open = State::new(root.clone());
+    open.started_ms = start;
+    open.open = true;
+    open.check_startup(&Context::default(), None);
+    settle(&mut open);
+    assert_eq!(open.recent, None);
+    open.show(Some("crash-12-1-1-1".into()));
+    assert_eq!(open.selected.as_deref(), Some("crash-12-1-1-1"));
+    assert!(open.refresh_requested && !open.export_open);
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn save_as_needs_a_json_name_and_publishes_into_the_chosen_folder() {
+    let (root, mut state) = fixture();
+    state.start_export(Some(&root));
+    assert!(state.export_open);
+    assert_eq!(state.export_dir, crate::views::display_path(&root));
+    assert!(state.export_name.starts_with("rocket-crash-") && state.export_name.ends_with(".json"));
+    for bad in ["", "nested/report.json", r"nested\report.json", "report.txt"] {
+        state.export_name = bad.into();
+        state.save_as(Some(root.clone()), None);
+        assert!(!state.exporting());
+        assert!(state.error.as_ref().unwrap().contains(".json"), "{bad}");
+    }
+    state.export_name = "新しい report.JSON".into();
+    state.save_as(Some(root.clone()), None);
+    settle(&mut state);
+    assert!(state.error.is_none(), "{:?}", state.error);
+    assert!(root.join("新しい report.JSON").is_file());
+    assert!(!state.export_open);
+    fs::remove_dir_all(root).unwrap();
+}
+#[test]
+fn reports_use_plain_names_for_apps_kinds_and_error_codes() {
+    let root = std::env::temp_dir().join(format!("rocket-crash-names-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir(&root).unwrap();
+    fs::write(root.join("crash-1-1-1.rcr"), line("desktop", "windows-exception", 1_793_800_000_000, 0xC000_0005, "6:52112")).unwrap();
+    fs::write(root.join("crash-2-1-1.rcr"), line("cli", "rust-panic", 1_793_700_000_000, 0, "0:0")).unwrap();
+    fs::write(root.join("crash-3-1-1.rcr"), line("mcp", "windows-exception", 1_793_600_000_000, 0xE042_5243, "4:152425")).unwrap();
+    let snapshot = reports::read(&root, &CancellationToken::new()).unwrap();
+    let titles: Vec<_> = snapshot.reports.iter().map(title).collect();
+    assert_eq!(titles, ["Rocket stopped", "Rocket CLI internal error", "MCP server stopped"]);
+    assert_eq!(exception_name(0xC000_0005), Some("Access violation"));
+    assert_eq!(exception_name(0xE042_5243), None);
+    let now = 1_793_800_000_000 + 60_000;
+    assert!(detail_line(&snapshot.reports[0], now).starts_with("Access violation · "));
+    assert!(detail_line(&snapshot.reports[2], now).starts_with("Windows exception · "));
+    assert_eq!(system(&snapshot.reports[0]), "Windows · x64");
+    assert_eq!(offsets(&snapshot.reports[0]), ["opengl32 + 0xcb90"]);
+    fs::remove_dir_all(root).unwrap();
+}

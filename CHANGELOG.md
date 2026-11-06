@@ -27,6 +27,89 @@ keep detailed test evidence in `VALIDATION.md`.
   ↑ ↓ and × inside. Narrower panes use two rows; under 440 px Side by side reads Split
   and Words moves into the ··· menu. Stage, Stash and Discard selected get their own row.
 
+## Unreleased — SSH and Preview security; clone example
+
+- Direct SSH validates the complete remote command: one supported Git service
+  and one quoted repository path, or a supported LFS upload/download request.
+  Extra shell commands, controls, extra arguments and interactive-shell requests
+  are refused. Custom remote uploadpack/receivepack/vcs settings are rejected
+  when reviewing/saving a profile binding and checked again before SSH starts.
+- Preview, its on-demand reads and Keep now refuse more than 100,000 missing
+  objects or 32 MiB of object-enumeration output. These memory safeguards remain
+  active when the preview disk-size limit is lifted; use Clone for larger graphs.
+- The `inspect clone` example handles file-download progress again, fixing the
+  non-exhaustive match that prevented examples/all-target checks from compiling.
+
+## Unreleased — Explore other repositories
+
+- File → Explore Repositories (Ctrl+Shift+E, also on the + beside the tabs, in the command
+  palette and on the welcome screen) searches GitHub's repositories: owner and name, stars,
+  language, last push, license and size, sorted by best match, stars or recent updates, 30 at
+  a time with Load more. A search runs only on Enter or Search. Without a sign-in it searches
+  public repositories (10 searches a minute); Sign in uses the github.com sign-in Git stores
+  and allows 30. At the limit the results stay and a countdown shows when to search again.
+- Paste a repository address from any host, or a local repository folder, to preview or
+  clone it without a search. The GitHub page's repository details have Preview too.
+- Preview opens a read-only tab marked Preview: a bare clone without old file versions in
+  Rocket's previews folder, then the default branch's files, so Commits, Files, Map and
+  Statistics work at once. Older versions download explicitly when a view needs them (a
+  commit's diff, Compare, a file's history or blame, another revision); Git never fetches
+  behind a read. No checkout, hooks, submodules or Git LFS downloads, and every write is
+  refused. A commit's right-click menu lists only what reads, and Changed code search and
+  Open review window are off in a preview.
+- A preview stops at 1 GB (`clone_size_limit`) and keeps nothing; a repository GitHub sizes
+  past the limit asks first. Continue without a limit lifts it for that preview. Failure
+  cards cover refused access, not found, offline and stopped.
+- The states from the mockup: views show what a preview is downloading for them ("3 of 5 ·
+  34 KB so far from github.com", Stop) and "Not downloaded yet" with Try again when the host
+  can't be reached; Viewing branch is a menu of the preview's branches; the banner's Back to
+  results, Discard and Keep have icons; the status bar says "Preview · read-only"; the opening
+  card has progress bars and names the default branch; the limit card says "Stopped at 1 GB";
+  the refused card's Sign in asks Git's credential helper for that host and retries (request
+  `preview-sign-in`). Keep shows "Keeping name" with "1,240 of 3,912 files", and after a
+  failure says the preview is unchanged with Try again. Activity notes Keep ("Kept name in
+  folder") and Discard ("· 23 MB freed").
+- Keep makes a normal clone in a folder you choose, with Clone's checks: it downloads the
+  missing file versions, clones the preview and points origin at the original address; the
+  kept repository replaces the tab. Discard, closing the tab or quitting deletes the
+  preview; the next start removes previews a crashed Rocket left.
+- Two-column pages (GitHub, Tags, Git LFS, Submodules and Explore) no longer lay out 8 points
+  past the window's right edge: the gap between the columns now counts the layout's spacing.
+- Diagnostics: requests github-search, preview-open and keep-preview. MCP: `explore` and
+  per-tab `preview` state; previews in the test root's rocket-previews folder; downloads
+  only from local fixture sources; `rocket-preview-limit` lowers the limit. Runner:
+  tools/tests/test-mcp-explore.cjs.
+
+## Unreleased — Actions page
+
+- **Actions** in the sidebar, after AI review, lists the repository's CI runs from
+  its host, newest first: every workflow, branch, pull request and schedule, on
+  GitHub, GitHub Enterprise Server, GitLab, Gitea, Bitbucket Cloud and Azure DevOps.
+  A dot on it says the current branch's newest run failed (red) or is running (amber).
+- Choose **All branches** or the current branch, and **All**, **Failed** or
+  **Running**; **Load more** reads the next 30 runs, up to 150. A run shows its jobs,
+  **Show in Commits**, **Open in browser** and a reviewed **Re-run failed jobs** for
+  that run only (GitHub, GitLab, Gitea), checked again by that run before sending.
+- Actions shows for every repository and says what stands in the way: no account
+  for the remote's host (with **Connect**), no workflow yet, a token that can't read
+  runs (naming the permission), a used-up rate limit, no remote on a host Rocket
+  reads, or Bitbucket Server, which doesn't report CI.
+- The checks popover gains **All runs** and the PR **Checks** tab **All runs for** its
+  branch. The status bar's **Checks hidden** and **Checks paused** open Actions; a
+  token the host rejected still opens Accounts.
+- No **Not checked** rings show while no loaded commit has a check, so a repository
+  without CI no longer has a ring on every pushed commit.
+- Fixed: Bitbucket Server's PR **Checks** tab showed an empty card; it now says the
+  server doesn't report CI to Rocket.
+- Reads only while Actions shows: one request per page or branch filter, the chosen
+  run and its jobs when it is chosen, and the newest page every 30 seconds while a
+  run runs. New request names `hosting-ci-runs` and `hosting-ci-run`. Token
+  permissions: GitHub Actions Read, GitLab `read_api`, Gitea `read:repository`,
+  Bitbucket `read:pipeline:bitbucket`, Azure Build (Read); see
+  [HOSTING.md](HOSTING.md#actions-page-unreleased).
+- Checked against provider-shaped mock services and the native `test-mcp-actions`
+  runner only; no live host has been accepted end to end.
+
 ## Unreleased — AI review, redesigned
 
 - AI review has the frame of Compare: Base and Target fields with the branch list inside,
@@ -51,6 +134,164 @@ keep detailed test evidence in `VALIDATION.md`.
   moved, Send reads the changes again instead of sending.
 - MCP: `review-program`, `review-prepare`, `review-show-preview` and `review-show-result` are
   gone; see UI.md for the new ids and `branch_review` state fields.
+
+## Unreleased — A taller commit message and even toolbar rows
+
+- The commit description in Changes was 36 px, two lines, at every window size. It
+  now opens at 7 lines (4 in a short window), grows with the text up to 12, then
+  scrolls. The summary is 38 px in 14 px semibold.
+- A handle above the summary resizes the message area. Rocket saves a dragged height
+  (settings format v26; older builds refuse a file that holds one), and a double-click
+  goes back to following the text.
+- Segmented controls are 28 px everywhere, the height of the fields beside them, with
+  22 px options. The Commits search field and In path box are 30 px, like the pickers
+  in that row.
+- Map's revision is a picker: HEAD, the checked-out branch and the other branches, plus
+  a box for any commit, branch or tag; Enter maps it. MCP controls: `map-revision-pick`,
+  `map-revision` (the box), `map-revision-head`, `map-revision-branch-{i}`;
+  `commit-resize` is the commit message handle.
+
+## Unreleased — Direct SSH key authentication
+
+- SSH key selection remains available alongside Windows agent and Direct key
+  authentication. Direct mode uses the chosen repository profile without adding
+  an agent identity. Save passphrase verifies with OpenSSH before persisting
+  Windows-user-encrypted data; Forget removes only that saved credential.
+- Repository reviews, config backups, cancellation and external-edit checks
+  apply to both modes. Direct SSH rejects unknown/changed host keys and never
+  answers host-trust or account-password prompts. No existing keys or main SSH
+  configuration are changed. The portable bundle now includes rocket-ssh.exe.
+
+## Unreleased — Summary no longer says Refreshing forever
+
+- Summary's "Refreshing; the numbers below may be out of date." stayed on, with its
+  spinner, after any automatic refresh had finished, because the tab still marked its
+  last refresh as a background one. It now shows only while a refresh is queued or
+  running. MCP state reports it as `summary.refreshing`.
+
+## Unreleased — Code search in the CLI
+
+- `rocket-cli search TEXT --kind content` takes `--regex` (`git log -G`), `--match-case`
+  and `--path PATH`, as Changed code does in Commits; text and path searches refuse
+  them. JSON adds a `content` object with the three settings.
+- New `rocket-cli grep PATTERN [--revision REV] [--regex] [--match-case] [--path PATH]`
+  lists matching lines in the checkout's files (untracked ones included, ignored ones
+  skipped) or at a commit, with the desktop's limits. JSON gives each file's lines with
+  their number, preview and match ranges and says whether the search stopped early;
+  plain output prints `path:line: preview`.
+- An expression Git can't read fails with `invalid_pattern` and Git's reason.
+
+## Unreleased — Find code in history and files
+
+- The commit search's Content kind is now **Changed code**: exact text still uses
+  `git log -S`; **.\*** switches to a POSIX extended regular expression (`git log -G`),
+  which also finds commits that only edit a line around the text; **Aa** matches case;
+  **In path** keeps one file or folder (exact, case-sensitive, `\` read as `/`). Exact
+  text fills the diff's Find. A bad expression shows Git's reason and runs nothing.
+  Searching, Stopped and no-match states say how far the search got; Stop and Resume
+  replace Stop search and Resume search.
+- **Search in files** on the Files page runs `git grep` at the checkout (untracked files
+  included, ignored ones skipped) or at the revision shown. Results stream in grouped by
+  file with line numbers and marked matches; a match opens its file at that line, with
+  ↑ ↓ through all matches and **Find in commits**. Ctrl+Shift+F, the palette, Repository
+  → History & Recovery and a commit's right-click menu open it.
+- Limits: 2,000 matches, 100 per file, 400 characters per line, 30 seconds; reaching one
+  keeps the results and says which. Binary files are skipped, Git LFS pointer matches
+  are labelled, files over 2 MiB open 200 lines around the match, and non-UTF-8 text is
+  shown with replacement marks, also when browsing (it used to show no preview).
+- rocket-git gained a streamed read for Git output, `Repository::search_files`,
+  `search_file` and `ContentMatch`; `HistorySearchStart::Query` and the cursor carry it.
+
+
+## Unreleased — Repository map, Scan folder and Crash reports redesign
+
+- **Repository map** has a header with the snapshot it shows, and opens each view on
+  its most readable form. Code: **Packages** in dependency layers (what a package uses
+  sits below it), or **Folders** as a left-to-right tree whose folders open one at a
+  time, with each folder's own files summed up on one card. History: **Branches &
+  merges** folds runs of plain commits and shows each merged branch on one line, with
+  branches ahead of the main line above it; **Every commit** lists them all. People:
+  **Who works where**, a grid of people by folder with commit counts, splitting a
+  folder that holds most changes into its subfolders; **All time / 90 days / 30 days**;
+  **Shared files** as before.
+- A **Details** card beside the map (a drawer in narrow windows) lists what the
+  selection connects to, with **Show folders**, **Commits here** and **Show commits**
+  to move between views. **Export as Mermaid** is a dialog with Copy and Save into a
+  chosen folder; it never replaces a file. History nodes carry commit dates and tags.
+- **Scan folder** opens the folder picker first and scans at once. Results are grouped
+  by disk folder with each repository's branch and last commit date, read with the
+  Repository manager's `Repository::summary`; group boxes, **All / New / Saved /
+  Skipped** views and **Save in → Match disk folders**, which makes one saved folder
+  per disk folder.
+- **Help → Crash Reports** lists reports under Today and Earlier with plain names
+  such as Rocket stopped or Access violation, shows the details beside the
+  list, keeps code offsets folded, and saves with **Save as** into a chosen folder. A
+  window app's crash from the 15 minutes before a start is offered once in a notice.
+- MCP state: map `period`, `condensed`, `cell`, `line`, `file_groups` and export
+  `dir`/`name` (replacing `recent` and the typed export path); scan `view`,
+  `match_disk`, `new_folders`, `left_out`, row `group` and `meta`. Typed fields
+  `map-export-folder`, `map-export-name`, `crash-export-folder` and `crash-export-name`
+  replace `map-export-path` and `crash-export-path`.
+
+## Unreleased — CI status on commits and branches
+
+- Commits and the sidebar show a CI mark beside each pushed commit and branch:
+  passed, failed, running or not checked, for GitHub, GitHub Enterprise Server,
+  GitLab, Gitea, Bitbucket Cloud and Azure DevOps. Unpushed commits have none.
+  GitHub answers up to 50 commits in one GraphQL request; reads run on their own
+  worker and history never waits for them.
+- Clicking a mark, or **Show checks** in the commit details, lists that commit's
+  checks with failures first, with **Open** for a failed job and **Open in browser**.
+  A status that links to another site shows that site's name first.
+- **Re-run failed jobs** (GitLab: **Retry failed jobs**) on GitHub, GitHub Enterprise
+  Server, GitLab and Gitea goes through a single-use review. It is offered only when
+  the run finished and failed and the host says the account can write to the
+  repository; a refusal names the missing permission, and a lost answer is an
+  uncertain outcome that is never retried automatically. Bitbucket and Azure DevOps
+  show results only.
+- The PR **Checks** tab is one list with a summary bar, the same two buttons, and a
+  pass/fail pill in the PR header; its caveats moved to Help → Guide → CI checks.
+  The tab no longer shows 0 when checks couldn't be read.
+- A remembered hosting account whose server matches a remote signs in by itself
+  when the repository opens, for reads only. The status bar says **Checks hidden**,
+  **Checks paused until** or **Checks from** for a whole repository.
+- Token permissions: GitHub fine-grained Actions Read and Commit statuses Read
+  (re-run: Actions Read and write); classic `repo` for private repositories;
+  GitLab `read_api` (retry: `api` and Developer); Gitea `read:repository`
+  (`write:repository`); Bitbucket `read:repository:bitbucket` and
+  `read:pipeline:bitbucket`; Azure Code (Read) and Build (Read). See
+  [HOSTING.md](HOSTING.md#ci-status-on-commits-and-branches-unreleased).
+- Checked against provider-shaped mock services and the native
+  `test-mcp-ci-checks` runner only; no live host has been accepted end to end.
+## Unreleased — Repository status, Fetch all and Pull all
+
+- **File → Repository manager** shows each saved repository's branch, uncommitted
+  changes and where it stands against its upstream (↑ to push, ↓ to pull, both when
+  diverged), plus **Folder missing**, **Fetch failed** and **Couldn't check**. Rows
+  read **Not checked yet** until their status is read: locally, four at a time, at
+  most ten seconds each, only for the listed repositories, without fetching or locks.
+- A strip under the list has **All** and **Needs attention** filters, **Check again**,
+  **Fetch all** and **Pull all**; folders and workspaces with a repository that needs
+  attention get a dot. The details card adds Branch, Upstream, Changes and Last fetch.
+- **Fetch all** follows automatic fetch's rules for each listed repository. **Pull all**
+  fast-forwards only a clean branch behind its upstream, using Pull's own checks, with a
+  fetch that never asks for a password (new rocket-git `pull_ff_only_quietly`);
+  changes, divergence, no upstream, a missing folder or a busy tab are skipped and listed,
+  never forced. **Stop** skips what hasn't started; a running pull finishes.
+- A result card lists what happened, failures and skips first, with **Open in tabs**
+  for those. New rocket-git `Repository::summary` is the one bounded per-repository
+  read, meant to be shared with Scan folder. MCP state adds `repository_manager.status`.
+
+## Unreleased — Jira scoped API tokens
+
+- Bundled Jira 1.3.0 adds **Cloud ID for scoped tokens** to its connection settings.
+  With it set, every read, write and pre-write check goes through Atlassian's gateway
+  at `https://api.atlassian.com/ex/jira/<cloud ID>`, which tokens created with scopes
+  require. Left empty, Jira keeps using the site address with a classic token.
+- A Cloud ID that isn't a cloud ID shows Configure Jira and sends nothing. Rocket
+  still accepts only a hostname as a connection's server; no API 1 change.
+- Installed Jira 1.2.0 offers **Update to** 1.3.0 through the usual review. Checked
+  against the existing mock services only, not a live Jira site.
 
 ## 0.92.0 — Local crash reports
 

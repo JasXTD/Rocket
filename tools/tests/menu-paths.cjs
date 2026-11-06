@@ -18,6 +18,7 @@ const SUBMENU = Object.freeze({
   'repository-recovery': 'repository-history-menu',
   'repository-file-backups': 'repository-history-menu',
   'repository-tree': 'repository-history-menu',
+  'repository-search-files': 'repository-history-menu',
   'repository-bisect': 'repository-history-menu',
   'repository-manage-remotes': 'repository-remotes-menu',
   'repository-hosting': 'repository-remotes-menu',

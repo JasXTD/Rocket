@@ -176,6 +176,10 @@ impl Ui {
         });
         // GitHub links are recorded instead of opening a browser.
         app.github_endpoint = policy.github_endpoint();
+        // A runner may lower the preview limit to test where previews stop.
+        if let Some(limit) = policy.preview_limit() {
+            app.preview_limit = limit;
+        }
         if let Some(port)=policy.update_fixture(){
             app.updates.endpoint=Some(rocket_git::app_update::UpdateEndpoint::Loopback(port));
             app.updates.fixture_install=Some(policy.root.join("installation"));
@@ -217,8 +221,81 @@ impl Ui {
         self.app
             .tabs
             .iter()
-            .all(|tab| self.policy.repository(&tab.path).is_ok())
+            .all(|tab| self.tab_in_scope(tab))
             && self.app.reviews.iter().all(|w|self.policy.repository(&w.lock().unwrap_or_else(|e|e.into_inner()).tab.path).is_ok())
+    }
+    /// A marked fixture, or a preview in the test root's preview folder: previews
+    /// refuse every write, and their source is checked before each download.
+    fn tab_in_scope(&self, tab: &rocket_ui::app::Tab) -> bool {
+        if tab.is_preview() {
+            return self.policy.preview_repository(&tab.path).is_ok();
+        }
+        self.policy.repository(&tab.path).is_ok()
+    }
+    /// The repository a click downloads from, when `target` opens a preview.
+    fn preview_source(&self, target: &str) -> Option<Result<String, String>> {
+        let explore = &self.app.explore;
+        let text = |source: &rocket_git::CloneSource| match source {
+            rocket_git::CloneSource::Url(url) => url.clone(),
+            rocket_git::CloneSource::Local(path) => path.to_string_lossy().into_owned(),
+        };
+        Some(match target {
+            "explore-preview" | "explore-preview-anyway" => explore
+                .selected
+                .and_then(|i| explore.results.get(i))
+                .map(|r| r.clone_url.clone())
+                .ok_or_else(|| "Select a result first".to_owned()),
+            "explore-address-preview" => rocket_ui::explore::address(&explore.query)
+                .map(|a| text(&a.source))
+                .ok_or_else(|| "Type a repository address first".to_owned()),
+            "github-repository-preview" => self
+                .app
+                .dialog
+                .as_ref()
+                .and_then(|d| d.github.as_ref())
+                .and_then(|s| s.selected.and_then(|i| s.repositories.get(i)))
+                .map(|r| r.clone_url.clone())
+                .ok_or_else(|| "Select a repository first".to_owned()),
+            "preview-retry" | "preview-unlimited" => self
+                .app
+                .tab()
+                .and_then(|t| t.preview.as_ref())
+                .map(|p| text(&p.request.source))
+                .ok_or_else(|| "Open a preview first".to_owned()),
+            _ => return None,
+        })
+    }
+    /// Keep downloads from the preview's source, names it as origin and makes a new
+    /// folder: the source must be a local fixture and the folder inside the root.
+    fn keep_scope(&self) -> Result<(), String> {
+        let Some(dialog) = self.app.dialog.as_ref() else {
+            return Ok(());
+        };
+        let DialogKind::KeepPreview(id) = dialog.kind else {
+            return Ok(());
+        };
+        let preview = self
+            .app
+            .tabs
+            .iter()
+            .find(|t| t.id == id)
+            .and_then(|t| t.preview.as_ref())
+            .ok_or("The preview's tab is closed")?;
+        if let rocket_git::CloneSource::Local(path) = &preview.request.source {
+            self.local_remote_url(path.to_string_lossy().as_bytes())?;
+        } else {
+            return Err("Keep under MCP needs a local fixture source".into());
+        }
+        self.local_remote_url(preview.request.url.as_bytes())?;
+        let destination = Path::new(dialog.second.trim());
+        let inside = destination
+            .parent()
+            .and_then(|p| p.canonicalize().ok())
+            .is_some_and(|p| p.starts_with(&self.policy.root));
+        if !destination.is_absolute() || !inside || destination.exists() {
+            return Err("Keep makes a new folder inside the test root".into());
+        }
+        Ok(())
     }
     fn state(&self) -> Value {
 
@@ -252,21 +329,12 @@ impl Ui {
             "include_nested":self.app.manager.include_nested,"collapsed":self.app.manager.collapsed,
             "open_count":manager_open.as_ref().ok().map(Vec::len),"open_error":manager_open.as_ref().err(),
             "error":self.app.manager.error,"notice":self.app.manager.notice,
-            "scan":self.app.manager.scan.as_ref().map(|s| {
-                let selection = s.selection();
-                json!({"root":s.root,"recursive":s.recursive,"phase":s.phase(),"error":s.error,"notice":s.notice,"folder":s.folder,
-                    "filter":s.filter,"hide_saved":s.hide_saved,"details":s.details,"visible":s.visible(),
-                    "selection":{"eligible":selection.eligible,"shown":selection.selected,"total":selection.total,"hidden":selection.hidden,"checked":selection.checked(),"partial":selection.partial()},
-                    "skipped":s.summary.skipped,"invalid":s.summary.invalid,"limited":s.summary.limited,
-                    "issues":s.summary.issues.iter().map(|i|json!({"path":i.path,"reason":i.reason})).collect::<Vec<_>>(),
-                    "folders_checked":s.progress.folders.load(std::sync::atomic::Ordering::Relaxed),"found":s.progress.found.load(std::sync::atomic::Ordering::Relaxed),
-                    "selection_checked":s.progress.checked.load(std::sync::atomic::Ordering::Relaxed),
-                    "rows":s.rows.iter().map(|r|json!({"path":r.repository.path,"relative_path":r.relative_path,"name":r.name,"kind":r.repository.kind,"selected":r.selected,"saved":r.saved})).collect::<Vec<_>>()})
-            }),
+            "scan":self.app.manager.scan.as_ref().map(scan_state_value),
             "folders":self.app.library.folders.iter().map(|f|json!({"id":f.id,"name":f.name})).collect::<Vec<_>>(),
             "repositories":self.app.library.repositories.iter().map(|r|json!({"id":r.id,"name":r.name,"path":r.path,"folder":r.folder})).collect::<Vec<_>>(),
             "workspaces":self.app.library.workspaces.iter().map(|w|json!({"id":w.id,"name":w.name,"repositories":w.repositories,"active":w.active,"parent":w.parent})).collect::<Vec<_>>(),
             "form":self.app.manager.form.as_ref().map(|f|json!({"kind":format!("{:?}",f.kind),"name":f.name,"path":f.path,"members":f.members,"active":f.active,"parent":f.parent,"error":f.error}))});
+        state["repository_manager"]["status"] = self.app.manager.status.mcp_state(&self.app.library);
         state["mcp"] = json!({"visible":self.app.preferences_page() == Some(rocket_ui::preferences::Page::Mcp),"busy":self.app.mcp.busy(),"port":self.app.mcp.port,"root":self.app.mcp.root,"running":self.app.mcp.status.running,"hosted":self.app.mcp.hosted,"error":self.app.mcp.error,"notice":self.app.mcp.notice});
         state["viewport"] = json!(self.viewport);
         state["updates"]=json!({"enabled":self.app.updates.endpoint.is_some(),"open":self.app.updates.open,"startup_checked":self.app.updates.started,"running":self.app.updates.running(),"status":self.app.updates.status,"phase":self.app.updates.phase(),"notes_expanded":self.app.updates.notes_expanded(),"details_expanded":self.app.updates.details_expanded(),"notice_visible":self.app.frame_widgets.contains_key("update-notice-open"),"message":self.app.updates.message,"error":self.app.updates.error,"ready":self.app.updates.ready(),"installable":self.app.updates.installable(),"pending_restart":self.app.updates.pending_restart(),"release":self.app.updates.release.as_ref().map(|r|json!({"version":r.version.text(),"size":r.size,"page":r.page}))});
@@ -305,7 +373,8 @@ impl Ui {
                 "conflict_editor":{"running":tab.conflict.running(),"path":tab.conflict.path.as_ref().map(|p|p.display_lossy()),"dirty":tab.conflict.dirty,"bound":tab.conflict.preview.is_some(),"blocks":tab.conflict.blocks.blocks.len(),"malformed":tab.conflict.blocks.malformed,"selected":tab.conflict.selected,"part":tab.conflict.part,"draft":tab.conflict.draft.chars().take(16000).collect::<String>(),"draft_bytes":tab.conflict.draft.len(),"error":tab.conflict.error,"notice":tab.conflict.notice},
                 "stashes":snapshot.map(|s|s.stashes.iter().map(|e|json!({"index":e.index,"id":e.id.as_str(),"subject":String::from_utf8_lossy(&e.subject)})).collect::<Vec<_>>()),
                 "stash_preview":{"running":tab.stash.running(),"selected":tab.stash.selected.as_ref().map(|e|e.id.as_str()),"part":format!("{:?}",tab.stash.part),"error":tab.stash.error,"notice":tab.stash.notice,"limited":tab.stash.patch.as_ref().is_some_and(|p|p.limited),"files":tab.stash.patch.as_ref().map(|p|p.files.iter().map(|f|json!({"path":f.label,"added":f.added,"removed":f.removed})).collect::<Vec<_>>())},
-                "search":{"query":tab.search,"kind":tab.search_kind.label(),"scanning":tab.search_state.scanning(),"running":tab.search_state.task.is_some(),"complete":tab.search_state.complete,"paused":tab.search_state.paused,"scanned":tab.search_state.scanned,"error":tab.search_state.error,"more":tab.search_state.next.is_some()},
+                "file_search":file_search_state(&tab.tree.search),
+                "search":{"query":tab.search,"kind":tab.search_kind.label(),"regex":tab.search_regex,"match_case":tab.search_case,"path":tab.search_path,"stopped":tab.search_state.stopped,"bad_pattern":tab.search_state.bad_pattern,"diff_find":tab.diff_tools.query,"scanning":tab.search_state.scanning(),"running":tab.search_state.task.is_some(),"complete":tab.search_state.complete,"paused":tab.search_state.paused,"scanned":tab.search_state.scanned,"error":tab.search_state.error,"more":tab.search_state.next.is_some()},
                 "remotes":snapshot.map(|s|s.remotes.iter().map(|r|json!({"name":String::from_utf8_lossy(&r.name),"fetch_urls":r.urls.len(),"push_urls":r.push_urls.len()})).collect::<Vec<_>>()),
                 "refresh_count":tab.refresh_count,"watching":snapshot.is_some_and(|s|s.watcher.is_some()),"patch_error":tab.patch_error,
                 "patch_added":tab.patch.as_ref().map(|p|p.files.iter().map(|f|f.added).sum::<usize>()),
@@ -315,11 +384,13 @@ impl Ui {
                 "selected_lines":tab.patch.as_ref().map(|p|p.selected.len()),
                 "partial_selection":tab.patch.as_ref().and_then(|p|p.review.as_ref()).is_some_and(|r|r.selection_unavailable().is_none()),
                 "patch_removed":tab.patch.as_ref().map(|p|p.files.iter().map(|f|f.removed).sum::<usize>())});
+            value["preview"] = tab.preview.as_ref().map_or(Value::Null, |p| preview_state(p, &self.app));
             value["history_order"]=json!(tab.history_order.key());
             value["undo_available"] = json!(tab.undo_commit.is_some());
             value["summary"] = status.map_or(Value::Null, |status| {
                 let s = rocket_ui::guided::summarize(status, snapshot.and_then(|s|s.state.as_ref()));
-                json!({"staged":s.staged,"unstaged":s.unstaged,"untracked":s.untracked,"conflicts":s.conflicts,"remote":s.remote,"next":s.next})
+                json!({"staged":s.staged,"unstaged":s.unstaged,"untracked":s.untracked,"conflicts":s.conflicts,"remote":s.remote,"next":s.next,
+                    "refreshing":rocket_ui::guided::refreshing(tab)})
             });
             value["word_diff"]=json!({"enabled":tab.diff_tools.words,"running":tab.diff_tools.words_running(),"lines":tab.diff_tools.word_highlights.spans.len(),"spans":tab.diff_tools.word_highlights.spans.values().map(|s|s.len()).sum::<usize>(),"limited":tab.diff_tools.word_highlights.limited,"error":tab.diff_tools.word_error});
             value["image_diff"]=json!({"running":tab.image.running(),"loaded":tab.image.loaded,"cancelled":tab.image.cancelled,"error":tab.image.error,"fit":tab.image.fit,"zoom":tab.image.zoom,"checker":tab.image.checker,"before":tab.image.before.as_ref().map(|i|json!({"width":i.width,"height":i.height,"bytes":i.encoded_bytes,"format":i.format,"alpha":i.alpha})),"after":tab.image.after.as_ref().map(|i|json!({"width":i.width,"height":i.height,"bytes":i.encoded_bytes,"format":i.format,"alpha":i.alpha}))});
@@ -451,7 +522,10 @@ impl Ui {
             rocket_ui::drag::DropKind::Commit { source, target } => json!({"kind":"commit","tab":d.tab,"source":source.as_str(),"target":target.as_str()}),
         });
         state["github"] = github_state(&self.app);
+        state["explore"] = explore_state(&self.app);
         state["hosting"] = hosting_state(&self.app);
+        state["ci"] = ci_state(&self.app);
+        state["actions"] = actions_state(&self.app);
         state["ssh"] = ssh_state(&self.app);
         state["dialog"] = self.app.dialog.as_ref().map_or(Value::Null, |d| {
             let supported = dialog_name(&d.kind) != "other"
@@ -637,10 +711,12 @@ impl Ui {
     /// Controls of a modal that is on top: the Browse picker, the Open folder browser,
     /// External tools and MCP server inside Preferences, or the external tool dialog.
     fn modal_owns(&self, target: &str) -> bool {
-        if self.app.crash_reports.open { return target.starts_with("crash-"); }
         if self.app.picker.is_some() {
             return target.starts_with("picker-");
         }
+        // Below the picker: Save as in Crash reports opens one.
+        if self.app.crash_reports.open { return target.starts_with("crash-"); }
+        if self.app.map_export_open() { return target.starts_with("map-export-"); }
         match self.app.dialog.as_ref().map(|d| &d.kind) {
             Some(DialogKind::Preferences) => {
                 target.starts_with("tools-") || target.starts_with("mcp-") || target.starts_with("git-") || target == "prefs-scroll"
@@ -740,11 +816,21 @@ impl Ui {
             }
         }
         if request.args["button"].as_str()==Some("right")
-            && !(target.starts_with("commit-") || target.starts_with("branch-row-") || target.starts_with("sidebar-branch-refs/") || change_row_target(target) || target.starts_with("dialog-submodule-row-") || target.starts_with("patch-file-") || target.starts_with("tree-entry-") || target.starts_with("file-commit-")) {
+            && !(target.starts_with("commit-") || target.starts_with("branch-row-") || target.starts_with("sidebar-branch-refs/") || change_row_target(target) || target.starts_with("dialog-submodule-row-") || target.starts_with("patch-file-") || target.starts_with("tree-entry-") || target.starts_with("files-match-") || target.starts_with("file-commit-")) {
             return Err("Right-click automation is limited to commit, branch, changed-file and submodule rows".into());
         }
         if target == "manager-open" {
             for path in self.app.manager_open_paths().map_err(str::to_owned)? { self.policy.repository(&path)?; }
+        }
+        // Fetch all, Pull all and Open N in tabs reach every repository they list: each must be a
+        // marked fixture. A folder that is gone is skipped without running Git.
+        let listed = match target {
+            "manager-fetch-all" | "manager-pull-all" => Some(self.app.manager_batch_rows()),
+            "manager-result-open" => Some(self.app.manager_result_paths()),
+            _ => None,
+        };
+        for (_, path) in listed.into_iter().flatten() {
+            if !matches!(path.try_exists(), Ok(false)) { self.policy.repository(&path)?; }
         }
         if target == "manager-scan-start" && let Some(s)=&self.app.manager.scan {
             rocket_ui::repository_scan::discovery::check_root(Path::new(s.root.trim()),Some(&self.policy.root)).map_err(|_|"Choose a normal folder inside the MCP test root".to_owned())?;
@@ -897,6 +983,21 @@ impl Ui {
         }
         if request.name == "rocket_type" && target == "dialog-clone-source" {
             self.local_remote_url(request.args["text"].as_str().unwrap_or("").as_bytes())?;
+        }
+        // Explore's box: a search goes to the configured GitHub endpoint; an address
+        // is previewed or cloned, so it must be a local fixture repository.
+        if request.name == "rocket_type" && target == "explore-query" {
+            let text = request.args["text"].as_str().unwrap_or("");
+            if text.contains("://") || rocket_ui::explore::address(text).is_some() {
+                self.local_remote_url(text.trim().as_bytes())?;
+            }
+        }
+        // Previews download from their source: only local fixture repositories.
+        if let Some(source) = self.preview_source(target) {
+            self.local_remote_url(source?.as_bytes())?;
+        }
+        if target == "dialog-submit" {
+            self.keep_scope()?;
         }
         if target == "dialog-test-connection" {
             // Test connection runs Git's transport: only local fixture paths.
@@ -1053,6 +1154,14 @@ impl Ui {
             }
             return Ok(());
         }
+        // CI marks, their popover, the re-run review and Actions: only on the marked loopback API.
+        if target.starts_with("ci-") || target.starts_with("actions-") {
+            let s = &self.app.forge;
+            if !s.enabled || s.fixture.is_none() || s.fixture != self.policy.hosting_fixture() || s.account_check_only || s.publish_check.is_some() {
+                return Err("CI controls require the marked loopback hosting fixture".into());
+            }
+            return Ok(());
+        }
         if target.starts_with("hosting-") {
             if let Some((repository, branch)) = self.policy.github_publish_check() {
                 let s=&self.app.forge;
@@ -1190,6 +1299,9 @@ impl Ui {
                 | "manager-stop"
                 | "manager-cancel"
                 | "git-cancel"
+                | "dialog-stop"
+                | "preview-stop"
+                | "explore-stop"
         ) {
             return Ok(());
         }
@@ -1236,6 +1348,11 @@ impl Ui {
             )
         {
             return Err("Wait for the current repository operation to settle".into());
+        }
+        // A preview refuses every write in the UI, reads only its own folder and
+        // downloads only from a source checked above.
+        if tab.is_preview() {
+            return Ok(());
         }
         let (_, branch) = self.policy.repository(&tab.path)?;
         let snapshot = tab.snapshot.as_ref().ok_or("Repository is still loading")?;
@@ -1925,6 +2042,8 @@ impl Ui {
                         | "file-list-scroll"
                         | "file-source-scroll"
                         | "tree-list-scroll"
+                        | "files-results-scroll"
+                        | "files-source-scroll"
                         | "map-canvas" | "map-details-scroll" | "map-export-scroll"
                         | "compare-files-scroll"
                         | "review-files-scroll" | "review-diff-scroll" | "review-findings-scroll" | "review-exact-scroll"
@@ -1949,6 +2068,7 @@ impl Ui {
                         | "picker-list-scroll"
                         | "activity-list"
                         | "activity-details"
+                        | "explore-results-scroll"
                 ) {
                     request.ticket.fail(
                         "Scroll target must be a supported visible repository, preview, file, or stash viewport",
@@ -2044,7 +2164,8 @@ impl Ui {
                             | "conflict-ai-instructions"
                             | "file-path"
                             | "tree-revision"
-                            | "map-revision" | "map-search" | "map-base" | "map-path-scope" | "map-export-path" | "crash-export-path"
+                            | "files-search" | "files-search-path" | "commit-search-path"
+                            | "map-revision" | "map-search" | "map-base" | "map-path-scope" | "map-export-folder" | "map-export-name" | "crash-export-folder" | "crash-export-name"
                             | "compare-base" | "compare-target" | "compare-filter"
                             | "review-base" | "review-target" | "review-base-pick-filter" | "review-target-pick-filter" | "review-choose-filter"
                             | "compare-base-pick-filter" | "compare-target-pick-filter"
@@ -2077,6 +2198,7 @@ impl Ui {
                             | "dialog-tag-name"
                             | "dialog-remote-tag-filter"
                             | "github-filter"
+                            | "explore-query"
                             | "ssh-alias" | "ssh-host" | "ssh-user" | "ssh-port" | "ssh-existing" | "ssh-passphrase"
                             | "hosting-label" | "hosting-server" | "hosting-username" | "hosting-token"
                             | "hosting-repository" | "hosting-source" | "hosting-target" | "hosting-title"
@@ -3263,6 +3385,68 @@ fn conflict_whole_state(s: &rocket_ui::conflicts::State) -> Value {
 }
 /// GitHub session and page. A live check against api.github.com reports counts
 /// and flags only, so account data never reaches test output.
+/// Explore's search and results. A live check against api.github.com reports
+/// counts and flags only, like the GitHub page.
+fn explore_state(app: &Rocket) -> Value {
+    use rocket_ui::explore::Problem;
+    let s = &app.explore;
+    let live = app.github_endpoint == Some(rocket_git::GitHubEndpoint::Public);
+    let problem = s.problem.as_ref().map(|p| match p {
+        Problem::Offline => "offline",
+        Problem::Refused => "refused",
+        Problem::NoResults => "no_results",
+        Problem::Failed(_) => "failed",
+    });
+    let mut value = json!({"open":app.page() == Some(rocket_ui::pages::Page::Explore),"running":s.running(),
+        "result_count":s.results.len(),"total":s.total,"incomplete":s.incomplete,"more":s.next_page.is_some(),
+        "selected":s.selected,"remaining":s.remaining,"wait_seconds":s.wait_seconds(),"problem":problem,
+        "signed_in":app.github.is_some(),"anonymous":s.anonymous.is_some(),"confirm_large":s.confirm_large,
+        "sort":format!("{:?}", s.sort),"language":s.language,"limit":app.preview_limit});
+    if !live {
+        value["query"] = json!(s.query);
+        value["searched"] = json!(s.searched);
+        value["error"] = json!(match &s.problem {
+            Some(Problem::Failed(error)) => Some(error),
+            _ => None,
+        });
+        value["results"] = json!(s.results.iter().take(200).map(|r| json!({"name":r.remote.full_name(),
+            "stars":r.stars,"language":r.language,"size_kb":r.size_kb,"clone_url":r.clone_url,
+            "archived":r.archived,"fork":r.fork})).collect::<Vec<_>>());
+        value["address"] = json!(rocket_ui::explore::address(&s.query).map(|a| json!({"name":a.name,"host":a.host,"url":a.url})));
+    }
+    value
+}
+
+/// A preview tab: its state, downloads and source. Live runs keep names out.
+fn preview_state(p: &rocket_ui::preview_tab::Preview, app: &Rocket) -> Value {
+    use rocket_ui::preview_tab::{Failure, PreviewState};
+    let live = app.github_endpoint == Some(rocket_git::GitHubEndpoint::Public);
+    let downloads = p.meter.status();
+    let opening = match &p.state {
+        PreviewState::Opening(o) => Some(o),
+        _ => None,
+    };
+    let mut value = json!({"state":p.state_name(),"unlimited":p.unlimited,"limit":p.meter.limit(),
+        "size":downloads.size,"downloading":downloads.running,"downloaded_files":downloads.files,
+        "received":downloads.received,"downloaded_bytes":downloads.downloaded,
+        "download_failure":downloads.failure.map(|f| f.code()),"signing":p.signing.is_some(),
+        "step":opening.map(|o| format!("{:?}", o.step)),"files":opening.map(|o| o.files),
+        "stopping":opening.is_some_and(|o| o.stopping),
+        "branch":match &p.state { PreviewState::Ready { branch } => branch.as_deref(), _ => None },
+        "folder":p.slot.directory().to_string_lossy()});
+    if !live {
+        value["name"] = json!(p.request.name);
+        value["url"] = json!(p.request.url);
+        value["host"] = json!(p.request.host);
+        value["error"] = json!(match &p.state {
+            PreviewState::Failed(Failure::Other(error)) => Some(error),
+            _ => None,
+        });
+        value["sign_in_error"] = json!(p.sign_in_error);
+    }
+    value
+}
+
 fn github_state(app: &Rocket) -> Value {
     let live = app.github_endpoint == Some(rocket_git::GitHubEndpoint::Public);
     let opened = app.opened_urls.as_deref().unwrap_or_default();
@@ -3305,6 +3489,7 @@ fn github_state(app: &Rocket) -> Value {
 fn ssh_state(app: &Rocket) -> Value {
     let s=&app.ssh;
     json!({"enabled":s.enabled,"loaded":s.loaded,"busy":s.running(),"operation":s.operation,
+        "authentication":if s.authentication==rocket_git::SshAuthentication::Direct {"direct"}else{"agent"},
         "selected":s.selected,"found":s.found,"creating":s.creating,"review":s.preview.is_some(),
         "restoring":s.preview.as_ref().is_some_and(|p|p.restoring),"agent_running":s.agent_running,
         "stopping":s.stopping,"prompt":s.prompt.map(|p|format!("{p:?}")),"invalid":s.invalid,
@@ -3314,7 +3499,56 @@ fn ssh_state(app: &Rocket) -> Value {
                 "kind":k.kind,"fingerprint":k.fingerprint,"used":s.profiles.iter().any(|p|p.fingerprint==k.fingerprint),
                 "loaded":s.loaded_keys.contains(&k.fingerprint)})).collect::<Vec<_>>()})),
         "profiles":s.profiles.iter().map(|p|json!({"alias":p.alias,"host":p.host,"user":p.user,"port":p.port,
-            "fingerprint":p.fingerprint,"encrypted":p.encrypted,"loaded":s.loaded_keys.contains(&p.fingerprint)})).collect::<Vec<_>>()})
+            "fingerprint":p.fingerprint,"encrypted":p.encrypted,"passphrase_saved":p.passphrase_saved,"loaded":s.loaded_keys.contains(&p.fingerprint)})).collect::<Vec<_>>()})
+}
+/// CI marks of the active tab, the popover and the re-run review. Only the
+/// loopback fixture reports commit IDs and check names.
+fn ci_state(app: &Rocket) -> Value {
+    use rocket_ui::ci_checks::Whole;
+    let fixture = app.forge.fixture.is_some();
+    let checks = |d: &rocket_git::ForgeCommitChecks| json!({
+        "commit": d.commit(), "state": d.state().label(), "summary": rocket_ui::ci_checks::summary_text(d),
+        "count": d.checks.len(), "limited": d.limited, "error": d.error.map(|e| e.code()), "missing": d.missing,
+        "rerun_block": d.rerun.map(|b| b.code()), "failed_runs": d.failed_runs().map(|r| json!({"title": r.title(), "failed": r.failed})).collect::<Vec<_>>(),
+        "checks": d.checks.iter().map(|c| json!({"name": c.name, "group": c.group, "state": c.state.key(), "detail": c.detail,
+            "link": c.link.is_some(), "external": c.link.as_ref().and_then(|l| l.external.clone())})).collect::<Vec<_>>(),
+    });
+    let tab = app.tab().map(|t| {
+        let mut marks: Vec<_> = t.ci.marks.iter().map(|(k, v)| (k.clone(), v.label())).collect();
+        marks.sort();
+        json!({"active": t.ci.active(), "repository": t.ci.repository.as_ref().map(|r| r.path().to_owned()),
+            "marks": if fixture { json!(marks.into_iter().collect::<std::collections::BTreeMap<_, _>>()) } else { json!(t.ci.marks.len()) },
+            "faded": t.ci.faded, "quiet": t.ci.quiet, "reading": t.ci.reading(), "refreshes": t.ci.refreshes, "limited": t.ci.limited,
+            "whole": t.ci.whole.as_ref().map(|w| match w { Whole::Hidden(p) => json!({"kind":"hidden","missing":p}), Whole::Paused(at) => json!({"kind":"paused","until":at}), Whole::Stale(at) => json!({"kind":"stale","since":at}), Whole::Rejected => json!({"kind":"rejected"}) })})
+    });
+    let popover = app.ci.popover.as_ref().map(|p| json!({"commit": p.commit, "reading": p.reading(), "error": p.error, "notice": p.notice,
+        "details": p.details.as_deref().filter(|_| fixture).map(checks)}));
+    let rerun = app.ci.rerun.as_ref().map(|r| json!({"reviewing": r.reviewing(), "sending": r.sending(), "ready": r.preview.is_some(),
+        "error": r.error, "unknown": r.unknown, "stopping": r.stopping, "runs": r.failed_runs().iter().map(|run| run.title()).collect::<Vec<_>>(),
+        "from_run": matches!(r.source, rocket_ui::ci_checks::RerunSource::Run(_))}));
+    let pull = &app.forge.pull;
+    json!({"tab": tab, "popover": popover, "rerun": rerun, "signing_in": app.ci.signing_in(),
+        "pull": {"reading": pull.ci_task.is_some(), "error": pull.ci_error, "checks": pull.ci.as_deref().filter(|_| fixture).map(checks)}})
+}
+/// The Actions page of the active tab. Only the loopback fixture reports run
+/// titles, branches and job names.
+fn actions_state(app: &Rocket) -> Value {
+    let fixture = app.forge.fixture.is_some();
+    let Some(t) = app.tab() else { return Value::Null };
+    let a = &t.actions;
+    let run = |r: &rocket_git::ForgeCiRun| json!({"id": r.id, "title": r.title(), "state": r.state.key(), "event": r.event, "branch": r.branch,
+        "commit": r.commit, "took": r.took, "attempt": r.attempt});
+    let details = a.details.as_deref().map(|d| json!({"run": d.run.id, "jobs": d.jobs.len(), "limited": d.limited, "error": d.error.map(|e| e.code()),
+        "rerun_block": d.rerun.map(|b| b.code()), "failed": if fixture { json!(d.run.failed) } else { json!(d.run.failed.len()) },
+        "names": if fixture { json!(d.jobs.iter().map(|j| json!({"name": j.name, "state": j.state.key(), "detail": j.detail})).collect::<Vec<_>>()) } else { Value::Null }}));
+    json!({"shown": t.view == rocket_ui::app::View::Actions, "reach": a.reach.as_ref().map(|r| r.key()),
+        "on_branch": a.on_branch, "branch": if fixture { json!(a.branch) } else { Value::Null }, "show": a.show.key(),
+        "count": a.runs.len(), "more": a.more, "pages": a.pages, "reading": a.reading(), "reads": a.reads,
+        "failure": a.failure.map(|f| f.code()), "error": a.error.is_some(), "hidden": a.hidden.is_some(),
+        "missing": a.hidden.clone().flatten(), "paused": a.paused_until.is_some(), "live": a.live, "focused": a.focused,
+        "selected": a.selected, "reading_details": a.reading_details(), "details_error": a.details_error, "details": details,
+        "dot": rocket_ui::ci_checks::head_dot(t).map(|(s, _)| s.label()),
+        "runs": if fixture { json!(a.runs.iter().map(run).collect::<Vec<_>>()) } else { Value::Null }})
 }
 fn hosting_state(app: &Rocket) -> Value {
     let s = &app.forge;
@@ -3402,6 +3636,8 @@ fn dialog_name(kind: &DialogKind) -> &'static str {
         DialogKind::GitFlow(_) => "gitflow",
         DialogKind::DraftNotice(_) => "draft-notice",
         DialogKind::Clone => "clone",
+        DialogKind::Explore => "explore",
+        DialogKind::KeepPreview(_) => "keep-preview",
         DialogKind::FileEdit(_) => "file-edit",
         DialogKind::Patch(mode) => mode.label(),
         DialogKind::Fetch => "fetch",
@@ -3488,6 +3724,27 @@ fn file_history_state(state: &rocket_ui::file_history::State) -> Value {
     })
 }
 
+fn file_search_state(s: &rocket_ui::code_search::State) -> Value {
+    let ended = s.ended.map(|e| format!("{e:?}"));
+    json!({
+        "query":s.query,"regex":s.regex,"match_case":s.match_case,"scope":format!("{:?}",s.scope),"path":s.path,
+        "results_pane":s.results,"running":s.running(),"stopping":s.stopping,"opening":s.opening(),"ended":ended,
+        "error":s.error,"bad_pattern":s.bad_pattern,"matches":s.matches,"file_count":s.groups.len(),
+        "searched":s.ran.as_ref().map(|(_, label)| label),"selected":s.selected,"show_file":s.show_file,
+        "files":s.groups.iter().take(200).map(|g| json!({
+            "path":rocket_ui::tree::path_label(&g.file.path),"count":g.file.lines.len(),"capped":g.file.capped,"open":g.open,
+            "size":g.detail.size,"lfs_pointer":g.detail.lfs_pointer,"not_utf8":g.not_utf8,
+            "lines":g.file.lines.iter().take(20).map(|l| json!({"number":l.number,"text":l.text,"marks":l.marks.iter().map(|m|[m.start,m.end]).collect::<Vec<_>>(),"cut_start":l.cut_start,"cut_end":l.cut_end})).collect::<Vec<_>>()
+        })).collect::<Vec<_>>(),
+        "open":s.opened.as_ref().map(|o| json!({
+            "path":rocket_ui::tree::path_label(&o.path),"number":o.number,"group":o.group,"line":o.line,"error":o.error,
+            "content":o.content.as_ref().map(|c| json!({"kind":format!("{:?}",c.kind),"bytes":c.bytes,"first":c.first,"line_count":c.lines.len(),
+                "window":c.window,"lossy":c.lossy,"limited":c.limited,"marked_lines":c.marks.len(),
+                "focus_text":(o.number as usize).checked_sub(c.first).and_then(|i| c.lines.get(i)).map(|l| l.chars().take(300).collect::<String>())}))
+        }))
+    })
+}
+
 fn repository_tree_state(state: &rocket_ui::tree::State) -> Value {
     json!({
         "running":state.running(),"directory_running":state.directory_running(),"cancelling":state.cancelling,
@@ -3497,8 +3754,20 @@ fn repository_tree_state(state: &rocket_ui::tree::State) -> Value {
         "entries":state.listing.as_ref().map(|l|l.entries.iter().take(1000).enumerate().map(|(i,e)|json!({"index":i,"name":rocket_ui::tree::path_label(e.name()),"kind":format!("{:?}",e.kind()),"object":e.object().as_str()})).collect::<Vec<_>>()),
         "selected":state.selected,"selected_path":state.selected_entry().map(|e|rocket_ui::tree::path_label(e.path())),
         "show_list":state.show_list,"error":state.error,"notice":state.notice,
-        "content":state.content.as_ref().map(|c|json!({"kind":format!("{:?}",c.kind),"bytes":c.bytes,"line_count":c.lines.len(),"limited":c.limited,"preview":c.lines.iter().take(30).map(|l|l.chars().take(300).collect::<String>()).collect::<Vec<_>>()}))
+        "content":state.content.as_ref().map(|c|json!({"kind":format!("{:?}",c.kind),"bytes":c.bytes,"line_count":c.lines.len(),"limited":c.limited,"lossy":c.lossy,"preview":c.lines.iter().take(30).map(|l|l.chars().take(300).collect::<String>()).collect::<Vec<_>>()}))
     })
+}
+
+fn scan_state_value(s:&rocket_ui::repository_scan::State)->Value {
+    let selection = s.selection();
+    json!({"root":s.root,"recursive":s.recursive,"phase":s.phase(),"error":s.error,"notice":s.notice,"folder":s.folder,
+        "filter":s.filter,"view":s.view.code(),"match_disk":s.match_disk,"new_folders":s.new_folders(),"left_out":s.left_out(),"visible":s.visible(),
+        "selection":{"eligible":selection.eligible,"shown":selection.selected,"total":selection.total,"hidden":selection.hidden,"checked":selection.checked(),"partial":selection.partial()},
+        "skipped":s.summary.skipped,"invalid":s.summary.invalid,"limited":s.summary.limited,
+        "issues":s.summary.issues.iter().map(|i|json!({"path":i.path,"reason":i.reason})).collect::<Vec<_>>(),
+        "folders_checked":s.progress.folders.load(std::sync::atomic::Ordering::Relaxed),"found":s.progress.found.load(std::sync::atomic::Ordering::Relaxed),
+        "selection_checked":s.progress.checked.load(std::sync::atomic::Ordering::Relaxed),
+        "rows":s.rows.iter().map(|r|json!({"path":r.repository.path,"relative_path":r.relative_path,"name":r.name,"kind":r.repository.kind,"selected":r.selected,"saved":r.saved,"group":r.group,"meta":r.meta})).collect::<Vec<_>>()})
 }
 
 fn repository_map_state(state:&rocket_ui::repository_map::State)->Value {
@@ -3506,16 +3775,16 @@ fn repository_map_state(state:&rocket_ui::repository_map::State)->Value {
     let data=p.data.as_ref().map(|d|json!({"kind":format!("{:?}",d.kind),"tip":d.tip.as_ref().map(|id|id.as_str()),
         "scanned":d.scanned,"limited":d.limited,"node_count":d.nodes.len(),"link_count":d.links.len(),"notes":d.notes,
         "has_more":d.has_more,"history_limit":d.history_limit,"boundary_parents":d.boundary_parents,
-        "nodes":d.nodes.iter().enumerate().take(4096).map(|(i,n)|json!({"index":i,"kind":format!("{:?}",n.kind),"label":rocket_ui::tree::path_label(&n.label),"detail":rocket_ui::tree::path_label(&n.detail),"path":n.path.as_ref().map(|v|rocket_ui::tree::path_label(v)),"commit":n.commit.as_ref().map(|v|v.as_str()),"count":n.count,"files":n.files,"evidence":n.evidence.iter().take(24).map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),"refs":n.refs.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>()})).collect::<Vec<_>>(),
+        "nodes":d.nodes.iter().enumerate().take(4096).map(|(i,n)|json!({"index":i,"kind":format!("{:?}",n.kind),"label":rocket_ui::tree::path_label(&n.label),"detail":rocket_ui::tree::path_label(&n.detail),"path":n.path.as_ref().map(|v|rocket_ui::tree::path_label(v)),"commit":n.commit.as_ref().map(|v|v.as_str()),"count":n.count,"files":n.files,"time":n.time,"evidence":n.evidence.iter().take(24).map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),"refs":n.refs.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>()})).collect::<Vec<_>>(),
         "links":d.links.iter().take(12000).map(|e|json!({"from":e.from,"to":e.to,"kind":format!("{:?}",e.kind),"weight":e.weight})).collect::<Vec<_>>(),"links_limited":d.links.len()>12000
     }));
     json!({"kind":format!("{:?}",state.kind),"running":p.running(),"cancelling":p.cancelling,
-        "revision":p.revision,"query":p.query,"all_branches":p.all_branches,"recent":p.recent,"alternate":p.alternate,
+        "revision":p.revision,"query":p.query,"all_branches":p.all_branches,"period":p.period.key(),"alternate":p.alternate,"condensed":p.condensed,"cell":p.cell,"line":p.line,
         "base":p.base,"path_scope":p.path_scope,"can_more":p.can_more(),"collapsed":p.collapsed.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),"neighbor_anchor":p.neighbor_anchor.as_ref().map(|v|rocket_ui::tree::path_label(v)),
         "projected_links":p.projected_links.iter().take(12000).map(|e|json!({"from":e.from,"to":e.to,"kind":format!("{:?}",e.kind),"weight":e.weight})).collect::<Vec<_>>(),
-        "export":p.export.as_ref().map(|e|json!({"path":e.path,"bytes":e.text.len(),"running":e.running(),"stopping":e.stopping,"error":e.error,"notice":e.notice})),
+        "export":p.export.as_ref().map(|e|json!({"dir":e.dir,"name":e.name,"nodes":e.nodes,"links":e.links,"bytes":e.text.len(),"running":e.running(),"stopping":e.stopping,"error":e.error,"notice":e.notice})),
         "error":p.error,"notice":p.notice,"stale":p.stale,"selected":p.selected,"show_details":p.show_details,"zoom":p.zoom,
-        "visible":p.visible,"display_offset":p.display_offset,"view_total":p.view_total,"data":data})
+        "visible":p.visible,"file_groups":p.file_groups.iter().map(|g|json!({"folder":g.folder,"files":g.files})).collect::<Vec<_>>(),"display_offset":p.display_offset,"view_total":p.view_total,"data":data})
 }
 
 fn force_push_state_value(s: &rocket_ui::force_push::DialogState) -> Value {

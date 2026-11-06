@@ -28,7 +28,7 @@ $repo = Read-Host 'Full path to an existing Git repository'
 The current desktop/CLI bundle is `tools/releases/0.87.2/`.
 The 0.77/0.78 composed workflows and file dragging are desktop additions; no new
 CLI commands are included in those releases. Releases 0.85 through 0.87.2 add no
-CLI commands either. The commands in the next three sections are unreleased: they
+CLI commands either. The commands in the next four sections are unreleased: they
 are in the source tree, not in that bundle.
 
 ## Conflicts, line staging, bisect, remote tags and stash selection (unreleased)
@@ -300,6 +300,40 @@ configuration from before that binding (`ssh_no_matching_recovery` otherwise).
 Each save keeps a backup in `recovery_directory`. Creating, importing, unlocking or
 removing keys stays in the desktop, because those involve passphrases and ssh-agent.
 
+## Code search (unreleased)
+
+These reads use the desktop's code search. They never write and take no repository
+write ownership.
+
+`search TEXT --kind content` lists commits that change how often TEXT appears, as
+`git log -S` does. Three options change how it matches and are accepted only with
+`--kind content` (a `usage` error otherwise): `--regex` reads TEXT as a POSIX
+extended regular expression and matches added or removed lines, as `git log -G`
+does; `--match-case` makes letters match exactly; `--path PATH` keeps changes to one
+file or folder, exact and case-sensitive. The result adds `content` with `regex`,
+`match_case` and `path`; it is null for text and path searches. Without
+`--match-case`, this search ignores case for the letters A to Z only.
+
+`grep PATTERN [--revision REV] [--regex] [--match-case] [--path PATH]` lists the
+lines that match in files. Without `--revision` it searches the files on disk:
+tracked ones and untracked ones that aren't ignored. With `--revision` it searches
+that commit's files and reports the commit's full ID as `revision`. Binary files are
+skipped, and without `--match-case` case is ignored for other letters too. Each entry
+in `files` has `path`, `size`, `lfs_pointer` (a Git LFS pointer, so only the pointer
+was searched), `capped` (100 lines matched, the most kept for one file) and `lines`.
+Each line has `line` (1-based), `preview`, `marks`, `columns`, `cut_start`, `cut_end`
+and `not_utf8`. `preview` is display text around the first match: at most 400
+characters, tabs as four spaces and control characters escaped, so it is not the
+exact line. `marks` are character ranges in `preview` and `columns` byte ranges in
+the whole line, each `[start, end]` with the end excluded. `matches` counts the
+matching lines. `end` is `complete`, `too_many` (2,000 matching lines, or lines too
+long to read them all) or `timed_out` (30 seconds); `complete` is false when the
+search stopped early. Finding nothing is a success with an empty `files`, unlike
+`git grep`, which exits 1. Plain output prints one `path:line: preview` line per match.
+
+An expression Git can't read fails with `invalid_pattern` (exit 1) and Git's
+`reason`; nothing is searched. A repository without a working tree needs `--revision`.
+
 ## Reviewed push, tags and worktrees (0.84)
 
 These commands reuse the desktop backend. Start with a preview and review its
@@ -478,7 +512,8 @@ existing destination-publication guards.
 | `hunks [--staged] -- PATH` | Changed-line IDs and patch SHA-256 of one file's change (unreleased) |
 | `blame REV --path PATH [--first N] [--size N]` | Line authorship at a commit (unreleased) |
 | `file-history PATH [--revision REV] [--limit N]` | Commits that changed a file, following renames (unreleased) |
-| `search TEXT [--kind text\|path\|content] [--all \| --revision REV]` | One bounded history search window (unreleased) |
+| `search TEXT [--kind text\|path\|content] [--all \| --revision REV]` `[--regex] [--match-case] [--path PATH]` | One bounded history search window; the last three need `--kind content` (unreleased) |
+| `grep PATTERN [--revision REV] [--regex] [--match-case] [--path PATH]` | Matching lines in the checkout's files or a commit's (unreleased) |
 | `compare BASE (TARGET \| --staged \| --worktree)` | Changed files between commits or against local changes (unreleased) |
 | `reflog [--scope head\|all\|deleted-branches\|retained\|unreachable] [--limit N]` | Reflog, deleted-branch, retained or unreachable commits (unreleased) |
 | `verify commit REV`, `verify tag NAME` `[--require-valid]`, `signing show` | Signature status and signing settings (unreleased) |
@@ -610,7 +645,7 @@ Undo, commit operations, rebase start and reset use `undo-preview`, `undo-commit
 `-abort` forms, `rebase-preview`, `rebase`, `interactive-rebase`,
 `recovery-preview`, `reset-soft`, `reset-mixed` and `reset-hard`; the reads use
 `reflog`, `signature-verify`, `signing-read`, `file-blame`, `file-history`,
-`history-search` and `compare`. Maintenance, LFS and SSH use `remote-rename`,
+`history-search`, `file-search` and `compare`. Maintenance, LFS and SSH use `remote-rename`,
 `remote-prune`, `remote-branch-delete`, `branch-fast-forward` (each with a
 `-preview` form; prune's is `remote-cleanup-preview`), `worktree-move`,
 `worktree-repair`, `worktree-prune`, `tag-sign`, `identity-read`, `identity-save`,

@@ -327,6 +327,18 @@ pub enum Icon {
     Blocked,
     Puzzle,
     Sparkle,
+    /// Three linked nodes: the repository map.
+    Map,
+    /// A box: a package in the map.
+    Package,
+    /// A compass: Explore, finding other people's repositories.
+    Compass,
+    /// A five-pointed star: a repository's stars.
+    Star,
+    /// A bookmark: Keep a preview.
+    Bookmark,
+    /// A ring around a play triangle: Actions, the host's CI runs.
+    Actions,
 }
 pub fn icon(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
     let p = |x: f32, y: f32| {
@@ -825,6 +837,31 @@ pub fn icon(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             ));
             painter.circle_stroke(rect.center(), rect.width() * 0.14, Stroke::new(1.2, color));
         }
+        Icon::Bookmark => {
+            painter.add(Shape::closed_line(
+                vec![p(0.26, 0.12), p(0.74, 0.12), p(0.74, 0.9), p(0.5, 0.68), p(0.26, 0.9)],
+                Stroke::new(1.3, color),
+            ));
+        }
+        Icon::Compass => {
+            painter.circle_stroke(rect.center(), rect.width() * 0.43, Stroke::new(1.2, color));
+            painter.add(Shape::closed_line(
+                vec![p(0.68, 0.32), p(0.56, 0.56), p(0.32, 0.68), p(0.44, 0.44)],
+                Stroke::new(1.2, color),
+            ));
+        }
+        Icon::Star => {
+            let center = rect.center();
+            let (outer, inner) = (rect.width() * 0.46, rect.width() * 0.2);
+            let points = (0..10)
+                .map(|i| {
+                    let angle = std::f32::consts::PI * (i as f32 / 5.0) - std::f32::consts::FRAC_PI_2;
+                    let radius = if i % 2 == 0 { outer } else { inner };
+                    center + vec2(angle.cos(), angle.sin()) * radius
+                })
+                .collect();
+            painter.add(Shape::closed_line(points, Stroke::new(1.1, color)));
+        }
         Icon::Info | Icon::Clock => {
             painter.circle_stroke(rect.center(), rect.width() * 0.43, Stroke::new(1.2, color));
             if matches!(icon, Icon::Info) {
@@ -868,6 +905,13 @@ pub fn icon(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
                 Stroke::new(1.2, color),
             ));
         }
+        Icon::Actions => {
+            let c = rect.center();
+            let r = rect.width().min(rect.height()) * 0.44;
+            painter.circle_stroke(c, r, Stroke::new(1.3, color));
+            let s = r * 0.5;
+            painter.add(Shape::convex_polygon(vec![c + vec2(-s * 0.7, -s), c + vec2(s, 0.0), c + vec2(-s * 0.7, s)], color, Stroke::NONE));
+        }
         Icon::Play => {
             painter.add(Shape::convex_polygon(
                 vec![p(0.24, 0.14), p(0.86, 0.5), p(0.24, 0.86)],
@@ -877,6 +921,26 @@ pub fn icon(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
         }
         Icon::Stop => {
             painter.rect_filled(Rect::from_min_max(p(0.2, 0.2), p(0.8, 0.8)), 1.5, color);
+        }
+        Icon::Map => {
+            let nodes = [p(0.18, 0.24), p(0.82, 0.24), p(0.5, 0.8)];
+            for (a, b) in [(0, 1), (0, 2), (1, 2)] {
+                let (from, to) = (nodes[a], nodes[b]);
+                let step = (to - from).normalized() * rect.width() * 0.14;
+                line(from + step, to - step);
+            }
+            for n in nodes {
+                painter.circle_stroke(n, rect.width() * 0.12, Stroke::new(1.3, color));
+            }
+        }
+        Icon::Package => {
+            painter.add(Shape::closed_line(
+                vec![p(0.5, 0.06), p(0.9, 0.28), p(0.9, 0.72), p(0.5, 0.94), p(0.1, 0.72), p(0.1, 0.28)],
+                Stroke::new(1.2, color),
+            ));
+            line(p(0.1, 0.28), p(0.5, 0.5));
+            line(p(0.9, 0.28), p(0.5, 0.5));
+            line(p(0.5, 0.5), p(0.5, 0.94));
         }
         Icon::Warning => {
             painter.add(Shape::line(

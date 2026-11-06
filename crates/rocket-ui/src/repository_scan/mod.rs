@@ -22,6 +22,11 @@ pub struct Row {
     pub saved: bool,
     pub name: String,
     pub relative_path: String,
+    /// The disk folder holding it, relative to the scanned folder, with `/` between
+    /// names. Empty for repositories directly in the scanned folder.
+    pub group: String,
+    /// The branch and the date of its latest commit, when the scan could read them.
+    pub meta: String,
     search: String,
 }
 impl Row {
@@ -33,6 +38,8 @@ impl Row {
             .to_string_lossy()
             .into_owned();
         let relative_path = relative(&repository.path, root);
+        let group = group(&repository.path, root);
+        let meta = meta(&repository);
         let search =
             format!("{name} {}", crate::views::display_path(&repository.path)).to_lowercase();
         Self {
@@ -41,6 +48,8 @@ impl Row {
             saved,
             name,
             relative_path,
+            group,
+            meta,
             search,
         }
     }
@@ -51,6 +60,29 @@ fn relative(path: &Path, root: &Path) -> String {
         Ok(p) => p.to_string_lossy().into_owned(),
         Err(_) => crate::views::display_path(path),
     }
+}
+fn group(path: &Path, root: &Path) -> String {
+    path.strip_prefix(root)
+        .ok()
+        .and_then(Path::parent)
+        .map(|p| {
+            p.components()
+                .map(|c| c.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/")
+        })
+        .unwrap_or_default()
+}
+fn meta(found: &Found) -> String {
+    let Some(tip) = &found.tip else {
+        return String::new();
+    };
+    let now = crate::activity_history::now_ms();
+    let branch = tip
+        .branch
+        .as_ref()
+        .map_or_else(|| "detached".into(), |b| String::from_utf8_lossy(b).into_owned());
+    format!("{branch} · {}", crate::activity_history::short_date(tip.time, now))
 }
 #[derive(Default)]
 pub struct Summary {
@@ -73,6 +105,32 @@ impl BulkSelection {
         self.selected > 0 && self.selected < self.eligible
     }
 }
+/// Which results the list shows.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum View {
+    #[default]
+    All,
+    New,
+    Saved,
+    Skipped,
+}
+impl View {
+    pub fn code(self) -> &'static str {
+        match self {
+            View::All => "all",
+            View::New => "new",
+            View::Saved => "saved",
+            View::Skipped => "skipped",
+        }
+    }
+}
+/// Where an added repository goes in the library.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Placement {
+    Folder(Option<u64>),
+    /// A library folder named after the disk folder, made if it doesn't exist.
+    Named(String),
+}
 enum Completion {
     Scanned(Report),
     Validated(Vec<Found>),
@@ -81,6 +139,8 @@ pub struct State {
     pub root: String,
     pub recursive: bool,
     pub folder: Option<u64>,
+    /// Save in: one library folder per disk folder, instead of `folder`.
+    pub match_disk: bool,
     pub rows: Vec<Row>,
     pub progress: Arc<Progress>,
     pub error: Option<String>,
@@ -89,12 +149,14 @@ pub struct State {
     pub adding: bool,
     pub completed: bool,
     pub filter: String,
-    pub hide_saved: bool,
-    pub details: bool,
+    pub view: View,
     pub summary: Summary,
     pub scanned_root: Option<PathBuf>,
+    /// Save in follows the results until it is chosen by hand.
+    save_in_chosen: bool,
     reset_scroll: bool,
     task: Option<ReadTask<Completion>>,
+    placements: Vec<(PathBuf, Placement)>,
     baseline: Library,
 }
 impl State {
@@ -104,6 +166,8 @@ impl State {
             folder,
             baseline,
             recursive: true,
+            match_disk: false,
+            save_in_chosen: folder.is_some(),
             rows: vec![],
             progress: Arc::default(),
             error: None,
@@ -112,12 +176,12 @@ impl State {
             adding: false,
             completed: false,
             filter: String::new(),
-            hide_saved: false,
-            details: false,
+            view: View::All,
             summary: Summary::default(),
             scanned_root: None,
             reset_scroll: true,
             task: None,
+            placements: vec![],
         }
     }
     pub fn running(&self) -> bool {
@@ -147,14 +211,19 @@ impl State {
             .map(|r| r.repository.path.clone())
             .collect()
     }
+    /// Rows the list shows: the chosen view and the search. Skipped shows none.
     pub fn visible(&self) -> Vec<usize> {
         let query = self.filter.trim().to_lowercase();
         self.rows
             .iter()
             .enumerate()
-            .filter(|(_, r)| {
-                (!self.hide_saved || !r.saved) && (query.is_empty() || r.search.contains(&query))
+            .filter(|(_, r)| match self.view {
+                View::All => true,
+                View::New => !r.saved,
+                View::Saved => r.saved,
+                View::Skipped => false,
             })
+            .filter(|(_, r)| query.is_empty() || r.search.contains(&query))
             .map(|(index, _)| index)
             .collect()
     }
@@ -173,9 +242,14 @@ impl State {
             hidden: total - selected,
         }
     }
-    fn select_visible(&mut self, value: bool) {
+    /// New repositories the user left unselected, shown or not.
+    pub fn left_out(&self) -> usize {
+        self.rows.iter().filter(|r| !r.saved && !r.selected).count()
+    }
+    /// A group's box changes only its rows the list shows.
+    fn select_group(&mut self, group: &str, value: bool) {
         for i in self.visible() {
-            if !self.rows[i].saved {
+            if !self.rows[i].saved && self.rows[i].group == group {
                 self.rows[i].selected = value;
             }
         }
@@ -193,25 +267,62 @@ impl State {
         self.notice = None;
         self.stopped = false;
         self.filter.clear();
-        self.hide_saved = false;
-        self.details = false;
+        self.view = View::All;
         self.summary = Summary::default();
         self.scanned_root = None;
         self.reset_scroll = true;
+    }
+    /// Where each selected repository goes, from Save in.
+    fn placement(&self, row: &Row) -> Placement {
+        if self.match_disk && !row.group.is_empty() {
+            Placement::Named(row.group.clone())
+        } else if self.match_disk {
+            Placement::Folder(None)
+        } else {
+            Placement::Folder(self.folder)
+        }
+    }
+    /// Library folders Match disk folders would make, in list order.
+    pub fn new_folders(&self) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        for row in self.rows.iter().filter(|r| r.selected && !r.saved && !r.group.is_empty()) {
+            let exists = self
+                .baseline
+                .folders
+                .iter()
+                .any(|f| f.name.to_lowercase() == row.group.to_lowercase());
+            if !exists && !names.iter().any(|n| n.to_lowercase() == row.group.to_lowercase()) {
+                names.push(row.group.clone());
+            }
+        }
+        names
+    }
+    pub fn has_groups(&self) -> bool {
+        self.rows.iter().any(|r| !r.group.is_empty())
     }
 }
 /// Build off a clone; failures never partially modify the saved library.
 fn addition(
     current: &Library,
     baseline: &Library,
-    found: Vec<Found>,
-    folder: Option<u64>,
+    found: Vec<(Found, Placement)>,
 ) -> std::result::Result<(Library, usize), String> {
     if current != baseline {
         return Err("Saved repositories changed. Close this scan and review again.".into());
     }
     let mut draft = current.clone();
-    for item in found {
+    for (item, placement) in found {
+        let folder = match placement {
+            Placement::Folder(folder) => folder,
+            Placement::Named(name) => match draft
+                .folders
+                .iter()
+                .find(|f| f.name.to_lowercase() == name.to_lowercase())
+            {
+                Some(f) => Some(f.id),
+                None => Some(draft.add_folder(name).map_err(str::to_owned)?),
+            },
+        };
         let name = item
             .path
             .file_name()
@@ -251,7 +362,7 @@ impl Backend {
                 .iter()
                 .enumerate()
                 .map(|(index, p)| {
-                    let result = discovery::verify(&client, p, scope, cancel)?;
+                    let result = discovery::verify(&client, p, scope, false, cancel)?;
                     progress.checked.store(index + 1, Ordering::Relaxed);
                     Ok(result)
                 })
@@ -260,6 +371,7 @@ impl Backend {
     }
 }
 impl Rocket {
+    /// Scan folder starts with the folder picker; choosing a folder starts the scan.
     pub(crate) fn manager_scan(&mut self) {
         if self.manager.running()
             || self.manager.form.is_some()
@@ -268,27 +380,40 @@ impl Rocket {
         {
             return;
         }
-        let root = self
-            .tab()
-            .and_then(|t| t.path.parent())
-            .or(self.browse_root.as_deref())
-            .map(crate::views::display_path)
+        let start = self
+            .general
+            .source_folder
+            .clone()
+            .filter(|p| p.is_dir())
+            .or_else(|| self.tab().and_then(|t| t.path.parent()).map(Path::to_path_buf))
+            .or_else(|| self.browse_root.clone())
+            .map(|p| crate::views::display_path(&p))
             .unwrap_or_default();
-        let folder = if let Selection::Folder(id) = self.manager.selection {
-            Some(id)
-        } else {
-            None
-        };
-        self.manager.scan = Some(State::new(root, folder, self.library.clone()));
-        if let Some(d) = &mut self.dialog {
-            d.flag = true;
-        }
+        self.browse(PickTarget::LibraryScanFolder, &start);
     }
     pub(crate) fn manager_scan_picked(&mut self, path: &Path) {
-        if let Some(s) = &mut self.manager.scan {
-            s.root = crate::views::display_path(path);
-            s.clear();
+        let root = crate::views::display_path(path);
+        match &mut self.manager.scan {
+            Some(s) => {
+                if s.running() {
+                    return;
+                }
+                s.root = root;
+                s.clear();
+            }
+            None => {
+                let folder = if let Selection::Folder(id) = self.manager.selection {
+                    Some(id)
+                } else {
+                    None
+                };
+                self.manager.scan = Some(State::new(root, folder, self.library.clone()));
+                if let Some(d) = &mut self.dialog {
+                    d.flag = true;
+                }
+            }
         }
+        self.start_scan(false);
     }
     fn start_scan(&mut self, adding: bool) {
         let Some(s) = &mut self.manager.scan else {
@@ -314,6 +439,12 @@ impl Rocket {
             if paths.is_empty() {
                 return;
             }
+            s.placements = s
+                .rows
+                .iter()
+                .filter(|r| r.selected && !r.saved)
+                .map(|r| (r.repository.path.clone(), s.placement(r)))
+                .collect();
             s.progress.checked.store(0, Ordering::Relaxed);
             let progress = s.progress.clone();
             ReadTask::spawn(move |cancel| {
@@ -371,6 +502,10 @@ impl Rocket {
                         Row::new(repository, &report.root, saved)
                     })
                     .collect();
+                // Disk folders become library folders unless one was chosen.
+                if !s.save_in_chosen {
+                    s.match_disk = s.has_groups();
+                }
                 s.notice = Some(format!(
                     "{} found · {} skipped entries (links or unreadable) · {} invalid repositories{}",
                     s.rows.len(),
@@ -390,11 +525,25 @@ impl Rocket {
                 };
             }
             Ok(Completion::Validated(found)) => {
-                match addition(&self.library, &s.baseline, found, s.folder) {
+                let placements = std::mem::take(&mut s.placements);
+                let found = found
+                    .into_iter()
+                    .map(|f| {
+                        let placement = placements
+                            .iter()
+                            .find(|(p, _)| same_path(p, &f.path))
+                            .map_or(Placement::Folder(s.folder), |(_, p)| p.clone());
+                        (f, placement)
+                    })
+                    .collect();
+                match addition(&self.library, &s.baseline, found) {
                     Ok((library, count)) => {
                         self.library = library;
-                        self.manager.notice =
-                            Some(format!("Added {count} repositories · no tabs opened"));
+                        self.manager.notice = Some(if count == 1 {
+                            "Added 1 repository · no tabs opened".into()
+                        } else {
+                            format!("Added {count} repositories · no tabs opened")
+                        });
                         self.manager.error = None;
                         self.manager.selection = Selection::All;
                         self.manager.scan = None;
@@ -428,10 +577,12 @@ impl Rocket {
             self.start_scan(false);
         } else if action.add {
             self.start_scan(true);
-        } else if action.change {
-            s.clear();
-        } else if action.browse {
-            let current = s.root.clone();
+        } else if action.change || action.browse {
+            let current = s
+                .scanned_root
+                .as_deref()
+                .map(crate::views::display_path)
+                .unwrap_or_else(|| s.root.clone());
             self.browse(PickTarget::LibraryScanFolder, &current);
         }
     }
@@ -453,22 +604,29 @@ mod tests {
         state.filter = "日本語".into();
         assert_eq!(state.visible(), vec![1]);
         assert_eq!(state.selection().hidden, 1);
-        state.select_visible(false);
+        state.select_group("日本語", false);
         assert!(!state.rows[1].selected);
         assert!(state.rows[2].selected);
         state.filter.clear();
         assert!(state.selection().partial());
         assert!(!state.selection().checked());
+        assert_eq!(state.left_out(), 1);
         state.filter = " PrOjEcT ".into();
         assert_eq!(state.visible(), vec![2]);
         state.filter = "no match".into();
         assert!(!state.selection().checked());
-        state.select_visible(false);
+        state.select_group("hidden", false);
         assert!(state.rows[2].selected);
         state.filter = "saved".into();
         assert!(!state.selection().checked());
         assert_eq!(state.selection().eligible, 0);
-        state.hide_saved = true;
+        state.view = View::New;
+        assert!(state.visible().is_empty());
+        state.filter.clear();
+        assert_eq!(state.visible(), vec![1, 2]);
+        state.view = View::Saved;
+        assert_eq!(state.visible(), vec![0]);
+        state.view = View::Skipped;
         assert!(state.visible().is_empty());
         assert_eq!(state.rows[1].name, "資料");
         assert_eq!(
@@ -477,10 +635,43 @@ mod tests {
         );
         assert_eq!(relative(&root, &root), "Selected folder");
     }
+    #[test]
+    fn groups_follow_disk_folders_and_toggle_only_shown_new_rows() {
+        let root = std::env::current_dir().unwrap();
+        let mut state = State::new(String::new(), None, Library::default());
+        state.rows = vec![
+            Row::new(found("top"), &root, false),
+            Row::new(found("client/north/shop"), &root, false),
+            Row::new(found("client/north/admin"), &root, false),
+            Row::new(found("client/north/old"), &root, true),
+            Row::new(found("infra/terraform"), &root, false),
+        ];
+        let groups: Vec<_> = state.rows.iter().map(|r| r.group.as_str()).collect();
+        assert_eq!(groups, ["", "client/north", "client/north", "client/north", "infra"]);
+        assert!(state.has_groups());
+        state.filter = "shop".into();
+        state.select_group("client/north", false);
+        assert!(!state.rows[1].selected && state.rows[2].selected && state.rows[3].saved);
+        state.filter.clear();
+        state.select_group("client/north", false);
+        assert!(!state.rows[2].selected);
+        state.select_group("client/north", true);
+        assert!(state.rows[1].selected && state.rows[2].selected && !state.rows[3].selected);
+        // Match disk folders names only folders that don't exist yet.
+        state.baseline.add_folder("INFRA".into()).unwrap();
+        state.match_disk = true;
+        assert_eq!(state.new_folders(), ["client/north"]);
+        assert_eq!(state.placement(&state.rows[0]), Placement::Folder(None));
+        assert_eq!(state.placement(&state.rows[4]), Placement::Named("infra".into()));
+        state.match_disk = false;
+        state.folder = Some(7);
+        assert_eq!(state.placement(&state.rows[4]), Placement::Folder(Some(7)));
+    }
     fn found(name: &str) -> Found {
         Found {
             path: std::env::current_dir().unwrap().join(name),
             kind: "Repository",
+            tip: None,
         }
     }
     #[test]
@@ -490,25 +681,72 @@ mod tests {
         library
             .save_repository(found("existing").path, "Keep label".into(), Some(folder))
             .unwrap();
+        let none = |f: Found| (f, Placement::Folder(None));
         let (added, count) = addition(
             &library,
             &library,
-            vec![found("existing"), found("日本語 🚀"), found("日本語 🚀")],
-            None,
+            vec![none(found("existing")), none(found("日本語 🚀")), none(found("日本語 🚀"))],
         )
         .unwrap();
         assert_eq!(count, 1);
         assert_eq!(added.repositories[0], library.repositories[0]);
-        assert!(addition(&added, &library, vec![found("other")], None).is_err());
-        assert!(addition(&library, &library, vec![found("other")], Some(u64::MAX)).is_err());
+        assert!(addition(&added, &library, vec![none(found("other"))]).is_err());
+        assert!(
+            addition(
+                &library,
+                &library,
+                vec![(found("other"), Placement::Folder(Some(u64::MAX)))]
+            )
+            .is_err()
+        );
         for i in 1..crate::repository_library::MAX_REPOSITORIES {
             library
                 .save_repository(found(&format!("repo-{i}")).path, format!("Repo {i}"), None)
                 .unwrap();
         }
         let before = library.clone();
-        assert!(addition(&library, &library, vec![found("overflow")], None).is_err());
+        assert!(addition(&library, &library, vec![none(found("overflow"))]).is_err());
         assert_eq!(library, before);
+    }
+    #[test]
+    fn matched_disk_folders_reuse_names_and_are_made_once() {
+        let mut library = Library::default();
+        let infra = library.add_folder("Infra".into()).unwrap();
+        let (added, count) = addition(
+            &library,
+            &library,
+            vec![
+                (found("infra/terraform"), Placement::Named("infra".into())),
+                (found("client/north/shop"), Placement::Named("client/north".into())),
+                (found("client/north/admin"), Placement::Named("client/north".into())),
+                (found("top"), Placement::Folder(None)),
+            ],
+        )
+        .unwrap();
+        assert_eq!(count, 4);
+        assert_eq!(added.folders.len(), 2);
+        let north = added.folders.iter().find(|f| f.name == "client/north").unwrap().id;
+        let folder_of = |name: &str| {
+            added
+                .repositories
+                .iter()
+                .find(|r| r.name == name)
+                .unwrap()
+                .folder
+        };
+        assert_eq!(folder_of("terraform"), Some(infra));
+        assert_eq!(folder_of("shop"), Some(north));
+        assert_eq!(folder_of("admin"), Some(north));
+        assert_eq!(folder_of("top"), None);
+        // A disk folder name the library can't hold fails the whole batch.
+        assert!(
+            addition(
+                &library,
+                &library,
+                vec![(found("bad"), Placement::Named(" padded ".into()))]
+            )
+            .is_err()
+        );
     }
     #[test]
     fn cancelled_validation_cannot_publish_a_completed_result() {

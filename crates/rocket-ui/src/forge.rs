@@ -294,7 +294,9 @@ impl Rocket {
                 s.pull.merge.reconcile(s.pull.details.as_ref().unwrap());
                 drafts::rebind(s);
                 s.pull.file = 0;
-                s.notice = Some("PR details refreshed. Checks describe the loaded head; branch protection is not evaluated here.".into());
+                s.notice = Some("PR details refreshed.".into());
+                // The Checks tab reads the refreshed head again.
+                s.pull.ci_for = None;
             }
             Ok(Done::PullReview(preview)) if !stopped => { s.pull.preview = Some(Arc::new(preview)); s.notice = None; }
             Ok(Done::PullMergePreview(preview)) if !stopped => { s.pull.merge.preview = Some(Arc::new(preview)); s.notice = None; }
@@ -698,6 +700,14 @@ impl Rocket {
     /// list, the new pull request form or the accounts below. Problems say what happened
     /// and what to do, with Rocket's code as small print.
     pub(crate) fn forge_page(&mut self, ui: &mut Ui) {
+        // The tab whose Actions lists this pull request's repository, for All runs.
+        self.forge.pull.actions_tab = self.forge.pull.details.as_ref().and_then(|d| {
+            let pull = d.repository();
+            self.tabs
+                .iter()
+                .find(|t| t.ci.repository.as_ref().is_some_and(|r| r.path().eq_ignore_ascii_case(pull.path()) && r.config().server() == pull.config().server()))
+                .map(|t| t.id)
+        });
         let (sources, targets) = self.forge_branch_choices();
         let writable = self.can_write();
         let compact = ui.available_width() < 700.0;
@@ -794,6 +804,18 @@ impl Rocket {
                 ui.ctx().open_url(eframe::egui::OpenUrl::new_tab(url));
             }
         }
+        if out.ci_rerun
+            && let (Some(ci), Some(session)) = (self.forge.pull.ci.clone(), self.forge.session.clone())
+        {
+            self.open_ci_rerun(None, crate::ci_checks::RerunSource::Commit(ci), session);
+        }
+        if let Some(branch) = out.ci_runs
+            && let Some(index) = self.forge.pull.actions_tab.and_then(|id| self.tabs.iter().position(|t| t.id == id))
+        {
+            self.active = index;
+            self.open_actions(Some(branch), None);
+            return;
+        }
         if let Some(a) = out.action {
             self.forge_action(a);
         }
@@ -856,6 +878,10 @@ struct PageOut {
     changed: bool,
     /// Accounts was chosen: Preferences opens there and returns to Hosting.
     accounts: bool,
+    /// Re-run failed jobs was chosen on the Checks tab: its review opens.
+    ci_rerun: bool,
+    /// All runs for this branch was chosen on the Checks tab: Actions opens.
+    ci_runs: Option<String>,
 }
 
 pub(crate) fn show_section(s: &mut State, next: Section) {

@@ -16,18 +16,26 @@ impl Repository {
     /// rows: message/author/email text or an ID prefix, a changed path, or changed
     /// content (see [`HistorySearchKind`]). A next cursor means the scan is
     /// incomplete even with zero matches. Queries/cursors remain data and are never
-    /// passed to a shell or Git regex; content search uses Git's literal `-S`.
+    /// passed to a shell; content search uses Git's literal `-S`, or `-G` only when
+    /// [`ContentMatch::regex`] asks for an expression.
     pub fn search_history(
         &self,
         start: HistorySearchStart,
         cancel: &CancellationToken,
     ) -> Result<HistorySearchPage> {
-        let (start, query, kind) = match start {
-            HistorySearchStart::Query { start, query, kind } => (start, query, kind),
+        let first = matches!(start, HistorySearchStart::Query { .. });
+        let (start, query, kind, content) = match start {
+            HistorySearchStart::Query {
+                start,
+                query,
+                kind,
+                content,
+            } => (start, query, kind, content),
             HistorySearchStart::Continue(cursor) => (
                 HistoryStart::Continue(cursor.history),
                 cursor.query,
                 cursor.kind,
+                cursor.content,
             ),
         };
         if query.trim().is_empty() || query.len() > 1024 || query.contains('\0') {
@@ -39,6 +47,9 @@ impl Repository {
             return Err(Error::InvalidInput(
                 "path and content searches take one line of text".into(),
             ));
+        }
+        if first && kind == HistorySearchKind::Content && content.regex {
+            self.check_expression(&query, cancel)?;
         }
         let offset = match &start {
             HistoryStart::Continue(c) => c.offset,
@@ -65,9 +76,12 @@ impl Repository {
                 &needle.replace('\\', "/"),
                 cancel,
             )?),
-            HistorySearchKind::Content => {
-                Some(self.commits_changing_content(&page.commits, &query, cancel)?)
-            }
+            HistorySearchKind::Content => Some(self.commits_changing_content(
+                &page.commits,
+                &query,
+                &content,
+                cancel,
+            )?),
         };
         let mut commits = Vec::new();
         let mut scanned = 0;
@@ -108,6 +122,7 @@ impl Repository {
                 },
                 query,
                 kind,
+                content,
             })
         } else {
             None
@@ -154,37 +169,47 @@ impl Repository {
         changed_path_matches(&output, &ids, needle)
     }
 
-    /// Commits among `commits` whose change adds or removes occurrences of `text`.
-    /// External diff and textconv programs are not run.
+    /// Commits among `commits` whose change adds or removes occurrences of `text`
+    /// (`-S`), or with `content.regex` adds or removes a line matching it (`-G`),
+    /// limited to `content.path` when given. External diff and textconv programs
+    /// are not run. A bad expression fails the step with Git's own reason.
     fn commits_changing_content(
         &self,
         commits: &[Commit],
         text: &str,
+        content: &ContentMatch,
         cancel: &CancellationToken,
     ) -> Result<HashSet<ObjectId>> {
         if commits.is_empty() {
             return Ok(HashSet::new());
         }
-        let output = self
-            .runner
-            .run(
-                self.cwd(),
-                &args(&[
-                    "log",
-                    "--no-walk=unsorted",
-                    "--stdin",
-                    "--no-color",
-                    "--no-show-signature",
-                    "--no-ext-diff",
-                    "--no-textconv",
-                    "--regexp-ignore-case",
-                    &format!("-S{text}"),
-                    "--format=%H",
-                ]),
-                commit_lines(commits),
-                cancel,
-            )?
-            .success("history-search")?;
+        let mut arguments = args(&[
+            "log",
+            "--no-walk=unsorted",
+            "--stdin",
+            "--no-color",
+            "--no-show-signature",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--format=%H",
+        ]);
+        if !content.match_case {
+            arguments.push("--regexp-ignore-case".into());
+        }
+        arguments.push(format!("{}{text}", if content.regex { "-G" } else { "-S" }).into());
+        if let Some(path) = &content.path {
+            // Paths are literal for every Rocket Git call (--literal-pathspecs).
+            arguments.push("--".into());
+            arguments.push(path.argument()?);
+        }
+        let output = self.runner.run(self.cwd(), &arguments, commit_lines(commits), cancel)?;
+        if content.regex
+            && output.status.code() == Some(128)
+            && let Some(reason) = crate::code_search::regex_failure(&output.stderr)
+        {
+            return Err(Error::InvalidInput(crate::code_search::bad_pattern(&reason)));
+        }
+        let output = output.success("history-search")?;
         let wanted: HashMap<&str, &ObjectId> =
             commits.iter().map(|c| (c.id.as_str(), &c.id)).collect();
         String::from_utf8(output)

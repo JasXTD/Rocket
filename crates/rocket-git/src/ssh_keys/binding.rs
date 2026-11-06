@@ -5,6 +5,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 pub struct SshBindingReview {
+    pub authentication: SshAuthentication,
     pub profile: Option<SshProfile>,
     pub restoring: bool,
     pub backup: Option<PathBuf>,
@@ -12,8 +13,35 @@ pub struct SshBindingReview {
     result: Vec<u8>,
     common: PathBuf,
 }
+
+pub(super) fn check_service_overrides(
+    runner: &Runner,
+    cwd: &Path,
+    cancel: &CancellationToken,
+) -> Result<()> {
+    // Include effective global/system/worktree configuration as well as local
+    // config. Even an empty or currently harmless override is not a fixed service.
+    let output = runner.run(
+        cwd,
+        &args(&[
+            "config",
+            "--includes",
+            "--get-regexp",
+            "^remote\\..*\\.(uploadpack|receivepack|vcs)$",
+        ]),
+        Vec::new(),
+        cancel,
+    )?;
+    match output.status.code() {
+        Some(1) => Ok(()),
+        Some(0) => Err(fail(SshFailure::Overrides)),
+        _ => Err(fail(SshFailure::ToolFailed)),
+    }
+}
+
 impl Repository {
     fn ssh_binding_compatible(&self, cancel: &CancellationToken) -> Result<()> {
+        check_service_overrides(&self.runner, self.cwd(), cancel)?;
         if ["GIT_SSH", "GIT_SSH_COMMAND", "GIT_SSH_VARIANT"]
             .iter()
             .any(|k| std::env::var_os(k).is_some())
@@ -58,6 +86,15 @@ impl Repository {
         profile: Option<&SshProfile>,
         cancel: &CancellationToken,
     ) -> Result<SshBindingReview> {
+        self.preview_ssh_authentication(manager, profile, SshAuthentication::Agent, cancel)
+    }
+    pub fn preview_ssh_authentication(
+        &self,
+        manager: &SshManager,
+        profile: Option<&SshProfile>,
+        authentication: SshAuthentication,
+        cancel: &CancellationToken,
+    ) -> Result<SshBindingReview> {
         self.runner
             .step("ssh-binding-review", "review_ssh_binding", || {
                 cancel.check()?;
@@ -67,13 +104,28 @@ impl Repository {
                 if let Some(p) = profile {
                     self.ssh_binding_compatible(cancel)?;
                     manager.check_config(p, cancel)?;
-                    let command = format!(
-                        "'{}' -F '{}'",
-                        git_path(&openssh("ssh.exe")?)
-                            .to_string_lossy()
-                            .replace('\\', "/"),
-                        git_path(&p.config).to_string_lossy().replace('\\', "/")
-                    );
+                    let command = if authentication == SshAuthentication::Direct {
+                        if p.encrypted {
+                            direct::read_secret(p, &direct::credential_path(p))?;
+                        }
+                        format!(
+                            "'{}' --profile '{}'",
+                            git_path(&direct::helper()?)
+                                .to_string_lossy()
+                                .replace('\\', "/"),
+                            git_path(p.config.parent().unwrap())
+                                .to_string_lossy()
+                                .replace('\\', "/")
+                        )
+                    } else {
+                        format!(
+                            "'{}' -F '{}'",
+                            git_path(&openssh("ssh.exe")?)
+                                .to_string_lossy()
+                                .replace('\\', "/"),
+                            git_path(&p.config).to_string_lossy().replace('\\', "/")
+                        )
+                    };
                     // Git parses and updates a private copy. No includes are followed.
                     let folder = common.join("rocket-ssh-recovery");
                     files::ensure_private_parent(&folder)?;
@@ -94,6 +146,7 @@ impl Repository {
                         return Err(fail(SshFailure::Changed));
                     }
                     Ok(SshBindingReview {
+                        authentication,
                         profile: Some(p.clone()),
                         restoring: false,
                         backup: None,
@@ -126,6 +179,7 @@ impl Repository {
                         if read(&entry.join("after"), 2 * 1024 * 1024).is_ok_and(|b| b == config) {
                             let before = read(&entry.join("displaced"), 2 * 1024 * 1024)?;
                             return Ok(SshBindingReview {
+                                authentication,
                                 profile: None,
                                 restoring: true,
                                 backup: Some(entry),
@@ -162,6 +216,14 @@ impl Repository {
                     .as_ref()
                     .map(|p| manager.guard(p, cancel))
                     .transpose()?;
+                if review.authentication == SshAuthentication::Direct
+                    && let Some(p) = &review.profile
+                {
+                    direct::helper()?;
+                    if p.encrypted {
+                        direct::read_secret(p, &direct::credential_path(p))?;
+                    }
+                }
                 let config = common.join("config");
                 let lock = config.with_extension("lock");
                 let mut file = OpenOptions::new()
@@ -223,7 +285,7 @@ impl Drop for OwnedFile {
         }
     }
 }
-fn unique() -> String {
+pub(super) fn unique() -> String {
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     format!(
         "{}-{}-{}",
