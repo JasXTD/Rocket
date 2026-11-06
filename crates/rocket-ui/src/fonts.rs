@@ -1,4 +1,5 @@
 //! Local system fonts supplement egui's embedded fonts. Nothing is downloaded.
+use crate::i18n::Han;
 use eframe::egui::{FontData, FontDefinitions, FontFamily, FontTweak, epaint::text::VariationCoords};
 use std::{path::PathBuf, sync::OnceLock};
 
@@ -6,9 +7,7 @@ use std::{path::PathBuf, sync::OnceLock};
 /// character takes different forms in Chinese and Japanese fonts (直, 骨, 角).
 pub(crate) fn definitions() -> FontDefinitions {
     let mut fonts = loaded();
-    if crate::i18n::japanese_han() {
-        japanese_first(&mut fonts, &PLAN);
-    }
+    han_first(&mut fonts, &PLAN, crate::i18n::han());
     fonts
 }
 
@@ -74,9 +73,9 @@ struct Plan {
     fallbacks: &'static [&'static [Face]],
     /// The fallback that shapes whole emoji sequences in the terminal.
     emoji: usize,
-    /// The Chinese and the Japanese fallback, which [`japanese_first`] swaps; None when
-    /// one collection covers both.
-    han: Option<(usize, usize)>,
+    /// The Chinese, Japanese and Korean fallbacks, which [`han_first`] orders; None when
+    /// one collection covers all three.
+    han: Option<[usize; 3]>,
 }
 
 #[cfg(windows)]
@@ -93,7 +92,7 @@ const PLAN: Plan = Plan {
         &[face("seguisym.ttf")],
     ],
     emoji: 3,
-    han: Some((0, 1)),
+    han: Some([0, 1, 2]),
 };
 
 /// Ubuntu Sans ships as one variable file; its weight axis gives both faces.
@@ -122,19 +121,22 @@ const PLAN: Plan = Plan {
     han: None,
 };
 
-/// Moves the loaded Japanese face before the Chinese one in every family, so Han
-/// characters take their Japanese forms. Both stay loaded; only the order changes.
-fn japanese_first(fonts: &mut FontDefinitions, plan: &Plan) {
-    let Some((chinese, japanese)) = plan.han else { return };
+/// Moves the face of the wanted Han forms just before the first of the other Han faces
+/// in every family, so shared characters take those forms. All stay loaded; only the
+/// order changes. Chinese is the plan's own order.
+fn han_first(fonts: &mut FontDefinitions, plan: &Plan, han: Han) {
+    let Some(roles) = plan.han else { return };
     let loaded = |role: usize| plan.fallbacks[role].iter().map(|f| f.name()).find(|name| fonts.font_data.contains_key(name));
-    let (Some(chinese), Some(japanese)) = (loaded(chinese), loaded(japanese)) else { return };
+    let faces = roles.map(loaded);
+    let Some(wanted) = faces[han as usize].clone() else { return };
     for family in fonts.families.values_mut() {
-        let at = |name: &str| family.iter().position(|n| n == name);
-        if let (Some(c), Some(j)) = (at(&chinese), at(&japanese))
-            && j > c
+        let first = family.iter().position(|name| faces.iter().flatten().any(|face| face == name));
+        let at = family.iter().position(|name| *name == wanted);
+        if let (Some(first), Some(at)) = (first, at)
+            && at > first
         {
-            let name = family.remove(j);
-            family.insert(c, name);
+            let name = family.remove(at);
+            family.insert(first, name);
         }
     }
 }
@@ -370,17 +372,17 @@ mod tests {
         assert_eq!(bold[1..], proportional[..]);
     }
 
-    /// Japanese Han order puts Yu Gothic UI just before Microsoft YaHei in every family;
-    /// every other face keeps its place.
+    /// Japanese Han order puts Yu Gothic UI just before Microsoft YaHei in every family,
+    /// Korean puts Malgun Gothic there; every other face keeps its place.
     #[cfg(windows)]
     #[test]
-    fn japanese_han_moves_only_the_japanese_face() {
+    fn han_order_moves_only_the_wanted_face() {
         let file = std::env::temp_dir().join(format!("rocket-font-han-{}", std::process::id()));
         std::fs::write(&file, TWO_FACES).unwrap();
         let chinese_first = build(&PLAN, |_| Some(file.clone()));
         std::fs::remove_file(&file).unwrap();
         let mut japanese = chinese_first.clone();
-        japanese_first(&mut japanese, &PLAN);
+        han_first(&mut japanese, &PLAN, Han::Japanese);
         assert_eq!(chinese_first.families.len(), japanese.families.len());
         for (family, names) in &chinese_first.families {
             let chinese = names.iter().position(|n| n == "msyh.ttc").unwrap();
@@ -392,8 +394,21 @@ mod tests {
             assert_eq!(japanese.families[family], expected, "{family:?}");
         }
         let mut again = japanese.clone();
-        japanese_first(&mut again, &PLAN);
+        han_first(&mut again, &PLAN, Han::Japanese);
         assert_eq!(again.families, japanese.families, "already Japanese-first stays so");
+        let mut chinese = chinese_first.clone();
+        han_first(&mut chinese, &PLAN, Han::Chinese);
+        assert_eq!(chinese.families, chinese_first.families, "Chinese is the plan's own order");
+        let mut korean = chinese_first.clone();
+        han_first(&mut korean, &PLAN, Han::Korean);
+        for (family, names) in &chinese_first.families {
+            let chinese = names.iter().position(|n| n == "msyh.ttc").unwrap();
+            let malgun = names.iter().position(|n| n == "malgun.ttf").unwrap();
+            let mut expected = names.clone();
+            let moved = expected.remove(malgun);
+            expected.insert(chinese, moved);
+            assert_eq!(korean.families[family], expected, "{family:?}");
+        }
         assert_eq!(chinese_first.font_data["YuGothM.ttc#1"].index, 1, "Yu Gothic UI is the collection's second face");
     }
 
@@ -412,6 +427,125 @@ mod tests {
         assert!(!fonts.font_data.contains_key("YuGothM.ttc#1"));
         assert!(fonts.font_data.contains_key("meiryo.ttc"), "Meiryo takes Japanese");
         assert!(!holds_face(b"font bytes", 1) && !holds_face(b"ttcf", 0), "plain or short bytes hold no second face");
+    }
+
+    /// Arabic in Rocket's own fonts, laid out by the vendored epaint's bidirectional
+    /// patch (vendor/epaint/patch.md). The cases come from Download Engine's tests of the
+    /// same patch. A right-to-left word appears reversed in a row read left to right.
+    #[cfg(windows)]
+    mod right_to_left {
+        use eframe::egui::{self, Color32, FontId, text::{Galley, LayoutJob}};
+        use std::sync::Arc;
+
+        fn context() -> egui::Context {
+            let ctx = egui::Context::default();
+            crate::style::install(&ctx);
+            ctx
+        }
+
+        fn layout(ctx: &egui::Context, text: &str, wrap_width: f32) -> Arc<Galley> {
+            let job = LayoutJob::simple(text.to_owned(), FontId::proportional(13.0), Color32::WHITE, wrap_width);
+            let mut galley = None;
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                galley = Some(ui.ctx().fonts_mut(|fonts| fonts.layout_job(job.clone())));
+            });
+            output.textures_delta.clear();
+            galley.unwrap()
+        }
+
+        /// Each row's characters from left to right as drawn, leaving out zero-width
+        /// glyphs (marks, ligature continuations).
+        fn visual_rows(galley: &Galley) -> Vec<String> {
+            galley
+                .rows
+                .iter()
+                .map(|row| {
+                    let glyphs: Vec<_> = row.row.glyphs.iter().filter(|glyph| glyph.advance_width > 0.0).collect();
+                    assert!(glyphs.windows(2).all(|pair| pair[0].pos.x < pair[1].pos.x), "glyphs are stored left to right");
+                    glyphs.iter().map(|glyph| glyph.chr).collect()
+                })
+                .collect()
+        }
+
+        /// Words shaped one by one, in right-to-left reading order: what a sentence of
+        /// them should look like. A font may join lam and alef into one glyph, so
+        /// reversing the characters themselves would not do.
+        fn rtl_words(ctx: &egui::Context, text: &str) -> String {
+            text.split(' ').rev().map(|word| visual_rows(&layout(ctx, word, f32::INFINITY)).join("")).collect::<Vec<_>>().join(" ")
+        }
+
+        fn assert_one_glyph_per_char(galley: &Galley) {
+            let glyphs: usize = galley.rows.iter().map(|row| row.row.glyphs.len()).sum();
+            assert_eq!(glyphs, galley.job.text.chars().count(), "{:?}", galley.job.text);
+        }
+
+        #[test]
+        fn arabic_has_glyphs_in_rockets_fonts() {
+            let ctx = context();
+            let text = "العربية إيقاف التشغيل خلال ثانية، قائمة؟ ٦٠";
+            // Fonts exist once a frame has run.
+            let mut found = false;
+            let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+                found = ui.ctx().fonts_mut(|fonts| fonts.has_glyphs(&FontId::proportional(13.0), text));
+            });
+            output.textures_delta.clear();
+            assert!(found, "Segoe UI or a fallback draws every Arabic letter");
+        }
+
+        #[test]
+        fn latin_words_and_numbers_keep_reading_order_inside_arabic() {
+            let ctx = context();
+            let cases = [
+                ("إيقاف التشغيل خلال 60 ثانية", format!("{} 60 {}", rtl_words(&ctx, "ثانية"), rtl_words(&ctx, "إيقاف التشغيل خلال"))),
+                (
+                    "نسخة من Rocket تبدأ مع Windows",
+                    format!("Windows {} Rocket {}", rtl_words(&ctx, "تبدأ مع"), rtl_words(&ctx, "نسخة من")),
+                ),
+                ("اكتمل Windows 62.4%", format!("Windows 62.4% {}", rtl_words(&ctx, "اكتمل"))),
+                ("بعد ٦٠ ثانية", format!("{} ٦٠ {}", rtl_words(&ctx, "ثانية"), rtl_words(&ctx, "بعد"))),
+                ("دفع main إلى origin", format!("origin {} main {}", rtl_words(&ctx, "إلى"), rtl_words(&ctx, "دفع"))),
+            ];
+            for (text, expected) in cases {
+                let galley = layout(&ctx, text, f32::INFINITY);
+                assert_eq!(visual_rows(&galley), [expected], "{text:?}");
+                assert_one_glyph_per_char(&galley);
+            }
+        }
+
+        #[test]
+        fn arabic_ligatures_keep_each_source_character() {
+            let ctx = context();
+            for text in ["لا", "لأ", "الإسبات", "قائمة الانتظار الرئيسية"] {
+                let galley = layout(&ctx, text, f32::INFINITY);
+                assert_one_glyph_per_char(&galley);
+                let mut source: Vec<char> = text.chars().collect();
+                let mut drawn: Vec<char> = galley.rows.iter().flat_map(|row| row.row.glyphs.iter().map(|glyph| glyph.chr)).collect();
+                source.sort_unstable();
+                drawn.sort_unstable();
+                assert_eq!(drawn, source, "{text}");
+            }
+        }
+
+        #[test]
+        fn wrapped_arabic_rows_read_top_to_bottom() {
+            let ctx = context();
+            let text = "تعذر دفع الفرع لأن الفرع البعيد يحتوي على إيداعات ليست لديك. اجلب أولًا ثم أعد المحاولة باستخدام git pull.";
+            let rows = visual_rows(&layout(&ctx, text, 160.0));
+            assert!(rows.len() >= 3, "{rows:?}");
+            // The first row starts the sentence at its right end; the last row ends it.
+            assert!(rows[0].trim_end().ends_with(&rtl_words(&ctx, "تعذر")), "{rows:?}");
+            assert!(rows.last().unwrap().starts_with(".git pull"), "{rows:?}");
+        }
+
+        /// The other languages' text needs no right-to-left layout and keeps its order.
+        #[test]
+        fn left_to_right_text_is_unchanged() {
+            let ctx = context();
+            for text in ["Commit & Push 3 staged files", "Изменения · 2 файла", "変更 2 個のファイル", "변경 사항 2개"] {
+                let rows = visual_rows(&layout(&ctx, text, f32::INFINITY));
+                assert_eq!(rows, [text.replace(['\u{200B}'], "")], "{text:?}");
+            }
+        }
     }
 
     /// DejaVu Sans alone fills the interface and symbol roles once, with its own bold.

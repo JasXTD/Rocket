@@ -1089,13 +1089,15 @@ mod tests {
             let mut newer = bytes[..bytes.len() - 2].to_vec();
             newer.truncate(newer.len() - 4);
             newer.extend(2u32.to_le_bytes());
-            newer.extend(b"ko");
+            newer.extend(b"it");
             let loaded = super::decode(&newer).unwrap();
             assert_eq!(loaded.preferences.language, None);
             assert_eq!(loaded.preferences.commit_height, height);
         }
-        state.preferences.language = Some(Language::ChineseSimplified);
-        assert_eq!(super::decode(&super::encode(&state).unwrap()).unwrap().preferences.language, Some(Language::ChineseSimplified));
+        for language in [Language::ChineseSimplified, Language::GermanSwiss, Language::Arabic] {
+            state.preferences.language = Some(language);
+            assert_eq!(super::decode(&super::encode(&state).unwrap()).unwrap().preferences.language, Some(language));
+        }
         state.preferences.language = None;
         state.preferences.commit_height = None;
         assert_eq!(super::encode(&state).unwrap(), old, "matching the system keeps writing the earlier format");

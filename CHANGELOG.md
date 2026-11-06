@@ -10,20 +10,29 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased — Interface languages (groundwork)
 
-- Rocket can show its interface in Simplified Chinese and Japanese. For now that covers
-  the menus, sidebar, toolbar, status bar, Changes, Commits, Branches, Remotes, the diff
-  view and Preferences → General and Appearance; the rest stays English until it is
+- Rocket can show its interface in German, Swiss German, French, Swedish, Russian,
+  Ukrainian, Arabic, Simplified Chinese, Japanese and Korean. For now that covers the
+  menus, sidebar, toolbar, status bar, Changes, Commits, Branches, Remotes, the diff view
+  and Preferences → General and Appearance; the rest stays English until it is
   translated. Until then the languages are a preview: start Rocket with
-  `ROCKET_LANG=zh-Hans` or `ROCKET_LANG=ja`, and Preferences → General gains a Language
-  row (Match Windows, English, 简体中文, 日本語) that switches at once.
-- Once released, Rocket follows the Windows display language: Chinese (China, Singapore)
-  shows 简体中文, Japanese shows 日本語, and Traditional Chinese and every other language
-  show English. On Linux the locale variables decide.
-- Chinese and Japanese draw the same characters in different forms. A Japanese interface
-  now puts Yu Gothic UI before Microsoft YaHei, and so does an English one on a Windows
-  whose languages list Japanese before Chinese, so commit messages and file names in
-  Japanese read in Japanese forms. Japanese text now uses Yu Gothic UI, the face Windows
-  pairs with Segoe UI, instead of Yu Gothic, whose kana sat apart and above the line.
+  `ROCKET_LANG=<tag>` (de, de-CH, fr, sv, ru, uk, ar, zh-Hans, ja or ko), and Preferences
+  → General gains a Language list, each language by its own name, that switches at once.
+- Once released, Rocket follows the Windows display language. Swiss and Liechtenstein
+  German show German written with ss for ß, Swiss French shows French, and Traditional
+  Chinese, Italian and every other language show English. On Linux the locale variables
+  decide.
+- Counts read correctly in every language: Russian and Ukrainian have three forms
+  ("1 файл", "2 файла", "5 файлов") and Arabic six, by the CLDR plural rules.
+- Arabic reads right to left with Latin words and numbers in their own order, through a
+  modified epaint in `vendor/epaint` (the change Download Engine ships; it adds 20 ICU4X
+  and helper crates, see DEPENDENCIES.md). Rocket's layout is not mirrored, and text
+  fields' cursors are not direction-aware.
+- Chinese, Japanese and Korean draw some characters in different forms. A Japanese
+  interface now puts Yu Gothic UI first and a Korean one Malgun Gothic, and so does any
+  other interface on a Windows whose languages list Japanese or Korean before Chinese,
+  so commit messages and file names read in their own forms. Japanese text now uses Yu
+  Gothic UI, the face Windows pairs with Segoe UI, instead of Yu Gothic, whose kana sat
+  apart and above the line.
 - Git's own output, repository content, shortcut names, logs and the MCP and command-line
   interfaces stay English. Saved state gains version 27, written only once a language is
   picked; older builds refuse that state, as with other new settings.

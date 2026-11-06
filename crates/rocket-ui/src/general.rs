@@ -173,16 +173,27 @@ fn field(ui: &mut Ui, label: &str, content: impl FnOnce(&mut Ui)) {
 
 /// Language: Match Windows, or one of the languages offered, each by its own name so
 /// anyone finds theirs. Preferences shows it once a language besides English is offered.
+/// MCP: `pref-language` opens the list, `pref-language-<tag>` (lower case) or
+/// `pref-language-system` picks.
 pub(crate) fn language_row(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, choice: &mut Option<Language>) {
     let system = if cfg!(windows) { tr("Match Windows") } else { tr("Match system") };
-    let mut options: Vec<(Option<Language>, &str, &str)> = vec![(None, "system", system)];
-    for language in crate::i18n::offered() {
-        let id = if *language == Language::ChineseSimplified { "zh-hans" } else { language.tag() };
-        options.push((Some(*language), id, language.name()));
-    }
+    let label = |option: Option<Language>| option.map_or(system, Language::name);
     field(ui, tr("Language"), |ui| {
         ui.spacing_mut().item_spacing.x = 14.0;
-        segmented(ui, widgets, "pref-language", choice, &options);
+        let button = ui.button(label(*choice));
+        widgets.insert("pref-language".into(), (&button).into());
+        Popup::menu(&button).show(|ui| {
+            let options = std::iter::once(None).chain(crate::i18n::offered().iter().copied().map(Some));
+            for option in options {
+                let row = ui.selectable_label(*choice == option, label(option));
+                let id = option.map_or_else(|| "system".to_owned(), |l| l.tag().to_ascii_lowercase());
+                widgets.insert(format!("pref-language-{id}"), (&row).into());
+                if row.clicked() {
+                    *choice = option;
+                    ui.close();
+                }
+            }
+        });
         if choice.is_none() {
             ui.label(RichText::new(format!("→ {}", crate::i18n::system().name())).size(12.0).color(HINT()));
         }

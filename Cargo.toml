@@ -22,3 +22,8 @@ debug = "full"
 
 [profile.dev.package."*"]
 debug = "line-tables-only"
+
+# epaint 0.36.2 with bidirectional text layout, so Arabic reads right to left with
+# Latin words and numbers in their own order; see vendor/epaint/patch.md.
+[patch.crates-io]
+epaint = { path = "vendor/epaint" }

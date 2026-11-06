@@ -1,5 +1,49 @@
 # Dependency review
 
+## Bidirectional text for Arabic — 2026-11-07
+
+Rocket now builds a modified epaint 0.36.2 from `vendor/epaint`, through
+`[patch.crates-io]` in the root `Cargo.toml`. It is the bidirectional-layout patch
+Download Engine already ships, copied unchanged; `vendor/epaint/patch.md` says what it
+changes and how to compare it with the published crate. Without it, Latin words and
+numbers inside Arabic text are drawn reversed.
+
+The patch reads character properties from `icu_properties`. The user approved the set
+Download Engine uses: `icu_properties` is pinned to `=2.3.0` in the vendored
+`Cargo.toml`, and every other new crate was set to Download Engine's locked version.
+Cargo resolved and built them offline from the local Cargo cache, so nothing was
+downloaded; Cargo.lock records their crates.io SHA-256 sums. Cargo.lock adds 20 packages
+and changes no existing version. epaint's lock entry becomes a path package.
+
+| Package | License | Kind | Published (crates.io) |
+| --- | --- | --- | --- |
+| icu_properties 2.3.0, icu_properties_data 2.3.0, icu_collections 2.3.0, icu_locale_core 2.3.0, tinystr 0.8.4 | Unicode-3.0 | library; icu_properties_data's build script only sets a cfg when `ICU4X_DATA_DIR` is set | 2026-08-13, sffc |
+| icu_provider 2.3.1, zerovec-derive 0.11.6 | Unicode-3.0 | library; zerovec-derive is a proc macro | 2026-08-20, sffc |
+| zerovec 0.11.8 | Unicode-3.0 | library | 2026-08-19, Manishearth |
+| yoke 0.8.3 | Unicode-3.0 | library | 2026-06-03, Manishearth |
+| yoke-derive 0.8.4 | Unicode-3.0 | proc macro | 2026-09-30, robertbastian |
+| litemap 0.8.3, potential_utf 0.1.6, writeable 0.6.4, zerotrie 0.2.5 | Unicode-3.0 | library | 2026-08-13, sffc |
+| zerofrom 0.1.8 / zerofrom-derive 0.1.8 | Unicode-3.0 | library / proc macro | 2026-05-12 / 2026-09-15, sffc |
+| displaydoc 0.2.7 | MIT OR Apache-2.0 | proc macro | 2026-07-28, Manishearth |
+| synstructure 0.14.0 | MIT | proc-macro helper | 2026-07-30, mystor |
+| stable_deref_trait 1.2.1 | MIT OR Apache-2.0 | library | 2025-10-09, Storyyeller |
+| utf8_iter 1.0.4 | Apache-2.0 OR MIT | library | 2023-12-01, hsivonen |
+
+Checks on 2026-11-07:
+- Each repository is the expected one: unicode-org/icu4x for the ICU4X crates, and
+  yaahc/displaydoc, mystor/synstructure, storyyeller/stable_deref_trait and
+  hsivonen/utf8_iter for the rest.
+- crates.io lists every version as published by those maintainers and not yanked.
+- OSV's API reported no vulnerabilities for any of the 20 exact versions.
+- The newer set Cargo first chose (icu 2.4.0, utf_types 1.0.0, published 8 to 15
+  days earlier) was not used.
+
+THIRD-PARTY-NOTICES.txt was regenerated with `cargo run -p rocket-ui --example
+third_party_notices`. It gains exactly these 20 entries (131 crates) and loses none.
+
+This is a bounded integrity and advisory review, not proof against an undisclosed
+compromise.
+
 ## Linux window backends — 2026-11-06
 
 `crates/rocket-ui/Cargo.toml` turns on winit's X11 and Wayland backends for
