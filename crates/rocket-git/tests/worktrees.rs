@@ -391,6 +391,12 @@ fn removal_refuses_active_operations_submodules_sparse_flags_and_recovery_collis
             let hook = f.root.join("no-hooks/reference-transaction");
             let quoted = root.replace('\\', "/").replace('\'', "'\\''");
             fs::write(&hook, format!("#!/bin/sh\nif [ \"$1\" = committed ]; then mkdir -p '{quoted}/ignored'; printf PRIVATE_AFTER_REVIEW > '{quoted}/ignored/after-review'; fi\n")).unwrap();
+            // Git on Linux runs only executable hooks.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+            }
             let outcome = f.repo().apply_worktree(&preview, &token()).unwrap();
             assert_eq!(outcome.failure, Some(WorktreeFailure::Dirty));
             assert_eq!(

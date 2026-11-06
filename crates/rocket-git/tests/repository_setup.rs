@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 mod common;
 use common::Fixture;
 use rocket_git::*;
@@ -514,6 +514,7 @@ fn init_publication_refuses_destinations_or_git_metadata_created_concurrently() 
     );
 }
 
+#[cfg(windows)]
 #[test]
 fn init_rejects_junction_destination_and_parent_without_touching_target() {
     isolated(
@@ -552,6 +553,37 @@ fn init_rejects_junction_destination_and_parent_without_touching_target() {
             );
             fs::remove_dir(&link).unwrap(); // Remove only the fixture junction itself, never recurse.
             assert!(target.is_dir());
+        },
+    );
+}
+
+/// Linux: a symbolic link is refused as a junction is, as the folder and as its parent.
+#[cfg(target_os = "linux")]
+#[test]
+fn init_rejects_linked_destination_and_parent_without_touching_target() {
+    isolated(
+        "init_rejects_linked_destination_and_parent_without_touching_target",
+        || {
+            let f = Fixture::new();
+            let root = f.root.canonicalize().unwrap();
+            let target = root.join("link-target");
+            fs::create_dir(&target).unwrap();
+            fs::write(target.join("file"), "preserve target").unwrap();
+            let link = root.join("link");
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            assert!(f.git.init_repository(&link, "main", &token()).is_err());
+            assert!(
+                f.git
+                    .init_repository(link.join("child"), "main", &token())
+                    .is_err()
+            );
+            assert!(!target.join(".git").exists());
+            assert!(!target.join("child").exists());
+            assert_eq!(
+                fs::read_to_string(target.join("file")).unwrap(),
+                "preserve target"
+            );
+            assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
         },
     );
 }

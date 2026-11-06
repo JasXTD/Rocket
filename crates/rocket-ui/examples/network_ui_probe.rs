@@ -228,11 +228,14 @@ impl App for Probe {
     }
 }
 /// Snapshot warnings other than the notice every refresh carries where automatic
-/// refresh still needs Windows.
+/// refresh is not available yet (not Windows or Linux).
 fn unexpected(warnings: &[String]) -> Vec<&String> {
     warnings
         .iter()
-        .filter(|warning| cfg!(windows) || !warning.starts_with("Automatic refresh unavailable"))
+        .filter(|warning| {
+            cfg!(any(windows, target_os = "linux"))
+                || !warning.starts_with("Automatic refresh unavailable")
+        })
         .collect()
 }
 fn json_string(value: &str) -> String {

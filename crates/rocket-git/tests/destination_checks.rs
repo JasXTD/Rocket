@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 #[allow(dead_code)]
 mod common;
 use common::Fixture;

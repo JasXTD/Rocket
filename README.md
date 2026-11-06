@@ -318,8 +318,9 @@ cargo build --workspace --locked
 
 Add `--features rocket-integrations/runtime` for the release feature set. Rocket uses the
 first `git` on `PATH`; Linux has no bundled Git. Settings, logs and crash reports live in
-`$XDG_STATE_HOME/rocket`, by default `~/.local/state/rocket`. See [Current limits](#current-limits)
-for what still needs Windows.
+`$XDG_STATE_HOME/rocket`, by default `~/.local/state/rocket`. As it refuses Run as
+administrator on Windows, Rocket refuses to run as root, for example under `sudo`.
+See [Current limits](#current-limits) for what still needs Windows.
 
 ## Getting started
 
@@ -417,15 +418,16 @@ folders. Start validation with the checks for the feature being changed; the
 
 ## Current limits
 
-- Windows is the validated platform. On Linux, opening repositories, history, diffs,
-  staging, committing and fetching work with the system Git. These still report that
-  they need Windows: the integrated terminal, automatic refresh (use F5), creating,
-  cloning and adding worktrees, saving the conflict editor and whole-file replacements,
-  moves that must not overwrite (for example .gitignore and LFS attribute edits,
-  patch files, submodules), creating SSH keys, remembering hosting tokens, MCP
-  control, Lua extensions, spell check, app updates, dependency scanning, LFS cache
-  pruning and automatic bisect. Rocket's own times (activity history) show in UTC.
-  macOS is unverified.
+- Windows is the validated platform. On Linux, everyday Git work runs with the system
+  Git: opening, creating and cloning repositories, history, diffs, staging, committing,
+  fetching, automatic refresh, worktrees, the conflict editor, whole-file replacements,
+  ignore rules, patch files and submodules. These still report that they need Windows:
+  the integrated terminal, creating SSH keys, remembering hosting tokens, MCP control,
+  Lua extensions, spell check, app updates, dependency scanning, LFS cache pruning and
+  automatic bisect. Steps that must never replace a file need a local filesystem such
+  as ext4, XFS or Btrfs; NFS, some FUSE mounts and WSL's `/mnt` drives are refused. Automatic refresh uses at most half of `fs.inotify.max_user_watches` and is
+  not told about changes made through a network share. LFS tracking-rule edits are
+  unverified on Linux. macOS is unverified.
 - Hosting adapters have different capabilities. Live acceptance for GitHub Enterprise Server, GitLab,
   Bitbucket, Azure DevOps and Gitea remains unverified; local fixtures do not prove
   a real organization's permissions, SSO or server policy. See [Hosting](HOSTING.md).

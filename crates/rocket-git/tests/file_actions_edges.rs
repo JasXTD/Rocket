@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;
@@ -61,19 +61,34 @@ fn nested_repositories_junctions_and_active_operations_are_protected() {
             fs::create_dir(&outside).unwrap();
             fs::write(outside.join("keep"), "PRIVATE_OUTSIDE").unwrap();
             let junction = f.repository.canonicalize().unwrap().join("junction");
-            use std::os::windows::process::CommandExt;
-            let out = std::process::Command::new("cmd.exe")
-                .args(["/d", "/c", "mklink", "/J"])
-                .arg(&junction)
-                .arg(outside.canonicalize().unwrap())
-                .creation_flags(0x08000000)
-                .output()
-                .unwrap();
-            assert!(
-                out.status.success(),
-                "{}",
-                String::from_utf8_lossy(&out.stderr)
-            );
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                let out = std::process::Command::new("cmd.exe")
+                    .args(["/d", "/c", "mklink", "/J"])
+                    .arg(&junction)
+                    .arg(outside.canonicalize().unwrap())
+                    .creation_flags(0x08000000)
+                    .output()
+                    .unwrap();
+                assert!(
+                    out.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&out.stderr)
+                );
+            }
+            // Unix: a symbolic link stands in for the junction. A link to a file in
+            // the worktree is refused too, as Windows refuses a reparse point.
+            #[cfg(unix)]
+            {
+                std::os::unix::fs::symlink(outside.canonicalize().unwrap(), &junction).unwrap();
+                std::os::unix::fs::symlink("hello", f.repository.join("linked-file")).unwrap();
+                assert!(matches!(
+                    repo.preview_file_edit(&p("linked-file"), FileEditSource::Index, &token()),
+                    Err(Error::FileEdit(FileEditFailure::Unsupported))
+                ));
+                fs::remove_file(f.repository.join("linked-file")).unwrap();
+            }
             assert!(
                 repo.preview_file_edit(&p("junction/keep"), FileEditSource::Index, &token())
                     .is_err()
@@ -82,7 +97,10 @@ fn nested_repositories_junctions_and_active_operations_are_protected() {
                 fs::read_to_string(outside.join("keep")).unwrap(),
                 "PRIVATE_OUTSIDE"
             );
+            #[cfg(windows)]
             fs::remove_dir(&junction).unwrap();
+            #[cfg(unix)]
+            fs::remove_file(&junction).unwrap();
             f.write("hello", "working\n");
             f.write(".git/rebase-apply/fixture", "active");
             assert!(matches!(

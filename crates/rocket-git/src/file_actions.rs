@@ -115,6 +115,10 @@ pub struct FileEditPreview {
     context: Context,
     before: Option<Vec<u8>>,
     after: Option<Vec<u8>>,
+    /// The source entry's Git mode when it decides the executable bit (Linux): the
+    /// index or commit version being restored. None keeps the file's own bits.
+    #[cfg_attr(not(target_os = "linux"), expect(dead_code, reason = "only Linux files have an executable bit"))]
+    executable: Option<bool>,
     commit: Option<ObjectId>,
     conversion: &'static str,
 }
@@ -237,6 +241,7 @@ impl Repository {
             let context = self.file_context(path, cancel)?;
             let before = disk::read_working(self, path, cancel)?;
             let mut commit = None;
+            let mut executable = None;
             let mut conversion = "Exact recovery bytes";
             let after = match &source {
                 FileEditSource::Patch | FileEditSource::Selection => {
@@ -279,7 +284,8 @@ impl Repository {
                             conversion = "Remove from working folder; preserve a recovery copy";
                             None
                         }
-                        Some(id) => {
+                        Some((id, mode_executable)) => {
+                            executable = Some(mode_executable);
                             let size = self
                                 .file_read(&args(&["cat-file", "-s", id.as_str()]), cancel)
                                 .map_err(|e| match e {
@@ -323,6 +329,7 @@ impl Repository {
                 context,
                 before,
                 after,
+                executable,
                 commit,
                 conversion,
             })
@@ -361,6 +368,7 @@ impl Repository {
             context,
             after: before.clone(),
             before,
+            executable: None,
             commit: None,
             conversion: "Reviewed patch result; staging unchanged",
         })
@@ -499,7 +507,8 @@ impl Repository {
 pub(crate) fn validate_working_path(path: &RepoPath) -> Result<()> {
     disk::validate_path(path)
 }
-fn parse_object(bytes: &[u8], path: &RepoPath, tree: bool) -> Result<Option<ObjectId>> {
+/// The entry's object and whether its mode is executable (100755).
+fn parse_object(bytes: &[u8], path: &RepoPath, tree: bool) -> Result<Option<(ObjectId, bool)>> {
     if bytes.is_empty() {
         return Ok(None);
     }
@@ -520,10 +529,10 @@ fn parse_object(bytes: &[u8], path: &RepoPath, tree: bool) -> Result<Option<Obje
     {
         return fail(FileEditFailure::Unsupported);
     }
-    Ok(Some(parse::oid(
-        fields[if tree { 2 } else { 1 }],
-        "file-preview",
-    )?))
+    Ok(Some((
+        parse::oid(fields[if tree { 2 } else { 1 }], "file-preview")?,
+        fields[0] == b"100755",
+    )))
 }
 fn working_bytes(bytes: Vec<u8>, context: &Context) -> Result<(Vec<u8>, &'static str)> {
     checkout_bytes(bytes, &context.attrs, &context.config)

@@ -46,7 +46,7 @@ impl GitClient {
     /// Existing destinations (including empty directories) are refused. After workspace
     /// creation, inspect every phase in the report; interruption is not rollback.
     ///
-    /// This first implementation supports Windows publication. Progress is lossy and
+    /// Publication is supported on Windows and Linux. Progress is lossy and
     /// nonblocking; only the returned report establishes completion. No recursive
     /// cleanup, credential mutation, retry, or submodule clone is performed by Rocket.
     pub fn clone_repository(
@@ -74,7 +74,7 @@ impl GitClient {
         let local_only = matches!(source, CloneSource::Local(_));
         let (source, destination) = self.runner.step("clone", "validate_clone", || {
             cancel.check()?;
-            if !cfg!(windows) {
+            if !cfg!(any(windows, target_os = "linux")) {
                 return Err(Error::Unsupported(
                     "clone publication currently requires Windows".into(),
                 ));
@@ -546,7 +546,19 @@ fn publish(source: &Path, destination: &Path) -> Result<()> {
     }
 }
 
-#[cfg(not(windows))]
+/// As on Windows: never replace, and report a destination that appeared meanwhile.
+#[cfg(target_os = "linux")]
+fn publish(source: &Path, destination: &Path) -> Result<()> {
+    match crate::local_files::move_new(source, destination) {
+        Ok(()) => Ok(()),
+        Err(_) if fs::symlink_metadata(destination).is_ok() => {
+            Err(Error::Clone(CloneFailure::DestinationExists))
+        }
+        Err(error) => Err(crate::local_files::no_replace_error(error, "publish clone")),
+    }
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 fn publish(_: &Path, _: &Path) -> Result<()> {
     Err(Error::Unsupported(
         "clone publication currently requires Windows".into(),

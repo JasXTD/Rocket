@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;
@@ -246,6 +246,7 @@ fn empty_bare_and_sha256_clones_are_valid() {
     });
 }
 
+#[cfg(windows)]
 #[test]
 fn preflight_preserves_existing_files_directories_and_junctions() {
     run_case(
@@ -308,6 +309,51 @@ fn preflight_preserves_existing_files_directories_and_junctions() {
                 )
                 .unwrap_err();
             assert_eq!(error.clone_failure(), Some(CloneFailure::DestinationExists));
+            assert_eq!(workspace_count(&f), 0);
+        },
+    );
+}
+
+/// Linux: symbolic links, to a folder or dangling, are existing entries as junctions are.
+#[cfg(target_os = "linux")]
+#[test]
+fn preflight_preserves_existing_files_directories_and_links() {
+    run_case(
+        "preflight_preserves_existing_files_directories_and_links",
+        || {
+            let f = Fixture::new();
+            let file = f.root.join("file");
+            fs::write(&file, "KEEP").unwrap();
+            let empty = f.root.join("empty");
+            fs::create_dir(&empty).unwrap();
+            let nonempty = f.root.join("nonempty");
+            fs::create_dir(&nonempty).unwrap();
+            fs::write(nonempty.join("keep"), "KEEP").unwrap();
+            let link = f.root.join("link");
+            std::os::unix::fs::symlink(&nonempty, &link).unwrap();
+            let dangling = f.root.join("dangling");
+            std::os::unix::fs::symlink(f.root.join("missing"), &dangling).unwrap();
+            for path in [&file, &empty, &nonempty, &link, &dangling] {
+                let error = f
+                    .git
+                    .clone_repository(
+                        &CloneSource::Local(f.repository.clone()),
+                        path,
+                        None,
+                        &CancellationToken::new(),
+                    )
+                    .unwrap_err();
+                assert_eq!(
+                    error.clone_failure(),
+                    Some(CloneFailure::DestinationExists),
+                    "{}",
+                    path.display()
+                );
+            }
+            assert_eq!(fs::read(&file).unwrap(), b"KEEP");
+            assert_eq!(fs::read(nonempty.join("keep")).unwrap(), b"KEEP");
+            assert_eq!(fs::read_dir(empty).unwrap().count(), 0);
+            assert!(fs::symlink_metadata(&dangling).unwrap().file_type().is_symlink());
             assert_eq!(workspace_count(&f), 0);
         },
     );

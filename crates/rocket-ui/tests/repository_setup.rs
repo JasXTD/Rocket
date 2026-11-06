@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 #[path = "../../rocket-git/tests/common/mod.rs"]
 mod common;
 use common::Fixture;

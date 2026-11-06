@@ -5,15 +5,15 @@ use std::{
     io::Read,
     path::Path,
 };
-// Used by the Windows publication; elsewhere publish reports Unsupported.
-#[cfg(windows)]
+// Used by the Windows and Linux publication; elsewhere publish reports Unsupported.
+#[cfg(any(windows, target_os = "linux"))]
 use std::{
     io::Write,
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 const FOLDER: &str = "rocket-file-backups";
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 static NEXT: AtomicU64 = AtomicU64::new(0);
 pub(super) fn validate_path(path: &RepoPath) -> Result<()> {
     for part in path.as_bytes().split(|b| *b == b'/') {
@@ -55,6 +55,13 @@ fn open(root: &Path, path: &Path) -> Result<Option<File>> {
         .metadata()
         .map_err(|e| Error::io("inspect reviewed file", e))?;
     if !meta.is_file() || local_files::redirected(&meta) {
+        return fail(FileEditFailure::Unsupported);
+    }
+    // Opening follows a symbolic link here; refuse one as Windows refuses a reparse point.
+    #[cfg(target_os = "linux")]
+    if !local_files::opened_without_link(&file, path)
+        .map_err(|e| Error::io("inspect reviewed file", e))?
+    {
         return fail(FileEditFailure::Unsupported);
     }
     crate::review::verify_preview_handle(&file, root, path)?;
@@ -120,7 +127,7 @@ pub(super) fn read_working(
     let _guard = local_files::pin_directories(root, full.parent().unwrap())?;
     read(root, &full, cancel)
 }
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn write(directory: &Path, name: &str, bytes: &[u8], cancel: &CancellationToken) -> Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
@@ -223,7 +230,7 @@ pub(super) fn backup_contents(
     }
     Err(Error::parse("file-backups", "recovery content is missing"))
 }
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(super) fn publish(
     repo: &Repository,
     p: &FileEditPreview,
@@ -231,18 +238,6 @@ pub(super) fn publish(
     applied: &mut bool,
     recovery: &mut Option<PathBuf>,
 ) -> Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn ReplaceFileW(
-            target: *const u16,
-            replacement: *const u16,
-            backup: *const u16,
-            flags: u32,
-            exclude: *mut std::ffi::c_void,
-            reserved: *mut std::ffi::c_void,
-        ) -> i32;
-    }
     let full = target(repo, &p.path)?;
     let root = repo.info().worktree.as_ref().unwrap();
     let _working_guard = local_files::pin_directories(root, full.parent().unwrap())?;
@@ -299,42 +294,31 @@ pub(super) fn publish(
         })?;
     cancel.check()?;
     repo.runner.step(p.source.label(), "publish-file", || {
+        let replacement = directory.join("replacement");
+        // Linux files carry the executable bit Git tracks: keep the file's own
+        // permissions, or apply the restored entry's mode.
+        #[cfg(target_os = "linux")]
+        if p.after.is_some() {
+            local_files::set_published_mode(&replacement, opened.as_ref(), p.executable)
+                .map_err(|e| Error::io("prepare file permissions", e))?;
+        }
         match (&p.before, &p.after) {
-            (Some(_), Some(_)) => {
-                let wide = |p: &Path| {
-                    p.as_os_str()
-                        .encode_wide()
-                        .chain(Some(0))
-                        .collect::<Vec<_>>()
-                };
-                let target = wide(&full);
-                let replacement = wide(&directory.join("replacement"));
-                let backup = wide(&directory.join("replaced-original"));
-                // SAFETY: validated paths and live terminated buffers; flags zero
-                // preserve ACL/stream checks. Actual displaced data is retained.
-                if unsafe {
-                    ReplaceFileW(
-                        target.as_ptr(),
-                        replacement.as_ptr(),
-                        backup.as_ptr(),
-                        0,
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                    )
-                } == 0
-                {
-                    return Err(Error::io(
-                        "replace file; inspect retained recovery copies before retrying",
-                        std::io::Error::last_os_error(),
-                    ));
-                }
-            }
+            // Validated paths; the actual displaced data is retained.
+            (Some(_), Some(_)) => local_files::replace_file(
+                &full,
+                &replacement,
+                &directory.join("replaced-original"),
+            )
+            .map_err(|e| {
+                Error::io(
+                    "replace file; inspect retained recovery copies before retrying",
+                    e,
+                )
+            })?,
             (Some(_), None) => {
                 local_files::move_path(&full, &directory.join("replaced-original"), false)?
             }
-            (None, Some(_)) => {
-                local_files::move_path(&directory.join("replacement"), &full, false)?
-            }
+            (None, Some(_)) => local_files::move_path(&replacement, &full, false)?,
             (None, None) => return fail(FileEditFailure::NoChange),
         }
         *applied = true;
@@ -348,7 +332,7 @@ pub(super) fn publish(
     }
     Ok(())
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 pub(super) fn publish(
     _: &Repository,
     _: &FileEditPreview,

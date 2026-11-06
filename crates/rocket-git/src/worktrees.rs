@@ -345,7 +345,7 @@ impl Repository {
         }
     }
     fn worktree_destination(&self, path: &Path, cancel: &CancellationToken) -> Result<PathBuf> {
-        if !cfg!(windows) {
+        if !cfg!(any(windows, target_os = "linux")) {
             return Err(Error::Unsupported(
                 "Worktree creation currently requires Windows publication".into(),
             ));

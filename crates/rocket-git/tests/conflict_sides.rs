@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;
@@ -630,4 +630,35 @@ fn keeping_a_gitattributes_version_may_change_its_own_attributes() {
             assert!(committed(&f, "HEAD", ".gitattributes").is_none());
         },
     );
+}
+
+/// Linux: keeping a version gives the file that version's executable bit, so the
+/// staged entry and the working file agree.
+#[cfg(target_os = "linux")]
+#[test]
+fn keeping_a_version_applies_its_executable_bit() {
+    isolated(CASE, "keeping_a_version_applies_its_executable_bit", || {
+        use std::os::unix::fs::PermissionsExt;
+        for (side, executable) in [(ConflictKeep::Theirs, true), (ConflictKeep::Ours, false)] {
+            let f = Fixture::new();
+            let tool = f.repository.join("tool");
+            f.write("tool", binary("base"));
+            f.commit("base");
+            f.run(&["checkout", "-b", "other"]);
+            f.write("tool", binary("theirs"));
+            fs::set_permissions(&tool, fs::Permissions::from_mode(0o755)).unwrap();
+            f.commit("theirs");
+            f.run(&["checkout", "main"]);
+            f.write("tool", binary("ours"));
+            f.commit("ours");
+            assert!(!f.output(&f.repository, &["merge", "other"]).status.success());
+            ok(&keep(&f, "tool", side));
+            let mode = fs::metadata(&tool).unwrap().permissions().mode();
+            assert_eq!(mode & 0o111 != 0, executable, "{side:?}: {mode:o}");
+            let entry = text(&f, &["ls-files", "--stage", "--", "tool"]);
+            assert!(entry.starts_with(if executable { "100755 " } else { "100644 " }), "{entry}");
+            let status = text(&f, &["status", "--porcelain", "--", "tool"]);
+            assert!(status.is_empty() || status.as_bytes()[1] == b' ', "{side:?}: {status}");
+        }
+    });
 }

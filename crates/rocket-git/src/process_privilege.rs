@@ -12,8 +12,38 @@ pub(crate) fn check() -> io::Result<()> {
         }
         permit(windows::current().map_err(|_| ()))
     }
-    #[cfg(not(windows))]
+    #[cfg(unix)]
+    {
+        permit_user(unix::current())
+    }
+    #[cfg(not(any(windows, unix)))]
     Ok(())
+}
+
+/// Refuse root as Windows refuses an elevated token: a real or effective user ID of 0
+/// (sudo, a root shell or a set-user-ID launch).
+#[cfg(unix)]
+fn permit_user((real, effective): (u32, u32)) -> io::Result<()> {
+    if real == 0 || effective == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "Rocket cannot run as root. Close Rocket and reopen it as your own user, without sudo, so commands, terminals and helpers cannot inherit root rights.",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+mod unix {
+    unsafe extern "C" {
+        fn getuid() -> u32;
+        fn geteuid() -> u32;
+    }
+    /// The real and effective user IDs (uid_t is 32-bit on Linux and macOS).
+    pub(super) fn current() -> (u32, u32) {
+        // SAFETY: both take no arguments, always succeed and only return a value.
+        unsafe { (getuid(), geteuid()) }
+    }
 }
 
 #[cfg(windows)]
@@ -221,5 +251,22 @@ mod tests {
         assert_eq!(windows::integrity(&buffer, usize::MAX), None);
         buffer[0] = 0;
         assert_eq!(windows::integrity(&buffer, offset + 12), None);
+    }
+}
+#[cfg(all(unix, test))]
+mod unix_tests {
+    use super::*;
+    #[test]
+    fn root_real_or_effective_users_fail_closed() {
+        for ids in [(0, 0), (0, 1000), (1000, 0)] {
+            assert_eq!(
+                permit_user(ids).unwrap_err().kind(),
+                io::ErrorKind::PermissionDenied
+            );
+        }
+        permit_user((1000, 1000)).unwrap();
+        let (real, effective) = unix::current();
+        println!("Current process: uid={real}, euid={effective}");
+        assert_eq!(check().is_ok(), real != 0 && effective != 0);
     }
 }

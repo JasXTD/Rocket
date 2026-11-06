@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;
@@ -336,6 +336,50 @@ fn stash_conflict_resolution_needs_no_operation_marker_and_keeps_stash() {
             );
             assert_eq!(f.run(&["rev-parse", "HEAD"]), head);
             assert_eq!(f.run(&["rev-parse", "refs/stash"]), stash);
+        },
+    );
+}
+
+/// Linux: a save keeps the working file's executable bit, so staging the resolution
+/// records the mode Git's merge checked out and leaves no mode change behind.
+#[cfg(target_os = "linux")]
+#[test]
+fn saving_keeps_an_executable_file_executable() {
+    isolated(
+        "ROCKET_CONFLICT_CASE",
+        "saving_keeps_an_executable_file_executable",
+        || {
+            use std::os::unix::fs::PermissionsExt;
+            let f = Fixture::new();
+            let script = f.repository.join("run.sh");
+            f.write("run.sh", "#!/bin/sh\nbase\n");
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+            f.commit("base");
+            f.run(&["checkout", "-b", "other"]);
+            f.write("run.sh", "#!/bin/sh\ntheirs\n");
+            f.commit("theirs");
+            f.run(&["checkout", "main"]);
+            f.write("run.sh", "#!/bin/sh\nours\n");
+            f.commit("ours");
+            assert!(!f.output(&f.repository, &["merge", "other"]).status.success());
+            let mode = fs::metadata(&script).unwrap().permissions().mode() & 0o777;
+            assert_ne!(mode & 0o111, 0, "Git checks the conflict out executable");
+            let repo = f.repo();
+            let c = CancellationToken::new();
+            let p = repo
+                .edit_conflict(&RepoPath::new("run.sh").unwrap(), &c)
+                .unwrap();
+            let saved = repo
+                .save_conflict(&p, "#!/bin/sh\nresolved\n", true, &c)
+                .unwrap();
+            saved.result.unwrap();
+            assert!(saved.saved && saved.staged);
+            assert_eq!(fs::metadata(&script).unwrap().permissions().mode() & 0o777, mode);
+            assert!(
+                f.run(&["ls-files", "--stage", "--", "run.sh"])
+                    .starts_with(b"100755 ")
+            );
+            assert_eq!(f.run(&["status", "--porcelain", "--", "run.sh"]), b"M  run.sh\n");
         },
     );
 }

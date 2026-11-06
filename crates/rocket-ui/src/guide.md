@@ -123,6 +123,13 @@ Every operation that writes follows the same rules, so dialogs do not repeat the
 - Open lists folders with Git repositories marked by their current branch. Double-click a repository to open it, or a folder to look inside; the arrow at the end of a row goes into any folder. Ctrl+L, or the pencil, takes a typed or pasted path. Hidden and system folders are not listed, as in File Explorer.
 - New repository works in a new folder or in an existing project folder; its parent folder must exist. Under the folder, Rocket says what creating will do before you create. Your project files stay as they are: nothing is staged or committed. Existing repositories, and folders inside another repository, cannot be initialized here; Open it opens the repository instead.
 - Clone accepts an HTTPS URL, an SSH address such as ssh://git@host/owner/repo.git, or a local repository path. The clone goes into a new folder: choose its parent folder, and its name comes from the source until you change it. The parent folder must exist. Rocket refuses existing destinations, including empty folders.
+- On Linux, creating, cloning, adding a worktree and other steps that must never replace a file need a folder on a local filesystem such as ext4, XFS or Btrfs. NFS, some FUSE mounts and WSL's /mnt drives can't promise that, so Rocket refuses there and says why.
+
+### Automatic refresh
+
+- Rocket refreshes a repository when its files or Git data change outside Rocket; F5 refreshes at any time. When automatic refresh can't run, Rocket shows a note saying why.
+- On Linux, each folder of the working folder and the Git folder is watched separately. Linux limits watched folders per user (fs.inotify.max_user_watches), and Rocket uses at most half of them across its repositories, so other programs keep theirs. A repository with more folders shows the note: raise the limit, for example with sudo sysctl fs.inotify.max_user_watches=1048576 (a file in /etc/sysctl.d keeps it), then press F5.
+- Linux isn't told about changes made through a network share, or by Windows programs in WSL's /mnt drives; press F5 after those.
 
 ### Repository settings
 

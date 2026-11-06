@@ -213,7 +213,10 @@ impl FetchFailure {
             || has("does not appear to be a git repository")
             || has("requested url returned error: 404")
             || text.lines().any(|line| {
-                line.starts_with("fatal: repository '") && line.ends_with("' not found")
+                // "does not exist" is clone's own refusal of a local path that is not
+                // a repository; paths without a drive colon (Linux) get it.
+                line.starts_with("fatal: repository '")
+                    && (line.ends_with("' not found") || line.ends_with("' does not exist"))
             })
         {
             Self::RepositoryUnavailable
@@ -308,6 +311,10 @@ mod tests {
             ),
             (
                 "fatal: repository 'https://PRIVATE' not found",
+                RepositoryUnavailable,
+            ),
+            (
+                "fatal: repository '/home/PRIVATE/not-a-repository' does not exist",
                 RepositoryUnavailable,
             ),
             (

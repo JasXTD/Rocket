@@ -4,16 +4,15 @@ use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom},
 };
-// Used by the Windows publication; elsewhere publish_change reports Unsupported.
-#[cfg(windows)]
+// Used by the Windows and Linux publication; elsewhere publish_change reports Unsupported.
+#[cfg(any(windows, target_os = "linux"))]
 use std::{
     fs,
     io::Write,
-    path::Path,
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 static NEXT: AtomicU64 = AtomicU64::new(0);
 fn io(action: &'static str, e: std::io::Error) -> Error {
     Error::io(action, e)
@@ -77,6 +76,11 @@ fn open_mode(
     if !meta.is_file() || local_files::redirected(&meta) {
         return Err(unsupported());
     }
+    // Opening follows a symbolic link here; refuse one as Windows refuses a reparse point.
+    #[cfg(target_os = "linux")]
+    if !local_files::opened_without_link(&file, &full).map_err(|e| io("inspect conflict file", e))? {
+        return Err(unsupported());
+    }
     crate::review::verify_preview_handle(&file, root, &full)?;
     Ok(Opened {
         file,
@@ -119,13 +123,20 @@ pub(super) fn read_optional(
 }
 
 /// One checked working-file change and how its failures are reported.
-#[cfg_attr(not(windows), expect(dead_code, reason = "only the Windows publication reads a change"))]
+#[cfg_attr(
+    not(any(windows, target_os = "linux")),
+    expect(dead_code, reason = "only the Windows and Linux publication read a change")
+)]
 pub(super) struct Change<'a> {
     pub path: &'a RepoPath,
     /// The reviewed bytes, or None when the path was absent.
     pub observed: Option<&'a [u8]>,
     /// The intended bytes, or None to move the file into recovery.
     pub result: Option<&'a [u8]>,
+    /// The kept version's Git mode, when it decides the executable bit (Linux); None
+    /// keeps the replaced file's permission bits.
+    #[cfg_attr(windows, expect(dead_code, reason = "Windows files have no executable bit"))]
+    pub executable: Option<bool>,
     pub bounds: Bounds,
     /// Reported when the file no longer matches `observed` before publication.
     pub stale: ConflictFailure,
@@ -147,6 +158,7 @@ pub(super) fn publish(
         path: &preview.path,
         observed: Some(&preview.original),
         result: Some(result),
+        executable: None,
         bounds: TEXT,
         stale: ConflictFailure::FileChanged,
         unverified: ConflictFailure::FileChanged,
@@ -161,7 +173,7 @@ pub(super) fn publish(
     publish_change(repo, &change, recheck, cancel, saved, recovery)
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 pub(super) fn publish_change(
     repo: &Repository,
     change: &Change<'_>,
@@ -170,18 +182,6 @@ pub(super) fn publish_change(
     saved: &mut bool,
     recovery: &mut Option<PathBuf>,
 ) -> Result<()> {
-    use std::os::windows::ffi::OsStrExt;
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn ReplaceFileW(
-            replaced: *const u16,
-            replacement: *const u16,
-            backup: *const u16,
-            flags: u32,
-            exclude: *mut std::ffi::c_void,
-            reserved: *mut std::ffi::c_void,
-        ) -> i32;
-    }
     let stale = || Error::Conflict(change.stale);
     let unverified = || Error::Conflict(change.unverified);
     cancel.check()?;
@@ -277,78 +277,71 @@ pub(super) fn publish_change(
     }
     cancel.check()?;
     let backup = directory.join("replaced-original");
+    let replacement = directory.join("replacement");
+    // Linux files carry the executable bit Git tracks: keep the replaced file's
+    // permissions, or apply the kept version's mode.
+    #[cfg(target_os = "linux")]
+    if change.result.is_some() {
+        let original = _opened.as_ref().map(|opened| &opened.file);
+        local_files::set_published_mode(&replacement, original, change.executable)
+            .map_err(|e| io("prepare conflict file permissions", e))?;
+    }
     match (change.observed, change.result) {
-        (Some(_), Some(_)) => {
-            let wide = |path: &Path| {
-                path.as_os_str()
-                    .encode_wide()
-                    .chain(Some(0))
-                    .collect::<Vec<_>>()
-            };
-            let target = wide(&target);
-            let replacement = wide(&directory.join("replacement"));
-            let backup_wide = wide(&backup);
-            // SAFETY: live NUL-terminated paths, reserved pointers null; flags zero retain
-            // ACL/stream checks. All artifacts are uniquely reserved on the Git volume.
-            // ReplaceFile can partially fail: never delete its recovery directory or
-            // assume an error means the original path is intact.
-            let ok = unsafe {
-                ReplaceFileW(
-                    target.as_ptr(),
-                    replacement.as_ptr(),
-                    backup_wide.as_ptr(),
-                    0,
-                    std::ptr::null_mut(),
-                    std::ptr::null_mut(),
-                )
-            };
-            if ok == 0 {
-                return Err(io(
+        // All artifacts are uniquely reserved on the Git volume. Replacement can
+        // partially fail: never delete its recovery directory or assume an error
+        // means the original path is intact.
+        (Some(_), Some(_)) => local_files::replace_file(&target, &replacement, &backup)
+            .map_err(|e| {
+                io(
                     "replace conflict file; inspect retained recovery copies before retrying",
-                    std::io::Error::last_os_error(),
-                ));
-            }
-        }
+                    e,
+                )
+            })?,
         // Removal keeps the displaced file itself; creation never replaces a file
-        // that appeared after the last check (MoveFileEx without REPLACE_EXISTING).
+        // that appeared after the last check (a move that never replaces).
         (Some(_), None) => local_files::move_path(&target, &backup, false).map_err(|e| {
             moved(
                 e,
                 "move conflict file into recovery; inspect the path and retained copies before retrying",
             )
         })?,
-        (None, Some(_)) => {
-            local_files::move_path(&directory.join("replacement"), &target, false).map_err(
-                |e| match e {
-                    Error::Io { source, .. } if matches!(source.raw_os_error(), Some(80 | 183)) => {
-                        stale()
-                    }
-                    other => moved(
-                        other,
-                        "create conflict file; inspect retained recovery copies before retrying",
-                    ),
-                },
-            )?
-        }
+        (None, Some(_)) => local_files::move_path(&replacement, &target, false).map_err(|e| {
+            match e {
+                Error::Io { source, .. } if source.kind() == std::io::ErrorKind::AlreadyExists => {
+                    stale()
+                }
+                other => moved(
+                    other,
+                    "create conflict file; inspect retained recovery copies before retrying",
+                ),
+            }
+        })?,
         (None, None) => unreachable!("no-op changes return before reserving recovery"),
     }
     *saved = true;
     // A rename from another application can race the last path check. Keep the
     // actual displaced file, detect that race, and do not stage or auto-rollback.
     if let Some(observed) = change.observed {
-        let backup_file = {
+        let mut options = OpenOptions::new();
+        options.read(true);
+        #[cfg(windows)]
+        {
             use std::os::windows::fs::OpenOptionsExt;
-            OpenOptions::new()
-                .read(true)
-                .share_mode(1)
-                .custom_flags(0x00200000)
-                .open(&backup)
-                .map_err(|e| io("verify replaced conflict file", e))?
-        };
+            options.share_mode(1).custom_flags(0x00200000);
+        }
+        let backup_file = options
+            .open(&backup)
+            .map_err(|e| io("verify replaced conflict file", e))?;
         let meta = backup_file
             .metadata()
             .map_err(|e| io("inspect conflict recovery copy", e))?;
         if !meta.is_file() || local_files::redirected(&meta) {
+            return Err(Error::Conflict(change.bounds.unsupported));
+        }
+        #[cfg(target_os = "linux")]
+        if !local_files::opened_without_link(&backup_file, &backup)
+            .map_err(|e| io("inspect conflict recovery copy", e))?
+        {
             return Err(Error::Conflict(change.bounds.unsupported));
         }
         crate::review::verify_preview_handle(&backup_file, git_dir, &backup)?;
@@ -364,14 +357,43 @@ pub(super) fn publish_change(
         _ => Ok(()),
     }
 }
-#[cfg(windows)]
+/// Whether the working file's executable bit (the owner's, which Git reads) differs
+/// from a kept version's mode, so keeping identical bytes still needs a publication.
+/// Windows files have no executable bit.
+pub(super) fn executable_differs(
+    repo: &Repository,
+    path: &RepoPath,
+    executable: Option<bool>,
+) -> Result<bool> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let (Some(executable), Some(root)) = (executable, repo.info().worktree.as_ref()) else {
+            return Ok(false);
+        };
+        match fs::symlink_metadata(root.join(path.argument()?)) {
+            Ok(meta) if meta.is_file() => {
+                Ok((meta.permissions().mode() & 0o100 != 0) != executable)
+            }
+            Ok(_) => Ok(false),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(io("inspect conflict file permissions", e)),
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let _ = (repo, path, executable);
+        Ok(false)
+    }
+}
+#[cfg(any(windows, target_os = "linux"))]
 fn moved(error: Error, action: &'static str) -> Error {
     match error {
         Error::Io { source, .. } => io(action, source),
         other => other,
     }
 }
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "linux")))]
 pub(super) fn publish_change(
     _repo: &Repository,
     _change: &Change<'_>,

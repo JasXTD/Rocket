@@ -8,6 +8,30 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Linux everyday Git (preview)
+
+- New repository, Clone, new and moved worktrees, the conflict editor's Save and Keep,
+  Discard, Restore and Recover, ignore-rule and LFS tracking-rule edits, patch files and
+  submodule changes now work on Linux. Moves that must not replace anything use `renameat2`
+  with `RENAME_NOREPLACE`. A filesystem without it, such as NFS, some FUSE mounts or WSL's
+  `/mnt` drives, is refused with that reason; Rocket never falls back to a move that can
+  replace a file.
+- Saves and whole-file replacements swap the file in one step (`RENAME_EXCHANGE`) and keep
+  the replaced file in the recovery folder. The file keeps its permissions; Restore,
+  Discard and Keep apply the executable bit Git records for that version, so no mode
+  change is left behind. Symbolic links are refused, as reparse points are on Windows.
+- Automatic refresh works on Linux through inotify, with no banner. Every folder of the
+  working folder and Git folder is watched, including folders created or moved later; if
+  the kernel drops events, Rocket watches everything again. Rocket keeps to half of
+  `fs.inotify.max_user_watches` across its repositories and says so when a repository needs
+  more. A repository's watchers share one inotify instance, so refreshes don't walk its
+  folders again, and edits to working files take the quick refresh, as on Windows.
+- Activity history and the Actions and CI next-run times use the computer's time zone on
+  Linux (`localtime_r`) instead of UTC.
+- Rocket refuses to run as root on Linux, as it refuses Run as administrator on Windows.
+- A clone from a local folder that is not a repository now reports Repository unavailable
+  on Linux too; Git words that refusal differently for paths without a drive letter.
+
 ## Unreleased — Clay, the new default theme
 
 - Clay is the new default theme, in Claude Code's colours: warm charcoal surfaces, cream

@@ -74,7 +74,7 @@ impl GitClient {
     ) -> Result<InitReport> {
         let (destination, existed) = self.runner.step("init", "validate_init", || {
             cancel.check()?;
-            if !cfg!(windows) {
+            if !cfg!(any(windows, target_os = "linux")) {
                 return Err(Error::Unsupported(
                     "Repository creation currently requires Windows".into(),
                 ));

@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;
@@ -260,6 +260,48 @@ fn checkout_line_endings_match_git_without_running_filters() {
             assert_eq!(p.after().unwrap(), b"original\n");
             apply(&repo, &p);
             assert!(f.run(&["diff", "--", PATH]).is_empty());
+        },
+    );
+}
+
+/// Linux: a restored file gets the executable bit its index entry records, as a Git
+/// checkout would, and keeps its other permission bits; no mode change is left.
+#[cfg(target_os = "linux")]
+#[test]
+fn restored_files_get_the_executable_bit_git_records() {
+    isolated(
+        "ROCKET_FILE_CASE",
+        "restored_files_get_the_executable_bit_git_records",
+        || {
+            use std::os::unix::fs::PermissionsExt;
+            let f = Fixture::new();
+            let script = f.repository.join("run.sh");
+            let plain = f.repository.join("plain.txt");
+            f.write("run.sh", "#!/bin/sh\noriginal\n");
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+            f.write("plain.txt", "original\n");
+            f.commit("initial");
+            let repo = f.repo();
+            let mode = |path: &std::path::Path| fs::metadata(path).unwrap().permissions().mode() & 0o777;
+            let discard = |name: &str| {
+                let p = repo
+                    .preview_file_edit(&RepoPath::new(name).unwrap(), FileEditSource::Index, &token())
+                    .unwrap();
+                apply(&repo, &p);
+                assert!(f.run(&["status", "--porcelain", "--", name]).is_empty(), "{name}");
+            };
+            f.write("run.sh", "#!/bin/sh\nedited\n");
+            discard("run.sh");
+            assert_eq!(mode(&script), 0o755);
+            // A deleted script comes back executable.
+            fs::remove_file(&script).unwrap();
+            discard("run.sh");
+            assert_ne!(mode(&script) & 0o111, 0);
+            // A file edited and made executable by hand loses the bit its entry lacks.
+            f.write("plain.txt", "edited\n");
+            fs::set_permissions(&plain, fs::Permissions::from_mode(0o750)).unwrap();
+            discard("plain.txt");
+            assert_eq!(mode(&plain), 0o640);
         },
     );
 }

@@ -453,12 +453,14 @@ impl Repository {
                     }
                     Ok(Some(bytes))
                 })?;
-            if target != preview.working {
+            let executable = kept.map(|version| version.executable);
+            if target != preview.working || file::executable_differs(self, path, executable)? {
                 self.runner.step("conflict-keep", "publish_version", || {
                     let change = Change {
                         path,
                         observed: preview.working.as_deref(),
                         result: target.as_deref(),
+                        executable,
                         bounds: WHOLE,
                         stale: ConflictFailure::ReviewStale,
                         unverified: ConflictFailure::ResolutionUnverified,

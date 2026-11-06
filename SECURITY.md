@@ -35,6 +35,25 @@ passed to fetch or published as a kept repository.
 Protocol references: [Git shell quoting](https://github.com/git/git/blob/v2.56.0/quote.c)
 and [Git LFS SSH request construction](https://github.com/git-lfs/git-lfs/blob/main/ssh/ssh.go).
 
+## Linux privilege and file publication (unreleased, 2026-11-06)
+
+On Linux and other Unix systems, the shared privilege boundary refuses a process whose
+real or effective user ID is 0 (root, `sudo` or a set-user-ID launch), as Windows refuses
+an elevated token: the desktop, MCP, operational CLI commands, helpers and every
+child-process launcher stop before acting. Capabilities granted to a non-root process are
+not checked.
+
+Publication that must not overwrite (repository creation, clone, worktree creation,
+ignore and LFS attribute edits, patch files, submodules) uses `renameat2` with
+`RENAME_NOREPLACE`. Conflict saves and checked whole-file replacements swap the reviewed
+file with `RENAME_EXCHANGE` and keep the file actually displaced in the recovery folder,
+as `ReplaceFileW` does. A filesystem that rejects either flag (EINVAL or ENOSYS, as on
+NFS, some FUSE mounts and WSL's `/mnt` drives) is refused with that reason;
+Rocket never retries with a rename that can replace a file. Symbolic links are refused
+where Windows refuses reparse points. Linux has no handle that keeps folders from being
+renamed during an operation, as Windows handles do; the checks before and after
+publication still apply.
+
 ## Local crash reports (0.92.0)
 
 Desktop, operational CLI commands and the MCP host install a process-local Rust

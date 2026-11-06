@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 #[path = "../../rocket-git/tests/common/mod.rs"]
 mod common;
 use common::Fixture;
@@ -897,6 +897,8 @@ fn opening_repository_beyond_view_limit_keeps_saving_and_preserves_drafts() {
     );
 }
 
+// Windows share modes lock the state file; Linux has no such lock to hold.
+#[cfg(windows)]
 #[test]
 fn save_failure_cancels_exit_and_preserves_previous_state() {
     common::isolated(
@@ -971,6 +973,7 @@ fn a_failed_state_load_cannot_be_retried_as_a_write() {
     assert_eq!(fs::read(directory.join("state.bin")).unwrap(), unread);
 }
 
+#[cfg(windows)]
 #[test]
 fn state_replacement_corruption_and_writer_ownership_preserve_existing_data() {
     let f = Fixture::new();
