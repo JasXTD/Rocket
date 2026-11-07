@@ -398,7 +398,10 @@ fn body_ui(
         } else if let Some(release) = &s.release {
             ui.label(
                 RichText::new(format!(
-                    "Windows x64   ·   {:.1} MB download",
+                    "{}   ·   {:.1} MB download",
+                    rocket_git::app_update::UPDATE_PLATFORM
+                        .as_ref()
+                        .map_or("Update", |target| target.label),
                     release.size as f64 / 1_000_000.0
                 ))
                 .size(12.0)

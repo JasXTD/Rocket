@@ -267,7 +267,7 @@ impl Rocket {
             }
         };
         let helper = match std::env::current_exe() {
-            Ok(path) => path.parent().unwrap().join("rocket.exe"),
+            Ok(path) => path.parent().unwrap().join(package::ENTRYPOINT),
             Err(e) => {
                 self.updates.status = "error";
                 self.updates.error = Some(e.to_string());

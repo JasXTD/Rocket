@@ -354,8 +354,10 @@ cargo build --workspace --locked
 Add `--features rocket-integrations/runtime` for the release feature set. Lua extensions
 also need the Lua worker's SHA-256 built into Rocket: `tools/build-local.sh` builds the
 worker first and then Rocket with its hash, as `tools/Build-Local.ps1` does on Windows
-(`tools/build-local.sh debug` for a debug bundle). Rocket uses the first `git` on `PATH`;
-Linux has no bundled Git. Settings, logs and crash reports live in
+(`tools/build-local.sh debug` for a debug bundle). `tools/package-release.sh` makes a
+release from it: the folder `Rocket-<version>-linux-x64` and its update archive
+`Rocket-<version>-linux-x64.tar.gz`, which you unpack anywhere in your own folders. Rocket
+uses the first `git` on `PATH`; Linux has no bundled Git. Settings, logs and crash reports live in
 `$XDG_STATE_HOME/rocket`, by default `~/.local/state/rocket`. As it refuses Run as
 administrator on Windows, Rocket refuses to run as root, for example under `sudo`.
 
@@ -372,7 +374,10 @@ Some features use what the system provides, and nothing else is needed to build:
 - Git LFS features need Git LFS 3.8.1 or later beside Git. Ubuntu 26.04 ships 3.7.1, so
   install it from the Git LFS release;
 - Lua extensions need an x86_64 system with Landlock, which Linux 5.13 and later provide
-  when it is switched on, as Ubuntu does.
+  when it is switched on, as Ubuntu does;
+- app updates install a release unpacked from the archive above, using the system's
+  `/usr/bin/curl` and `/usr/bin/gzip`. A build from `cargo build` can check for updates
+  but not install one, as on Windows.
 
 See [Current limits](#current-limits) for what still needs Windows.
 
@@ -477,8 +482,8 @@ folders. Start validation with the checks for the feature being changed; the
   fetching, automatic refresh, worktrees, the conflict editor, whole-file replacements,
   ignore rules, patch files and submodules. The integrated terminal, SSH keys, remembered
   hosting tokens, MCP control, spell check, dependency checks, automatic bisect, LFS
-  cache cleanup and, on x86_64 with Landlock, Lua extensions work too. App updates still
-  report that they need Windows. Steps that must never replace a file need a local filesystem such
+  cache cleanup and, on x86_64 with Landlock, Lua extensions work too. On x86_64, app
+  updates install into a release made with `tools/package-release.sh`. Steps that must never replace a file need a local filesystem such
   as ext4, XFS or Btrfs; NFS, some FUSE mounts and WSL's `/mnt` drives are refused. Automatic refresh uses at most half of `fs.inotify.max_user_watches` and is
   not told about changes made through a network share. LFS tracking-rule edits are
   unverified on Linux. The MCP terminal runners run on Linux with bash probes. Most other

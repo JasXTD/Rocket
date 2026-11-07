@@ -181,6 +181,42 @@ Landlock versions add stay unhandled until Rocket names them; seccomp refuses th
 calls anyway. A system that forbids executable memory files (`vm.memfd_noexec=2`) can't
 start the worker.
 
+## Linux app updates (unreleased, 2026-11-07)
+
+On Linux x86_64 the updater follows the Windows flow: public GitHub releases only, no
+credentials, and an install only after you approve it. What differs:
+
+**The release file.** Linux looks only for `Rocket-<version>-linux-x64.tar.gz`, never the
+Windows ZIP. As on Windows, its size and the SHA-256 that GitHub publishes for it are
+checked before anything is unpacked.
+
+**System programs.** Rocket runs only `/usr/bin/curl` (8.4.0 or later, which enforces
+size limits on streamed downloads) and `/usr/bin/gzip`. Each must be the file itself, not
+a link, owned by root in a folder root owns, and writable by no one else, as Windows runs
+only its System32 curl. A copy on `PATH` is never used.
+
+**Unpacking.** gzip only decompresses. Rocket reads the archive itself and writes every
+file new into a fresh folder, so it never relies on how a tar program treats a hostile
+archive. It accepts POSIX ustar entries that are plain files or folders, all inside one
+top folder named `Rocket-<x.y.z>-linux-x64`. It refuses:
+- links, devices and other special entries, and extended headers;
+- absolute paths, `..`, empty or `.` path parts, control characters and backslashes;
+- a second top folder, or a name that appears twice, ignoring case;
+- bad checksums, non-zero padding, data after the end, and a truncated archive;
+- more than 20000 entries, a file over 256 MiB, or 1 GiB unpacked.
+
+The unpacked release then passes the same manifest and hash checks as on Windows.
+
+**Install.** The helper is a copy of the installed `rocket` in the update's folder,
+started in its own process group, so neither Ctrl+C nor closing the terminal Rocket was
+started from stops it mid-swap. It waits for Rocket through a process descriptor
+(`pidfd_open`), opened while Rocket is still waiting for it, as Windows opens a process
+handle. It swaps the folders by rename and keeps the previous one, as on Windows. Copied
+files get their permissions from Rocket: 0755 for its own programs, 0644 for everything
+else, whatever the archive said. Linux can't lock the installation folder against
+renames, as Windows does, so the swap relies on its checks of both folders' contents just
+before it.
+
 ## Local crash reports (0.92.0)
 
 Desktop, operational CLI commands and the MCP host install a process-local Rust

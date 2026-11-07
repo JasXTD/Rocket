@@ -110,6 +110,16 @@ See [app updates and publishing requirements](../docs/wiki/App-updates.md).
 Affected checks: `test-mcp-app-updates.cjs` and `test-app-update-installer.cjs` in
 `tools/tests`, using only temporary installations, local Git and loopback HTTP.
 
+On Linux x86_64, `tools/package-release.sh [--offline]` builds the release folder
+`tools/releases/Rocket-<version>-linux-x64` and its update archive
+`Rocket-<version>-linux-x64.tar.gz`: POSIX ustar in name order with fixed owners and
+times, compressed by gzip. The folder's `SHA256SUMS.txt` checks with
+`sha256sum -c SHA256SUMS.txt`, so Linux needs no verifier script. The ignored test
+`app_updates::package::tests::a_packaged_linux_release_passes_the_update_checks`, given
+`ROCKET_TEST_UPDATE_ARCHIVE` and `ROCKET_TEST_UPDATE_VERSION`, runs Rocket's own update
+checks on such an archive. `test-app-update-installer.cjs` runs on Linux too, without
+its Windows-only locked-folder case.
+
 New packages also include the reviewed Git runtime by default. `Build-Local.ps1`
 adds it when the local prepared payload is present; `Package-Release.ps1` requires
 it unless `-WithoutBundledGit` is explicitly selected. Neither script downloads

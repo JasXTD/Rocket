@@ -67,6 +67,11 @@ manual recovery from the retained directories; this is not an unattended updater
 - Attach the exact file `Rocket-<version>-windows-x64.zip` produced by
   `tools/New-UpdateArchive.ps1` or `tools/Package-Release.ps1`. Do not attach a
   single executable: the GUI, helpers and runtimes must match.
+- For Linux x64, attach `Rocket-<version>-linux-x64.tar.gz` from
+  `tools/package-release.sh`. It holds one folder, `Rocket-<version>-linux-x64`,
+  that people unpack anywhere in their own folders and run `./rocket` from; the
+  same file updates them. Rocket accepts only POSIX ustar entries that are plain
+  files and folders inside that folder: no links, devices or `..` paths.
 - Keep `tools/Verify-Release.ps1` tracked. It verifies release contents and the
   reviewed runtimes before packaging; it is not a generated test output.
 - GitHub's release asset must provide its SHA-256 digest. Rocket also checks the
@@ -76,7 +81,9 @@ manual recovery from the retained directories; this is not an unattended updater
   account tokens or SSH keys for application updates. Publishing a release is a
   separate explicit action; local packaging never pushes or uploads anything.
 - Downloads require the installed Windows curl version 8.4.0 or newer so limits
-  also apply when a response does not announce its size. No replacement helper
+  also apply when a response does not announce its size. On Linux they use the
+  system's `/usr/bin/curl`, 8.4.0 or newer, and unpack with its `/usr/bin/gzip`;
+  both must belong to root and be changeable by no one else. No replacement helper
   is installed automatically. This follows [curl's size-limit contract](https://curl.se/docs/manpage.html#--max-filesize).
 
 These checks trust the release hosted by the configured GitHub repository. A

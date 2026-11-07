@@ -8,6 +8,25 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — App updates on Linux (preview)
+
+- App updates check, download and install on Linux x86_64, as on Windows. Linux looks
+  for `Rocket-<version>-linux-x64.tar.gz` in the release; it was offered the Windows ZIP
+  before.
+- `tools/package-release.sh` builds a Linux release: the folder
+  `Rocket-<version>-linux-x64` with `rocket-update.json` and `SHA256SUMS.txt`, and the
+  update archive that holds it. People unpack it anywhere in their own folders, and the
+  same file updates them.
+- Downloads use the system's `/usr/bin/curl` and unpack with its `/usr/bin/gzip`. Both
+  must belong to root and be changeable by no one else.
+- Rocket reads the archive itself and writes only plain files and folders inside its one
+  top folder; links, devices and `..` paths are refused.
+- The install waits for Rocket through a process descriptor, gives Rocket's programs
+  0755 and every other file 0644, keeps the previous folder, and restarts. Its helper
+  has its own process group, so closing the terminal doesn't stop it mid-swap.
+- The update installer runner runs on Linux, and now also checks a successful install
+  and restart on both platforms.
+
 ## Unreleased — Lua extensions on Linux (preview)
 
 - Lua extensions, the Lua playground and Lua validation run on Linux x86_64. As on
