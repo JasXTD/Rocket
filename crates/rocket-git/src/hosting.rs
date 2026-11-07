@@ -1,8 +1,9 @@
 //! Read-only github.com integration. Sign-in reuses the github.com credential the
 //! configured Git credential helper (normally Git Credential Manager) stores for
-//! HTTPS Git. Requests go only to `https://api.github.com` through Windows'
-//! `curl.exe`; the token is passed on standard input, kept in memory and never
-//! logged. Nothing on the account is changed.
+//! HTTPS Git. Requests go only to `https://api.github.com` through the system's
+//! curl: Windows' System32 `curl.exe`, or `/usr/bin/curl` on Linux. The token is
+//! passed on standard input, kept in memory and never logged. Nothing on the
+//! account is changed.
 use crate::{
     runner::{Output, Runner},
     *,
@@ -77,6 +78,9 @@ impl HostingFailure {
             }
             Self::InvalidResponse => {
                 "GitHub returned a response Rocket could not read. Nothing was changed; refresh to retry."
+            }
+            Self::Unavailable if cfg!(target_os = "linux") => {
+                "GitHub requests need the system's /usr/bin/curl, owned by root and changeable by no one else. Install your distribution's curl package. GitHub features are unavailable; Git itself is unaffected."
             }
             Self::Unavailable => {
                 "Windows' curl.exe, used for GitHub requests, was not found. GitHub features are unavailable; Git itself is unaffected."
@@ -245,8 +249,9 @@ pub(crate) fn neutral_directory() -> Result<PathBuf> {
         .map_err(|e| Error::io("prepare GitHub request folder", e))?;
     Ok(directory)
 }
-/// On Windows use only the OS-selected System32 curl. Environment variables and
-/// a helper beside Git must not redirect credential-bearing hosting requests.
+/// On Windows use only the OS-selected System32 curl, and on Linux only the system's
+/// /usr/bin/curl (see `system_program`). Environment variables, PATH and a helper
+/// beside Git must not redirect credential-bearing hosting requests.
 pub(crate) fn find_curl(_git: &Path) -> Option<PathBuf> {
     #[cfg(windows)]
     {
@@ -268,7 +273,11 @@ pub(crate) fn find_curl(_git: &Path) -> Option<PathBuf> {
             .is_ok_and(|meta| meta.is_file() && meta.file_attributes() & 0x400 == 0)
             .then_some(path)
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
+    {
+        system_program("curl")
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
         let mut candidates = Vec::new();
         if let Some(root) = std::env::var_os("SystemRoot") {
@@ -284,6 +293,22 @@ pub(crate) fn find_curl(_git: &Path) -> Option<PathBuf> {
             .into_iter()
             .find(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file()))
     }
+}
+/// Linux: a program from /usr/bin only, the file itself and not a link, owned by root in
+/// a folder root owns, and writable by no one else, as Windows runs only its System32
+/// curl. A copy on PATH, beside Git or in the user's folders is never used. Hosting,
+/// extension requests and app updates all take their programs from here.
+#[cfg(target_os = "linux")]
+pub(crate) fn system_program(name: &str) -> Option<PathBuf> {
+    use std::os::unix::fs::MetadataExt;
+    let folder = Path::new("/usr/bin");
+    let path = folder.join(name);
+    let protected = |path: &Path| {
+        std::fs::symlink_metadata(path)
+            .is_ok_and(|meta| meta.uid() == 0 && meta.mode() & 0o022 == 0)
+    };
+    let file = std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_file());
+    (file && protected(&path) && protected(folder)).then_some(path)
 }
 fn token_text(password: &str) -> Option<&str> {
     (!password.is_empty()
@@ -900,5 +925,24 @@ mod tests {
         for bad in ["", "a b", "a\"b", "a\\b", "pässword"] {
             assert_eq!(token_text(bad), None);
         }
+    }
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn linux_runs_only_the_files_root_owns_in_usr_bin() {
+        use std::os::unix::fs::MetadataExt;
+        assert_eq!(system_program("curl").as_deref(), Some(Path::new("/usr/bin/curl")));
+        assert_eq!(system_program("rocket-no-such-program"), None);
+        // A link is refused, even when root owns it and the file it names.
+        let link = std::fs::read_dir("/usr/bin")
+            .unwrap()
+            .flatten()
+            .find(|entry| {
+                entry.file_type().is_ok_and(|kind| kind.is_symlink())
+                    && std::fs::metadata(entry.path())
+                        .is_ok_and(|meta| meta.is_file() && meta.uid() == 0 && meta.mode() & 0o022 == 0)
+            })
+            .expect("a link to a program in /usr/bin");
+        let name = link.file_name().into_string().unwrap();
+        assert_eq!(system_program(&name), None, "{name}");
     }
 }

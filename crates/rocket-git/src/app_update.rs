@@ -43,25 +43,15 @@ pub const UPDATE_PLATFORM: Option<UpdatePlatform> = Some(UpdatePlatform {
 #[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
 pub const UPDATE_PLATFORM: Option<UpdatePlatform> = None;
 
-/// Linux: a program from /usr/bin only, the file itself and not a link, owned by root in
-/// a folder root owns, and writable by no one else, as Windows runs only its System32
-/// curl. A copy on PATH or in the user's folders is never used.
+/// Linux: the system's /usr/bin program, checked as hosting checks its curl
+/// (`hosting::system_program`), as Windows runs only its System32 curl.
 #[cfg(target_os = "linux")]
 fn system_program(name: &str) -> Result<PathBuf> {
-    use std::os::unix::fs::MetadataExt;
-    let folder = Path::new("/usr/bin");
-    let path = folder.join(name);
-    let protected = |path: &Path| {
-        std::fs::symlink_metadata(path)
-            .is_ok_and(|meta| meta.uid() == 0 && meta.mode() & 0o022 == 0)
-    };
-    let file = std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_file());
-    if !file || !protected(&path) || !protected(folder) {
-        return Err(invalid(&format!(
+    crate::hosting::system_program(name).ok_or_else(|| {
+        invalid(&format!(
             "Updates need the system's /usr/bin/{name}, owned by root and changeable by no one else. Install your distribution's {name} package."
-        )));
-    }
-    Ok(path)
+        ))
+    })
 }
 fn curl_has_stream_limit(output: &[u8]) -> bool {
     let Ok(text) = std::str::from_utf8(output) else {

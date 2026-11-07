@@ -368,6 +368,9 @@ Some features use what the system provides, and nothing else is needed to build:
   `SSH_AUTH_SOCK` names;
 - remembered tokens and passphrases need libsecret (`libsecret-1-0`) and an unlocked
   desktop keyring such as GNOME Keyring;
+- GitHub, the other hosting services and extensions' web requests use the system's
+  `/usr/bin/curl` (Ubuntu's `curl`). It must belong to root and be changeable by no one
+  else; a curl on `PATH` or beside Git is never used;
 - spell checking needs a Hunspell dictionary, such as `hunspell-en-us`;
 - dependency checks need OSV-Scanner 2.7.0 for Linux x64, chosen in Edit → Preferences →
   Security → Scanner & data;
@@ -480,9 +483,12 @@ folders. Start validation with the checks for the feature being changed; the
 - Windows is the validated platform. On Linux, everyday Git work runs with the system
   Git: opening, creating and cloning repositories, history, diffs, staging, committing,
   fetching, automatic refresh, worktrees, the conflict editor, whole-file replacements,
-  ignore rules, patch files and submodules. The integrated terminal, SSH keys, remembered
-  hosting tokens, MCP control, spell check, dependency checks, automatic bisect, LFS
-  cache cleanup and, on x86_64 with Landlock, Lua extensions work too. On x86_64, app
+  ignore rules, patch files and submodules. The integrated terminal, SSH keys, GitHub and
+  the other hosting services, remembered hosting tokens, MCP control, spell check,
+  dependency checks, automatic bisect, LFS cache cleanup and, on x86_64 with Landlock, Lua
+  extensions and their web requests work too. The GitHub hosting tests and the extension
+  request tests run on Linux, against local test servers; the other hosting services'
+  tests still need Windows. On x86_64, app
   updates install into a release made with `tools/package-release.sh`. Steps that must never replace a file need a local filesystem such
   as ext4, XFS or Btrfs; NFS, some FUSE mounts and WSL's `/mnt` drives are refused. Automatic refresh uses at most half of `fs.inotify.max_user_watches` and is
   not told about changes made through a network share. LFS tracking-rule edits are

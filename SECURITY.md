@@ -217,6 +217,25 @@ else, whatever the archive said. Linux can't lock the installation folder agains
 renames, as Windows does, so the swap relies on its checks of both folders' contents just
 before it.
 
+## Linux hosting and extension requests (unreleased, 2026-11-07)
+
+On Linux, GitHub sign-in and reads, the other hosting services and the Lua extensions' web
+requests run only the system's `/usr/bin/curl`. It must pass the check app updates use,
+which they now share: the file itself, not a link, owned by root in a folder root owns,
+and changeable by no one else. `SystemRoot`, `PATH` and a curl beside Git can't select
+another copy, as on Windows, where only the System32 curl runs. Without such a curl these
+features report curl unavailable; nothing falls back to another copy.
+
+The requests are the same on both systems:
+- the token and any body reach curl on standard input, never in its arguments;
+- `-q` keeps curl from reading a `.curlrc`, and `SSLKEYLOGFILE` is removed;
+- redirects are never followed, and only HTTPS is allowed, except plain HTTP to a
+  loopback test server;
+- curl verifies certificates as it is set up to; Rocket never turns that off.
+
+As on Windows, this relies on the system's protection of the program's folder; it does not
+authenticate the program itself.
+
 ## Local crash reports (0.92.0)
 
 Desktop, operational CLI commands and the MCP host install a process-local Rust

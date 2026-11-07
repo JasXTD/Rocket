@@ -8,6 +8,19 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Hosting and extension requests on Linux (preview)
+
+- GitHub sign-in and reads, the other hosting services and the Lua extensions' web
+  requests work on Linux. Rocket looked only for Windows' `curl.exe` there before, so
+  each of them reported curl unavailable.
+- They run only the system's `/usr/bin/curl`, after the check app updates use: the file
+  itself, not a link, owned by root and changeable by no one else. A curl on `PATH` or
+  beside Git is never used. Without one, GitHub features say to install the
+  distribution's curl package.
+- The GitHub hosting tests now run on Linux too, and the curl selection test checks that
+  Linux ignores `SystemRoot`, `PATH` and a curl beside Git. The extension request tests,
+  which failed on Linux, now pass there.
+
 ## Unreleased — App updates on Linux (preview)
 
 - App updates check, download and install on Linux x86_64, as on Windows. Linux looks
