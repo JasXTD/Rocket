@@ -133,6 +133,24 @@ repositories, actual native input, restart/reset checks and terminal probes.
 The `rocket_shortcut` tool accepts recording IDs or safe navigation probes only;
 it cannot execute arbitrary Git writes or shell commands.
 
+Terminal runners: `node tools/tests/test-mcp-terminal.cjs`, `test-mcp-terminal-unicode.cjs`,
+`test-mcp-terminal-interrupt.cjs` and `smoke-mcp-terminal.cjs` drive the drawer's shell
+through MCP, on Windows and on Linux. MCP types only fixed synthetic probes into the
+terminal, each matched exactly: `SHELL_PROBES` and the fixture write probe in
+`crates/rocket-mcp/src/ui.rs`, and the Unicode tables and keyboard probes in
+`crates/rocket-mcp/src/terminal_probes.rs`. On Windows they are Windows PowerShell
+commands. On Linux, where an MCP window runs bash, they are bash commands that print the
+same markers. `tools/tests/platform.cjs` holds what each runner sends on each platform.
+
+On Linux the runners need Node 24 and a release build, `target/release/rocket-mcp`. Under
+WSL, set `WAYLAND_DISPLAY` to WSLg's socket, `/run/user/<uid>/wayland-0`, when the shell
+has no Wayland session. `test-mcp-psreadline.cjs` and `test-mcp-terminal-settings.cjs`
+test Windows-only behavior and stop on other platforms.
+
+`smoke-mcp-terminal.cjs` stops at its blocked-commit case on every platform. Its
+`pre-commit` hook never runs, because MCP's transport scope disables hooks for every Git
+command (`core.hooksPath=/dev/null`).
+
 `node tools/tests/test-mcp-playground-ai.cjs` exercises the Lua editor/preview and
 the connected-agent conflict workflow with synthetic proposals. It uses only
 temporary local conflicts, protected scratch storage and localhost MCP. It does

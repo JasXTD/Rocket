@@ -6,8 +6,11 @@ const { createHash, randomUUID } = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 fs.mkdirSync(path.resolve('work/mcp-fixtures'), {recursive:true});
 const parent = fs.realpathSync(path.resolve('work/mcp-fixtures'));
-const gitExe = 'C:\\Program Files\\Git\\cmd\\git.exe';
-const sshDir = path.join(process.env.WINDIR, 'System32', 'OpenSSH');
+const windows = process.platform === 'win32';
+// Linux runs local mode only, with the system Git; the GitHub modes need Windows.
+const gitExe = windows ? 'C:\\Program Files\\Git\\cmd\\git.exe' : '/usr/bin/git';
+const sshDir = windows ? path.join(process.env.WINDIR, 'System32', 'OpenSSH') : '/usr/bin';
+const askpass = windows ? 'deny-askpass.cmd' : 'deny-askpass';
 const repository = 'JasXTD/rocket-auth-test';
 const hostKey = 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl';
 const hostFingerprint = 'SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU';
@@ -43,7 +46,7 @@ class Fixture {
     for (const key of Object.keys(this.env)) if (/^(GIT_|GCM_|ROCKET_|SSH_|CURL_|SSL_CERT_)|_PROXY$|^NETRC$/i.test(key)) delete this.env[key];
     Object.assign(this.env, { HOME: path.join(this.root, 'empty-home'), GIT_CONFIG_GLOBAL: path.join(this.root, 'empty.config'), GIT_CONFIG_SYSTEM: path.join(this.root, 'empty.config'),
       GIT_CONFIG_NOSYSTEM: '1', GIT_TEMPLATE_DIR: this.hooks, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0', GIT_NO_LAZY_FETCH: '1', GIT_NO_REPLACE_OBJECTS: '1',
-      GIT_ASKPASS: path.join(this.root, 'deny-askpass.cmd'), SSH_ASKPASS: path.join(this.root, 'deny-askpass.cmd'), SSH_ASKPASS_REQUIRE: 'never',
+      GIT_ASKPASS: path.join(this.root, askpass), SSH_ASKPASS: path.join(this.root, askpass), SSH_ASKPASS_REQUIRE: 'never',
       GIT_ALLOW_PROTOCOL: this.mode === 'local' ? 'file' : this.mode, GCM_INTERACTIVE: '0', GCM_TRACE: '0', GCM_TRACE_SECRETS: '0', GCM_DEBUG: '0', LC_ALL: 'C' });
   }
   save() { fs.writeFileSync(this.file, JSON.stringify(this.r, null, 2)); }
@@ -144,11 +147,11 @@ class Fixture {
     if (action !== 'setup') this.assertScope();
     if (action === 'setup') {
       for (const dir of [this.client, this.publisher, this.hooks, path.join(this.root, 'empty-home')]) fs.mkdirSync(dir);
-      fs.writeFileSync(path.join(this.root, 'empty.config'), ''); fs.writeFileSync(path.join(this.root, 'deny-askpass.cmd'), '@exit /b 1\r\n');
+      fs.writeFileSync(path.join(this.root, 'empty.config'), ''); fs.writeFileSync(path.join(this.root, askpass), windows ? '@exit /b 1\r\n' : '#!/bin/sh\nexit 1\n', { mode: 0o755 });
       for (const at of [this.client, this.publisher]) {
         this.git(['init', '--initial-branch=' + this.branch, '--object-format=sha1'], at);
         for (const [key, value] of [['user.name', 'Rocket MCP Test'], ['user.email', 'rocket@example.invalid'], ['core.hooksPath', this.hooks], ['core.attributesFile', path.join(this.root, 'empty.config')],
-          ['core.autocrlf', 'false'], ['core.fsmonitor', 'false'], ['core.askPass', path.join(this.root, 'deny-askpass.cmd')], ['commit.gpgsign', 'false'], ['push.gpgsign', 'false'],
+          ['core.autocrlf', 'false'], ['core.fsmonitor', 'false'], ['core.askPass', path.join(this.root, askpass)], ['commit.gpgsign', 'false'], ['push.gpgsign', 'false'],
           ['credential.interactive', 'false'], ['credential.helper', ''], ['credential.useHttpPath', 'false'], ['http.sslBackend', 'schannel'], ['http.sslVerify', 'true'], ['http.followRedirects', 'false'], ['http.extraHeader', ''],
           ['protocol.allow', 'never'], ['protocol.' + (this.mode === 'local' ? 'file' : this.mode) + '.allow', 'always']]) this.config(at, key, value);
         this.git(['remote', 'add', 'origin', this.remote], at); this.config(at, 'remote.origin.fetch', `+${this.ref}:${this.tracking}`);
@@ -202,6 +205,7 @@ class Fixture {
 
 function create(mode, options) {
   ensure(['https', 'ssh', 'local'].includes(mode), 'Expected https, ssh or local');
+  ensure(windows || mode === 'local', 'The GitHub fixture modes need Windows; Linux runs local mode only');
   const root = path.join(parent, 'network-' + mode + '-' + randomUUID().replaceAll('-', ''));
   fs.mkdirSync(root); fs.writeFileSync(path.join(root, 'fixture.json'), JSON.stringify({ root, mode, repository, phase: 'created', owned: [], steps: [], checks: [], cleanup: 'not-needed' }));
   return new Fixture(root, options);

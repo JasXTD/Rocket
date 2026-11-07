@@ -108,7 +108,9 @@ replaces the config in one step (`RENAME_EXCHANGE`) and keeps its permissions.
 **MCP control.** The profile folder must belong to the user and not be writable by
 others. Its settings, token and lock files are created 0600, and Rocket refuses any that
 other users can open. Locks are exclusive `flock`s, released when the process ends.
-Tokens are 32 bytes from `getrandom(2)`.
+Tokens are 32 bytes from `getrandom(2)`. In the terminal, MCP types only fixed bash
+probes, each matched exactly, as it types only fixed PowerShell probes on Windows; it
+refuses any other text.
 
 **Protected data.** Remembered tokens, saved SSH passphrases, drafts, conflict snapshots
 and integration secrets are sealed locally with XChaCha20-Poly1305 (RustCrypto

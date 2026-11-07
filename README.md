@@ -476,8 +476,8 @@ folders. Start validation with the checks for the feature being changed; the
   Windows. Steps that must never replace a file need a local filesystem such
   as ext4, XFS or Btrfs; NFS, some FUSE mounts and WSL's `/mnt` drives are refused. Automatic refresh uses at most half of `fs.inotify.max_user_watches` and is
   not told about changes made through a network share. LFS tracking-rule edits are
-  unverified on Linux. MCP's terminal probes are PowerShell commands, so the terminal
-  acceptance runners still need Windows. macOS is unverified.
+  unverified on Linux. The MCP terminal runners run on Linux with bash probes. Most other
+  MCP acceptance runners still expect Windows program names and tools. macOS is unverified.
 - Hosting adapters have different capabilities. Live acceptance for GitHub Enterprise Server, GitLab,
   Bitbucket, Azure DevOps and Gitea remains unverified; local fixtures do not prove
   a real organization's permissions, SSO or server policy. See [Hosting](HOSTING.md).

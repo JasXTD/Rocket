@@ -4,6 +4,7 @@
 const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process');
 const crypto = require('node:crypto'), net = require('node:net'), assert = require('node:assert/strict');
 const { RocketHttpClient } = require('../mcp/mcp-http-client.cjs');
+const platform = require('./platform.cjs'), shell = platform.shell;
 const root = path.resolve('work/mcp-fixtures/terminal-interrupt-' + crypto.randomUUID().replaceAll('-', ''));
 const repo = path.join(root, 'client-中文'), profile = path.join(root, 'http-profile');
 const branch = 'rocket-ui-test/terminal-interrupt';
@@ -11,9 +12,13 @@ const version = fs.readFileSync('Cargo.toml', 'utf8').match(/\[workspace\.packag
 const report = { passed: false, version, root, cases: [], prompt_return_ms: {} };
 const hash = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const optionalHash = file => fs.existsSync(file) ? hash(file) : null;
-const ordinaryHistory = path.join(process.env.APPDATA, 'Microsoft/Windows/PowerShell/PSReadLine/ConsoleHost_history.txt');
+// The user's own shell history must stay as it was: PSReadLine's, or bash's on Linux.
+const ordinaryHistory = platform.windows ? path.join(process.env.APPDATA, 'Microsoft/Windows/PowerShell/PSReadLine/ConsoleHost_history.txt') : path.join(require('node:os').homedir(), '.bash_history');
 const ordinaryBefore = optionalHash(ordinaryHistory);
 fs.mkdirSync(repo, { recursive: true }); fs.mkdirSync(path.join(root, 'hooks')); fs.writeFileSync(path.join(root, 'empty.config'), '');
+// Explicit local consent: this runner creates only synthetic shell/editor data, so MCP
+// may show the terminal's text (without it the state leaves the text out).
+fs.writeFileSync(path.join(root, 'rocket-private-state'), 'synthetic-content-only-v1\n');
 const env = { ...process.env };
 for (const key of Object.keys(env)) if (/^(GIT_|SSH_)|_PROXY$/i.test(key)) delete env[key];
 Object.assign(env, { GIT_CONFIG_GLOBAL: path.join(root, 'empty.config'), GIT_CONFIG_SYSTEM: path.join(root, 'empty.config'), GIT_CONFIG_NOSYSTEM: '1', GIT_ALLOW_PROTOCOL: 'file', GIT_TERMINAL_PROMPT: '0', GIT_TEMPLATE_DIR: path.join(root, 'hooks') });
@@ -50,7 +55,7 @@ async function capture(name) {
 }
 async function sameShell() {
   const before = count('ROCKET_SHELL_True'); await probe('interrupt-status');
-  await until(() => count('ROCKET_SHELL_True') > before && count('ROCKET_STATE_42') > 0 && prompt(), 'same PowerShell PID and state'); assert.equal(state.terminal.pid, report.host_pid);
+  await until(() => count('ROCKET_SHELL_True') > before && count('ROCKET_STATE_42') > 0 && prompt(), 'same shell PID and state'); assert.equal(state.terminal.pid, report.host_pid);
 }
 async function interrupt(name, button = false) {
   const start = performance.now(); if (button) await click('terminal-interrupt'); else await probe('cancel-line');
@@ -63,7 +68,7 @@ async function closeWindow() {
 }
 async function main() {
   try {
-    const exe = path.resolve('target/release/rocket-mcp.exe'); report.executable_sha256 = hash(exe); report.helper_sha256 = hash(path.resolve('target/release/rocket-terminal-host.exe'));
+    const exe = path.resolve(platform.exe('target/release/rocket-mcp')); report.executable_sha256 = hash(exe); if (platform.windows) report.helper_sha256 = hash(path.resolve('target/release/rocket-terminal-host.exe'));
     cp.execFileSync(exe, ['--init-http', profile, root], { env, windowsHide: true, stdio: 'ignore' });
     const listener = net.createServer(); await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve)); const port = listener.address().port; await new Promise(resolve => listener.close(resolve));
     fs.writeFileSync(path.join(profile, 'settings'), 'ROCKET-MCP-1\n' + port + '\n' + root + '\n'); report.endpoint = 'http://127.0.0.1:' + port + '/mcp';
@@ -72,19 +77,19 @@ async function main() {
     await client.tool('rocket_open', { path: repo }); await settle(); await click('view-changes'); await click('menu-terminal'); await click('terminal-new');
     await until(s => s.terminal?.running && prompt(), 'initial prompt'); report.host_pid = state.terminal.pid;
     await probe('interrupt-start'); await until(() => count('ROCKET_INTERRUPT_READY') === 1, 'sleep started'); report.shell_pid = Number(tail().match(/^ROCKET_SHELL_PID_(\d+)$/m)[1]);
-    await interrupt('button', true); await sameShell(); passed('Interrupt button stops a running PowerShell command and retains actual shell PID and variables');
+    await interrupt('button', true); await sameShell(); passed('Interrupt button stops a running ' + shell.name + ' command and retains actual shell PID and variables');
     await probe('interrupt-start'); await until(() => count('ROCKET_INTERRUPT_READY') === 2, 'second sleep started');
     await interrupt('native_ctrl_c'); await sameShell(); passed('Native Ctrl+C Copy event stops the command without replacing the shell');
     await probe('interrupt-native'); await until(() => count('ROCKET_NATIVE_READY') === 1, 'external command started'); report.foreground_pid = Number(tail().match(/^ROCKET_CHILD_PID_(\d+)$/m)[1]); assert(alive(report.foreground_pid));
     await interrupt('external_command'); assert(!alive(report.foreground_pid)); await sameShell(); passed('Ctrl+C ends the actual foreground child process and returns to the existing shell');
     await probe('resize-draft'); await until(() => line().includes('ROCKET_RESIZE_'), 'idle draft'); await interrupt('idle_line'); assert.equal(count('ROCKET_RESIZE_中文_🚀_é_OX'), 0); await sameShell();
     await probe('typing'); await until(() => count('ROCKET_TYPING_OK') === 1 && prompt(), 'typing/editing after interrupt');
-    await probe('history-seed'); await until(() => count('ROCKET_HISTORY_SECOND') === 1 && prompt()); await probe('history-previous'); await until(() => line().includes("Write-Output 'ROCKET_HISTORY_FIRST'"), 'history recall');
-    await probe('cancel-line'); await until(() => prompt()); await probe('completion-command'); await until(() => line().endsWith('Write-Output'), 'command completion');
+    await probe('history-seed'); await until(() => count('ROCKET_HISTORY_SECOND') === 1 && prompt()); await probe('history-previous'); await until(() => line().includes(shell.historyFirst), 'history recall');
+    await probe('cancel-line'); await until(() => prompt()); await probe('completion-command'); await until(() => line().endsWith(shell.completed), 'command completion');
     await probe('completion-argument'); await until(() => count('ROCKET_COMPLETION_OK') === 1 && prompt()); await probe('completion-path'); await until(() => line().includes('rocket-completion-中文.txt'), 'Unicode path completion');
     await probe('cancel-line'); await until(() => prompt()); await probe('unicode'); await until(() => count('ROCKET_UNICODE_中文 🚀 é') === 1 && prompt());
     passed('Idle-line cancellation, typing, history, command completion and Unicode path completion still work'); await capture('terminal-after-interrupt');
-    await command("Write-Error 'ROCKET_EXPECTED_ERROR'"); await until(() => tail().includes('WriteErrorException') && prompt()); await sameShell(); await capture('terminal-error-recovery');
+    await command(shell.error); await until(() => tail().includes(shell.errorShown) && prompt()); await sameShell(); await capture('terminal-error-recovery');
     await click('terminal-end'); await until(s => s.terminal.closed); assert(!alive(report.host_pid)); assert(!alive(report.shell_pid));
     await click('menu-terminal'); await click('terminal-new'); await until(s => s.terminal.running && prompt()); const secondHost = state.terminal.pid; assert.notEqual(secondHost, report.host_pid);
     await command('exit'); await until(s => s.terminal.closed); assert.equal(state.terminal.exit_code, 0); assert(!alive(secondHost));
@@ -93,7 +98,7 @@ async function main() {
     await closeWindow(); await client.raw('POST', '/shutdown'); const stopped = performance.now(); while (service.exitCode === null) { assert(performance.now() - stopped < 10000, 'MCP did not shut down'); await delay(50); }
     const records = fs.readdirSync(root).filter(n => n.startsWith('mcp-logs-')).flatMap(n => fs.readdirSync(path.join(root, n)).filter(f => /^rocket(?:\.\d+)?\.jsonl$/.test(f)).flatMap(f => fs.readFileSync(path.join(root, n, f), 'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));
     assert(records.length); assert(records.every(r => r.dropped_before === 0)); for (const operation of ['terminal_start', 'terminal_interrupt', 'terminal_exit']) assert(records.some(r => r.operation === operation), 'Missing log ' + operation);
-    for (const text of ['ROCKET_INTERRUPT_', 'ROCKET_NATIVE_', '$global:', 'ROCKET_EXPECTED_ERROR', repo]) assert(!JSON.stringify(records).includes(JSON.stringify(text).slice(1, -1)), 'Private terminal payload in diagnostics');
+    for (const text of ['ROCKET_INTERRUPT_', 'ROCKET_NATIVE_', shell.interruptVariable, 'ROCKET_EXPECTED_ERROR', repo]) assert(!JSON.stringify(records).includes(JSON.stringify(text).slice(1, -1)), 'Private terminal payload in diagnostics');
     report.log_records = records.length; passed('Lifecycle/interrupt logs are present with zero dropped events and no commands/output; repository and user history unchanged'); report.passed = true;
   } catch (error) { report.error = String(error); if (client && state) try { await capture('failure'); } catch {} throw error; }
   finally {

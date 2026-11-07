@@ -1,5 +1,27 @@
 # Dependency review
 
+## Node.js for the MCP runners under WSL — 2026-11-07
+
+Nothing was added to Rocket or Cargo.lock. To run the MCP terminal runners on Linux,
+Node.js 24.22.2 (LTS "Krypton", the line the Windows runs use) was installed under WSL with
+the user's approval:
+- source: `node-v24.22.2-linux-x64.tar.xz` from nodejs.org, 32,039,312 bytes;
+- SHA-256: `48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75`;
+- location: `~/.local/node-v24.22.2-linux-x64`. Nothing system-wide changed; remove it by
+  deleting that folder.
+
+How it was checked:
+- The checksum matches Node's signed checksum list, `SHASUMS256.txt.asc`, which the user
+  allowed for this check.
+- Its signature is good, from key `5BE8A3F6C8A5C01D106C0AD820B1A390B168D356`
+  (Antoine du Hamel). That key is in `nodejs/release-keys` and among the current releasers
+  in `nodejs/node`'s README.
+- Defender was unavailable; the user's Malwarebytes scan of the archive and of its `node`
+  program found nothing.
+
+Ubuntu 26.04's own `nodejs` 22.22.1 was not used: OSV lists about 50 open Ubuntu CVE
+entries for it, and upstream Node 22 is at 22.23.4.
+
 ## SHA-256 on Linux for dependency checks, bisect and LFS cleanup — 2026-11-07
 
 One Linux-only dependency, approved by the user, pinned exactly: `crates/rocket-git` uses

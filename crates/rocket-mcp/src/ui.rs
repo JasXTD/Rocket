@@ -3037,33 +3037,56 @@ fn terminal_grid(screen: &rocket_terminal::Screen) -> (Vec<Value>, bool) {
     (cells, truncated)
 }
 
+/// The fixed probes for the shell an MCP window runs: Windows PowerShell, or on Linux
+/// Rocket's bash, whose probes print the same markers.
+#[cfg(not(target_os = "linux"))]
+const SHELL_PROBES: &[&str] = &[
+    "",
+    "Write-Output ('ROCKET_' + 'TERMINAL_OK')",
+    "$global:RocketProbe = 42",
+    "Write-Output ('ROCKET_VALUE_' + $global:RocketProbe)",
+    "(Get-Location).Path",
+    "[Console]::WriteLine([char]0x00E9)",
+    "Start-Sleep -Seconds 30",
+    "Write-Output ('AFTER_' + 'INTERRUPT')",
+    "1..1200 | ForEach-Object { [Console]::WriteLine('ROCKET_OUTPUT_BOUND') }",
+    "Write-Error 'ROCKET_EXPECTED_ERROR'",
+    "exit",
+];
+#[cfg(target_os = "linux")]
+const SHELL_PROBES: &[&str] = &[
+    "",
+    "printf 'ROCKET_%s\\n' TERMINAL_OK",
+    "RocketProbe=42",
+    "printf 'ROCKET_VALUE_%s\\n' \"$RocketProbe\"",
+    "pwd",
+    "printf '\\303\\251\\n'",
+    "sleep 30",
+    "printf 'AFTER_%s\\n' INTERRUPT",
+    "for n in $(seq 1200); do echo ROCKET_OUTPUT_BOUND; done",
+    "printf 'ROCKET_EXPECTED_%s\\n' ERROR >&2",
+    "exit",
+];
+
 // The native terminal is interactive. MCP intentionally offers only fixed,
 // synthetic acceptance probes, not a general shell/evaluation interface.
 fn terminal_probe_allowed(text: &str, root: &Path) -> Result<(), String> {
-    if crate::terminal_probes::allowed(text)
-        || matches!(
-            text,
-            "" | "Write-Output ('ROCKET_' + 'TERMINAL_OK')"
-                | "$global:RocketProbe = 42"
-                | "Write-Output ('ROCKET_VALUE_' + $global:RocketProbe)"
-                | "(Get-Location).Path"
-                | "[Console]::WriteLine([char]0x00E9)"
-                | "Start-Sleep -Seconds 30"
-                | "Write-Output ('AFTER_' + 'INTERRUPT')"
-                | "1..1200 | ForEach-Object { [Console]::WriteLine('ROCKET_OUTPUT_BOUND') }"
-                | "Write-Error 'ROCKET_EXPECTED_ERROR'"
-                | "exit"
-        )
-    {
+    if crate::terminal_probes::allowed(text) || SHELL_PROBES.contains(&text) {
         return Ok(());
     }
     let file = root.join("rocket-terminal-fixture.txt");
     let path = file.to_string_lossy();
+    #[cfg(not(target_os = "linux"))]
     let path = path
         .strip_prefix("\\\\?\\")
         .unwrap_or(&path)
         .replace('\'', "''");
+    #[cfg(not(target_os = "linux"))]
     let expected = format!("[IO.File]::WriteAllText('{path}', 'ROCKET_TERMINAL_EDIT')");
+    #[cfg(target_os = "linux")]
+    let path = path.replace('\'', "'\\''");
+    #[cfg(target_os = "linux")]
+    let expected = format!("printf %s ROCKET_TERMINAL_EDIT > '{path}'");
     if text == expected {
         if let Ok(metadata) = std::fs::symlink_metadata(&file) {
             if !metadata.is_file() || metadata.file_type().is_symlink() {
@@ -3079,7 +3102,7 @@ fn terminal_probe_allowed(text: &str, root: &Path) -> Result<(), String> {
         }
         return Ok(());
     }
-    Err("MCP terminal input is limited to the fixed synthetic probes documented in UI.md; arbitrary shell commands are not supported.".into())
+    Err("MCP terminal input is limited to the fixed synthetic probes described in tools/README.md; arbitrary shell commands are not supported.".into())
 }
 
 fn bisect_auto_state(s:&rocket_ui::bisect::automatic::State)->Value {
@@ -3853,6 +3876,29 @@ fn workflow_state(s:&rocket_ui::workflows::DialogState)->Value {
 #[cfg(test)]
 mod terminal_grid_tests {
     use super::*;
+    #[test]
+    fn terminal_probes_are_exact_for_this_platforms_shell() {
+        let root = std::env::temp_dir().join("rocket-probe-fixture");
+        for probe in SHELL_PROBES {
+            assert!(terminal_probe_allowed(probe, &root).is_ok(), "{probe}");
+        }
+        let modified = format!("{}; ls", SHELL_PROBES[1]);
+        for text in [
+            modified.as_str(),
+            "ls /",
+            "Get-ChildItem C:/",
+            "echo 'arbitrary'",
+        ] {
+            assert!(terminal_probe_allowed(text, &root).is_err(), "{text}");
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let quoted = |p: &Path| format!("printf %s ROCKET_TERMINAL_EDIT > '{}'", p.display());
+            let fixture = quoted(&root.join("rocket-terminal-fixture.txt"));
+            assert!(terminal_probe_allowed(&fixture, &root).is_ok());
+            assert!(terminal_probe_allowed(&quoted(&root.join("elsewhere.txt")), &root).is_err());
+        }
+    }
     #[test]
     fn custom_command_form_text_fields_are_editable_but_buttons_are_not() {
         for id in ["dialog-command-input-format", "dialog-command-input-base_1", "dialog-commands-input-1-label", "dialog-commands-input-7-checked"] {

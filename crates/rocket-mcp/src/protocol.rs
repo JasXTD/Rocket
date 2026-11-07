@@ -174,7 +174,7 @@ pub fn tools() -> Value {
         ),
         (
             "rocket_type",
-            "Replace an enabled dialog, commit-filter, commit-message or terminal-command field through actual UI input. Remote URL fields accept only local fixture paths. Terminal accepts only fixed synthetic probes in UI.md. Do not enter credentials. expected_tab guards against stale repository selection.",
+            "Replace an enabled dialog, commit-filter, commit-message or terminal-command field through actual UI input. Remote URL fields accept only local fixture paths. Terminal accepts only the fixed synthetic probes described in tools/README.md. Do not enter credentials. expected_tab guards against stale repository selection.",
             json!({"target":target,"text":text,"expected_tab":tab}),
             vec!["target", "text", "expected_tab"],
             false,
@@ -226,7 +226,7 @@ pub fn tools() -> Value {
         ),
         (
             "rocket_terminal_enter",
-            "Focus the terminal command field and press Enter through native UI input. Only the fixed synthetic terminal probes in UI.md are accepted; this is not a shell command tool.",
+            "Focus the terminal command field and press Enter through native UI input. Only the fixed synthetic terminal probes described in tools/README.md are accepted; this is not a shell command tool.",
             json!({"expected_tab":tab}),
             vec!["expected_tab"],
             false,

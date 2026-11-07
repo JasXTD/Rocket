@@ -1,5 +1,6 @@
 // Native ConPTY, widgets and captures through authenticated loopback HTTP MCP.
 // All files/config are synthetic; the normal service and real repositories stay separate.
+if (process.platform !== 'win32') { console.log('PSReadLine runner: Windows-only; skipped on this platform.'); process.exit(0); }
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
 const crypto=require('node:crypto'),net=require('node:net'),assert=require('node:assert/strict');
 const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');

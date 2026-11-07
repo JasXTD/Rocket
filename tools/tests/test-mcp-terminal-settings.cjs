@@ -3,6 +3,7 @@
 // Windows PowerShell, so real Git Bash and Command Prompt are covered by rocket-terminal's
 // tests. The tools "found" here are placeholder files in the fixture's install folders.
 // Run from the repository root, under the build and MCP lock.
+if (process.platform !== 'win32') { console.log('Terminal settings runner: Windows-only; skipped on this platform.'); process.exit(0); }
 const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process');
 const crypto = require('node:crypto'), net = require('node:net'), assert = require('node:assert/strict');
 const { RocketHttpClient } = require('../mcp/mcp-http-client.cjs');

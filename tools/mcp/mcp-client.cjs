@@ -60,7 +60,11 @@ class RocketMcpClient {
     if (this.exitCode !== 0) throw Error('MCP exited unsuccessfully');
   }
   terminateOwnedProcess() {
-    if (!this.exited && this.child.pid) spawnSync('taskkill.exe',['/PID',String(this.child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+    if (this.exited || !this.child.pid) return;
+    if (process.platform === 'win32') spawnSync('taskkill.exe',['/PID',String(this.child.pid),'/T','/F'],{windowsHide:true,stdio:'ignore'});
+    // Linux, as a last resort: the terminal's shell is hung up when its terminal closes
+    // with this process.
+    else this.child.kill('SIGKILL');
   }
 }
 module.exports = { RocketMcpClient };

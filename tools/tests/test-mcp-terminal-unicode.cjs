@@ -3,13 +3,17 @@
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
 const crypto=require('node:crypto'),net=require('node:net'),assert=require('node:assert/strict');
 const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');
+const platform=require('./platform.cjs');
 const root=path.resolve('work/mcp-fixtures/terminal-unicode-'+crypto.randomUUID().replaceAll('-',''));
 const repo=path.join(root,'client'),profile=path.join(root,'http-profile');
 const branch='rocket-ui-test/terminal-unicode';
 const version=fs.readFileSync('Cargo.toml','utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([^"]+)"/)[1];
-const basic='[Console]::Clear(); [Console]::Write("ASCII |abcd    |END`r`nCJK   |中文    |END`r`nJPN   |日本語  |END`r`nKOR   |한국어  |END`r`nEMOJI |🚀🎉    |END`r`nMARKS |éö      |END"); Start-Sleep -Seconds 30';
-const emoji='[Console]::Clear(); [Console]::Write("ZWJ   |👩🏽‍💻      |END`r`nFAMILY|👨‍👩‍👧‍👦      |END`r`nFLAG  |🇲🇾      |END`r`nKEYCAP|1️⃣      |END`r`nHEART |❤️      |END`r`nTEXT  |☺︎       |END"); Start-Sleep -Seconds 30';
-const margin="[Console]::Clear(); [Console]::Write((' ' * ([Console]::WindowWidth - 1)) + '中|END'); Start-Sleep -Seconds 30";
+const basicPs='[Console]::Clear(); [Console]::Write("ASCII |abcd    |END`r`nCJK   |中文    |END`r`nJPN   |日本語  |END`r`nKOR   |한국어  |END`r`nEMOJI |🚀🎉    |END`r`nMARKS |éö      |END"); Start-Sleep -Seconds 30';
+const emojiPs='[Console]::Clear(); [Console]::Write("ZWJ   |👩🏽‍💻      |END`r`nFAMILY|👨‍👩‍👧‍👦      |END`r`nFLAG  |🇲🇾      |END`r`nKEYCAP|1️⃣      |END`r`nHEART |❤️      |END`r`nTEXT  |☺︎       |END"); Start-Sleep -Seconds 30';
+const marginPs="[Console]::Clear(); [Console]::Write((' ' * ([Console]::WindowWidth - 1)) + '中|END'); Start-Sleep -Seconds 30";
+// Linux: the same rows through bash's printf, exactly as in crates/rocket-mcp/src/terminal_probes.rs.
+const forBash=ps=>"printf '\\033[H\\033[2J\\033[3J"+ps.slice(ps.indexOf('Write("')+7,ps.lastIndexOf('"); Start-Sleep')).replaceAll('`r`n','\\r\\n')+"'; sleep 30";
+const [basic,emoji,margin]=platform.windows?[basicPs,emojiPs,marginPs]:[forBash(basicPs),forBash(emojiPs),"printf '\\033[H\\033[2J\\033[3J%*s中|END' \"$(($(stty size | cut -d' ' -f2) - 1))\" ''; sleep 30"];
 const report={passed:false,version,root,cases:[],timings_ms:{}};
 let client,service,state;
 fs.mkdirSync(repo,{recursive:true});
@@ -55,7 +59,7 @@ async function closeWindow(){
 }
 async function run(){
   try{
-    const exe=path.resolve('target/release/rocket-mcp.exe');cp.execFileSync(exe,['--init-http',profile,root],{env,windowsHide:true});
+    const exe=path.resolve(platform.exe('target/release/rocket-mcp'));cp.execFileSync(exe,['--init-http',profile,root],{env,windowsHide:true});
     const listener=net.createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));const port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
     fs.writeFileSync(path.join(profile,'settings'),`ROCKET-MCP-1\n${port}\n${root}\n`);report.endpoint=`http://127.0.0.1:${port}/mcp`;
     const log=fs.openSync(path.join(root,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env,windowsHide:true,stdio:['ignore','ignore',log]});fs.closeSync(log);
@@ -69,13 +73,13 @@ async function run(){
     let start=performance.now();await command(basic);await until(()=>printedLabel('MARKS'),'Basic Unicode output');
     table(['ASCII','CJK','JPN','KOR','EMOJI','MARKS'],[['中',2],['日',2],['한',2],['🚀',2],['é',1],['ö',1]]);
     report.timings_ms.basic_output=Math.round(performance.now()-start);await click('terminal-screen');await capture('basic-wide');
-    passed('real ConPTY CJK, emoji and combining accents retain text, fixed columns and cursor alignment');await interrupt();
+    passed('real '+(platform.windows?'ConPTY':'PTY')+' CJK, emoji and combining accents retain text, fixed columns and cursor alignment');await interrupt();
     await command(emoji);await until(()=>printedLabel('TEXT'),'Complex emoji output');
     table(['ZWJ','FAMILY','FLAG','KEYCAP','HEART','TEXT'],[['👩🏽‍💻',2],['👨‍👩‍👧‍👦',2],['🇲🇾',2],['1️⃣',2],['❤️',2],['☺︎',1]]);
     await capture('emoji-wide');passed('ZWJ, skin tone, family, flag, keycap and variation-selector clusters stay intact');await interrupt();
     await resize(780,620);await command(basic);await until(()=>printedLabel('MARKS'));
     table(['ASCII','CJK','JPN','KOR','EMOJI','MARKS'],[['中',2],['🚀',2],['é',1]]);
-    await click('terminal-screen');await capture('basic-narrow');passed('Unicode table remains aligned after narrow-window ConPTY resize');await interrupt();
+    await click('terminal-screen');await capture('basic-narrow');passed('Unicode table remains aligned after narrow-window '+(platform.windows?'ConPTY':'PTY')+' resize');await interrupt();
     for(const [width,height,name]of [[780,620,'margin-narrow'],[1480,920,'margin-wide']]){
       await resize(width,height);await command(margin);await until(s=>s.terminal.tail.includes('中|END')&&s.terminal.cursor[0]===6,'Wide glyph at right margin');
       const lead=state.terminal.grid.find(c=>c.text==='中');assert(lead);assert.equal(lead.column,0);assert.equal(lead.width,2);assert.equal(state.terminal.grid.find(c=>c.text==='|').column,2);
@@ -83,7 +87,7 @@ async function run(){
     }
     passed('wide characters wrap as complete cells at both narrow and wide right margins');
     await click('terminal-hide');await click('menu-terminal');await click('terminal-new');assert.equal(state.terminal.pid,pid);
-    await command("Write-Output ('ROCKET_' + 'TERMINAL_OK')");await until(s=>s.terminal.tail.includes('ROCKET_TERMINAL_OK'));
+    await command(platform.shell.ok);await until(s=>s.terminal.tail.includes('ROCKET_TERMINAL_OK'));
     await click('terminal-end');await until(s=>s.terminal.closed);assert.equal(state.terminal.running,false);
     passed('native Enter input, interrupt, hide/reveal and owned terminal shutdown still work');
     const logs=await client.tool('rocket_logs',{limit:1000});assert.equal(state.dropped_events,0);

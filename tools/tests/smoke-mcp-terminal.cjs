@@ -3,10 +3,11 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const { create } = require('./mcp-github-fixture.cjs');
 const { RocketMcpClient } = require('../mcp/mcp-client.cjs');
+const { exe } = require('./platform.cjs');
 const fixture = create('local'); fixture.run('setup');
 const root = fixture.root;
 const report = { passed: false, root, kind: 'Native stdio MCP operation Console regression', cases: [], shell_terminal_implemented: true };
-const executable = path.join(__dirname, '..', '..', 'target', 'release', 'rocket-mcp.exe');
+const executable = path.join(__dirname, '..', '..', 'target', 'release', exe('rocket-mcp'));
 report.executable_sha256 = require('node:crypto').createHash('sha256').update(fs.readFileSync(executable)).digest('hex');
 const mcp = new RocketMcpClient(executable, root, fixture.env);
 let state;
@@ -15,7 +16,9 @@ async function settle() {
   do { state = await mcp.tool('rocket_wait', { timeout_ms: 10000 }); if (!state.busy && !state.input_pending) return; } while (Date.now() < until);
   throw Error('Workers did not settle');
 }
-async function click(target) { await mcp.tool('rocket_click', { target, expected_tab: state.active_tab }); state = await mcp.tool('rocket_state'); }
+// A popup's first frame is egui's invisible sizing pass, where every row is disabled:
+// read the state a frame later, without waiting for an operation that blocks on purpose.
+async function click(target) { await mcp.tool('rocket_click', { target, expected_tab: state.active_tab }); state = await mcp.tool('rocket_wait', { timeout_ms: 300 }); }
 async function type(text) { await mcp.tool('rocket_type', { target: 'commit-message', text, expected_tab: state.active_tab }); state = await mcp.tool('rocket_state'); }
 function enabled(id) { return state.controls.find(c => c.id === id)?.enabled; }
 function pass(name) { report.cases.push(name); console.log('PASS ' + name); }
@@ -45,7 +48,7 @@ async function logs() { const all = []; let seq = 0; for (;;) { const b = await 
     await click('refresh'); await settle(); await click('view-changes'); await settle(); await type('Terminal Stop Process cancellation draft');
     const entered = path.join(root, 'hook-entered'); const heartbeat = path.join(root, 'hook-heartbeat');
     const q = s => "'" + s.replaceAll('\\', '/').replaceAll("'", "'\"'\"'") + "'";
-    fs.writeFileSync(path.join(fixture.hooks, 'pre-commit'), `#!/bin/sh\nprintf x > ${q(entered)}\nwhile :; do printf x >> ${q(heartbeat)}; sleep 0.1; done\n`);
+    fs.writeFileSync(path.join(fixture.hooks, 'pre-commit'), `#!/bin/sh\nprintf x > ${q(entered)}\nwhile :; do printf x >> ${q(heartbeat)}; sleep 0.1; done\n`, { mode: 0o755 });
     const before = semanticState(); await click('commit');
     const deadline = Date.now() + 10000; while (!fs.existsSync(entered) && Date.now() < deadline) await new Promise(r => setTimeout(r, 100)); assert(fs.existsSync(entered));
     state = await mcp.tool('rocket_state'); assert(state.busy);

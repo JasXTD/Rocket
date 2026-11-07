@@ -1,8 +1,18 @@
 //! Exact, synthetic Unicode probes. These only write to the fixture terminal,
 //! then pause so MCP can inspect the native frame. Interrupt ends the pause.
+#[cfg(not(target_os = "linux"))]
 pub const BASIC: &str = "[Console]::Clear(); [Console]::Write(\"ASCII |abcd    |END`r`nCJK   |中文    |END`r`nJPN   |日本語  |END`r`nKOR   |한국어  |END`r`nEMOJI |🚀🎉    |END`r`nMARKS |éö      |END\"); Start-Sleep -Seconds 30";
+#[cfg(not(target_os = "linux"))]
 pub const EMOJI: &str = "[Console]::Clear(); [Console]::Write(\"ZWJ   |👩🏽‍💻      |END`r`nFAMILY|👨‍👩‍👧‍👦      |END`r`nFLAG  |🇲🇾      |END`r`nKEYCAP|1️⃣      |END`r`nHEART |❤️      |END`r`nTEXT  |☺︎       |END\"); Start-Sleep -Seconds 30";
+#[cfg(not(target_os = "linux"))]
 pub const MARGIN: &str = "[Console]::Clear(); [Console]::Write((' ' * ([Console]::WindowWidth - 1)) + '中|END'); Start-Sleep -Seconds 30";
+// Linux: the same rows through bash's printf, as an MCP window runs bash there.
+#[cfg(target_os = "linux")]
+pub const BASIC: &str = "printf '\\033[H\\033[2J\\033[3JASCII |abcd    |END\\r\\nCJK   |中文    |END\\r\\nJPN   |日本語  |END\\r\\nKOR   |한국어  |END\\r\\nEMOJI |🚀🎉    |END\\r\\nMARKS |éö      |END'; sleep 30";
+#[cfg(target_os = "linux")]
+pub const EMOJI: &str = "printf '\\033[H\\033[2J\\033[3JZWJ   |👩🏽‍💻      |END\\r\\nFAMILY|👨‍👩‍👧‍👦      |END\\r\\nFLAG  |🇲🇾      |END\\r\\nKEYCAP|1️⃣      |END\\r\\nHEART |❤️      |END\\r\\nTEXT  |☺︎       |END'; sleep 30";
+#[cfg(target_os = "linux")]
+pub const MARGIN: &str = "printf '\\033[H\\033[2J\\033[3J%*s中|END' \"$(($(stty size | cut -d' ' -f2) - 1))\" ''; sleep 30";
 
 pub fn allowed(text: &str) -> bool {
     matches!(text, BASIC | EMOJI | MARGIN)
@@ -30,24 +40,11 @@ pub const KEYBOARD_NAMES: &[&str] = &[
     "interrupt-native",
 ];
 
-/// Fixed sequences drive the real focused widget; no model or PTY shortcut.
-pub fn keyboard(name: &str) -> Option<Vec<eframe::egui::Event>> {
-    use crate::input::key_event;
-    use eframe::egui::{Event, Key, Modifiers};
-    fn key(events: &mut Vec<Event>, key: Key, modifiers: Modifiers) {
-        for pressed in [true, false] {
-            let mut event = key_event(key, pressed);
-            if let Event::Key {
-                modifiers: current, ..
-            } = &mut event
-            {
-                *current = modifiers;
-            }
-            events.push(event);
-        }
-    }
-    let mut events = Vec::new();
-    let text = match name {
+/// What a named probe types first, or None for one that only presses keys; None overall
+/// for a name that is not a probe. This is Windows PowerShell's text.
+#[cfg(not(target_os = "linux"))]
+fn typed(name: &str) -> Option<Option<&'static str>> {
+    Some(match name {
         "status" => Some(
             "Write-Output ('ROCKET_PSREADLINE_' + [bool](Get-Module PSReadLine)); Write-Output ('ROCKET_HISTORY_PATH_' + (Get-PSReadLineOption).HistorySavePath); Write-Output ('ROCKET_CORE_' + [bool](Get-Command Get-Item,Get-ExecutionPolicy -ErrorAction Stop))",
         ),
@@ -75,10 +72,68 @@ pub fn keyboard(name: &str) -> Option<Vec<eframe::egui::Event>> {
         | "completion-argument"
         | "submit"
         | "cancel-line"
-        | "redraw" => None,
-        "resize-edit" => None,
+        | "redraw"
+        | "resize-edit" => None,
         _ => return None,
-    };
+    })
+}
+
+/// Linux: the same probes for Rocket's bash, whose readline edits, recalls and completes
+/// lines. They print the same markers as the PowerShell text.
+#[cfg(target_os = "linux")]
+fn typed(name: &str) -> Option<Option<&'static str>> {
+    Some(match name {
+        "status" => Some(
+            r#"printf 'ROCKET_READLINE_%s\n' "$(set -o | grep -c '^emacs *on')"; printf 'ROCKET_HISTORY_PATH_%s\n' "$HISTFILE""#,
+        ),
+        "typing" => Some(r"printf '%s\n' 'ROCKET_TYPING_OX'"),
+        "resize-draft" => Some(r"printf '%s\n' 'ROCKET_RESIZE_中文_🚀_é_OX'"),
+        "history-seed" => {
+            Some(r"printf '%s\n' ROCKET_HISTORY_FIRST; printf '%s\n' ROCKET_HISTORY_SECOND")
+        }
+        "completion-command" => Some("ech"),
+        "completion-parameter" => Some("printf -"),
+        "completion-path" => Some("ls ./rocket-comple"),
+        "unicode" => Some(r"printf 'ROCKET_UNICODE_%s\n' '中文 🚀 é'"),
+        "interrupt-start" => Some(
+            r"RocketInterruptState=42; RocketInterruptPid=$$; printf 'ROCKET_SHELL_PID_%s\n' $$; printf 'ROCKET_INTERRUPT_%s\n' READY; sleep 60; printf 'ROCKET_INTERRUPT_%s\n' UNEXPECTED",
+        ),
+        "interrupt-status" => Some(
+            r#"printf 'ROCKET_SHELL_%s\n' "$([ "$$" = "$RocketInterruptPid" ] && echo True || echo False)"; printf 'ROCKET_STATE_%s\n' "$RocketInterruptState""#,
+        ),
+        "interrupt-native" => Some(
+            r#"/bin/bash -c 'printf "ROCKET_CHILD_PID_%s\n" $$; printf "ROCKET_NATIVE_%s\n" READY; sleep 60; printf "ROCKET_NATIVE_%s\n" UNEXPECTED'"#,
+        ),
+        "history-previous"
+        | "history-next"
+        | "completion-backward"
+        | "completion-argument"
+        | "submit"
+        | "cancel-line"
+        | "redraw"
+        | "resize-edit" => None,
+        _ => return None,
+    })
+}
+
+/// Fixed sequences drive the real focused widget; no model or PTY shortcut.
+pub fn keyboard(name: &str) -> Option<Vec<eframe::egui::Event>> {
+    use crate::input::key_event;
+    use eframe::egui::{Event, Key, Modifiers};
+    fn key(events: &mut Vec<Event>, key: Key, modifiers: Modifiers) {
+        for pressed in [true, false] {
+            let mut event = key_event(key, pressed);
+            if let Event::Key {
+                modifiers: current, ..
+            } = &mut event
+            {
+                *current = modifiers;
+            }
+            events.push(event);
+        }
+    }
+    let mut events = Vec::new();
+    let text = typed(name)?;
     if let Some(text) = text {
         // Start at an idle prompt. Cancellation is a separate probe: ConPTY may
         // flush queued input when it handles Ctrl+C, including text sent after it.

@@ -8,6 +8,27 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Linux MCP terminal tests (preview)
+
+- MCP accepts fixed bash probes in the terminal on Linux, where an MCP window runs bash, as
+  it accepts fixed PowerShell probes on Windows. The probes are exact strings; any other
+  input is refused as before. This covers the Unicode tables and the keyboard probes:
+  interrupt, editing, history and completion.
+- The terminal tools' MCP descriptions and refusal now point to `tools/README.md`, which
+  says where each platform's probes are defined.
+- The terminal acceptance runners run on Linux: `test-mcp-terminal`,
+  `test-mcp-terminal-unicode`, `test-mcp-terminal-interrupt` and `smoke-mcp-terminal`.
+  - `tools/tests/platform.cjs` gives each runner its platform's program names, shell probes
+    and process checks.
+  - The PSReadLine and terminal-settings runners stay Windows-only.
+- Fixed in the runners on every platform:
+  - the interrupt runner now writes the synthetic-data consent marker, without which MCP
+    leaves the terminal's text out of its state;
+  - the smoke runner reads state a frame after a click, past egui's disabled sizing pass
+    of a new menu.
+- `smoke-mcp-terminal` still stops at its blocked-commit case on every platform. MCP
+  disables Git hooks, so its `pre-commit` hook never runs.
+
 ## Unreleased — Linux dependency checks, automatic bisect and LFS cache cleanup (preview)
 
 - Dependency checks work on Linux with OSV-Scanner 2.7.0 for Linux x64. Rocket pins its
