@@ -1,4 +1,4 @@
-#![cfg(windows)]
+#![cfg(any(windows, target_os = "linux"))]
 //! GitHub hosting against a loopback fake API and a fake credential helper. The
 //! ignored live test reads (never changes) the real account through Git
 //! Credential Manager and prints counts only.

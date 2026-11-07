@@ -8,6 +8,40 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Hosting and extension requests on Linux (preview)
+
+- GitHub sign-in and reads, the other hosting services and the Lua extensions' web
+  requests work on Linux. Rocket looked only for Windows' `curl.exe` there before, so
+  each of them reported curl unavailable.
+- They run only the system's `/usr/bin/curl`, after the check app updates use: the file
+  itself, not a link, owned by root and changeable by no one else. A curl on `PATH` or
+  beside Git is never used. Without one, GitHub features say to install the
+  distribution's curl package.
+- The GitHub hosting tests now run on Linux too, and the curl selection test checks that
+  Linux ignores `SystemRoot`, `PATH` and a curl beside Git. The extension request tests,
+  which failed on Linux, now pass there.
+
+## Unreleased — App updates on Linux (preview)
+
+- App updates check, download and install on Linux x86_64, as on Windows. Linux looks
+  for `Rocket-<version>-linux-x64.tar.gz` in the release; it was offered the Windows ZIP
+  before.
+- `tools/package-release.sh` builds a Linux release: the folder
+  `Rocket-<version>-linux-x64` with `rocket-update.json` and `SHA256SUMS.txt`, and the
+  update archive that holds it. People unpack it anywhere in their own folders, and the
+  same file updates them.
+- Downloads use the system's `/usr/bin/curl` and unpack with its `/usr/bin/gzip`. Both
+  must belong to root and be changeable by no one else.
+- Rocket reads the archive itself and writes only plain files and folders inside its one
+  top folder; links, devices and `..` paths are refused.
+- The install waits for Rocket through a process descriptor, gives Rocket's programs
+  0755 and every other file 0644, keeps the previous folder, and restarts. Its helper
+  has its own process group, so closing the terminal doesn't stop it mid-swap.
+- The update installer runner runs on Linux, and now also checks a successful install
+  and restart on both platforms.
+- Linux release packaging stops on archive creation or listing errors, preserving
+  the candidate for inspection instead of reporting an invalid archive as complete.
+
 ## Unreleased — Lua extensions on Linux (preview)
 
 - Lua extensions, the Lua playground and Lua validation run on Linux x86_64. As on

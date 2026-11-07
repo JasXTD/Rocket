@@ -19,6 +19,8 @@ use std::{
 
 pub const MAX_FILE: u64 = 256 * 1024 * 1024;
 pub const MAX_TREE: u64 = 1024 * 1024 * 1024;
+/// The programs a packaged Rocket must contain. The first one starts Rocket.
+#[cfg(windows)]
 pub const BINARIES: [&str; 7] = [
     "rocket.exe",
     "rocket-mcp.exe",
@@ -28,6 +30,24 @@ pub const BINARIES: [&str; 7] = [
     "rocket-lua-host.exe",
     "rocket-ssh.exe",
 ];
+/// Linux has no terminal host: the terminal opens a pseudoterminal itself.
+#[cfg(not(windows))]
+pub const BINARIES: [&str; 6] = [
+    "rocket",
+    "rocket-mcp",
+    "rocket-cli",
+    "rocket-rebase-editor",
+    "rocket-lua-host",
+    "rocket-ssh",
+];
+pub const ENTRYPOINT: &str = BINARIES[0];
+/// The platform an update manifest must name, as its file name does.
+fn platform() -> Result<&'static str> {
+    rocket_git::app_update::UPDATE_PLATFORM
+        .as_ref()
+        .map(|target| target.platform)
+        .ok_or_else(|| error("Rocket has no update bundle for this platform."))
+}
 pub fn error(message: &str) -> Error {
     Error::InvalidInput(message.into())
 }
@@ -166,8 +186,8 @@ pub fn manifest(
     let value = json_file(&bundle.join("rocket-update.json"))?;
     if value["schema"] != 1
         || value["version"] != version.text()
-        || value["platform"] != "windows-x64"
-        || value["entrypoint"] != "rocket.exe"
+        || value["platform"] != platform()?
+        || value["entrypoint"] != ENTRYPOINT
     {
         return Err(error(
             "The bundle version or platform does not match this update.",
@@ -352,11 +372,19 @@ pub fn copy_tree(
             options.share_mode(1);
         }
         let mut from = options.open(&input).map_err(io)?;
-        let mut to = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&output)
-            .map_err(io)?;
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        // Unpacked files carry no permissions; only Rocket's own programs run.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(if BINARIES.contains(&name.as_str()) {
+                0o755
+            } else {
+                0o644
+            });
+        }
+        let mut to = options.open(&output).map_err(io)?;
         let mut buffer = [0u8; 65536];
         let mut count = 0u64;
         loop {
@@ -415,7 +443,7 @@ mod tests {
         let token = CancellationToken::new();
         let payload = inventory(&root, &token).unwrap();
         let records:Vec<_>=payload.iter().map(|(name,sha)| json!({"path":name,"sha256":sha,"size":fs::metadata(root.join(name)).unwrap().len()})).collect();
-        fs::write(root.join("rocket-update.json"),serde_json::to_vec(&json!({"schema":1,"version":"9.0.0","platform":"windows-x64","entrypoint":"rocket.exe","files":records})).unwrap()).unwrap();
+        fs::write(root.join("rocket-update.json"),serde_json::to_vec(&json!({"schema":1,"version":"9.0.0","platform":platform().unwrap(),"entrypoint":ENTRYPOINT,"files":records})).unwrap()).unwrap();
         let sums = inventory(&root, &token)
             .unwrap()
             .iter()
@@ -452,14 +480,22 @@ mod tests {
     #[test]
     fn update_missing_ssh_helper_is_rejected_even_with_matching_manifests() {
         let root = fixture();
-        fs::remove_file(root.join("rocket-ssh.exe")).unwrap();
+        // The SSH helper comes last on every platform.
+        let ssh = *BINARIES.last().unwrap();
+        fs::remove_file(root.join(ssh)).unwrap();
         let update = root.join("rocket-update.json");
         let mut json: Value = serde_json::from_slice(&fs::read(&update).unwrap()).unwrap();
-        json["files"].as_array_mut().unwrap().retain(|entry| entry["path"] != "rocket-ssh.exe");
+        json["files"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|entry| entry["path"] != ssh);
         fs::write(update, serde_json::to_vec(&json).unwrap()).unwrap();
         let token = CancellationToken::new();
-        let sums = inventory(&root, &token).unwrap().iter()
-            .map(|(name, sha)| format!("{sha}  {name}\n")).collect::<String>();
+        let sums = inventory(&root, &token)
+            .unwrap()
+            .iter()
+            .map(|(name, sha)| format!("{sha}  {name}\n"))
+            .collect::<String>();
         fs::write(root.join("SHA256SUMS.txt"), sums).unwrap();
         assert!(manifest(&root, UpdateVersion(9, 0, 0), &token).is_err());
         assert!(installed(&root, &token).is_err());
@@ -473,7 +509,7 @@ mod tests {
         assert!(installed(&root, &token).is_err());
         assert_eq!(fs::read(root.join("personal.txt")).unwrap(), b"keep me");
         fs::remove_file(root.join("personal.txt")).unwrap();
-        fs::write(root.join("rocket.exe"), "changed binary!").unwrap();
+        fs::write(root.join(ENTRYPOINT), "changed binary!").unwrap();
         assert!(manifest(&root, UpdateVersion(9, 0, 0), &token).is_err());
         cleanup(root);
     }
@@ -489,5 +525,43 @@ mod tests {
         ));
         assert_eq!(before, inventory(&root, &CancellationToken::new()).unwrap());
         cleanup(root);
+    }
+    /// The archive tools/package-release.sh made passes the checks an update runs, from
+    /// unpacking to the installed-release check that the next update starts from.
+    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[test]
+    #[ignore = "needs ROCKET_TEST_UPDATE_ARCHIVE and ROCKET_TEST_UPDATE_VERSION from tools/package-release.sh"]
+    fn a_packaged_linux_release_passes_the_update_checks() {
+        let archive = PathBuf::from(std::env::var_os("ROCKET_TEST_UPDATE_ARCHIVE").unwrap());
+        let version =
+            UpdateVersion::parse(&std::env::var("ROCKET_TEST_UPDATE_VERSION").unwrap()).unwrap();
+        let token = CancellationToken::new();
+        let job = unique(&std::env::temp_dir()).unwrap();
+        let client =
+            UpdateClient::new(rocket_git::app_update::UpdateEndpoint::Loopback(9), None).unwrap();
+        let bundle = job.join("bundle");
+        client.extract(&archive, &bundle, &token).unwrap();
+        let files = manifest(&bundle, version, &token).unwrap();
+        for name in BINARIES {
+            assert!(files.contains_key(name), "{name}");
+        }
+        assert_eq!(files, installed(&bundle, &token).unwrap());
+        // As installed, its programs run and nothing else does.
+        let installation = job.join("installation");
+        copy_tree(&bundle, &installation, &files, &token).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        for name in files.keys() {
+            let mode = fs::metadata(installation.join(name))
+                .unwrap()
+                .permissions()
+                .mode();
+            assert_eq!(
+                mode & 0o111 != 0,
+                BINARIES.contains(&name.as_str()),
+                "{name}"
+            );
+        }
+        assert_eq!(files, installed(&installation, &token).unwrap());
+        cleanup(job);
     }
 }

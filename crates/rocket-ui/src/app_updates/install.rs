@@ -52,6 +52,14 @@ fn command(program: &Path) -> Command {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x08000000);
     }
+    // Its own process group, as Windows starts it without a console: Ctrl+C in the terminal
+    // Rocket was started from, or closing that terminal, must not stop the helper in the
+    // middle of a swap. It isn't one of the shell's jobs, so the shell never hangs it up.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     command
 }
 fn same_parent(path: &Path, target: &Path, prefix: &str) -> Result<()> {
@@ -149,7 +157,11 @@ pub fn handoff(
             &prepared.files,
             cancel,
         )?;
-        let worker = prepared.job.join("update-worker.exe");
+        let worker = prepared.job.join(if cfg!(windows) {
+            "update-worker.exe"
+        } else {
+            "update-worker"
+        });
         let helper_hash = digest(helper, cancel)?;
         fs::OpenOptions::new()
             .write(true)
@@ -318,8 +330,8 @@ pub fn apply(path: &Path) -> Result<()> {
         fs::rename(&stage, &target).map_err(io)?;
         installed_new = true;
         // Keep the complete old directory; never delete user files to recover.
-        let executable = target.join("rocket.exe");
-        if digest(&executable, &token)? != new["rocket.exe"] {
+        let executable = target.join(ENTRYPOINT);
+        if digest(&executable, &token)? != new[ENTRYPOINT] {
             return Err(error("Installed executable changed before restart."));
         }
         // Publish the receipt before the new process starts reading it.
@@ -375,9 +387,9 @@ pub fn apply(path: &Path) -> Result<()> {
     if result.is_err()
         && parent_exited
         && rollback_ok
-        && digest(&target.join("rocket.exe"), &token).is_ok_and(|sha| sha == old["rocket.exe"])
+        && digest(&target.join(ENTRYPOINT), &token).is_ok_and(|sha| sha == old[ENTRYPOINT])
     {
-        let _ = command(&target.join("rocket.exe"))
+        let _ = command(&target.join(ENTRYPOINT))
             .args(&repos)
             .arg("--rocket-update-result")
             .arg(job)

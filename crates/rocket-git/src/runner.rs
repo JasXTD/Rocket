@@ -454,6 +454,30 @@ impl Runner {
         self.execute_with(cwd, args, input, cancel, ExecutionKind::Read, None, Some((sink, limits)))
     }
 
+    /// A tool run whose standard output streams to `sink`, as `read_streamed` does for Git.
+    #[cfg(target_os = "linux")]
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn tool_streamed(
+        &self,
+        executable: &Path,
+        label: &'static str,
+        cwd: &Path,
+        arguments: &[OsString],
+        cancel: &CancellationToken,
+        limits: &CommandLimits,
+        sink: StdoutSink<'_>,
+    ) -> Result<Output> {
+        self.execute_with(
+            cwd,
+            arguments,
+            Vec::new(),
+            cancel,
+            ExecutionKind::Tool { executable, label },
+            None,
+            Some((sink, limits)),
+        )
+    }
+
     fn execute(
         &self,
         cwd: &Path,

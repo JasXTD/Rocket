@@ -249,7 +249,7 @@ fn http_policy_fixture() {
 }
 
 #[test]
-#[cfg(windows)]
+#[cfg(any(windows, target_os = "linux"))]
 fn system_curl_ignores_environment_and_git_adjacent_helpers() {
     isolated(
         "runner::scope_tests::system_curl_ignores_environment_and_git_adjacent_helpers",
@@ -259,17 +259,23 @@ fn system_curl_ignores_environment_and_git_adjacent_helpers() {
             fs::write(root.join("System32/curl.exe"), b"inert, never execute").unwrap();
             fs::create_dir(root.join("bin")).unwrap();
             fs::write(root.join("bin/curl.exe"), b"inert, never execute").unwrap();
-            // No test thread outside this subprocess sees this override.
+            // Linux's name for the same helper, beside Git and first on PATH.
+            fs::write(root.join("bin/curl"), b"inert, never execute").unwrap();
+            // No test thread outside this subprocess sees these overrides.
             unsafe {
                 std::env::set_var("SystemRoot", &root);
+                std::env::set_var("PATH", root.join("bin"));
             }
-            let curl = crate::hosting::find_curl(&root.join("bin/git.exe")).unwrap();
+            let git = root.join(if cfg!(windows) { "bin/git.exe" } else { "bin/git" });
+            let curl = crate::hosting::find_curl(&git).unwrap();
             assert!(curl.is_absolute() && curl.is_file());
             assert!(
                 !curl.starts_with(&root),
                 "untrusted helper selected: {}",
                 curl.display()
             );
+            #[cfg(target_os = "linux")]
+            assert_eq!(curl, Path::new("/usr/bin/curl"));
         },
     );
 }
