@@ -54,6 +54,38 @@ where Windows refuses reparse points. Linux has no handle that keeps folders fro
 renamed during an operation, as Windows handles do; the checks before and after
 publication still apply.
 
+## Linux file checks: OSV-Scanner, bisect and LFS cleanup (unreleased, 2026-11-07)
+
+**SHA-256.** On Linux, files are hashed with RustCrypto's sha2, with the same size limit
+and cancellation as BCrypt on Windows.
+
+**OSV-Scanner.** Rocket pins the SHA-256 of OSV-Scanner 2.7.0 for Linux x64, as for
+Windows x64. Linux has no handle that stops other programs from changing a file, as
+Windows' share mode does. Instead, Rocket checks only a regular file:
+- opened without following a link;
+- owned by you or by root;
+- not writable by group or others;
+- executable.
+
+It hashes that open file. The scanner then runs from `/proc/self/fd/N`, that same open
+file, so a path swapped after the check can't run instead. The file stays open until the
+scan ends, and the system refuses writes to a running program. The scanner gets
+a cleared environment: its scratch folder as `HOME` and `TMPDIR`, and no proxy, token or
+user configuration.
+
+**Automatic bisect.** The test program's SHA-256 is checked as on Windows. Each test runs
+in its own process group; cancelling, a timeout, or the test's exit stops every process
+left in that group.
+
+**LFS cache cleanup.** Linux cannot delete a file by handle. Each object is opened inside
+its own folder, reached one folder at a time from the Git folder with `openat` and
+`O_NOFOLLOW`, so a renamed folder or a link put in its place cannot redirect the cleanup.
+Rocket hashes the object through the file it opened. It removes the name only while it is
+still that file, by device and inode; a file put in its place is kept and the review
+reports the change. Recovery copies in a local remote are checked the same way and kept
+open while the cleanup runs, but Linux cannot stop another program from removing them
+meanwhile, as Windows can.
+
 ## Linux terminal, SSH keys, MCP control and credentials (unreleased, 2026-11-07)
 
 **Terminal.** The terminal's pseudoterminal is opened with `posix_openpt` and

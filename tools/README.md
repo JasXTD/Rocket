@@ -280,7 +280,8 @@ Generated evidence: `work/results/pr-reviews-0.87/` and
 Automated bisect (0.86): `mockups/auto-bisect/preview.html` and
 `node tools/tests/test-mcp-auto-bisect.cjs`. First build the test-only helper with
 the installed Rust compiler: `rustc --edition=2024 -C debuginfo=0 -o tools/helpers/bin/auto-bisect/test-runner.exe tools/helpers/auto-bisect/test-runner.rs`
-(create its output folder first). The same helper serves the focused
+(create its output folder first; on Linux, name the output `test-runner`, without
+`.exe`). The same helper serves the focused
 `cargo test --offline --locked -p rocket-git --test automatic_bisect -- --test-threads=1`
 suite. Outputs live in `work/mcp-fixtures/auto-bisect-*` and
 `work/results/auto-bisect-0.86/`; source evidence is under `maintenance/auto-bisect-0.86/`.

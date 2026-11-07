@@ -42,8 +42,9 @@ impl Rocket {
                 );
             } else {
                 ui.label(format!(
-                    "OSV-Scanner {} · Windows x64 · verified before use",
-                    rocket_git::OSV_VERSION
+                    "OSV-Scanner {} · {} · verified before use",
+                    rocket_git::OSV_VERSION,
+                    rocket_git::osv_platform().unwrap_or("Windows x64 or Linux x64")
                 ));
             }
             ui.horizontal_wrapped(|ui| {

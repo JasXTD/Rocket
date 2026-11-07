@@ -102,7 +102,48 @@ impl Repository {
         }
         Ok(guards)
     }
-    #[cfg(not(windows))]
+    /// Linux keeps each verified recovery object open while the cache is pruned, but has
+    /// no handle that stops another program from removing it meanwhile, as Windows has.
+    #[cfg(target_os = "linux")]
+    fn pin_prune_source(
+        &self,
+        remote: &str,
+        scope: Option<&LfsSourceScope>,
+        objects: &[LfsPointer],
+        c: &CancellationToken,
+    ) -> Result<Vec<File>> {
+        let (_, local) = helper::source(self, remote, scope, c)?;
+        let Some(local) = local else {
+            return Ok(Vec::new());
+        };
+        let source = GitClient::from_runner(self.runner.clone()).open(&local, c)?;
+        if source.info().common_dir == self.info().common_dir {
+            return Err(invalid(
+                "lfs_prune_remote: the recovery source must use a different object store.",
+            ));
+        }
+        let mut guards = Vec::new();
+        for object in objects {
+            c.check()?;
+            let folder = linux::object_folder(&source.info().common_dir, &object.oid).map_err(|_| {
+                invalid("lfs_prune_remote_missing: the local remote has no verified recovery object; cache retained.")
+            })?;
+            let file = linux::open_object(&folder, &object.oid)
+                .map_err(|_| Error::Lfs(LfsFailure::Layout))?
+                .ok_or_else(|| invalid("lfs_prune_remote_missing: the local remote is missing a recovery object; cache retained."))?;
+            let meta = file
+                .metadata()
+                .map_err(|e| Error::io("inspect LFS recovery object", e))?;
+            if !meta.is_file() || meta.len() != object.size || owned_sha256(&file, c)? != object.oid {
+                return Err(invalid(
+                    "lfs_prune_remote_corrupt: the local remote recovery object is invalid; cache retained.",
+                ));
+            }
+            guards.push(file);
+        }
+        Ok(guards)
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
     fn pin_prune_source(
         &self,
         _: &str,
@@ -110,7 +151,7 @@ impl Repository {
         _: &[LfsPointer],
         _: &CancellationToken,
     ) -> Result<Vec<File>> {
-        Err(invalid("LFS cache pruning currently requires Windows."))
+        Err(invalid("LFS cache pruning currently requires Windows or Linux."))
     }
     fn prune_refs(&self, c: &CancellationToken) -> Result<Vec<u8>> {
         let worktrees = self.lfs_read(&args(&["worktree", "list", "--porcelain"]), vec![], c)?;
@@ -338,11 +379,165 @@ fn delete_verified(
     drop(file);
     Ok(())
 }
-#[cfg(not(windows))]
+/// Linux has no deletion by handle: the object is opened in its folder, checked through
+/// that open file, and its name removed only while it is still that same file.
+#[cfg(target_os = "linux")]
+fn delete_verified(
+    repo: &Repository,
+    _helper: &Path,
+    object: &LfsPointer,
+    c: &CancellationToken,
+) -> Result<()> {
+    let stale = || invalid("lfs_prune_stale: cache object changed");
+    let folder = linux::object_folder(&repo.info().common_dir, &object.oid)
+        .map_err(|e| Error::io("open reviewed LFS object", e))?;
+    let file = linux::open_object(&folder, &object.oid)
+        .map_err(|e| Error::io("open reviewed LFS object", e))?
+        .ok_or_else(stale)?;
+    let meta = file
+        .metadata()
+        .map_err(|e| Error::io("inspect reviewed LFS object", e))?;
+    if !meta.is_file() || meta.len() != object.size {
+        return Err(stale());
+    }
+    if owned_sha256(&file, c)? != object.oid {
+        return Err(invalid(
+            "lfs_prune_corrupt: cache content does not match its object ID; object retained.",
+        ));
+    }
+    c.check()?;
+    if !linux::remove_checked(&folder, &object.oid, &file)
+        .map_err(|e| Error::io("remove reviewed LFS object", e))?
+    {
+        return Err(stale());
+    }
+    Ok(())
+}
+#[cfg(not(any(windows, target_os = "linux")))]
 fn delete_verified(_: &Repository, _: &Path, _: &LfsPointer, _: &CancellationToken) -> Result<()> {
     Err(invalid(
-        "LFS cache pruning currently requires Windows handle-based deletion.",
+        "LFS cache pruning currently requires Windows or Linux.",
     ))
+}
+
+/// Linux: hash through the same open file `delete_verified` removes.
+#[cfg(target_os = "linux")]
+fn owned_sha256(mut file: &File, c: &CancellationToken) -> Result<String> {
+    crate::advisory_tool::digest(&mut file, u64::MAX, c).map_err(|error| match error {
+        Error::Cancelled => Error::Cancelled,
+        Error::Io { source, .. } => Error::io("hash reviewed LFS object", source),
+        _ => invalid("lfs_prune_hash: Rocket could not verify the cached object; it was retained."),
+    })
+}
+
+/// Linux: each object is reached one folder at a time from the Git folder, never through
+/// a link, and opened, checked and removed relative to the folder that holds it, so a
+/// folder renamed, or a link put in its place, cannot point the cleanup elsewhere.
+#[cfg(target_os = "linux")]
+mod linux {
+    use std::{
+        ffi::{CString, c_char, c_int},
+        fs::File,
+        io,
+        os::{
+            fd::{AsRawFd, FromRawFd, OwnedFd},
+            unix::{ffi::OsStrExt, fs::MetadataExt},
+        },
+        path::Path,
+    };
+    const AT_FDCWD: c_int = -100;
+    const O_CLOEXEC: c_int = 0o2_000_000;
+    const O_PATH: c_int = 0o10_000_000;
+    #[cfg(target_arch = "x86_64")]
+    const O_DIRECTORY: c_int = 0o200_000;
+    #[cfg(target_arch = "x86_64")]
+    const O_NOFOLLOW: c_int = 0o400_000;
+    #[cfg(target_arch = "aarch64")]
+    const O_DIRECTORY: c_int = 0o40_000;
+    #[cfg(target_arch = "aarch64")]
+    const O_NOFOLLOW: c_int = 0o100_000;
+    unsafe extern "C" {
+        fn openat(directory: c_int, path: *const c_char, flags: c_int, ...) -> c_int;
+        fn unlinkat(directory: c_int, path: *const c_char, flags: c_int) -> c_int;
+    }
+    fn name(bytes: &[u8]) -> io::Result<CString> {
+        CString::new(bytes)
+            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "A name cannot contain NUL"))
+    }
+    /// Opens read-only (O_RDONLY is 0), close-on-exec, never creating anything.
+    fn open_in(directory: c_int, path: &CString, flags: c_int) -> io::Result<OwnedFd> {
+        // SAFETY: a live NUL-terminated name and, with no O_CREAT, no mode argument.
+        let fd = unsafe { openat(directory, path.as_ptr(), flags | O_CLOEXEC) };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: a new descriptor, owned only here.
+        Ok(unsafe { OwnedFd::from_raw_fd(fd) })
+    }
+    /// The folder holding `oid` in the store under `git_dir`: lfs/objects/aa/bb.
+    pub(super) fn object_folder(git_dir: &Path, oid: &str) -> io::Result<OwnedFd> {
+        let mut folder = open_in(AT_FDCWD, &name(git_dir.as_os_str().as_bytes())?, O_DIRECTORY | O_NOFOLLOW)?;
+        for part in ["lfs", "objects", &oid[..2], &oid[2..4]] {
+            folder = open_in(folder.as_raw_fd(), &name(part.as_bytes())?, O_DIRECTORY | O_NOFOLLOW)?;
+        }
+        Ok(folder)
+    }
+    /// The object in its folder, not through a link; None when it is not there.
+    pub(super) fn open_object(folder: &OwnedFd, oid: &str) -> io::Result<Option<File>> {
+        match open_in(folder.as_raw_fd(), &name(oid.as_bytes())?, O_NOFOLLOW) {
+            Ok(fd) => Ok(Some(File::from(fd))),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+    /// Removes `oid` from `folder` if the name is still `checked`; false if it changed.
+    pub(super) fn remove_checked(folder: &OwnedFd, oid: &str, checked: &File) -> io::Result<bool> {
+        let oid = name(oid.as_bytes())?;
+        let entry = File::from(open_in(folder.as_raw_fd(), &oid, O_PATH | O_NOFOLLOW)?);
+        let (now, then) = (entry.metadata()?, checked.metadata()?);
+        if !now.is_file() || now.dev() != then.dev() || now.ino() != then.ino() {
+            return Ok(false);
+        }
+        // SAFETY: a live folder descriptor and NUL-terminated name; flags 0 remove a file.
+        if unsafe { unlinkat(folder.as_raw_fd(), oid.as_ptr(), 0) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(true)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::fs;
+
+        #[test]
+        fn objects_are_reached_without_links_and_removed_only_while_unchanged() {
+            let root = std::env::temp_dir().join(format!("rocket-lfs-prune-{}", std::process::id()));
+            let oid = "ab".repeat(32);
+            let folder = root.join("git/lfs/objects/ab/ab");
+            fs::create_dir_all(&folder).unwrap();
+            fs::write(folder.join(&oid), b"object").unwrap();
+            let git = root.join("git");
+            let held = object_folder(&git, &oid).unwrap();
+            let file = open_object(&held, &oid).unwrap().unwrap();
+            // A file put in its place stays; the checked one is not removed by name.
+            fs::rename(folder.join(&oid), root.join("moved")).unwrap();
+            fs::write(folder.join(&oid), b"object").unwrap();
+            assert!(!remove_checked(&held, &oid, &file).unwrap());
+            assert!(folder.join(&oid).exists());
+            let file = open_object(&held, &oid).unwrap().unwrap();
+            assert!(remove_checked(&held, &oid, &file).unwrap());
+            assert!(!folder.join(&oid).exists() && open_object(&held, &oid).unwrap().is_none());
+            // Links are refused: an object, a cache folder, or the store itself.
+            std::os::unix::fs::symlink(root.join("moved"), folder.join(&oid)).unwrap();
+            assert!(open_object(&held, &oid).is_err());
+            fs::remove_file(folder.join(&oid)).unwrap();
+            fs::rename(root.join("git/lfs/objects/ab/ab"), root.join("elsewhere")).unwrap();
+            std::os::unix::fs::symlink(root.join("elsewhere"), root.join("git/lfs/objects/ab/ab")).unwrap();
+            assert!(object_folder(&git, &oid).is_err());
+            fs::remove_dir_all(root).unwrap();
+        }
+    }
 }
 
 /// Hash through the same immutable handle we will delete. Opening the path in a

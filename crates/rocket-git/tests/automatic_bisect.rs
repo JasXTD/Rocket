@@ -26,8 +26,10 @@ fn fixture() -> (Fixture, Vec<ObjectId>) {
 }
 fn command(args: &[&str], seconds: u64) -> BisectTestCommand {
     BisectTestCommand {
-        program: PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tools/helpers/bin/auto-bisect/test-runner.exe"),
+        program: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+            "../../tools/helpers/bin/auto-bisect/test-runner{}",
+            std::env::consts::EXE_SUFFIX
+        )),
         arguments: args.iter().map(|s| s.to_string()).collect(),
         timeout_seconds: seconds,
     }
@@ -78,7 +80,23 @@ fn stopped(path: &std::path::Path) {
         }
     }
 }
-#[cfg(not(windows))]
+/// Gone, or exited and only waiting for its new parent to collect it. A killed process
+/// group can take a moment to exit after the signal.
+#[cfg(target_os = "linux")]
+fn stopped(path: &std::path::Path) {
+    let pid = fs::read_to_string(path).unwrap().parse::<u32>().unwrap();
+    let start = Instant::now();
+    loop {
+        match fs::read_to_string(format!("/proc/{pid}/stat")) {
+            Err(_) => return,
+            Ok(stat) if stat.rsplit_once(')').is_some_and(|(_, rest)| rest.trim_start().starts_with(['Z', 'X'])) => return,
+            Ok(_) => {}
+        }
+        assert!(start.elapsed() < Duration::from_secs(5), "process {pid} still running");
+        thread::sleep(Duration::from_millis(20));
+    }
+}
+#[cfg(not(any(windows, target_os = "linux")))]
 fn stopped(_path: &std::path::Path) {}
 
 #[test]
@@ -269,7 +287,7 @@ fn changed_executable_and_history_are_refused_but_manual_recovery_remains() {
         || {
             let (f, ids) = fixture();
             let mut cmd = command(&["version"], 20);
-            let exe = f.root.join("test.exe");
+            let exe = f.root.join(format!("test{}", std::env::consts::EXE_SUFFIX));
             fs::copy(&cmd.program, &exe).unwrap();
             cmd.program = exe.clone();
             let repo = f.repo();

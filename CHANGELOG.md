@@ -8,6 +8,24 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Linux dependency checks, automatic bisect and LFS cache cleanup (preview)
+
+- Dependency checks work on Linux with OSV-Scanner 2.7.0 for Linux x64. Rocket pins its
+  SHA-256 as it pins the Windows binary's, and checks it before every scan. Choose the file
+  itself, not a link, made executable and changeable by no other user. Rocket runs exactly
+  the file it checked.
+- Automatic bisect works on Linux: Rocket records the test program's SHA-256 and refuses
+  it once it changes, and ending a test stops the processes it started.
+- LFS cache cleanup works on Linux with Git LFS 3.8.1 or later beside Git. Each object is
+  reached without links, checked through the file Rocket opened, and removed only while it
+  is still that file. Ubuntu 26.04 ships Git LFS 3.7.1, which Rocket refuses for every LFS
+  feature.
+- SHA-256 on Linux comes from RustCrypto's sha2 0.11.1; Windows keeps using BCrypt.
+  Cargo.lock adds sha2 and digest, Linux-only (see DEPENDENCIES.md). The CLI's
+  `--expect-patch` works on Linux too.
+- The LFS cache cleanup tests moved to `crates/rocket-git/tests/lfs_prune.rs`, which runs
+  on Windows and Linux.
+
 ## Unreleased — Linux terminal, SSH keys, tokens, MCP and spell check (preview)
 
 - The integrated terminal works on Linux on its own pseudoterminal. The shell leads a new

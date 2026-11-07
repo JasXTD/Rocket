@@ -811,7 +811,10 @@ pub fn update(
 }
 
 pub fn executable() -> PathBuf {
-    let relative = format!("runtime/osv-scanner/{OSV_VERSION}/osv-scanner.exe");
+    let relative = format!(
+        "runtime/osv-scanner/{OSV_VERSION}/osv-scanner{}",
+        std::env::consts::EXE_SUFFIX
+    );
     if let Ok(exe) = std::env::current_exe() {
         for parent in exe.ancestors().skip(1).take(4) {
             let path = parent.join(&relative);

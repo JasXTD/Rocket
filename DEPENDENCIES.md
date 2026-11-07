@@ -1,5 +1,55 @@
 # Dependency review
 
+## SHA-256 on Linux for dependency checks, bisect and LFS cleanup — 2026-11-07
+
+One Linux-only dependency, approved by the user, pinned exactly: `crates/rocket-git` uses
+`sha2 =0.11.1` with default features off (no `alloc`, no OIDs). It checks files with
+SHA-256 where Windows uses BCrypt: the pinned OSV-Scanner binary, the automatic-bisect
+test program, LFS objects before cleanup, and the CLI's `--expect-patch`. Cargo.lock adds
+2 packages, and no locked version changes:
+
+| Package | License | Repository | Build script |
+| --- | --- | --- | --- |
+| sha2 0.11.1 | MIT OR Apache-2.0 | RustCrypto/hashes | no |
+| digest 0.11.3 | MIT OR Apache-2.0 | RustCrypto/traits | no |
+
+sha2 also uses cfg-if and cpufeatures 0.3.1; digest uses block-buffer 0.12.1 and
+crypto-common 0.2.2. All four were already locked. Windows and macOS compile neither new
+package.
+
+What was checked:
+
+- cargo-audit 0.22.2 against the RustSec database (1,422 advisories) found no advisories
+  for the 312 locked packages.
+- OSV.dev, which includes RustSec, GHSA and the OpenSSF malicious-packages list, has no
+  entries for sha2 0.11.1, digest 0.11.3 or the shared packages above. sha2's only past
+  advisory, CVE-2021-45696 (miscomputed AVX2 results), affected 0.9.7 alone.
+- On crates.io both checksums equal Cargo.lock's. Neither version is yanked. The owners are
+  the RustCrypto teams and maintainers tarcieri and newpavlov, as for chacha20poly1305.
+- Both were published by GitHub trusted publishing from their repository's CI, from the
+  commits their `.cargo_vcs_info.json` names. Those are the commits of tags
+  `sha2-v0.11.1` and `digest-v0.11.3`, in each repository's `master` history. Every
+  published source file is identical to that commit's.
+
+`cargo run -p rocket-ui --example third_party_notices` now reports 191 crates (131 on
+Windows, 180 on Linux) and 5 other entries.
+
+Testing under WSL used two downloads, each approved by the user, from its project's
+official GitHub release. Each matched the SHA-256 GitHub publishes for that asset.
+Defender was unavailable, so the user scanned both with Malwarebytes, which found
+nothing. Neither ships with Rocket; both stay in scratch folders in WSL.
+
+- OSV-Scanner 2.7.0, `osv-scanner_linux_amd64`: 57,725,088 bytes, SHA-256
+  `160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b`. Rocket pins this
+  checksum for Linux x64, as it pins the Windows binary's.
+- Git LFS 3.8.1, `git-lfs-linux-amd64-v3.8.1.tar.gz`: 5,917,265 bytes, SHA-256
+  `e72cf723a4a660438862282e8aecf3885fc8123e88bfcad534cf6b941a354b75`, no OSV entries. It
+  ran from a scratch folder beside a copy of Git for the tests only. Rocket needs Git LFS
+  3.8.1 or later, and Ubuntu 26.04 ships 3.7.1.
+
+This is a bounded integrity and advisory review, not proof against an undisclosed
+compromise.
+
 ## Third-party notices for Linux builds — 2026-11-07
 
 No package, feature, tool or download was added, and Cargo.lock is unchanged. This
@@ -9,11 +59,12 @@ x86_64-pc-windows-msvc and x86_64-unknown-linux-gnu, still `--locked --offline`.
 one `THIRD-PARTY-NOTICES.txt` for both, in which each entry gains a `Platforms:` line
 (`Windows`, `Linux` or `Windows, Linux`):
 
-- 189 crates: 120 in both builds, 11 only on Windows (the windows-sys family,
-  clipboard-win, error-code and glutin_wgl_sys) and 58 only on Linux. Both builds include
+- 191 crates: 120 in both builds, 11 only on Windows (the windows-sys family,
+  clipboard-win, error-code and glutin_wgl_sys) and 60 only on Linux. Both builds include
   the 20 ICU4X and helper crates from the Arabic text section below. The Linux-only ones
   are the Wayland, X11 and clipboard crates with what they use (rustix, calloop, polling
-  and others), the 14 RustCrypto packages and spellbook.
+  and others), the 16 RustCrypto packages (with sha2 and digest from the section above)
+  and spellbook.
 - egui's four fonts are in both builds; the ConPTY runtime is Windows-only. lua-src counts
   on every platform whose tree has mlua-sys, which today is both.
 - Every Linux-only crate ships its own license file. The licenses are MIT, choices that
@@ -36,8 +87,9 @@ the notice would then name the wrong source. spellbook's bundled en_US and fr_FR
 dictionaries are compiled only into its own tests (`#[cfg(test)]`), so Rocket ships none;
 Linux spell check reads the system's Hunspell dictionaries.
 
-`cargo run -p rocket-ui --example third_party_notices -- --check` reports 189 crates (131
-on Windows, 178 on Linux) and 5 other entries.
+`cargo run -p rocket-ui --example third_party_notices -- --check` reports 191 crates (131
+on Windows, 180 on Linux) and 5 other entries, counting sha2 and digest from the section
+above.
 
 ## Credential sealing and spell check on Linux — 2026-11-07
 

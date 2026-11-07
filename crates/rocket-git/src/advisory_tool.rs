@@ -9,7 +9,25 @@ use std::{
 };
 
 pub const OSV_VERSION: &str = "2.7.0";
-const WINDOWS_SHA256: &str = "9964ed64ec9a387391eb4cc006ad5c531154821aef29b793e02c448de4686438";
+/// The reviewed OSV-Scanner release binary for this platform and its SHA-256, as GitHub
+/// reports it for the google/osv-scanner v2.7.0 release asset.
+#[cfg(all(windows, target_arch = "x86_64"))]
+const PINNED: Option<(&str, &str)> = Some((
+    "Windows x64",
+    "9964ed64ec9a387391eb4cc006ad5c531154821aef29b793e02c448de4686438",
+));
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+const PINNED: Option<(&str, &str)> = Some((
+    "Linux x64",
+    "160c6253e2922e9e0a6a9771c5c4c40a4b3c6090b34a3cdd5e80c96cc2e4218b",
+));
+#[cfg(not(all(any(windows, target_os = "linux"), target_arch = "x86_64")))]
+const PINNED: Option<(&str, &str)> = None;
+
+/// The platform whose OSV-Scanner build this Rocket verifies, as the setup names it.
+pub fn osv_platform() -> Option<&'static str> {
+    PINNED.map(|(platform, _)| platform)
+}
 
 pub struct OsvOutput {
     pub code: Option<i32>,
@@ -25,11 +43,11 @@ pub fn verify_osv_scanner(executable: &Path, cancel: &CancellationToken) -> Resu
 
 fn verified_program(executable: &Path, cancel: &CancellationToken) -> Result<File> {
     cancel.check()?;
-    if !cfg!(all(windows, target_arch = "x86_64")) {
+    let Some((platform, pinned)) = PINNED else {
         return Err(Error::InvalidInput(
-            "This OSV integration currently requires Windows x64".into(),
+            "This OSV integration currently requires Windows x64 or Linux x64".into(),
         ));
-    }
+    };
     if !executable.is_absolute() {
         return Err(Error::InvalidInput(
             "Select an absolute OSV-Scanner path".into(),
@@ -46,15 +64,49 @@ fn verified_program(executable: &Path, cancel: &CancellationToken) -> Result<Fil
         action: "open OSV-Scanner",
         source: e,
     })?;
-    if digest(&mut program, 80 * 1024 * 1024, cancel)? != WINDOWS_SHA256 {
-        return Err(Error::InvalidInput(
-            "OSV-Scanner does not match the reviewed 2.7.0 Windows x64 binary".into(),
-        ));
+    #[cfg(target_os = "linux")]
+    protected_program(&program, executable)?;
+    if digest(&mut program, 80 * 1024 * 1024, cancel)? != pinned {
+        return Err(Error::InvalidInput(format!(
+            "OSV-Scanner does not match the reviewed {OSV_VERSION} {platform} binary"
+        )));
     }
     Ok(program)
 }
 
-/// Runs only the reviewed Windows x64 OSV binary, with bounded output and owned children.
+/// Linux has no handle that keeps other programs from changing a file, as Windows' share
+/// mode does. Rocket checks only a regular file, not a link, that only its owner (you, or
+/// root for a system install) can change, and runs that same open file (see
+/// `run_offline_osv`); the system refuses writes to a program while it runs.
+#[cfg(target_os = "linux")]
+fn protected_program(program: &File, path: &Path) -> Result<()> {
+    use std::os::unix::fs::MetadataExt;
+    unsafe extern "C" {
+        fn geteuid() -> u32;
+    }
+    let inspect = |e| Error::Io {
+        action: "inspect OSV-Scanner",
+        source: e,
+    };
+    let meta = program.metadata().map_err(inspect)?;
+    let direct = crate::local_files::opened_without_link(program, path).map_err(inspect)?;
+    // SAFETY: geteuid has no preconditions and cannot fail.
+    let user = unsafe { geteuid() };
+    if !direct || !meta.is_file() || ![0, user].contains(&meta.uid()) || meta.mode() & 0o022 != 0 {
+        return Err(Error::InvalidInput(
+            "Choose the OSV-Scanner file itself, not a link, and one that only you can change"
+                .into(),
+        ));
+    }
+    if meta.mode() & 0o111 == 0 {
+        return Err(Error::InvalidInput(
+            "OSV-Scanner is not executable. Run chmod +x on it, then choose it again".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Runs only the reviewed OSV binary, with bounded output and owned children.
 /// `directory` contains copied lockfiles and a Rocket-owned empty config. Updates must
 /// receive a synthetic inventory, never a project's inventory (enforced by the caller).
 pub fn run_offline_osv(
@@ -77,9 +129,17 @@ pub fn run_offline_osv(
     {
         return Err(Error::InvalidInput("Invalid offline scanner paths".into()));
     }
-    // Keep a non-write/non-delete shared handle open until the child has finished.
+    // Keep a non-write/non-delete shared handle open until the child has finished. On
+    // Linux the child runs this same open file, never whatever the path names by then.
     let program = verified_program(executable, cancel)?;
-    let command = command(executable, directory, database, lockfiles, update_database);
+    #[cfg(target_os = "linux")]
+    let launch = {
+        use std::os::fd::AsRawFd;
+        std::path::PathBuf::from(format!("/proc/self/fd/{}", program.as_raw_fd()))
+    };
+    #[cfg(not(target_os = "linux"))]
+    let launch = executable.to_path_buf();
+    let command = command(&launch, directory, database, lockfiles, update_database);
     let result = crate::runner::run_process(
         command,
         Vec::new(),
@@ -109,6 +169,12 @@ fn command(
     let database = osv_path(database);
     let mut command = Command::new(executable);
     command.current_dir(&directory).env_clear();
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // Run from its open file on Linux, the scanner still names itself in messages.
+        command.arg0("osv-scanner");
+    }
     // Windows' loader and temporary-file APIs need these, but no user PATH, auth,
     // proxy, package-manager config, HOME or Git configuration is passed through.
     for name in ["SystemRoot", "WINDIR"] {
@@ -119,6 +185,7 @@ fn command(
     command
         .env("TEMP", &directory)
         .env("TMP", &directory)
+        .env("TMPDIR", &directory)
         .env("HOME", &directory)
         .env("USERPROFILE", &directory)
         .env("APPDATA", &directory)
@@ -278,15 +345,49 @@ pub(crate) fn digest(file: &mut dyn Read, max: u64, cancel: &CancellationToken) 
     Ok(output.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-#[cfg(not(windows))]
+/// SHA-256 on Linux from RustCrypto's sha2, with the same reads, limit and cancellation
+/// as BCrypt's above.
+#[cfg(target_os = "linux")]
+pub(crate) fn digest(file: &mut dyn Read, max: u64, cancel: &CancellationToken) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut hash = Sha256::new();
+    let mut count = 0u64;
+    let mut bytes = [0u8; 64 * 1024];
+    loop {
+        cancel.check()?;
+        let n = match file.read(&mut bytes) {
+            Ok(n) => n,
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => {
+                return Err(Error::Io {
+                    action: "verify offline scanner data",
+                    source: e,
+                });
+            }
+        };
+        if n == 0 {
+            break;
+        }
+        count += n as u64;
+        if count > max {
+            return Err(Error::InvalidInput(
+                "Could not verify the offline scanner or advisory data".into(),
+            ));
+        }
+        hash.update(&bytes[..n]);
+    }
+    Ok(hash.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
 pub(crate) fn digest(_: &mut dyn Read, _: u64, _: &CancellationToken) -> Result<String> {
     Err(Error::InvalidInput(
-        "OSV binary verification requires Windows".into(),
+        "SHA-256 verification currently requires Windows or Linux".into(),
     ))
 }
 
 /// Lowercase hexadecimal SHA-256 of in-memory bytes, for review pins such as
-/// the CLI's `--expect-patch`. Windows only, like the file digest above.
+/// the CLI's `--expect-patch`. Windows and Linux, like the file digest above.
 pub fn sha256_bytes(bytes: &[u8]) -> Result<String> {
     digest(
         &mut std::io::Cursor::new(bytes),
@@ -298,6 +399,7 @@ pub fn sha256_bytes(bytes: &[u8]) -> Result<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(windows)]
     #[test]
     fn windows_verbatim_paths_use_helper_compatible_spelling() {
         assert_eq!(
@@ -388,5 +490,48 @@ mod tests {
             Err(Error::Cancelled)
         ));
         std::fs::remove_file(path).unwrap();
+    }
+    /// FIPS 180-4's examples: empty, one block, two blocks, and a million bytes read in
+    /// many 64 KiB chunks.
+    #[test]
+    fn sha256_matches_the_standard_examples() {
+        for (input, expected) in [
+            (&b""[..], "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+            (b"abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+            (
+                b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+                "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+            ),
+        ] {
+            assert_eq!(sha256_bytes(input).unwrap(), expected);
+        }
+        assert_eq!(
+            sha256_bytes(&vec![b'a'; 1_000_000]).unwrap(),
+            "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
+        );
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_checks_only_a_protected_executable_file_of_its_own() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let folder = std::env::temp_dir().join(format!("rocket-osv-file-{}", std::process::id()));
+        std::fs::create_dir(&folder).unwrap();
+        let scanner = folder.join("osv-scanner");
+        std::fs::write(&scanner, b"not the reviewed scanner").unwrap();
+        let mode = |bits| std::fs::set_permissions(&scanner, std::fs::Permissions::from_mode(bits)).unwrap();
+        let check = |path: &Path| verify_osv_scanner(path, &CancellationToken::new()).unwrap_err().to_string();
+        mode(0o644);
+        assert!(check(&scanner).contains("chmod +x"), "{}", check(&scanner));
+        for writable in [0o775, 0o757] {
+            mode(writable);
+            assert!(check(&scanner).contains("only you can change"), "{writable:o}: {}", check(&scanner));
+        }
+        let link = folder.join("link");
+        symlink(&scanner, &link).unwrap();
+        mode(0o755);
+        assert!(check(&link).contains("not a link"), "{}", check(&link));
+        // A protected executable file reaches the checksum, and is refused there.
+        assert!(check(&scanner).contains("Linux x64 binary"), "{}", check(&scanner));
+        std::fs::remove_dir_all(folder).unwrap();
     }
 }

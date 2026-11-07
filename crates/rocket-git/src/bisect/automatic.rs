@@ -170,12 +170,12 @@ fn program_digest(program: &Path, root: &Path, c: &CancellationToken) -> Result<
     if m.len() > 128 * 1024 * 1024 || !crate::valid_custom_program_path(&full) {
         return Err(Error::InvalidInput("Choose a regular local test executable no larger than 128 MiB.".into()));
     }
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "linux")))]
     {
-        let _ = c; // Only the Windows SHA-256 check below can be cancelled.
-        return Err(Error::InvalidInput("Automatic bisect executable verification currently requires Windows.".into()));
+        let _ = c; // Only the SHA-256 check below can be cancelled.
+        return Err(Error::InvalidInput("Automatic bisect executable verification currently requires Windows or Linux.".into()));
     }
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "linux"))]
     crate::osv_file_digest(&full, 128 * 1024 * 1024, c).map_err(|error| match error {
         Error::Io { source, .. } => Error::io("verify bisect test executable", source),
         Error::InvalidInput(_) => Error::InvalidInput("Could not verify the bisect test executable with SHA-256. Check the selected file (maximum 128 MiB), then review again.".into()),

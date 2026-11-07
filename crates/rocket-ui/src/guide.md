@@ -444,6 +444,7 @@ Push branches together publishes several branches in one atomic push: every sele
 
 - Repository → Branch → Workflows & Cleanup → LFS cache reviews objects and bytes before cleanup. Tracked files must be clean, with one worktree and the default cache. Current, recent, stashed and unpushed objects are retained. Remote verification is repeated before deletion; local recovery copies are independently verified and held open. Cancellation keeps remaining objects and reports the count removed.
 - One LFS cache review covers up to 1,000 cleanup candidates of up to 512 MiB each. The dialog lists the first 100; deleting covers every reviewed object.
+- On Linux, Git LFS 3.8.1 or later must be installed beside Git. Cleanup removes an object only while it is still the file Rocket checked. Linux can't keep another program from removing a recovery copy during cleanup, as Windows can.
 
 - Git LFS 3.8.1 or newer is required. Update an older installed helper, then refresh.
 
@@ -779,6 +780,7 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 - Scan dependencies before pushing is a separate option, off by default. When enabled, OSV scans the committed versions being pushed, including tags and multi-branch pushes. Complete results with no warnings continue automatically; findings or limited coverage pause for Push anyway or Cancel push. Missing scanner/data or a failed scan stops the attempt. Cancelled commit-and-push keeps the local commit. Existing secret protection runs first and cannot be bypassed by this review.
 - The checking popup shows completed checks, the active dependency scan and the waiting push. Review groups findings by package version; expand a package for advisory details or Scan details for coverage. Cancel push keeps local commits. Push anyway approves this attempt only.
 - Update advisory data downloads public ecosystem databases from OSV. Repository files and package lists stay on this computer.
+- On Linux, download osv-scanner_linux_amd64 from the release Get OSV-Scanner opens, make it executable (`chmod +x`), then choose it. Rocket accepts only the file itself, not a link, and only one that no other user can change. It runs the exact file it checked.
 
 ### Git program and identity
 

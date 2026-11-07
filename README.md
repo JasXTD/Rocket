@@ -363,7 +363,11 @@ Some features use what the system provides, and nothing else is needed to build:
   `SSH_AUTH_SOCK` names;
 - remembered tokens and passphrases need libsecret (`libsecret-1-0`) and an unlocked
   desktop keyring such as GNOME Keyring;
-- spell checking needs a Hunspell dictionary, such as `hunspell-en-us`.
+- spell checking needs a Hunspell dictionary, such as `hunspell-en-us`;
+- dependency checks need OSV-Scanner 2.7.0 for Linux x64, chosen in Edit → Preferences →
+  Security → Scanner & data;
+- Git LFS features need Git LFS 3.8.1 or later beside Git. Ubuntu 26.04 ships 3.7.1, so
+  install it from the Git LFS release.
 
 See [Current limits](#current-limits) for what still needs Windows.
 
@@ -467,9 +471,9 @@ folders. Start validation with the checks for the feature being changed; the
   Git: opening, creating and cloning repositories, history, diffs, staging, committing,
   fetching, automatic refresh, worktrees, the conflict editor, whole-file replacements,
   ignore rules, patch files and submodules. The integrated terminal, SSH keys, remembered
-  hosting tokens, MCP control and spell check work too. These still report that they need
-  Windows: Lua extensions, app updates, dependency scanning, LFS cache pruning and
-  automatic bisect. Steps that must never replace a file need a local filesystem such
+  hosting tokens, MCP control, spell check, dependency checks, automatic bisect and LFS
+  cache cleanup work too. Lua extensions and app updates still report that they need
+  Windows. Steps that must never replace a file need a local filesystem such
   as ext4, XFS or Btrfs; NFS, some FUSE mounts and WSL's `/mnt` drives are refused. Automatic refresh uses at most half of `fs.inotify.max_user_watches` and is
   not told about changes made through a network share. LFS tracking-rule edits are
   unverified on Linux. MCP's terminal probes are PowerShell commands, so the terminal
