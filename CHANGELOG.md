@@ -44,8 +44,11 @@ keep detailed test evidence in `VALIDATION.md`.
     leaves the terminal's text out of its state;
   - the smoke runner reads state a frame after a click, past egui's disabled sizing pass
     of a new menu.
-- `smoke-mcp-terminal` still stops at its blocked-commit case on every platform. MCP
-  disables Git hooks, so its `pre-commit` hook never runs.
+- `smoke-mcp-terminal` no longer times out at its blocked-commit case. MCP disables Git
+  hooks, so its `pre-commit` hook never ran; the Git relay (`tools/tests/git-relay.cjs`) now
+  holds the commit instead, on Windows and on Linux. The case still checks that the window
+  answers during the hold, that Stop ends the held Git before real Git starts, and that the
+  commit doesn't land.
 
 ## Unreleased — Linux dependency checks, automatic bisect and LFS cache cleanup (preview)
 

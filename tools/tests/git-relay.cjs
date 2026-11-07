@@ -3,12 +3,15 @@
 // rocket-mcp.exe. MCP does accept a saved Git choice that is the first Git on PATH, so the
 // relay is both, in this run's own profile, and the bundle and production code stay as they are.
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
+const {windows,exe:program}=require('./platform.cjs');
 const normal=p=>path.resolve(p.replace(/^\\\\\?\\/,'')).toLowerCase();
 // state is the folder that holds the first repository the run opens, where MCP keeps its profile.
 function gitRelay(root,env,source,state=root){
- const folder=path.join(root,'git-relay'),exe=path.join(folder,'git.exe'),selection=path.join(state,'rocket-ui-state','git-selection');
+ const folder=path.join(root,'git-relay'),exe=path.join(folder,program('git')),selection=path.join(state,'rocket-ui-state','git-selection');
  const gate=path.join(root,'git-gate'),marker=path.join(root,'git-marker');
- const realGit=cp.execFileSync('where.exe',['git.exe'],{windowsHide:true,encoding:'utf8'}).trim().split(/\r?\n/)[0];
+ // Real Git is the installed one, the first on PATH.
+ const realGit=windows?cp.execFileSync('where.exe',['git.exe'],{windowsHide:true,encoding:'utf8'}).trim().split(/\r?\n/)[0]
+  :cp.execFileSync('sh',['-c','command -v git'],{encoding:'utf8'}).trim();
  fs.mkdirSync(folder);fs.mkdirSync(path.dirname(selection),{recursive:true});
  cp.execFileSync('rustc',['--edition=2024','-C','debuginfo=0','-o',exe,path.resolve(source)],{windowsHide:true,stdio:'pipe'});
  fs.writeFileSync(selection,'ROCKET-GIT-1\n'+exe);

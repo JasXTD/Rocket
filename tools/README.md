@@ -156,9 +156,10 @@ WSL, set `WAYLAND_DISPLAY` to WSLg's socket, `/run/user/<uid>/wayland-0`, when t
 has no Wayland session. `test-mcp-psreadline.cjs` and `test-mcp-terminal-settings.cjs`
 test Windows-only behavior and stop on other platforms.
 
-`smoke-mcp-terminal.cjs` stops at its blocked-commit case on every platform. Its
-`pre-commit` hook never runs, because MCP's transport scope disables hooks for every Git
-command (`core.hooksPath=/dev/null`).
+`smoke-mcp-terminal.cjs` blocks its commit with the Git relay, `tools/tests/git-relay.cjs`,
+not a `pre-commit` hook: MCP's transport scope disables hooks for every Git command
+(`core.hooksPath=/dev/null`). The relay holds `before:commit`, and Stop must end it before
+real Git starts.
 
 `node tools/tests/test-mcp-playground-ai.cjs` exercises the Lua editor/preview and
 the connected-agent conflict workflow with synthetic proposals. It uses only
@@ -375,7 +376,8 @@ works this way now, so `helpers/bin/` only serves `check-tooling.cjs` and
 `test-mcp-auto-bisect`. The `productivity` relay takes `before:<argument>` and
 `after:<argument>`, and after a `before:` hold it writes the real Git's PID to
 `<marker>.child`. The `file-history-preview` relay holds a read whose argument equals
-the gate, and its marker carries both PIDs.
+the gate, and its marker carries both PIDs. The helper runs on Linux too, which has no
+bundle: there the relay is named `git`, and real Git is the first `git` on PATH.
 
 ## Logs and cleanup
 

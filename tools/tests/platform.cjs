@@ -7,16 +7,21 @@ const fs = require('node:fs'), cp = require('node:child_process');
 const windows = process.platform === 'win32';
 const exe = name => windows ? name + '.exe' : name;
 
-function gone(pid) {
+// With an image name, a PID that now runs another program counts as ended too: Windows
+// hands a freed PID to the next process at once, even to the tasklist run checking it.
+function gone(pid, image) {
   if (windows) {
-    const r = cp.spawnSync('tasklist.exe', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
+    const only = image ? ['/FI', `IMAGENAME eq ${image}`] : [];
+    const r = cp.spawnSync('tasklist.exe', ['/FI', `PID eq ${pid}`, ...only, '/FO', 'CSV', '/NH'], { encoding: 'utf8', windowsHide: true });
     if (r.status !== 0) throw Error('tasklist failed');
     return !r.stdout.includes(`"${pid}"`);
   }
   // Ended, or ended and only waiting for its parent to collect it.
   let stat;
   try { stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); } catch (e) { if (e.code === 'ENOENT') return true; throw e; }
-  return /^[ZX]/.test(stat.slice(stat.lastIndexOf(')') + 1).trimStart());
+  // The kernel keeps the first 15 bytes of a program's name.
+  const name = stat.slice(stat.indexOf('(') + 1, stat.lastIndexOf(')'));
+  return /^[ZX]/.test(stat.slice(stat.lastIndexOf(')') + 1).trimStart()) || (image !== undefined && name !== image.slice(0, 15));
 }
 
 const powershell = {

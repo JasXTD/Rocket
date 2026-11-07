@@ -3,13 +3,16 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const { create } = require('./mcp-github-fixture.cjs');
 const { RocketMcpClient } = require('../mcp/mcp-client.cjs');
-const { exe } = require('./platform.cjs');
+const { gitRelay } = require('./git-relay.cjs');
+const { exe, gone } = require('./platform.cjs');
 const fixture = create('local'); fixture.run('setup');
 const root = fixture.root;
 const report = { passed: false, root, kind: 'Native stdio MCP operation Console regression', cases: [], shell_terminal_implemented: true };
 const executable = path.join(__dirname, '..', '..', 'target', 'release', exe('rocket-mcp'));
 report.executable_sha256 = require('node:crypto').createHash('sha256').update(fs.readFileSync(executable)).digest('hex');
-const mcp = new RocketMcpClient(executable, root, fixture.env);
+// MCP runs Git with hooks off (SECURITY.md), so the relay, as this run's Git, holds the commit.
+const relay = gitRelay(root, fixture.env, 'tools/helpers/productivity/git-relay.rs');
+const mcp = new RocketMcpClient(executable, root, relay.env);
 let state;
 async function settle() {
   const until = Date.now() + 60000;
@@ -30,7 +33,7 @@ function semanticState() { const value = fixture.snapshot(); delete value.index;
 async function logs() { const all = []; let seq = 0; for (;;) { const b = await mcp.tool('rocket_logs', { after_seq: seq, limit: 1000 }); assert(!b.retention_gap); all.push(...b.records); seq = b.next_seq; if (!b.more) return { all, seq }; } }
 (async () => {
   try {
-    await mcp.initialize(); await mcp.tool('rocket_open', { path: fixture.client }); await settle();
+    await mcp.initialize(); await mcp.tool('rocket_open', { path: fixture.client }); await settle(); relay.check(state);
     await click('menu-terminal');
     // The menu acts on the shell only: Clear Output (Activity) and Stop Process (the Git
     // operation) moved to the Activity drawer, and the never-enabled items are gone.
@@ -46,11 +49,14 @@ async function logs() { const all = []; let seq = 0; for (;;) { const b = await 
     fs.writeFileSync(path.join(fixture.client, 'ROCKET_PRIVATE_file'), 'Staged terminal cancellation fixture\n');
     fixture.git(['add', '--', 'ROCKET_PRIVATE_file']);
     await click('refresh'); await settle(); await click('view-changes'); await settle(); await type('Terminal Stop Process cancellation draft');
-    const entered = path.join(root, 'hook-entered'); const heartbeat = path.join(root, 'hook-heartbeat');
-    const q = s => "'" + s.replaceAll('\\', '/').replaceAll("'", "'\"'\"'") + "'";
-    fs.writeFileSync(path.join(fixture.hooks, 'pre-commit'), `#!/bin/sh\nprintf x > ${q(entered)}\nwhile :; do printf x >> ${q(heartbeat)}; sleep 0.1; done\n`, { mode: 0o755 });
+    // The relay waits at 'before:commit' with real Git not started. Only once it goes on does
+    // it start real Git and write that PID to <marker>.child.
+    const { gate, marker } = relay, child = marker + '.child', git = exe('git');
+    fs.writeFileSync(gate, 'before:commit');
     const before = semanticState(); await click('commit');
-    const deadline = Date.now() + 10000; while (!fs.existsSync(entered) && Date.now() < deadline) await new Promise(r => setTimeout(r, 100)); assert(fs.existsSync(entered));
+    let held = 0; const deadline = Date.now() + 10000;
+    while (!(held = fs.existsSync(marker) ? Number(fs.readFileSync(marker, 'utf8')) : 0) && Date.now() < deadline) await new Promise(r => setTimeout(r, 100));
+    assert(held > 0, 'The relay did not hold the commit'); assert(!gone(held, git), 'The held relay ended'); assert(!fs.existsSync(child), 'Real Git started during the hold');
     state = await mcp.tool('rocket_state'); assert(state.busy);
     // A running operation is not the terminal's: the menu offers no way to stop it.
     await click('menu-terminal'); assert.equal(enabled('terminal-stop'), undefined); assert.equal(enabled('terminal-end-menu'), false);
@@ -59,11 +65,16 @@ async function logs() { const all = []; let seq = 0; for (;;) { const b = await 
     await click('menu-terminal'); await click('terminal-console'); assert(state.console_visible);
     assert.equal(enabled('console-clear'), undefined, 'Clear waits for the operation');
     await click('cancel-operation'); await settle();
+    // Stop ended the relay before real Git started; its PID can come straight back as another
+    // git, so allow a moment. Lifting the gate then shows nothing outlived Stop: a relay still
+    // waiting would start real Git, write its PID and land the commit.
+    for (const until = Date.now() + 3000; !gone(held, git); await new Promise(r => setTimeout(r, 100))) assert(Date.now() < until, 'Stop left the held relay running');
+    fs.unlinkSync(gate); await new Promise(r => setTimeout(r, 1000)); assert(!fs.existsSync(child), 'Real Git started after Stop');
+    state = await mcp.tool('rocket_state');
     assert.equal(state.activities.length, 1); assert.equal(state.activities[0].operation, 'commit'); assert.equal(state.activities[0].command_succeeded, false);
     assert.equal(state.tabs[0].draft_present, true); assert.deepEqual(semanticState(), before); assert(!fs.existsSync(path.join(fixture.client, '.git', 'index.lock')));
-    const size = fs.statSync(heartbeat).size; await new Promise(r => setTimeout(r, 1000)); assert.equal(fs.statSync(heartbeat).size, size);
-    fs.unlinkSync(path.join(fixture.hooks, 'pre-commit')); await capture('terminal-cancelled');
-    pass('The Activity drawer Cancel stops the blocked commit; preserves draft, staged data and files; child stops');
+    await capture('terminal-cancelled');
+    pass('The Activity drawer Cancel stops the blocked commit; preserves draft, staged data and files; the held Git ends before real Git starts');
     const beforeClear = await logs(); await click('console-clear'); assert.equal(state.activities.length, 0);
     const afterClear = await logs(); assert(afterClear.seq >= beforeClear.seq); assert(afterClear.all.length >= beforeClear.all.length);
     assert.equal(enabled('unstage-all'), true);
@@ -84,6 +95,8 @@ async function logs() { const all = []; let seq = 0; for (;;) { const b = await 
     await mcp.tool('rocket_close'); await mcp.finish(); report.passed = true;
   } catch (error) { report.error = error.message; console.error(error.stack); }
   finally {
+    // After a failure during the hold, the relay is still waiting: let it go on and end.
+    fs.rmSync(relay.gate, { force: true });
     try { await mcp.finish(); } catch (error) { report.shutdown_error = error.message; mcp.terminateOwnedProcess(); report.passed = false; }
     try { fixture.run('cleanup'); report.cleanup = fixture.r.cleanup; } catch (error) { report.cleanup_error = error.message; report.passed = false; }
     fs.writeFileSync(path.join(root, 'terminal-result.json'), JSON.stringify(report, null, 2));
