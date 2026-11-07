@@ -83,6 +83,15 @@ The Lua worker links its runtime statically because it runs from a private sandb
 directory. Packaging checks actual PE imports using the existing MSVC toolchain;
 the worker's compiler flags do not alter the ordinary host builds.
 
+On Linux x86_64, `tools/build-local.sh [release|debug] [--offline]` builds the matching
+bundle the same way: the worker first, then the hosts with its SHA-256. The Linux worker
+links its libraries as usual, because it locks itself down only after the dynamic loader
+has opened them. It is built without debug info, since Rocket copies and hashes the
+whole worker for every run, and for an explicit target, so its cache stays apart from
+the ordinary host builds. Its sandbox tests are `cargo test -p rocket-git --lib
+integration_worker`; they need `rustc` to build their probe. With a built worker,
+`ROCKET_TEST_LUA_WORKER` and `ROCKET_TEST_LUA_SHA256` enable the ignored test that runs it.
+
 `Copy-VcRuntime.ps1` reuses the pinned Microsoft DLL from an existing Visual Studio
 installation; `Package-Release.ps1 -VcRuntimeDirectory <directory>` can select
 that reviewed directory explicitly. It downloads/installs nothing and refuses an

@@ -868,6 +868,7 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 ## Extensions
 
 - Edit → Preferences → Extensions lists every extension. Jira and PlayGround ship with Rocket and start off. An extension runs in a sandboxed Lua worker and draws native panels; it cannot run Git or shell commands, read your files or see your tokens.
+- On Linux, extensions need an x86_64 system with Landlock, which Linux 5.13 and later provide when it is switched on, as Ubuntu does. Without it Rocket runs no extension script and says why.
 - Enable opens a review the first time: where the extension came from, its code and its three permissions. Network reaches only the server set in a connection. Reviewed writes and Repository details stay off until you allow them for a connection. Bundled Jira is copied into the extensions folder when you enable it. Enabling runs nothing: scripts run only from Refresh panel, a control in the panel or a command you choose.
 - Install from file takes a package's integration.json, with main.lua in the same folder, and copies both after the review. Rocket can't confirm who made a file, so only install what you trust: an extension with Network can send what you share with it to the server you set.
 - Each enabled extension gets its own entry in the sidebar, the icon rail, View → Go to and Preferences. An amber dot means it needs a review, or a check of a write that may have reached the service.

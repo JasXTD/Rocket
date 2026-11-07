@@ -4,7 +4,7 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 use std::io::{Read, Write};
 fn main() {
-    if rocket_git::IntegrationWorker::check_isolation().is_err() {
+    if rocket_git::IntegrationWorker::enter_isolation().is_err() {
         let _ = std::io::stdout().write_all(b"{\"kind\":\"error\",\"code\":\"sandbox\"}");
         std::process::exit(1);
     }

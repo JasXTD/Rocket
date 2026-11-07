@@ -130,6 +130,57 @@ users and offline copies, not from programs running as the same user.
 Hunspell dictionaries, so no C dictionary parser runs in Rocket. Dictionaries are read
 only from the system folders, and added words are kept in a 0600 file in Rocket's folder.
 
+## Linux Lua worker isolation (unreleased, 2026-11-07)
+
+On Linux x86_64, Lua runs in the same hash-bound worker as on Windows, with the same
+input, output, time and Lua VM limits. Windows starts the worker inside its container.
+On Linux the dynamic loader still has to open the worker's libraries after exec, so the
+worker locks itself down instead, first thing, before it reads any script. Only Rocket's
+own hash-checked code runs before that.
+
+**Launch.** Rocket opens the worker file without following a link, and refuses one that
+other users can change, as it does OSV-Scanner. It copies the file into a memory file
+and seals that against writes, growth and shrinking, then hashes the copy. What runs is
+exactly what was hashed; no path or later write can change it. The worker gets:
+- the sealed copy, run from `/proc/self/fd/N`;
+- an empty environment, with `/` as its folder;
+- its three pipes and nothing else: every other descriptor is closed on exec;
+- its own session and process group, with no terminal;
+- no new privileges (`PR_SET_NO_NEW_PRIVS`), no core dumps and a five-second CPU limit;
+- `SIGKILL` if the thread that started it ends, as closing the job kills the Windows
+  worker.
+
+Cancelling, a timeout or an output limit kills its process group.
+
+**Lock-down.** Before it reads input, the worker:
+- refuses to go on if it has more than one thread;
+- closes every descriptor above standard error;
+- caps CPU time at five seconds and private writable memory at 128 MiB, and allows no
+  core dumps, no file writes and no new descriptors;
+- stops other programs of the same user from attaching to it (`PR_SET_DUMPABLE`);
+- applies a Landlock ruleset with no rules. It denies every file access the kernel's
+  Landlock knows. From Landlock ABI 4 it also denies TCP connections and binds, and from
+  ABI 6 signals and abstract Unix sockets that leave the sandbox;
+- applies a seccomp filter. It allows reads from standard input, writes to standard
+  output and error, memory calls that never make memory executable, signals to itself,
+  clocks, random bytes and exit. Every other call fails with EPERM: opening files,
+  sockets, new processes and programs, tracing, io_uring and BPF among them. A call
+  from another architecture or from the x32 ABI kills the worker.
+
+The worker then checks that opening `/` and creating a socket are refused, with the
+errors that show Landlock and seccomp refused them.
+
+Lua fails closed: without Landlock (Linux before 5.13, or switched off), on another
+architecture, or where any step fails. There is no unrestricted fallback. The sandbox
+tests compile the same lock-down code into a probe that tries to read, write, connect,
+fork, map executable memory, allocate 256 MiB and signal its parent.
+
+As on Windows, this is defense in depth around an unsigned native worker. It relies on
+the kernel's Landlock and seccomp and cannot rule out kernel flaws. Rights that later
+Landlock versions add stay unhandled until Rocket names them; seccomp refuses their
+calls anyway. A system that forbids executable memory files (`vm.memfd_noexec=2`) can't
+start the worker.
+
 ## Local crash reports (0.92.0)
 
 Desktop, operational CLI commands and the MCP host install a process-local Rust

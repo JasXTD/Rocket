@@ -953,7 +953,7 @@ pub(crate) struct ProcessPipes<I, O, E> {
     pub stderr: E,
 }
 
-#[cfg(windows)]
+#[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
 pub(crate) fn collect_worker_process(
     process: &mut impl RunningProcess,
     pipes: ProcessPipes<impl Write + Send, impl Read + Send, impl Read + Send>,

@@ -2,6 +2,8 @@
 use crate::{CancellationToken, CommandLimits, Error, Result, runner::Output};
 use std::path::PathBuf;
 
+#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+mod linux;
 #[cfg(windows)]
 mod windows;
 
@@ -21,13 +23,21 @@ impl IntegrationWorker {
         }
     }
 
-    /// Worker entry points call this before reading or compiling untrusted input.
-    pub fn check_isolation() -> Result<()> {
+    /// Worker entry points call this first, before reading or compiling untrusted input.
+    /// On Windows the launcher starts the worker in its container, and this checks that
+    /// it is there. On Linux x86_64 the worker locks itself down here with Landlock and
+    /// seccomp. That can't be undone, so nothing but the worker's entry point may call it;
+    /// it refuses a process with more than one thread.
+    pub fn enter_isolation() -> Result<()> {
         #[cfg(windows)]
         {
             windows::check_current()
         }
-        #[cfg(not(windows))]
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            linux::enter_current()
+        }
+        #[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
         {
             Err(Error::Unsupported(
                 "Lua worker isolation is unavailable on this platform".into(),
@@ -44,16 +54,27 @@ impl IntegrationWorker {
         cancel.check()?;
         crate::ensure_unprivileged_process()?;
         if self.sha256.len() != 64 || !self.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
-            return Err(Error::InvalidInput("integration_worker_unbound: This build has no valid embedded Lua worker hash. Build the complete bundle with tools/Build-Local.ps1.".into()));
+            let script = if cfg!(windows) {
+                "tools/Build-Local.ps1"
+            } else {
+                "tools/build-local.sh"
+            };
+            return Err(Error::InvalidInput(format!(
+                "integration_worker_unbound: This build has no valid embedded Lua worker hash. Build the complete bundle with {script}."
+            )));
         }
         #[cfg(windows)]
         {
             windows::run(self, input, limits, cancel)
         }
-        #[cfg(not(windows))]
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            linux::run(self, input, limits, cancel)
+        }
+        #[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
         {
             let _ = (&self.path, input, limits);
-            Err(Error::Unsupported("integration_worker_sandbox: Lua execution requires the Windows worker sandbox; no unrestricted fallback is provided.".into()))
+            Err(Error::Unsupported("integration_worker_sandbox: Lua execution needs the worker sandbox of Windows or Linux x86_64; no unrestricted fallback is provided.".into()))
         }
     }
 }

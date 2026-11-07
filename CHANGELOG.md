@@ -8,6 +8,24 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Lua extensions on Linux (preview)
+
+- Lua extensions, the Lua playground and Lua validation run on Linux x86_64. As on
+  Windows, every run uses the hash-bound worker. On Linux it runs from a sealed copy in
+  memory, with no environment and only its pipes.
+- The worker locks itself down before it reads a script:
+  - Landlock denies all file access, and network access and signals where the kernel
+    supports that;
+  - seccomp allows only its pipes, memory that never becomes executable, signals to
+    itself, clocks and exit;
+  - CPU time and memory have the Windows limits of five seconds and 128 MiB.
+- Lua needs Landlock, which Linux 5.13 and later provide when it is switched on. Without
+  it, or on another architecture, Rocket runs no script and says why.
+- `tools/build-local.sh` builds the matching Linux bundle, the worker first, as
+  `tools/Build-Local.ps1` does on Windows.
+- For developers: `IntegrationWorker::check_isolation` is now `enter_isolation`. On
+  Linux it locks the calling process down, so only the worker's entry point calls it.
+
 ## Unreleased — Linux MCP terminal tests (preview)
 
 - MCP accepts fixed bash probes in the terminal on Linux, where an MCP window runs bash, as

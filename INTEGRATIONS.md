@@ -307,12 +307,20 @@ Windows also isolates every invocation in a fresh Less Privileged AppContainer
 limit, and no child processes. Only input/output pipes and a read/execute copy of
 the verified worker are supplied. Direct network access and private user-file
 access are denied; approved HTTP requests still pass through Rocket's native broker.
-The worker refuses direct execution outside this container. Unsupported Windows
-policies and other platforms fail closed; there is no unrestricted fallback.
+The worker refuses direct execution outside this container.
+
+On Linux x86_64 the worker runs from a sealed copy in memory, with only its
+input/output pipes, and locks itself down before it reads the script. Landlock
+denies all file access, and network connections and signals on kernels that support
+that. Seccomp allows only its pipes, memory that never becomes executable, signals
+to itself, clocks and exit. The same five-second CPU and 128 MiB memory limits apply.
+This needs Landlock, which Linux 5.13 and later provide when it is switched on.
+Unsupported Windows policies, Linux without Landlock and other platforms fail closed;
+there is no unrestricted fallback.
 
 Rocket compares the worker to the SHA-256 embedded in the host during the build,
-holds the source and staged image against modification, and rejects mismatches
-before execution. Unsigned executables are supported without a certificate. A
+holds the source and staged image against modification (on Linux, it seals its copy
+in memory), and rejects mismatches before execution. Unsigned executables are supported without a certificate. A
 hash binds the worker to its host; it cannot authenticate a host that was itself
 replaced. Review scripts and their requested access: the sandbox cannot prevent
 misuse of data deliberately supplied through the approved API or guarantee against
@@ -374,6 +382,6 @@ that Rocket does not expose: collectgarbage, coroutine and metatable access.
 The existing runtime regression checks their absence and rejects bytecode.
 This narrows those particular entry points; it does not prove that every native
 VM defect is unreachable. Numeric-loop/negative-zero correctness fixes remain
-upstream. The Windows LPAC described above now adds OS isolation around the native
-runtime; it does not claim to patch those upstream issues. Use a matching complete
+upstream. The Windows LPAC and the Linux lock-down described above add OS isolation
+around the native runtime; it does not claim to patch those upstream issues. Use a matching complete
 bundle and review requested permissions. No signing certificate is required.

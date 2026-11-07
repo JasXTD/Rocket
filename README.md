@@ -351,8 +351,11 @@ cargo build --workspace --locked
 ./target/debug/rocket
 ```
 
-Add `--features rocket-integrations/runtime` for the release feature set. Rocket uses the
-first `git` on `PATH`; Linux has no bundled Git. Settings, logs and crash reports live in
+Add `--features rocket-integrations/runtime` for the release feature set. Lua extensions
+also need the Lua worker's SHA-256 built into Rocket: `tools/build-local.sh` builds the
+worker first and then Rocket with its hash, as `tools/Build-Local.ps1` does on Windows
+(`tools/build-local.sh debug` for a debug bundle). Rocket uses the first `git` on `PATH`;
+Linux has no bundled Git. Settings, logs and crash reports live in
 `$XDG_STATE_HOME/rocket`, by default `~/.local/state/rocket`. As it refuses Run as
 administrator on Windows, Rocket refuses to run as root, for example under `sudo`.
 
@@ -367,7 +370,9 @@ Some features use what the system provides, and nothing else is needed to build:
 - dependency checks need OSV-Scanner 2.7.0 for Linux x64, chosen in Edit → Preferences →
   Security → Scanner & data;
 - Git LFS features need Git LFS 3.8.1 or later beside Git. Ubuntu 26.04 ships 3.7.1, so
-  install it from the Git LFS release.
+  install it from the Git LFS release;
+- Lua extensions need an x86_64 system with Landlock, which Linux 5.13 and later provide
+  when it is switched on, as Ubuntu does.
 
 See [Current limits](#current-limits) for what still needs Windows.
 
@@ -471,9 +476,9 @@ folders. Start validation with the checks for the feature being changed; the
   Git: opening, creating and cloning repositories, history, diffs, staging, committing,
   fetching, automatic refresh, worktrees, the conflict editor, whole-file replacements,
   ignore rules, patch files and submodules. The integrated terminal, SSH keys, remembered
-  hosting tokens, MCP control, spell check, dependency checks, automatic bisect and LFS
-  cache cleanup work too. Lua extensions and app updates still report that they need
-  Windows. Steps that must never replace a file need a local filesystem such
+  hosting tokens, MCP control, spell check, dependency checks, automatic bisect, LFS
+  cache cleanup and, on x86_64 with Landlock, Lua extensions work too. App updates still
+  report that they need Windows. Steps that must never replace a file need a local filesystem such
   as ext4, XFS or Btrfs; NFS, some FUSE mounts and WSL's `/mnt` drives are refused. Automatic refresh uses at most half of `fs.inotify.max_user_watches` and is
   not told about changes made through a network share. LFS tracking-rule edits are
   unverified on Linux. The MCP terminal runners run on Linux with bash probes. Most other

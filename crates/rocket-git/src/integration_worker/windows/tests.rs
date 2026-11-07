@@ -177,7 +177,7 @@ fn worker_path_and_direct_execution_require_isolation() {
     ] {
         assert!(local_path(Path::new(path)).is_err(), "{path}");
     }
-    assert!(IntegrationWorker::check_isolation().is_err());
+    assert!(IntegrationWorker::enter_isolation().is_err());
 }
 
 #[link(name = "kernel32")]
