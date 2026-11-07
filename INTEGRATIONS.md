@@ -303,7 +303,7 @@ tonumber, tostring, type, rawequal, rawlen, table, string, math and utf8. No os,
 debug, package, require, load/loadfile/dofile, coroutine, collectgarbage, metatable
 access or bytecode. `string.dump`, math.random/randomseed and print are absent.
 Windows also isolates every invocation in a fresh Less Privileged AppContainer
-(LPAC), with no capabilities, a 128 MiB process memory limit, a five-second CPU
+(LPAC), with no capabilities, a 128 MiB committed-process-memory limit, a five-second CPU
 limit, and no child processes. Only input/output pipes and a read/execute copy of
 the verified worker are supplied. Direct network access and private user-file
 access are denied; approved HTTP requests still pass through Rocket's native broker.
@@ -313,7 +313,13 @@ On Linux x86_64 the worker runs from a sealed copy in memory, with only its
 input/output pipes, and locks itself down before it reads the script. Landlock
 denies all file access, and network connections and signals on kernels that support
 that. Seccomp allows only its pipes, memory that never becomes executable, signals
-to itself, clocks and exit. The same five-second CPU and 128 MiB memory limits apply.
+to itself, selected clocks, private wait/wake futexes and exit. Shared/grows-down
+mappings and executable mappings are refused. Linux has a 128 MiB total virtual
+address-space limit (including mapped libraries), a 128 MiB data limit, a 2 MiB stack
+limit, no locked memory and a pending-signal limit of 32. These differ from Windows'
+committed-memory accounting. CPU soft/hard limits are five/six seconds, alongside
+the host's five-second wall deadline. The launcher clears ambient, effective,
+permitted and inheritable capabilities in the child; it does not change the host.
 This needs Landlock, which Linux 5.13 and later provide when it is switched on.
 Unsupported Windows policies, Linux without Landlock and other platforms fail closed;
 there is no unrestricted fallback.

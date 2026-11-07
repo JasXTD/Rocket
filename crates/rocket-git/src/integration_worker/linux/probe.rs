@@ -26,6 +26,8 @@ unsafe extern "C" {
     fn _exit(status: c_int) -> !;
     fn kill(pid: c_int, signal: c_int) -> c_int;
     fn getppid() -> c_int;
+    fn syscall(number: c_long, ...) -> c_long;
+    fn mremap(address: *mut c_void, old: usize, new: usize, flags: c_int, ...) -> *mut c_void;
 }
 const F_GETFD: c_int = 1;
 const PROT_READ: c_int = 1;
@@ -35,17 +37,12 @@ const MAP_PRIVATE: c_int = 2;
 const MAP_ANONYMOUS: c_int = 0x20;
 
 fn mapped(length: usize, protection: c_int) -> Option<*mut c_void> {
+    mapped_with_flags(length, protection, MAP_PRIVATE | MAP_ANONYMOUS)
+}
+
+fn mapped_with_flags(length: usize, protection: c_int, flags: c_int) -> Option<*mut c_void> {
     // SAFETY: a new private anonymous mapping that nothing else refers to.
-    let address = unsafe {
-        mmap(
-            std::ptr::null_mut(),
-            length,
-            protection,
-            MAP_PRIVATE | MAP_ANONYMOUS,
-            -1,
-            0,
-        )
-    };
+    let address = unsafe { mmap(std::ptr::null_mut(), length, protection, flags, -1, 0) };
     (address as usize != usize::MAX).then_some(address)
 }
 
@@ -55,6 +52,16 @@ fn main() {
     let inherited = (3..1024).any(|fd| unsafe { fcntl(fd, F_GETFD) } != -1);
     // SAFETY: getppid has no preconditions.
     let parent = unsafe { getppid() };
+    let startup = std::fs::read_to_string("/proc/self/status").unwrap();
+    let inherited_caps: u64 = startup
+        .lines()
+        .filter(|line| {
+            ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"]
+                .iter()
+                .any(|prefix| line.starts_with(prefix))
+        })
+        .map(|line| u64::from_str_radix(line.split_whitespace().nth(1).unwrap(), 16).unwrap())
+        .fold(0, |a, b| a | b);
     if let Err(error) = lockdown::apply() {
         println!("lockdown={error}");
         std::process::exit(3);
@@ -63,6 +70,7 @@ fn main() {
     std::io::stdin().read_to_string(&mut input).unwrap();
     let mut lines = input.lines();
     match lines.next().unwrap_or("") {
+        "capabilities" => println!("inherited_capabilities={inherited_caps}"),
         "permissions" => {
             let read = std::fs::read(lines.next().unwrap()).is_ok();
             let write = std::fs::write(lines.next().unwrap(), b"fixture-only").is_ok();
@@ -92,10 +100,71 @@ fn main() {
                 "read={read};write={write};network={network};child={child};executable_memory={executable_memory};large_allocation={large_allocation};inherited={inherited};signal={signal}"
             );
         }
-        // The sandbox has no sleep call; spin until stopped.
-        "wait" => loop {
-            std::hint::spin_loop();
-        },
+        "memory" => {
+            let errno = |ok| {
+                if ok {
+                    0
+                } else {
+                    std::io::Error::last_os_error().raw_os_error().unwrap()
+                }
+            };
+            // Never touch these pages: a regressed sandbox must not consume real RAM
+            // while the tests demonstrate the missing limits.
+            let shared = errno(mapped_with_flags(4096, 3, 0x21).is_some());
+            let growsdown = errno(mapped_with_flags(4096, 3, 0x122).is_some());
+            let reserve = errno(mapped(256 * 1024 * 1024, 0).is_some());
+            let page = mapped(4096, 3).unwrap();
+            // SAFETY: a mapping owned by this probe, MREMAP_MAYMOVE, no fixed address.
+            let remap =
+                errno(unsafe { mremap(page, 4096, 256 * 1024 * 1024, 1) } as usize != usize::MAX);
+            println!("shared={shared};growsdown={growsdown};reserve={reserve};remap={remap}");
+        }
+        "calls" => {
+            let mut word = 1u32;
+            let errno = |result| {
+                if result >= 0 {
+                    0
+                } else {
+                    std::io::Error::last_os_error().raw_os_error().unwrap()
+                }
+            };
+            // SAFETY: valid futex word; mismatching expected value makes waits return
+            // immediately. Disallowed variants get EPERM before their arguments run.
+            let mut futex = |op: c_int| {
+                errno(unsafe {
+                    syscall(
+                        202,
+                        &mut word,
+                        op,
+                        0,
+                        std::ptr::null::<c_void>(),
+                        std::ptr::null::<c_void>(),
+                        u32::MAX,
+                    )
+                })
+            };
+            let shared_futex = futex(1);
+            let requeue = futex(3);
+            let pi = futex(136);
+            let private_wait = futex(128);
+            let private_wake = futex(129);
+            let mut time = [0i64; 2];
+            // SAFETY: two i64s in timespec layout; a negative process CPU clock id.
+            let foreign_clock =
+                errno(unsafe { syscall(228, ((!parent) << 3) | 2, time.as_mut_ptr()) });
+            let monotonic = errno(unsafe { syscall(228, 1, time.as_mut_ptr()) });
+            println!(
+                "shared_futex={shared_futex};requeue={requeue};pi={pi};private_wait={private_wait};private_wake={private_wake};foreign_clock={foreign_clock};monotonic={monotonic}"
+            );
+        }
+        // The sandbox has no sleep call; confirm startup/input before spinning.
+        "wait" => {
+            println!("READY");
+            std::io::stdout().flush().unwrap();
+            loop {
+                std::hint::spin_loop();
+            }
+        }
         "flood" => loop {
             if std::io::stdout().write_all(&[b'x'; 8192]).is_err() {
                 break;

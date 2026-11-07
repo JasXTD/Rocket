@@ -135,18 +135,21 @@ only from the system folders, and added words are kept in a 0600 file in Rocket'
 On Linux x86_64, Lua runs in the same hash-bound worker as on Windows, with the same
 input, output, time and Lua VM limits. Windows starts the worker inside its container.
 On Linux the dynamic loader still has to open the worker's libraries after exec, so the
-worker locks itself down instead, first thing, before it reads any script. Only Rocket's
-own hash-checked code runs before that.
+worker locks itself down at its entry point, before it reads any script. The system
+dynamic loader, shared libraries and Rust startup run before that boundary; the
+embedded hash binds the worker bytes, not those system components.
 
-**Launch.** Rocket opens the worker file without following a link, and refuses one that
-other users can change, as it does OSV-Scanner. It copies the file into a memory file
+**Launch.** Rocket opens the worker, then checks the opened descriptor against the path
+and rejects links, non-regular files, unexpected owners and group/other-writable files.
+This is post-open validation, not an `O_NOFOLLOW` open. It copies the file into a memory file
 and seals that against writes, growth and shrinking, then hashes the copy. What runs is
 exactly what was hashed; no path or later write can change it. The worker gets:
 - the sealed copy, run from `/proc/self/fd/N`;
 - an empty environment, with `/` as its folder;
 - its three pipes and nothing else: every other descriptor is closed on exec;
 - its own session and process group, with no terminal;
-- no new privileges (`PR_SET_NO_NEW_PRIVS`), no core dumps and a five-second CPU limit;
+- no new privileges (`PR_SET_NO_NEW_PRIVS`), cleared ambient, effective, permitted and
+  inheritable capabilities, no core dumps and a five-second CPU soft limit (six hard);
 - `SIGKILL` if the thread that started it ends, as closing the job kills the Windows
   worker.
 
@@ -155,17 +158,27 @@ Cancelling, a timeout or an output limit kills its process group.
 **Lock-down.** Before it reads input, the worker:
 - refuses to go on if it has more than one thread;
 - closes every descriptor above standard error;
-- caps CPU time at five seconds and private writable memory at 128 MiB, and allows no
-  core dumps, no file writes and no new descriptors;
+- clears capabilities again, including on direct execution;
+- bounds further virtual-address growth at 128 MiB (`RLIMIT_AS`, including libraries
+  and reservations), with a 128 MiB data limit, 2 MiB stack limit, no locked memory
+  and a pending-signal limit of 32. Lower existing hard limits stay lower. This differs
+  from Windows' 128 MiB committed-process-memory limit; neither is a machine-wide RAM
+  quota. CPU soft/hard limits are five/six seconds; the host also enforces a five-second
+  wall deadline. No core dumps, file writes or new descriptors are allowed;
 - stops other programs of the same user from attaching to it (`PR_SET_DUMPABLE`);
 - applies a Landlock ruleset with no rules. It denies every file access the kernel's
   Landlock knows. From Landlock ABI 4 it also denies TCP connections and binds, and from
   ABI 6 signals and abstract Unix sockets that leave the sandbox;
 - applies a seccomp filter. It allows reads from standard input, writes to standard
-  output and error, memory calls that never make memory executable, signals to itself,
-  clocks, random bytes and exit. Every other call fails with EPERM: opening files,
-  sockets, new processes and programs, tracing, io_uring and BPF among them. A call
-  from another architecture or from the x32 ABI kills the worker.
+  output and error, private anonymous mappings (no shared/grows-down or executable
+  maps), non-executable memory protection changes, signals to itself, private futex
+  wait/wake/timed wait-bitset, clock IDs 0–7, random bytes and exit. Negative clock IDs
+  that name other processes are refused. Unlisted calls presented to the filter fail
+  with EPERM: opening files, sockets, new processes and programs, tracing, io_uring
+  and BPF among them. A different architecture or x32 ABI kills the worker when the
+  kernel passes the call through this filter. Newer kernels exempt their `uretprobe`
+  and `uprobe` trampoline syscalls from seccomp by design; that is not a general
+  syscall-filter bypass available to the extension.
 
 The worker then checks that opening `/` and creating a socket are refused, with the
 errors that show Landlock and seccomp refused them.
@@ -173,12 +186,17 @@ errors that show Landlock and seccomp refused them.
 Lua fails closed: without Landlock (Linux before 5.13, or switched off), on another
 architecture, or where any step fails. There is no unrestricted fallback. The sandbox
 tests compile the same lock-down code into a probe that tries to read, write, connect,
-fork, map executable memory, allocate 256 MiB and signal its parent.
+fork, map executable/shared/grows-down memory, reserve 256 MiB, use forbidden futexes
+and clocks, and signal its parent. They check the installed limits, compare every
+syscall number 0–1023 to an independent policy, and require a fully started worker
+to stop within one second of abrupt parent exit. Runtime tests also run the actual
+Cargo-built Lua worker, including Unicode, instruction and allocation limits.
 
 As on Windows, this is defense in depth around an unsigned native worker. It relies on
 the kernel's Landlock and seccomp and cannot rule out kernel flaws. Rights that later
-Landlock versions add stay unhandled until Rocket names them; seccomp refuses their
-calls anyway. A system that forbids executable memory files (`vm.memfd_noexec=2`) can't
+Landlock versions add stay unhandled until Rocket names them; seccomp independently
+restricts the available calls and arguments, subject to the kernel exceptions above.
+A system that forbids executable memory files (`vm.memfd_noexec=2`) can't
 start the worker.
 
 ## Local crash reports (0.92.0)

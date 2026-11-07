@@ -22,14 +22,21 @@ unsafe extern "C" {
 
 /// The worker's CPU time, as the Windows job allows five seconds.
 pub const CPU_SECONDS: u64 = 5;
-/// Its private writable memory, as the Windows job caps process memory at 128 MiB.
+/// Total virtual address space, including libraries, stacks and non-writable maps.
+/// This is deliberately distinct from Windows' committed-process-memory accounting.
 pub const MEMORY_BYTES: u64 = 128 * 1024 * 1024;
+const STACK_BYTES: u64 = 2 * 1024 * 1024;
+const PENDING_SIGNALS: u64 = 32;
 
 pub const RLIMIT_CPU: c_int = 0;
 const RLIMIT_FSIZE: c_int = 1;
 const RLIMIT_DATA: c_int = 2;
+const RLIMIT_STACK: c_int = 3;
 pub const RLIMIT_CORE: c_int = 4;
 const RLIMIT_NOFILE: c_int = 7;
+const RLIMIT_MEMLOCK: c_int = 8;
+const RLIMIT_AS: c_int = 9;
+const RLIMIT_SIGPENDING: c_int = 11;
 
 #[repr(C)]
 struct Limit {
@@ -57,6 +64,8 @@ const SYS_GETPID: u32 = 39;
 const SYS_SOCKET: u32 = 41;
 const SYS_EXIT: u32 = 60;
 const SYS_GETTIMEOFDAY: u32 = 96;
+const SYS_CAPGET: u32 = 125;
+const SYS_CAPSET: u32 = 126;
 const SYS_SIGALTSTACK: u32 = 131;
 const SYS_GETTID: u32 = 186;
 const SYS_TIME: u32 = 201;
@@ -72,9 +81,10 @@ const SYS_CLOSE_RANGE: u32 = 436;
 const SYS_LANDLOCK_CREATE_RULESET: u32 = 444;
 const SYS_LANDLOCK_RESTRICT_SELF: u32 = 446;
 
-/// Calls the worker may make once locked down, whatever their arguments. Each one acts
-/// only on the worker itself: its memory, signal handling, clocks and exit. `read`,
-/// `write`, `mmap`, `mprotect` and `tgkill` are allowed with checked arguments below.
+/// Calls the worker may make once locked down without argument checks: its memory,
+/// signal handling, IDs, global wall time, randomness and exit. Pipes, mappings,
+/// protections, futex operations, clock IDs and tgkill need checks below. In particular,
+/// arbitrary clock_gettime IDs and futex operations can reach beyond this process.
 pub const ALLOWED: &[u32] = &[
     SYS_CLOSE,
     SYS_MUNMAP,
@@ -91,9 +101,7 @@ pub const ALLOWED: &[u32] = &[
     SYS_SIGALTSTACK,
     SYS_GETTID,
     SYS_TIME,
-    SYS_FUTEX,
     SYS_RESTART_SYSCALL,
-    SYS_CLOCK_GETTIME,
     SYS_EXIT_GROUP,
     SYS_GETRANDOM,
 ];
@@ -109,7 +117,16 @@ const EACCES: i32 = 13;
 const PR_SET_DUMPABLE: c_int = 4;
 const PR_SET_NAME: c_int = 15;
 pub const PR_SET_NO_NEW_PRIVS: c_int = 38;
+const PR_CAP_AMBIENT: c_int = 47;
+const PR_CAP_AMBIENT_CLEAR_ALL: c_ulong = 4;
 pub const PROT_EXEC: u32 = 4;
+const MAP_SHARED: u32 = 1;
+const MAP_PRIVATE: u32 = 2;
+const MAP_ANONYMOUS: u32 = 0x20;
+const MAP_GROWSDOWN: u32 = 0x100;
+const FUTEX_WAIT_PRIVATE: u32 = 128;
+const FUTEX_WAKE_PRIVATE: u32 = 129;
+const FUTEX_WAIT_BITSET_PRIVATE: u32 = 137;
 const CLOSE_RANGE_CLOEXEC: c_long = 1 << 2;
 const LANDLOCK_CREATE_RULESET_VERSION: c_long = 1;
 const SECCOMP_SET_MODE_FILTER: c_long = 1;
@@ -130,6 +147,10 @@ pub fn apply() -> io::Result<()> {
             "only the single-threaded Lua worker may lock itself down",
         ));
     }
+    control(PR_SET_NO_NEW_PRIVS, 1)?;
+    // Also protects direct starts. The launcher already drops these before exec and
+    // before arming PDEATHSIG (changing capabilities can clear that setting).
+    clear_capabilities()?;
     // SAFETY: closes only this process's own descriptors above standard error; nothing
     // in the worker holds one.
     check(unsafe {
@@ -144,10 +165,13 @@ pub fn apply() -> io::Result<()> {
     limit(RLIMIT_FSIZE, 0, 0)?;
     limit(RLIMIT_CPU, CPU_SECONDS, CPU_SECONDS + 1)?;
     limit(RLIMIT_DATA, MEMORY_BYTES, MEMORY_BYTES)?;
+    limit(RLIMIT_AS, MEMORY_BYTES, MEMORY_BYTES)?;
+    limit(RLIMIT_STACK, STACK_BYTES, STACK_BYTES)?;
+    limit(RLIMIT_MEMLOCK, 0, 0)?;
+    limit(RLIMIT_SIGPENDING, PENDING_SIGNALS, PENDING_SIGNALS)?;
     // Executing through /proc/self/fd named the process after a number.
     // SAFETY: a terminated name of 16 bytes, the kernel's limit, read during the call.
     unsafe { prctl(PR_SET_NAME, c"rocket-lua-host".as_ptr()) };
-    control(PR_SET_NO_NEW_PRIVS, 1)?;
     // Also keeps other programs of the same user from attaching to the worker.
     control(PR_SET_DUMPABLE, 0)?;
     landlock()?;
@@ -269,6 +293,7 @@ struct Program {
 
 const LOAD: u16 = 0x20; // BPF_LD | BPF_W | BPF_ABS
 const EQUAL: u16 = 0x15; // BPF_JMP | BPF_JEQ | BPF_K
+const GREATER: u16 = 0x25; // BPF_JMP | BPF_JGT | BPF_K (unsigned)
 const ANY_BITS: u16 = 0x45; // BPF_JMP | BPF_JSET | BPF_K
 const RETURN: u16 = 0x06; // BPF_RET | BPF_K
 pub const AUDIT_ARCH_X86_64: u32 = 0xC000_003E;
@@ -288,8 +313,9 @@ const fn op(code: u16, jt: u8, jf: u8, k: u32) -> Instruction {
 }
 
 /// The seccomp filter for a worker whose process ID is `pid`. Another architecture or
-/// x32 call kills the worker; any call not allowed here fails with EPERM. Jumps are
-/// relative to the next instruction, and every check is a short block of its own.
+/// x32 call presented to it kills the worker; other unlisted calls get EPERM. Linux
+/// exempts its uretprobe/uprobe trampoline calls from seccomp on newer kernels.
+/// Jumps are relative to the next instruction; each check is a short block of its own.
 pub fn filter(pid: u32) -> Vec<Instruction> {
     let mut program = vec![
         op(LOAD, 0, 0, ARCH),
@@ -323,16 +349,51 @@ pub fn filter(pid: u32) -> Vec<Instruction> {
             op(RETURN, 0, 0, ALLOW),
         ]);
     }
-    // Never executable memory.
-    for call in [SYS_MMAP, SYS_MPROTECT] {
-        program.extend([
-            op(EQUAL, 0, 4, call),
-            op(LOAD, 0, 0, argument(2)),
-            op(ANY_BITS, 0, 1, PROT_EXEC),
-            op(RETURN, 0, 0, DENY),
-            op(RETURN, 0, 0, ALLOW),
-        ]);
-    }
+    // Only private anonymous mappings. Shared (including MAP_SHARED_VALIDATE) and
+    // grows-down mappings escape RLIMIT_DATA accounting; RLIMIT_AS also bounds all
+    // reservations and mremap growth. The already-loaded stack has its own limit.
+    program.extend([
+        op(EQUAL, 0, 11, SYS_MMAP),
+        op(LOAD, 0, 0, argument(2)),
+        op(ANY_BITS, 0, 1, PROT_EXEC),
+        op(RETURN, 0, 0, DENY),
+        op(LOAD, 0, 0, argument(3)),
+        op(ANY_BITS, 0, 1, MAP_SHARED | MAP_GROWSDOWN),
+        op(RETURN, 0, 0, DENY),
+        op(ANY_BITS, 1, 0, MAP_PRIVATE),
+        op(RETURN, 0, 0, DENY),
+        op(ANY_BITS, 1, 0, MAP_ANONYMOUS),
+        op(RETURN, 0, 0, DENY),
+        op(RETURN, 0, 0, ALLOW),
+    ]);
+    // Existing writable memory must never become executable either.
+    program.extend([
+        op(EQUAL, 0, 4, SYS_MPROTECT),
+        op(LOAD, 0, 0, argument(2)),
+        op(ANY_BITS, 0, 1, PROT_EXEC),
+        op(RETURN, 0, 0, DENY),
+        op(RETURN, 0, 0, ALLOW),
+    ]);
+    // Runtime locks use private wait/wake and monotonic timed waits. Shared futexes,
+    // PI, requeue and wake-op operations are unnecessary in this single-thread worker.
+    program.extend([
+        op(EQUAL, 0, 6, SYS_FUTEX),
+        op(LOAD, 0, 0, argument(1)),
+        op(EQUAL, 3, 0, FUTEX_WAIT_PRIVATE),
+        op(EQUAL, 2, 0, FUTEX_WAKE_PRIVATE),
+        op(EQUAL, 1, 0, FUTEX_WAIT_BITSET_PRIVATE),
+        op(RETURN, 0, 0, DENY),
+        op(RETURN, 0, 0, ALLOW),
+    ]);
+    // IDs 0..7 are system clocks or this process/thread's own CPU clock. Negative
+    // clockid_t values encode other processes or descriptors; unsigned JGT rejects them.
+    program.extend([
+        op(EQUAL, 0, 4, SYS_CLOCK_GETTIME),
+        op(LOAD, 0, 0, argument(0)),
+        op(GREATER, 0, 1, 7),
+        op(RETURN, 0, 0, DENY),
+        op(RETURN, 0, 0, ALLOW),
+    ]);
     // Signals to itself only, as abort() sends them.
     program.extend([
         op(EQUAL, 0, 4, SYS_TGKILL),
@@ -414,6 +475,45 @@ pub fn control(option: c_int, value: c_ulong) -> io::Result<()> {
     // SAFETY: integer arguments only.
     if unsafe { prctl(option, value, zero, zero, zero) } == -1 {
         return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Drop inherited privileges before exec. No allocations: also called in pre_exec.
+/// Dropping the permitted/inheritable sets prevents an ambient capability returning;
+/// no_new_privs and the later syscall filter prevent acquiring new privileges.
+pub fn clear_capabilities() -> io::Result<()> {
+    #[repr(C)]
+    struct Header {
+        version: u32,
+        pid: c_int,
+    }
+    #[repr(C)]
+    #[derive(Clone, Copy)]
+    struct Capabilities {
+        effective: u32,
+        permitted: u32,
+        inheritable: u32,
+    }
+    let header = Header {
+        version: 0x2008_0522,
+        pid: 0,
+    }; // _LINUX_CAPABILITY_VERSION_3
+    let empty = Capabilities {
+        effective: 0,
+        permitted: 0,
+        inheritable: 0,
+    };
+    let mut caps = [empty; 2];
+    control(PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL)?;
+    // SAFETY: version 3 reads/writes exactly two entries; pid 0 is this thread.
+    check(unsafe { syscall(SYS_CAPSET as c_long, &header, caps.as_ptr()) })?;
+    check(unsafe { syscall(SYS_CAPGET as c_long, &header, caps.as_mut_ptr()) })?;
+    if caps
+        .iter()
+        .any(|c| c.effective != 0 || c.permitted != 0 || c.inheritable != 0)
+    {
+        return Err(io::Error::from_raw_os_error(EPERM));
     }
     Ok(())
 }

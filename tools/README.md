@@ -88,9 +88,11 @@ bundle the same way: the worker first, then the hosts with its SHA-256. The Linu
 links its libraries as usual, because it locks itself down only after the dynamic loader
 has opened them. It is built without debug info, since Rocket copies and hashes the
 whole worker for every run, and for an explicit target, so its cache stays apart from
-the ordinary host builds. Its sandbox tests are `cargo test -p rocket-git --lib
-integration_worker`; they need `rustc` to build their probe. With a built worker,
-`ROCKET_TEST_LUA_WORKER` and `ROCKET_TEST_LUA_SHA256` enable the ignored test that runs it.
+the ordinary host builds. Its sandbox tests are `cargo test --offline --locked -p
+rocket-git --lib integration_worker::linux::tests`; they need `rustc` to build their
+probe. `cargo test --offline --locked -p rocket-integrations --features runtime
+--test linux_worker` builds and tests the real worker automatically, without an
+opt-in path, digest or ignored test. Both require Linux x86_64 with Landlock enabled.
 
 `Copy-VcRuntime.ps1` reuses the pinned Microsoft DLL from an existing Visual Studio
 installation; `Package-Release.ps1 -VcRuntimeDirectory <directory>` can select

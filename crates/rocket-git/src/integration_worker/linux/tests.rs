@@ -1,7 +1,7 @@
 use super::*;
 use std::{
     fs,
-    io::Write,
+    io::{BufRead, BufReader, Write},
     net::{TcpListener, TcpStream},
     os::unix::fs::PermissionsExt,
     path::PathBuf,
@@ -265,6 +265,7 @@ fn verdict(program: &[lockdown::Instruction], arch: u32, number: u32, arguments:
                 accumulator = u32::from_le_bytes(data[at..at + 4].try_into().unwrap());
             }
             0x15 => next += jump(accumulator == instruction.k),
+            0x25 => next += jump(accumulator > instruction.k),
             0x45 => next += jump(accumulator & instruction.k != 0),
             0x06 => return instruction.k,
             code => panic!("unexpected BPF instruction {code:#x}"),
@@ -286,7 +287,34 @@ fn seccomp_filter_leaves_only_the_workers_own_calls() {
     const AUDIT_ARCH_I386: u32 = 0x4000_0003;
     assert_eq!(verdict(&program, AUDIT_ARCH_I386, 0, none), lockdown::KILL);
     assert_eq!(call(lockdown::X32_SYSCALL_BIT | 1, none), lockdown::KILL);
-    for &number in lockdown::ALLOWED {
+    // Independent policy, deliberately NOT derived from lockdown::ALLOWED. Adding an
+    // allowed syscall in production must fail here until its policy is reviewed too.
+    const UNCONDITIONAL: &[u32] = &[
+        3, 11, 12, 13, 14, 15, 24, 25, 28, 39, 60, 96, 131, 186, 201, 219, 231, 318,
+    ];
+    for number in 0..1024 {
+        let (arguments, expected) = match number {
+            n if UNCONDITIONAL.contains(&n) => ([7; 6], allow),
+            0 | 19 => (none, allow),
+            1 | 20 => ([1, 0, 0, 0, 0, 0], allow),
+            9 => ([0, 4096, 3, 0x22, u64::MAX, 0], allow),
+            10 => ([0, 4096, 3, 0, 0, 0], allow),
+            202 => ([0, 128, 0, 0, 0, 0], allow),
+            228 => (none, allow),
+            234 => ([pid.into(), pid.into(), 6, 0, 0, 0], allow),
+            _ => (none, deny),
+        };
+        assert_eq!(call(number, arguments), expected, "call {number}");
+        if expected == deny {
+            assert_eq!(call(number, [u64::MAX; 6]), deny, "call {number}");
+        }
+        assert_eq!(
+            call(lockdown::X32_SYSCALL_BIT | number, arguments),
+            lockdown::KILL,
+            "x32 call {number}"
+        );
+    }
+    for &number in UNCONDITIONAL {
         assert_eq!(call(number, [7; 6]), allow, "call {number}");
     }
     // read and readv: standard input only. The kernel reads only an int's low 32 bits.
@@ -316,7 +344,7 @@ fn seccomp_filter_leaves_only_the_workers_own_calls() {
     }
     // mmap and mprotect: never executable memory.
     for number in [9, 10] {
-        assert_eq!(call(number, [0, 4096, 3, 0, 0, 0]), allow);
+        assert_eq!(call(number, [0, 4096, 3, 0x22, u64::MAX, 0]), allow);
         for protection in [4, 5, 7] {
             assert_eq!(call(number, [0, 4096, protection, 0, 0, 0]), deny);
         }
@@ -332,6 +360,170 @@ fn seccomp_filter_leaves_only_the_workers_own_calls() {
     ] {
         assert_eq!(call(number, none), deny, "call {number}");
     }
+}
+
+#[test]
+fn seccomp_filter_restricts_mapping_futex_and_clock_arguments() {
+    let program = lockdown::filter(4242);
+    let call = |number, args| verdict(&program, lockdown::AUDIT_ARCH_X86_64, number, args);
+    // Private anonymous mappings only; MAP_SHARED_VALIDATE also contains MAP_SHARED.
+    for flags in [0, 1, 2, 3, 0x20, 0x21, 0x23, 0x122, 0x123] {
+        assert_eq!(
+            call(9, [0, 4096, 3, flags, u64::MAX, 0]),
+            lockdown::DENY,
+            "flags {flags:#x}"
+        );
+    }
+    for flags in [0x22, 0x4022, 0x20022] {
+        assert_eq!(call(9, [0, 4096, 3, flags, u64::MAX, 0]), lockdown::ALLOW);
+    }
+    // Only process-private wait, wake and timed wait-bitset; no shared, PI, requeue
+    // or wake-op variants. Upper bits of int arguments are ignored by Linux too.
+    for op in 0..1024 {
+        let expected = if matches!(op, 128 | 129 | 137) {
+            lockdown::ALLOW
+        } else {
+            lockdown::DENY
+        };
+        for high in [0, 0xffff_ffff_0000_0000] {
+            assert_eq!(
+                call(202, [0, op | high, 0, 0, 0, 0]),
+                expected,
+                "futex op {op}"
+            );
+        }
+    }
+    for clock in (0..32).chain([u32::MAX, u32::MAX - 5, 0x8000_0000]) {
+        let expected = if clock <= 7 {
+            lockdown::ALLOW
+        } else {
+            lockdown::DENY
+        };
+        for high in [0, 0xffff_ffff_0000_0000] {
+            assert_eq!(
+                call(228, [u64::from(clock) | high, 0, 0, 0, 0, 0]),
+                expected,
+                "clock {clock}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_memory_and_syscall_guards_reject_bypasses() {
+    for (input, expected) in [
+        ("memory", "shared=1;growsdown=1;reserve=12;remap=12"),
+        (
+            "calls",
+            "shared_futex=1;requeue=1;pi=1;private_wait=11;private_wake=0;foreign_clock=1;monotonic=0",
+        ),
+    ] {
+        let output = fixture()
+            .run(
+                input.as_bytes().to_vec(),
+                &limits(),
+                &CancellationToken::new(),
+            )
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{} {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8(output.stdout).unwrap().trim(), expected);
+    }
+}
+
+// Fully feed a real child and wait for its post-lockdown READY. This rules out death
+// from EOF or startup failure. A failed assertion drops Process and reaps the child.
+fn waiting_probe() -> Process {
+    let mut file = protected_worker(&fixture().path).unwrap();
+    let sealed = sealed_copy(&mut file).unwrap();
+    let (process, mut pipes) = spawn(&sealed).unwrap();
+    pipes.stdin.write_all(b"wait").unwrap();
+    drop(pipes.stdin);
+    let (send, receive) = std::sync::mpsc::channel();
+    let reader = std::thread::spawn(move || {
+        let mut ready = String::new();
+        let result = BufReader::new(pipes.stdout)
+            .read_line(&mut ready)
+            .map(|_| ready);
+        let _ = send.send(result);
+    });
+    assert_eq!(
+        receive
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap()
+            .unwrap(),
+        "READY\n"
+    );
+    reader.join().unwrap();
+    process
+}
+
+#[test]
+fn native_worker_has_bounded_address_stack_locked_memory_and_signal_quota() {
+    let process = waiting_probe();
+    let limits = fs::read_to_string(format!("/proc/{}/limits", process.child.id())).unwrap();
+    for (name, maximum) in [
+        ("Max address space", 128 * 1024 * 1024),
+        ("Max data size", 128 * 1024 * 1024),
+        ("Max stack size", 2 * 1024 * 1024),
+        ("Max locked memory", 0),
+        ("Max pending signals", 32),
+    ] {
+        let row = limits.lines().find_map(|s| s.strip_prefix(name)).unwrap();
+        let values: Vec<_> = row.split_whitespace().take(2).collect();
+        assert_eq!(values.len(), 2, "{name}");
+        for value in values {
+            assert!(
+                value.parse::<u64>().is_ok_and(|n| n <= maximum),
+                "{name}: {row}"
+            );
+        }
+    }
+    let status = fs::read_to_string(format!("/proc/{}/status", process.child.id())).unwrap();
+    for name in ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"] {
+        let value = status.lines().find_map(|s| s.strip_prefix(name)).unwrap();
+        assert_eq!(u64::from_str_radix(value.trim(), 16).unwrap(), 0, "{name}");
+    }
+}
+
+#[test]
+fn native_worker_drops_capabilities_before_exec_without_changing_the_parent() {
+    let capabilities = || -> Vec<String> {
+        fs::read_to_string("/proc/self/status")
+            .unwrap()
+            .lines()
+            .filter(|line| {
+                ["CapInh:", "CapPrm:", "CapEff:", "CapAmb:"]
+                    .iter()
+                    .any(|prefix| line.starts_with(prefix))
+            })
+            .map(str::to_owned)
+            .collect()
+    };
+    let before = capabilities();
+    assert_eq!(before.len(), 4);
+    let output = fixture()
+        .run(
+            b"capabilities".to_vec(),
+            &limits(),
+            &CancellationToken::new(),
+        )
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(output.stdout, b"inherited_capabilities=0\n");
+    assert_eq!(
+        capabilities(),
+        before,
+        "only the child may lose capabilities"
+    );
 }
 
 #[test]
@@ -363,28 +555,16 @@ fn landlock_rulesets_name_only_what_each_abi_knows() {
 #[test]
 #[ignore = "invoked only by the parent-exit regression with an owned fixture"]
 fn parent_exit_helper() {
-    let worker = IntegrationWorker::new(
-        PathBuf::from(std::env::var_os("ROCKET_CRASH_PROBE").unwrap()),
-        &std::env::var("ROCKET_CRASH_HASH").unwrap(),
-    );
-    let _ = run_observed(
-        &worker,
-        b"wait".to_vec(),
-        &limits(),
-        &CancellationToken::new(),
-        |pid| {
-            println!("WORKER:{pid}");
-            std::io::stdout().flush().unwrap();
-            // Exit deliberately bypasses Rust destructors.
-            std::process::exit(0);
-        },
-    );
-    panic!("parent exit observer was not reached");
+    let process = waiting_probe();
+    println!("WORKER:{}", process.child.id());
+    std::io::stdout().flush().unwrap();
+    // The child is now spinning, independent of closed pipes, with seconds of CPU
+    // time left. Exit deliberately bypasses Process::drop and its normal cleanup.
+    std::process::exit(0);
 }
 
 #[test]
 fn abrupt_parent_exit_kills_the_worker() {
-    let worker = fixture();
     let output = Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
@@ -392,8 +572,6 @@ fn abrupt_parent_exit_kills_the_worker() {
             "--ignored",
             "--nocapture",
         ])
-        .env("ROCKET_CRASH_PROBE", &worker.path)
-        .env("ROCKET_CRASH_HASH", &worker.sha256)
         .output()
         .unwrap();
     assert!(
@@ -408,12 +586,13 @@ fn abrupt_parent_exit_kills_the_worker() {
         .expect("worker started")
         .parse()
         .unwrap();
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let deadline = Instant::now() + Duration::from_secs(1);
     while running(pid) {
-        assert!(
-            Instant::now() < deadline,
-            "orphan worker survived its parent"
-        );
+        if Instant::now() >= deadline {
+            // Clean up our owned orphan even when a regression removes PDEATHSIG.
+            unsafe { kill(pid as c_int, SIGKILL) };
+            panic!("orphan worker survived its parent for over one second");
+        }
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -425,56 +604,4 @@ fn running(pid: u32) -> bool {
     };
     let state = stat.rsplit(')').next().map(str::trim_start);
     !matches!(state.and_then(|s| s.chars().next()), Some('Z' | 'X'))
-}
-
-#[test]
-#[ignore = "requires a built worker and ROCKET_TEST_LUA_WORKER / ROCKET_TEST_LUA_SHA256"]
-fn actual_lua_worker_runs_only_in_the_verified_sandbox() {
-    let path =
-        PathBuf::from(std::env::var_os("ROCKET_TEST_LUA_WORKER").expect("set test worker path"));
-    let hash = std::env::var("ROCKET_TEST_LUA_SHA256")
-        .expect("set independently computed test worker digest");
-    // Started directly, the worker still locks itself down first; it then refuses the
-    // empty input. Had the lock-down failed, it would report "sandbox".
-    let direct = Command::new(&path).stdin(Stdio::null()).output().unwrap();
-    assert_eq!(direct.stdout, b"{\"code\":\"input\",\"kind\":\"error\"}");
-    let worker = IntegrationWorker::new(path, &hash);
-    for (input, expected) in [
-        (
-            r#"{"api":1,"source":"return function() assert(os==nil and io==nil and require==nil and package==nil); return ui.text('資料 🚀') end","context":{}}"#,
-            r#""kind":"view""#,
-        ),
-        (
-            r#"{"api":1,"source":"error('must not run during validation')","validate":true}"#,
-            r#""kind":"validated""#,
-        ),
-        (
-            r#"{"api":1,"source":"return function() while true do end end","context":{}}"#,
-            r#""code":"instructions""#,
-        ),
-        (
-            r#"{"api":1,"source":"return function() return string.rep('x',67108864) end","context":{}}"#,
-            r#""kind":"error""#,
-        ),
-        (
-            r#"{"api":1,"source":"\u001bLua","context":{}}"#,
-            r#""kind":"error""#,
-        ),
-    ] {
-        let output = worker
-            .run(
-                input.as_bytes().to_vec(),
-                &limits(),
-                &CancellationToken::new(),
-            )
-            .unwrap();
-        assert!(
-            output.status.success(),
-            "{} {}",
-            output.status,
-            String::from_utf8_lossy(&output.stderr)
-        );
-        let result = String::from_utf8(output.stdout).unwrap();
-        assert!(result.contains(expected), "expected {expected} in {result}");
-    }
 }

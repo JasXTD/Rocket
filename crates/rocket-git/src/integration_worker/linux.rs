@@ -178,13 +178,16 @@ fn spawn(
             if setsid() == -1 {
                 return Err(io::Error::last_os_error());
             }
+            lockdown::control(lockdown::PR_SET_NO_NEW_PRIVS, 1)?;
+            // Clear ambient, permitted, effective and inheritable capabilities in
+            // this child only. A capability change can clear PDEATHSIG, so do it first.
+            lockdown::clear_capabilities()?;
             // Killed when the thread that started it ends, as closing the job kills the
             // Windows worker. That thread waits for the worker in run_observed.
             lockdown::control(PR_SET_PDEATHSIG, SIGKILL as c_ulong)?;
             if getppid() != parent {
                 return Err(io::Error::from_raw_os_error(ESRCH));
             }
-            lockdown::control(lockdown::PR_SET_NO_NEW_PRIVS, 1)?;
             lockdown::limit(lockdown::RLIMIT_CORE, 0, 0)?;
             lockdown::limit(
                 lockdown::RLIMIT_CPU,

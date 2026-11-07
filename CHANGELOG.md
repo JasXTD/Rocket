@@ -18,7 +18,18 @@ keep detailed test evidence in `VALIDATION.md`.
     supports that;
   - seccomp allows only its pipes, memory that never becomes executable, signals to
     itself, clocks and exit;
-  - CPU time and memory have the Windows limits of five seconds and 128 MiB.
+  - a five-second CPU soft limit (six-second hard stop), plus the host's five-second
+    wall deadline; Linux memory growth is bounded by a 128 MiB total virtual-address
+    limit and data limit, with a 2 MiB stack limit and no locked memory. Windows uses
+    committed-process-memory accounting instead.
+- Linux sandbox hardening: shared/grows-down mappings, non-private or non-wait/wake
+  futex operations and foreign-process clock IDs are refused. The worker has a small
+  pending-signal quota and inherits no ambient/effective/permitted/inheritable Linux
+  capabilities. No host privileges or limits are changed.
+- Sandbox tests independently check syscall numbers 0–1023 and constrained arguments,
+  native memory/clock/futex failures, resource limits and parent-death cleanup. The
+  real Lua entry point now runs in the normal runtime test suite without opt-in paths
+  or hashes.
 - Lua needs Landlock, which Linux 5.13 and later provide when it is switched on. Without
   it, or on another architecture, Rocket runs no script and says why.
 - `tools/build-local.sh` builds the matching Linux bundle, the worker first, as
