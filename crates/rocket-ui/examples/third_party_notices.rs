@@ -1,5 +1,5 @@
 //! Writes `THIRD-PARTY-NOTICES.txt` at the workspace root: the notices of every crate
-//! compiled into Rocket's programs on Windows or Linux, the embedded fonts and the
+//! compiled into Rocket's programs on Windows, Linux or macOS, the embedded fonts and the
 //! bundled ConPTY runtime. Each entry names the platforms whose builds include it, so one
 //! file ships with every package and About › Legal shows the running platform's entries.
 //! Run it after changing dependencies:
@@ -19,7 +19,7 @@ use std::{
 const SHIPPED: [&str; 5] = ["rocket-ui", "rocket-mcp", "rocket-cli", "rocket-git", "rocket-integrations"];
 /// The release targets, which decide the platform-specific crates, under the platform
 /// names the entries and the Legal page use.
-const TARGETS: [(&str, &str); 2] = [("Windows", "x86_64-pc-windows-msvc"), ("Linux", "x86_64-unknown-linux-gnu")];
+const TARGETS: [(&str, &str); 3] = [("Windows", "x86_64-pc-windows-msvc"), ("Linux", "x86_64-unknown-linux-gnu"), ("macOS", "aarch64-apple-darwin")];
 /// Where `cargo metadata` says a crates.io package comes from.
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 /// Opens and closes each entry's header; the Legal page splits the file on it.
@@ -205,9 +205,18 @@ fn main() -> ExitCode {
         name: "Noto Sans CJK Regular".into(),
         version: "2.004".into(),
         license: "OFL-1.1".into(),
-        platforms: "Linux".into(),
+        platforms: "Linux, macOS".into(),
         source: "https://github.com/notofonts/noto-cjk/tree/523d033d6cb47f4a80c58a35753646f5c3608a78".into(),
         text: read_text(&root.join("runtime/fonts/noto-sans-cjk/2.004/NOTICE")),
+    });
+    entries.push(Entry {
+        kind: "font".into(),
+        name: "Noto Emoji outline".into(),
+        version: "3.002".into(),
+        license: "OFL-1.1".into(),
+        platforms: "Linux, macOS".into(),
+        source: "https://github.com/google/fonts/tree/b979dba422e445492b0eb9951ac52ee0b4d648c3/ofl/notoemoji".into(),
+        text: read_text(&root.join("runtime/fonts/noto-emoji/3.002/NOTICE")),
     });
     entries.push(conpty(&root));
 

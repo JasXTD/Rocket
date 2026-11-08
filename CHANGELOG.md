@@ -10,6 +10,15 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased — Apple Silicon macOS preparation
 
+- Add native macOS repository notifications for external worktree, index and
+  shared-ref changes. Coalesce notifications without idle Git scans, invalidate
+  cached metadata on lost events, and release callbacks safely when closing.
+- Add the audited Noto Emoji 3.002 outline fallback on macOS/Linux, with its
+  license and provenance. Preserve Windows font selection and normal ASCII/CJK
+  layout. Extend focused native checks for emoji, notifications and cancellation.
+- Prepare Developer ID signing/notarization guidance for a future distribution.
+  Lua remains disabled on macOS pending a separately tested sandbox. Limit each
+  manual Mac job to 15 minutes and offer a focused follow-up test scope.
 - Prepare `Rocket.app` with Rocket's existing icon, five sibling executables,
   version metadata and license resources. Add strict bundle inventory, Mach-O,
   hash and permission checks, native ad-hoc signing and ZIP roundtrip validation.

@@ -224,7 +224,29 @@ fn build(plan: &Plan, find: impl Fn(&str) -> Option<PathBuf>) -> FontDefinitions
         .insert(FontFamily::Name("semibold".into()), bold);
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     bundled_cjk::append(&mut fonts);
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    bundled_emoji::append(&mut fonts);
     fonts
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod bundled_emoji {
+    use super::*;
+    pub(super) const NAME: &str = "rocket-noto-emoji-3.002";
+    const BYTES: &[u8] = include_bytes!("../../../runtime/fonts/noto-emoji/3.002/NotoEmoji.ttf");
+    pub(super) fn append(fonts: &mut FontDefinitions) {
+        fonts.font_data.insert(NAME.into(), FontData::from_static(BYTES).tweak(FontTweak {
+            coords: VariationCoords::new([("wght", 400.0)]),
+            ..Default::default()
+        }).into());
+        for (family, names) in &mut fonts.families {
+            // Leave Latin/installed interface faces first, including ASCII digits.
+            // Replace the old embedded emoji fallback's missing glyph coverage.
+            let at = if *family == FontFamily::Name("terminal-wide".into()) { 0 }
+                else { names.iter().position(|name| name == "NotoEmoji-Regular" || name == "emoji-icon-font").unwrap_or(names.len()) };
+            names.insert(at, NAME.into());
+        }
+    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -442,6 +464,33 @@ mod tests {
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
+    fn emoji_fallback_draws_missing_symbols_without_system_fonts() {
+        use eframe::egui::{Color32, FontId};
+        let ctx = eframe::egui::Context::default();
+        ctx.set_fonts(build(&PLAN, |_| None));
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            ui.ctx().fonts_mut(|fonts| {
+                for family in [FontFamily::Proportional, FontFamily::Monospace,
+                    FontFamily::Name("semibold".into()), FontFamily::Name("terminal-wide".into())] {
+                    let mut font = fonts.fonts.font(&family);
+                    let characters = font.characters();
+                    for c in "🦀🚀😀👍🏽👩💻👨👧👦🇲🇾".chars() {
+                        assert!(characters.contains_key(&c), "Missing emoji {c:?} in {family:?}");
+                    }
+                    drop(font);
+                    for text in ["🦀", "👩🏽‍💻", "👨‍👩‍👧‍👦", "🇲🇾", "1️⃣", "❤️"] {
+                        let galley = fonts.layout_no_wrap(text.into(), FontId::new(16.0, family.clone()), Color32::WHITE);
+                        assert!(galley.size().is_finite() && galley.size().x > 0.0 && galley.size().y > 0.0);
+                        assert!(galley.rows.iter().any(|row| !row.visuals.mesh.is_empty()), "Emoji has no drawn glyph: {text}");
+                    }
+                }
+            });
+        });
+        output.textures_delta.clear();
+    }
+
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
     fn cjk_fallback_preserves_ascii_layout_and_shares_font_bytes() {
         use eframe::egui::{Color32, Context, FontId};
         let definitions = build(&PLAN, |_| None);
@@ -501,7 +550,10 @@ mod tests {
         interface_then_fallbacks.push(bundled_cjk::MONOSPACE.into());
         assert!(names(&fonts, FontFamily::Monospace).ends_with(&interface_then_fallbacks));
         let terminal = names(&fonts, FontFamily::Name("terminal-wide".into()));
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         assert_eq!(terminal[0], fallbacks[PLAN.emoji]);
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        assert_eq!(terminal[0], bundled_emoji::NAME);
         assert_eq!(terminal.iter().filter(|n| **n == fallbacks[PLAN.emoji]).count(), 1);
         let bold = names(&fonts, FontFamily::Name("semibold".into()));
         assert_eq!(bold[0], name(semibold));

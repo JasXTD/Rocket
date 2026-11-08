@@ -3,7 +3,7 @@ Third-party notices for Rocket
 Rocket includes the software below. Each entry names its license and the platforms
 whose builds include it, and carries the notice its authors ship with it. Where a
 crate offers MIT among other licenses, Rocket uses it under MIT. Generated from
-Cargo.lock for x86_64-pc-windows-msvc (Windows) and x86_64-unknown-linux-gnu (Linux) by
+Cargo.lock for x86_64-pc-windows-msvc (Windows) and x86_64-unknown-linux-gnu (Linux) and aarch64-apple-darwin (macOS) by
 `cargo run -p rocket-ui --example third_party_notices`; do not edit by hand.
 
 ########################################################################
@@ -11,7 +11,7 @@ Kind: crate
 Name: accesskit
 Version: 0.24.1
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/AccessKit/accesskit
 ########################################################################
 
@@ -44,7 +44,7 @@ Kind: crate
 Name: adler2
 Version: 2.0.1
 License: 0BSD OR MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/oyvindln/adler2
 ########################################################################
 
@@ -79,7 +79,7 @@ Kind: crate
 Name: aead
 Version: 0.6.1
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/traits
 ########################################################################
 
@@ -117,7 +117,7 @@ Kind: crate
 Name: ahash
 Version: 0.8.12
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/tkaitchuck/ahash
 ########################################################################
 
@@ -154,7 +154,7 @@ Kind: crate
 Name: arboard
 Version: 3.6.1
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/1Password/arboard
 ########################################################################
 
@@ -187,7 +187,7 @@ Kind: crate
 Name: arrayvec
 Version: 0.7.8
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/bluss/arrayvec
 ########################################################################
 
@@ -259,9 +259,46 @@ DEALINGS IN THE SOFTWARE.
 ########################################################################
 Kind: crate
 Name: bitflags
+Version: 1.3.2
+License: MIT/Apache-2.0
+Platforms: macOS
+Source: https://github.com/bitflags/bitflags
+########################################################################
+
+--- LICENSE-MIT ---
+
+Copyright (c) 2014 The Rust Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: bitflags
 Version: 2.13.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/bitflags/bitflags
 ########################################################################
 
@@ -298,7 +335,7 @@ Kind: crate
 Name: block-buffer
 Version: 0.12.1
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/utils
 ########################################################################
 
@@ -332,10 +369,76 @@ DEALINGS IN THE SOFTWARE.
 
 ########################################################################
 Kind: crate
+Name: block2
+Version: 0.5.1
+License: MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) Steven Sheldon, Mads Marquart
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: block2
+Version: 0.6.2
+License: MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) Mads Marquart
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
 Name: bstr
 Version: 1.13.1
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/BurntSushi/bstr
 ########################################################################
 
@@ -379,7 +482,7 @@ Kind: crate
 Name: bytemuck
 Version: 1.25.2
 License: Zlib OR Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/Lokathor/bytemuck
 ########################################################################
 
@@ -400,7 +503,7 @@ Kind: crate
 Name: bytemuck_derive
 Version: 1.12.1
 License: Zlib OR Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/Lokathor/bytemuck
 ########################################################################
 
@@ -421,7 +524,7 @@ Kind: crate
 Name: byteorder-lite
 Version: 0.1.0
 License: Unlicense OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/image-rs/byteorder-lite
 ########################################################################
 
@@ -578,7 +681,7 @@ Kind: crate
 Name: cfg-if
 Version: 1.0.5
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-lang/cfg-if
 ########################################################################
 
@@ -612,10 +715,55 @@ DEALINGS IN THE SOFTWARE.
 
 ########################################################################
 Kind: crate
+Name: cgl
+Version: 0.3.2
+License: MIT / Apache-2.0
+Platforms: macOS
+Source: https://github.com/servo/cgl-rs
+########################################################################
+
+--- COPYING ---
+
+Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+<LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+option. All files in the project carrying such notice may not be
+copied, modified, or distributed except according to those terms.
+
+--- LICENSE-MIT ---
+
+Copyright (c) 2012-2013 Mozilla Foundation
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+########################################################################
+Kind: crate
 Name: chacha20
 Version: 0.10.2
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/stream-ciphers
 ########################################################################
 
@@ -652,7 +800,7 @@ Kind: crate
 Name: chacha20poly1305
 Version: 0.11.0
 License: Apache-2.0 OR MIT
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/AEADs
 ########################################################################
 
@@ -689,7 +837,7 @@ Kind: crate
 Name: cipher
 Version: 0.5.2
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/traits
 ########################################################################
 
@@ -763,7 +911,7 @@ Kind: crate
 Name: cmov
 Version: 0.5.4
 License: Apache-2.0 OR MIT
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/utils
 ########################################################################
 
@@ -800,7 +948,7 @@ Kind: crate
 Name: color
 Version: 0.3.3
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/linebender/color
 ########################################################################
 
@@ -828,10 +976,166 @@ SOFTWARE.
 
 ########################################################################
 Kind: crate
+Name: core-foundation
+Version: 0.9.4
+License: MIT OR Apache-2.0
+Platforms: macOS
+Source: https://github.com/servo/core-foundation-rs
+########################################################################
+
+--- LICENSE-MIT ---
+
+Copyright (c) 2012-2013 Mozilla Foundation
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: core-foundation-sys
+Version: 0.8.7
+License: MIT OR Apache-2.0
+Platforms: macOS
+Source: https://github.com/servo/core-foundation-rs
+########################################################################
+
+--- LICENSE-MIT ---
+
+Copyright (c) 2012-2013 Mozilla Foundation
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: core-graphics
+Version: 0.23.2
+License: MIT OR Apache-2.0
+Platforms: macOS
+Source: https://github.com/servo/core-foundation-rs
+########################################################################
+
+--- COPYRIGHT ---
+
+Licensed under the Apache License, Version 2.0 <LICENSE-APACHE or
+http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
+<LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
+option. All files in the project carrying such notice may not be
+copied, modified, or distributed except according to those terms.
+
+--- LICENSE-MIT ---
+
+Copyright (c) 2012-2013 Mozilla Foundation
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: core-graphics-types
+Version: 0.1.3
+License: MIT OR Apache-2.0
+Platforms: macOS
+Source: https://github.com/servo/core-foundation-rs
+########################################################################
+
+--- LICENSE-MIT ---
+
+Copyright (c) 2012-2013 Mozilla Foundation
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+########################################################################
+Kind: crate
 Name: cpufeatures
 Version: 0.3.1
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/utils
 ########################################################################
 
@@ -868,7 +1172,7 @@ Kind: crate
 Name: crc32fast
 Version: 1.5.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/srijs/rust-crc32fast
 ########################################################################
 
@@ -901,7 +1205,7 @@ Kind: crate
 Name: crypto-common
 Version: 0.2.2
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/traits
 ########################################################################
 
@@ -938,7 +1242,7 @@ Kind: crate
 Name: ctutils
 Version: 0.4.5
 License: Apache-2.0 OR MIT
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/utils
 ########################################################################
 
@@ -975,7 +1279,7 @@ Kind: crate
 Name: cursor-icon
 Version: 1.2.0
 License: MIT OR Apache-2.0 OR Zlib
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-windowing/cursor-icon
 ########################################################################
 
@@ -1006,7 +1310,7 @@ Kind: crate
 Name: digest
 Version: 0.11.3
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/traits
 ########################################################################
 
@@ -1041,10 +1345,76 @@ DEALINGS IN THE SOFTWARE.
 
 ########################################################################
 Kind: crate
+Name: dispatch
+Version: 0.2.0
+License: MIT
+Platforms: macOS
+Source: http://github.com/SSheldon/rust-dispatch
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) Steven Sheldon
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: dispatch2
+Version: 0.3.1
+License: Zlib OR Apache-2.0 OR MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) Mads Marquart, Mary
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
 Name: displaydoc
 Version: 0.2.7
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/yaahc/displaydoc
 ########################################################################
 
@@ -1110,7 +1480,7 @@ Kind: crate
 Name: document-features
 Version: 0.2.12
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/slint-ui/document-features
 ########################################################################
 
@@ -1178,7 +1548,7 @@ Kind: crate
 Name: dpi
 Version: 0.1.2
 License: Apache-2.0 AND MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-windowing/winit
 ########################################################################
 
@@ -1445,7 +1815,7 @@ Kind: crate
 Name: ecolor
 Version: 0.36.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui
 ########################################################################
 
@@ -1478,7 +1848,7 @@ Kind: crate
 Name: eframe
 Version: 0.36.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui/tree/main/crates/eframe
 ########################################################################
 
@@ -1511,7 +1881,7 @@ Kind: crate
 Name: egui
 Version: 0.36.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui
 ########################################################################
 
@@ -1544,7 +1914,7 @@ Kind: crate
 Name: egui-winit
 Version: 0.36.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui/tree/main/crates/egui-winit
 ########################################################################
 
@@ -1577,7 +1947,7 @@ Kind: crate
 Name: egui_glow
 Version: 0.36.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui/tree/main/crates/egui_glow
 ########################################################################
 
@@ -1610,7 +1980,7 @@ Kind: crate
 Name: either
 Version: 1.19.0
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rayon-rs/either
 ########################################################################
 
@@ -1647,7 +2017,7 @@ Kind: crate
 Name: emath
 Version: 0.36.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui/tree/main/crates/emath
 ########################################################################
 
@@ -1680,7 +2050,7 @@ Kind: crate
 Name: epaint
 Version: 0.36.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui/tree/main/crates/epaint
 ########################################################################
 
@@ -1713,7 +2083,7 @@ Kind: crate
 Name: epaint_default_fonts
 Version: 0.36.2
 License: (MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui/tree/main/crates/epaint_default_fonts
 ########################################################################
 
@@ -1783,7 +2153,7 @@ Kind: crate
 Name: euclid
 Version: 0.22.14
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/servo/euclid
 ########################################################################
 
@@ -1825,10 +2195,29 @@ DEALINGS IN THE SOFTWARE.
 
 ########################################################################
 Kind: crate
+Name: fax
+Version: 0.2.7
+License: MIT
+Platforms: macOS
+Source: https://github.com/pdf-rs/fax
+########################################################################
+
+--- LICENSE ---
+
+Copyright © 2021 The pdf-rs contributers.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+########################################################################
+Kind: crate
 Name: fdeflate
 Version: 0.3.7
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/image-rs/fdeflate
 ########################################################################
 
@@ -1865,7 +2254,7 @@ Kind: crate
 Name: fearless_simd
 Version: 0.4.1
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/linebender/fearless_simd
 ########################################################################
 
@@ -1902,7 +2291,7 @@ Kind: crate
 Name: flate2
 Version: 1.1.10
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-lang/flate2-rs
 ########################################################################
 
@@ -1939,7 +2328,7 @@ Kind: crate
 Name: foldhash
 Version: 0.2.0
 License: Zlib
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/orlp/foldhash
 ########################################################################
 
@@ -1970,7 +2359,7 @@ Kind: crate
 Name: font-types
 Version: 0.12.6
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/googlefonts/fontations
 ########################################################################
 
@@ -2001,6 +2390,99 @@ CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
 OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: foreign-types
+Version: 0.5.0
+License: MIT/Apache-2.0
+Platforms: macOS
+Source: https://github.com/sfackler/foreign-types
+########################################################################
+
+--- LICENSE-MIT ---
+
+Copyright (c) 2017 The foreign-types Developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: foreign-types-macros
+Version: 0.2.4
+License: MIT/Apache-2.0
+Platforms: macOS
+Source: https://github.com/sfackler/foreign-types
+########################################################################
+
+--- LICENSE-MIT ---
+
+Copyright (c) 2017 The foreign-types Developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: foreign-types-shared
+Version: 0.3.1
+License: MIT/Apache-2.0
+Platforms: macOS
+Source: https://github.com/sfackler/foreign-types
+########################################################################
+
+--- LICENSE-MIT ---
+
+Copyright (c) 2017 The foreign-types Developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ########################################################################
 Kind: crate
@@ -2258,7 +2740,7 @@ Kind: crate
 Name: glow
 Version: 0.17.0
 License: MIT OR Apache-2.0 OR Zlib
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/grovesNL/glow
 ########################################################################
 
@@ -2293,7 +2775,7 @@ Kind: crate
 Name: glutin
 Version: 0.32.3
 License: Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-windowing/glutin
 ########################################################################
 
@@ -2506,7 +2988,7 @@ Kind: crate
 Name: glutin-winit
 Version: 0.5.0
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-windowing/glutin
 ########################################################################
 
@@ -3176,7 +3658,7 @@ Kind: crate
 Name: guillotiere
 Version: 0.7.0
 License: MIT/Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/nical/guillotiere
 ########################################################################
 
@@ -3205,10 +3687,41 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ########################################################################
 Kind: crate
+Name: half
+Version: 2.7.1
+License: MIT OR Apache-2.0
+Platforms: macOS
+Source: https://github.com/VoidStarKat/half-rs
+########################################################################
+
+--- LICENSE-MIT ---
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
 Name: harfrust
 Version: 0.12.0
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/harfbuzz/harfrust
 ########################################################################
 
@@ -3242,7 +3755,7 @@ Kind: crate
 Name: hashbrown
 Version: 0.17.1
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-lang/hashbrown
 ########################################################################
 
@@ -3279,7 +3792,7 @@ Kind: crate
 Name: hybrid-array
 Version: 0.4.15
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/hybrid-array
 ########################################################################
 
@@ -3316,7 +3829,7 @@ Kind: crate
 Name: icu_collections
 Version: 2.3.0
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -3374,7 +3887,7 @@ Kind: crate
 Name: icu_locale_core
 Version: 2.3.0
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -3432,7 +3945,7 @@ Kind: crate
 Name: icu_properties
 Version: 2.3.0
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -3490,7 +4003,7 @@ Kind: crate
 Name: icu_properties_data
 Version: 2.3.0
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -3548,7 +4061,7 @@ Kind: crate
 Name: icu_provider
 Version: 2.3.1
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -3606,7 +4119,7 @@ Kind: crate
 Name: image
 Version: 0.25.10
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/image-rs/image
 ########################################################################
 
@@ -3643,7 +4156,7 @@ Kind: crate
 Name: image-webp
 Version: 0.2.4
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/image-rs/image-webp
 ########################################################################
 
@@ -3680,7 +4193,7 @@ Kind: crate
 Name: inout
 Version: 0.2.5
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/utils
 ########################################################################
 
@@ -3718,7 +4231,7 @@ Kind: crate
 Name: itertools
 Version: 0.15.0
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-itertools/itertools
 ########################################################################
 
@@ -3755,7 +4268,7 @@ Kind: crate
 Name: itoa
 Version: 1.0.18
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/dtolnay/itoa
 ########################################################################
 
@@ -3790,7 +4303,7 @@ Kind: crate
 Name: kurbo
 Version: 0.13.1
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/linebender/kurbo
 ########################################################################
 
@@ -3827,7 +4340,7 @@ Kind: crate
 Name: libc
 Version: 0.2.190
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-lang/libc
 ########################################################################
 
@@ -3864,7 +4377,7 @@ Kind: crate
 Name: libloading
 Version: 0.8.9
 License: ISC
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/nagisa/rust_libloading/
 ########################################################################
 
@@ -3888,7 +4401,7 @@ Kind: crate
 Name: linebender_resource_handle
 Version: 0.1.1
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/linebender/raw_resource_handle
 ########################################################################
 
@@ -4053,7 +4566,7 @@ Kind: crate
 Name: litemap
 Version: 0.8.3
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -4111,7 +4624,7 @@ Kind: crate
 Name: litrs
 Version: 1.0.0
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/LukasKalbertodt/litrs
 ########################################################################
 
@@ -4148,7 +4661,7 @@ Kind: crate
 Name: lock_api
 Version: 0.4.14
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/Amanieu/parking_lot
 ########################################################################
 
@@ -4185,7 +4698,7 @@ Kind: crate
 Name: log
 Version: 0.4.34
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-lang/log
 ########################################################################
 
@@ -4222,7 +4735,7 @@ Kind: crate
 Name: lua-src
 Version: 551.1.0
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/mlua-rs/lua-src-rs
 ########################################################################
 
@@ -4300,7 +4813,7 @@ Kind: crate
 Name: memchr
 Version: 2.8.3
 License: Unlicense OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/BurntSushi/memchr
 ########################################################################
 
@@ -4377,7 +4890,7 @@ Kind: crate
 Name: miniz_oxide
 Version: 0.8.9
 License: MIT OR Zlib OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
 ########################################################################
 
@@ -4441,7 +4954,7 @@ Kind: crate
 Name: miniz_oxide
 Version: 0.9.1
 License: MIT OR Zlib OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
 ########################################################################
 
@@ -4505,7 +5018,7 @@ Kind: crate
 Name: mlua
 Version: 0.12.2
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/mlua-rs/mlua
 ########################################################################
 
@@ -4542,7 +5055,7 @@ Kind: crate
 Name: mlua-sys
 Version: 0.13.0
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/mlua-rs/mlua
 ########################################################################
 
@@ -4575,7 +5088,7 @@ Kind: crate
 Name: moxcms
 Version: 0.8.1
 License: BSD-3-Clause OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/awxkee/moxcms.git
 ########################################################################
 
@@ -4817,7 +5330,7 @@ Kind: crate
 Name: nohash-hasher
 Version: 0.2.0
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/paritytech/nohash-hasher
 ########################################################################
 
@@ -4847,7 +5360,7 @@ Kind: crate
 Name: num-traits
 Version: 0.2.19
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-num/num-traits
 ########################################################################
 
@@ -4881,10 +5394,340 @@ DEALINGS IN THE SOFTWARE.
 
 ########################################################################
 Kind: crate
+Name: objc-sys
+Version: 0.3.5
+License: MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) Mads Marquart
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: objc2
+Version: 0.5.3
+License: MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) Steven Sheldon, Mads Marquart
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: objc2
+Version: 0.6.5
+License: MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) Mads Marquart
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: objc2-app-kit
+Version: 0.2.2
+License: MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) the objc2-app-kit authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: objc2-app-kit
+Version: 0.3.2
+License: Zlib OR Apache-2.0 OR MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) the objc2-app-kit authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: objc2-core-foundation
+Version: 0.3.2
+License: Zlib OR Apache-2.0 OR MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) the objc2-core-foundation authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: objc2-core-graphics
+Version: 0.3.2
+License: Zlib OR Apache-2.0 OR MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) the objc2-core-graphics authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: objc2-encode
+Version: 4.1.0
+License: MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) Mads Marquart
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: objc2-foundation
+Version: 0.2.2
+License: MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) the objc2-foundation authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: objc2-foundation
+Version: 0.3.2
+License: MIT
+Platforms: macOS
+Source: https://github.com/madsmtm/objc2
+########################################################################
+
+The package includes no license file; this is the standard text of its license with its declared authors.
+
+MIT License
+
+Copyright (c) the objc2-foundation authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
 Name: once_cell
 Version: 1.21.4
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/matklad/once_cell
 ########################################################################
 
@@ -4919,7 +5762,7 @@ Kind: crate
 Name: parking_lot
 Version: 0.12.5
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/Amanieu/parking_lot
 ########################################################################
 
@@ -4956,7 +5799,7 @@ Kind: crate
 Name: parking_lot_core
 Version: 0.9.12
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/Amanieu/parking_lot
 ########################################################################
 
@@ -4993,7 +5836,7 @@ Kind: crate
 Name: peniko
 Version: 0.6.1
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/linebender/peniko
 ########################################################################
 
@@ -5067,7 +5910,7 @@ Kind: crate
 Name: pin-project-lite
 Version: 0.2.17
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/taiki-e/pin-project-lite
 ########################################################################
 
@@ -5102,7 +5945,7 @@ Kind: crate
 Name: png
 Version: 0.18.1
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/image-rs/image-png
 ########################################################################
 
@@ -5174,7 +6017,7 @@ Kind: crate
 Name: poly1305
 Version: 0.9.1
 License: Apache-2.0 OR MIT
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/universal-hashes
 ########################################################################
 
@@ -5211,7 +6054,7 @@ Kind: crate
 Name: polycool
 Version: 0.4.0
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/linebender/kurbo
 ########################################################################
 
@@ -5248,7 +6091,7 @@ Kind: crate
 Name: potential_utf
 Version: 0.1.6
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -5306,7 +6149,7 @@ Kind: crate
 Name: proc-macro2
 Version: 1.0.107
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/dtolnay/proc-macro2
 ########################################################################
 
@@ -5341,7 +6184,7 @@ Kind: crate
 Name: profiling
 Version: 1.0.18
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/aclysma/profiling
 ########################################################################
 
@@ -5374,7 +6217,7 @@ Kind: crate
 Name: pxfm
 Version: 0.1.30
 License: BSD-3-Clause OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/awxkee/pxfm
 ########################################################################
 
@@ -5616,7 +6459,7 @@ Kind: crate
 Name: quick-error
 Version: 2.0.1
 License: MIT/Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: http://github.com/tailhook/quick-error
 ########################################################################
 
@@ -5682,7 +6525,7 @@ Kind: crate
 Name: quote
 Version: 1.0.47
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/dtolnay/quote
 ########################################################################
 
@@ -5717,7 +6560,7 @@ Kind: crate
 Name: raw-window-handle
 Version: 0.6.2
 License: MIT OR Apache-2.0 OR Zlib
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-windowing/raw-window-handle
 ########################################################################
 
@@ -5750,7 +6593,7 @@ Kind: crate
 Name: read-fonts
 Version: 0.41.0
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/googlefonts/fontations
 ########################################################################
 
@@ -5787,7 +6630,7 @@ Kind: crate
 Name: rustc-hash
 Version: 2.1.3
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-lang/rustc-hash
 ########################################################################
 
@@ -5993,7 +6836,7 @@ Kind: crate
 Name: scopeguard
 Version: 1.2.0
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/bluss/scopeguard
 ########################################################################
 
@@ -6030,7 +6873,7 @@ Kind: crate
 Name: self_cell
 Version: 1.3.0
 License: Apache-2.0 OR GPL-2.0-only
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/Voultapher/self_cell
 ########################################################################
 
@@ -6243,7 +7086,7 @@ Kind: crate
 Name: serde_core
 Version: 1.0.229
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/serde-rs/serde
 ########################################################################
 
@@ -6278,7 +7121,7 @@ Kind: crate
 Name: serde_json
 Version: 1.0.151
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/serde-rs/json
 ########################################################################
 
@@ -6313,7 +7156,7 @@ Kind: crate
 Name: sha2
 Version: 0.11.1
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/hashes
 ########################################################################
 
@@ -6353,7 +7196,7 @@ Kind: crate
 Name: simd-adler32
 Version: 0.3.10
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/mcountryman/simd-adler32
 ########################################################################
 
@@ -6386,7 +7229,7 @@ Kind: crate
 Name: skrifa
 Version: 0.44.0
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/googlefonts/fontations
 ########################################################################
 
@@ -6460,7 +7303,7 @@ Kind: crate
 Name: smallvec
 Version: 1.16.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/servo/rust-smallvec
 ########################################################################
 
@@ -6590,7 +7433,7 @@ Kind: crate
 Name: smol_str
 Version: 0.2.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-analyzer/smol_str
 ########################################################################
 
@@ -7014,7 +7857,7 @@ Kind: crate
 Name: stable_deref_trait
 Version: 1.2.1
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/storyyeller/stable_deref_trait
 ########################################################################
 
@@ -7051,7 +7894,7 @@ Kind: crate
 Name: static_assertions
 Version: 1.1.0
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/nvzqz/static-assertions-rs
 ########################################################################
 
@@ -7084,7 +7927,7 @@ Kind: crate
 Name: syn
 Version: 2.0.119
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/dtolnay/syn
 ########################################################################
 
@@ -7119,7 +7962,7 @@ Kind: crate
 Name: syn
 Version: 3.0.6
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/dtolnay/syn
 ########################################################################
 
@@ -7154,7 +7997,7 @@ Kind: crate
 Name: synstructure
 Version: 0.14.0
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/mystor/synstructure
 ########################################################################
 
@@ -7208,7 +8051,7 @@ Kind: crate
 Name: thiserror
 Version: 2.0.21
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/dtolnay/thiserror
 ########################################################################
 
@@ -7278,7 +8121,7 @@ Kind: crate
 Name: thiserror-impl
 Version: 2.0.21
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/dtolnay/thiserror
 ########################################################################
 
@@ -7310,10 +8153,43 @@ DEALINGS IN THE SOFTWARE.
 
 ########################################################################
 Kind: crate
+Name: tiff
+Version: 0.11.3
+License: MIT
+Platforms: macOS
+Source: https://github.com/image-rs/image-tiff
+########################################################################
+
+--- LICENSE ---
+
+MIT License
+
+Copyright (c) 2018 PistonDevelopers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
 Name: tinystr
 Version: 0.8.4
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -7371,7 +8247,7 @@ Kind: crate
 Name: tracing
 Version: 0.1.44
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/tokio-rs/tracing
 ########################################################################
 
@@ -7408,7 +8284,7 @@ Kind: crate
 Name: tracing-core
 Version: 0.1.36
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/tokio-rs/tracing
 ########################################################################
 
@@ -7445,7 +8321,7 @@ Kind: crate
 Name: typenum
 Version: 1.20.1
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/paholg/typenum
 ########################################################################
 
@@ -7482,7 +8358,7 @@ Kind: crate
 Name: unicode-general-category
 Version: 1.1.0
 License: Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/yeslogic/unicode-general-category
 ########################################################################
 
@@ -7695,7 +8571,7 @@ Kind: crate
 Name: unicode-ident
 Version: 1.0.26
 License: (MIT OR Apache-2.0) AND Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/dtolnay/unicode-ident
 ########################################################################
 
@@ -7772,7 +8648,7 @@ Kind: crate
 Name: unicode-segmentation
 Version: 1.13.3
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-rs/unicode-segmentation
 ########################################################################
 
@@ -7819,7 +8695,7 @@ Kind: crate
 Name: unicode-width
 Version: 0.2.2
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-rs/unicode-width
 ########################################################################
 
@@ -7866,7 +8742,7 @@ Kind: crate
 Name: universal-hash
 Version: 0.6.1
 License: MIT OR Apache-2.0
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/RustCrypto/traits
 ########################################################################
 
@@ -7903,7 +8779,7 @@ Kind: crate
 Name: utf8_iter
 Version: 1.0.4
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/hsivonen/utf8_iter
 ########################################################################
 
@@ -7985,7 +8861,7 @@ Kind: crate
 Name: uuid
 Version: 1.27.0
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/uuid-rs/uuid
 ########################################################################
 
@@ -8023,7 +8899,7 @@ Kind: crate
 Name: vello_common
 Version: 0.1.0
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/linebender/vello
 ########################################################################
 
@@ -8060,7 +8936,7 @@ Kind: crate
 Name: vello_cpu
 Version: 0.1.0
 License: Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/linebender/vello
 ########################################################################
 
@@ -8438,7 +9314,7 @@ Kind: crate
 Name: web-time
 Version: 1.1.0
 License: MIT OR Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/daxpedda/web-time
 ########################################################################
 
@@ -8447,6 +9323,39 @@ Source: https://github.com/daxpedda/web-time
 MIT License
 
 Copyright (c) 2023 dAxpeDDa
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: weezl
+Version: 0.1.12
+License: MIT OR Apache-2.0
+Platforms: macOS
+Source: https://github.com/image-rs/weezl
+########################################################################
+
+--- LICENSE-MIT ---
+
+The MIT License (MIT)
+
+Copyright (c) HeroicKatora 2020
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -8735,7 +9644,7 @@ Kind: crate
 Name: winit
 Version: 0.30.13
 License: Apache-2.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/rust-windowing/winit
 ########################################################################
 
@@ -8948,7 +9857,7 @@ Kind: crate
 Name: writeable
 Version: 0.6.4
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -9212,7 +10121,7 @@ Kind: crate
 Name: yoke
 Version: 0.8.3
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -9270,7 +10179,7 @@ Kind: crate
 Name: yoke-derive
 Version: 0.8.4
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -9328,7 +10237,44 @@ Kind: crate
 Name: zerocopy
 Version: 0.8.62
 License: BSD-2-Clause OR Apache-2.0 OR MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
+Source: https://github.com/google/zerocopy
+########################################################################
+
+--- LICENSE-MIT ---
+
+Copyright 2023 The Fuchsia Authors
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+########################################################################
+Kind: crate
+Name: zerocopy-derive
+Version: 0.8.62
+License: BSD-2-Clause OR Apache-2.0 OR MIT
+Platforms: macOS
 Source: https://github.com/google/zerocopy
 ########################################################################
 
@@ -9365,7 +10311,7 @@ Kind: crate
 Name: zerofrom
 Version: 0.1.8
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -9423,7 +10369,7 @@ Kind: crate
 Name: zerofrom-derive
 Version: 0.1.8
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -9481,7 +10427,7 @@ Kind: crate
 Name: zerotrie
 Version: 0.2.5
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -9539,7 +10485,7 @@ Kind: crate
 Name: zerovec
 Version: 0.11.8
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -9597,7 +10543,7 @@ Kind: crate
 Name: zerovec-derive
 Version: 0.11.6
 License: Unicode-3.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/unicode-org/icu4x
 ########################################################################
 
@@ -9655,7 +10601,7 @@ Kind: crate
 Name: zmij
 Version: 1.0.23
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/dtolnay/zmij
 ########################################################################
 
@@ -9690,7 +10636,7 @@ Kind: crate
 Name: zune-core
 Version: 0.5.3
 License: MIT OR Apache-2.0 OR Zlib
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/etemesi254/zune-image
 ########################################################################
 
@@ -9723,7 +10669,7 @@ Kind: crate
 Name: zune-jpeg
 Version: 0.5.15
 License: MIT OR Apache-2.0 OR Zlib
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/etemesi254/zune-image/tree/dev/crates/zune-jpeg
 ########################################################################
 
@@ -9756,7 +10702,7 @@ Kind: font
 Name: Ubuntu Light
 Version: from epaint_default_fonts 0.36.2
 License: Ubuntu-font-1.0
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui
 ########################################################################
 
@@ -9862,7 +10808,7 @@ Kind: font
 Name: Hack Regular
 Version: from epaint_default_fonts 0.36.2
 License: MIT AND Bitstream-Vera
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui
 ########################################################################
 
@@ -9903,7 +10849,7 @@ Kind: font
 Name: Noto Emoji
 Version: from epaint_default_fonts 0.36.2
 License: OFL-1.1
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui
 ########################################################################
 
@@ -10005,7 +10951,7 @@ Kind: font
 Name: emoji-icon-font
 Version: from epaint_default_fonts 0.36.2
 License: MIT
-Platforms: Windows, Linux
+Platforms: Windows, Linux, macOS
 Source: https://github.com/emilk/egui
 ########################################################################
 
@@ -10024,7 +10970,7 @@ Kind: font
 Name: Noto Sans CJK Regular
 Version: 2.004
 License: OFL-1.1
-Platforms: Linux
+Platforms: Linux, macOS
 Source: https://github.com/notofonts/noto-cjk/tree/523d033d6cb47f4a80c58a35753646f5c3608a78
 ########################################################################
 
@@ -10107,6 +11053,111 @@ must be distributed entirely under this license, and must not be
 distributed under any other license. The requirement for fonts to
 remain under this license does not apply to any document created using
 the Font Software.
+
+TERMINATION
+This license becomes null and void if any of the above conditions are
+not met.
+
+DISCLAIMER
+THE FONT SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT
+OF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
+DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
+OTHER DEALINGS IN THE FONT SOFTWARE.
+
+########################################################################
+Kind: font
+Name: Noto Emoji outline
+Version: 3.002
+License: OFL-1.1
+Platforms: Linux, macOS
+Source: https://github.com/google/fonts/tree/b979dba422e445492b0eb9951ac52ee0b4d648c3/ofl/notoemoji
+########################################################################
+
+Copyright 2013 Google LLC
+
+Copyright 2013 Google LLC
+
+This Font Software is licensed under the SIL Open Font License, Version 1.1.
+This license is copied below, and is also available with a FAQ at:
+https://scripts.sil.org/OFL
+
+
+-----------------------------------------------------------
+SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007
+-----------------------------------------------------------
+
+PREAMBLE
+The goals of the Open Font License (OFL) are to stimulate worldwide
+development of collaborative font projects, to support the font creation
+efforts of academic and linguistic communities, and to provide a free and
+open framework in which fonts may be shared and improved in partnership
+with others.
+
+The OFL allows the licensed fonts to be used, studied, modified and
+redistributed freely as long as they are not sold by themselves. The
+fonts, including any derivative works, can be bundled, embedded,
+redistributed and/or sold with any software provided that any reserved
+names are not used by derivative works. The fonts and derivatives,
+however, cannot be released under any other type of license. The
+requirement for fonts to remain under this license does not apply
+to any document created using the fonts or their derivatives.
+
+DEFINITIONS
+"Font Software" refers to the set of files released by the Copyright
+Holder(s) under this license and clearly marked as such. This may
+include source files, build scripts and documentation.
+
+"Reserved Font Name" refers to any names specified as such after the
+copyright statement(s).
+
+"Original Version" refers to the collection of Font Software components as
+distributed by the Copyright Holder(s).
+
+"Modified Version" refers to any derivative made by adding to, deleting,
+or substituting -- in part or in whole -- any of the components of the
+Original Version, by changing formats or by porting the Font Software to a
+new environment.
+
+"Author" refers to any designer, engineer, programmer, technical
+writer or other person who contributed to the Font Software.
+
+PERMISSION & CONDITIONS
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of the Font Software, to use, study, copy, merge, embed, modify,
+redistribute, and sell modified and unmodified copies of the Font
+Software, subject to the following conditions:
+
+1) Neither the Font Software nor any of its individual components,
+in Original or Modified Versions, may be sold by itself.
+
+2) Original or Modified Versions of the Font Software may be bundled,
+redistributed and/or sold with any software, provided that each copy
+contains the above copyright notice and this license. These can be
+included either as stand-alone text files, human-readable headers or
+in the appropriate machine-readable metadata fields within text or
+binary files as long as those fields can be easily viewed by the user.
+
+3) No Modified Version of the Font Software may use the Reserved Font
+Name(s) unless explicit written permission is granted by the corresponding
+Copyright Holder. This restriction only applies to the primary font name as
+presented to the users.
+
+4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font
+Software shall not be used to promote, endorse or advertise any
+Modified Version, except to acknowledge the contribution(s) of the
+Copyright Holder(s) and the Author(s) or with their explicit written
+permission.
+
+5) The Font Software, modified or unmodified, in part or in whole,
+must be distributed entirely under this license, and must not be
+distributed under any other license. The requirement for fonts to
+remain under this license does not apply to any document created
+using the Font Software.
 
 TERMINATION
 This license becomes null and void if any of the above conditions are

@@ -1,6 +1,6 @@
-//! Automatic refresh on Linux: inotify notifications for a worktree and its Git
-//! folders. rocket-ui's refresh tests make the same checks of the Windows watcher.
-#![cfg(target_os = "linux")]
+//! Native recursive notifications for worktrees and their Git folders. The UI's
+//! refresh tests separately exercise the Windows watcher.
+#![cfg(any(target_os = "linux", target_os = "macos"))]
 #[allow(dead_code)]
 mod common;
 use common::Fixture;
@@ -91,4 +91,35 @@ fn edits_in_new_and_moved_folders_notify() {
     f.run(&["branch", "late-branch"]);
     notified(&watch);
     assert!(watch.metadata_generation().unwrap() > 0, "a new branch is metadata");
+}
+
+#[test]
+fn unicode_renames_and_subsequent_edits_notify() {
+    let f = Fixture::new();
+    f.write("資料/日本語.rs", "base");
+    f.commit("base");
+    let watch = RepositoryWatch::new(f.repo().info(), quiet()).unwrap();
+    fs::rename(f.repository.join("資料"), f.repository.join("한국어 🚀")).unwrap();
+    notified(&watch);
+    fs::write(f.repository.join("한국어 🚀/日本語.rs"), "changed").unwrap();
+    notified(&watch);
+    assert!(watch.is_current().unwrap());
+    assert_eq!(watch.metadata_generation(), Some(0));
+}
+
+#[test]
+fn dropping_watch_releases_its_callback_without_more_writes() {
+    let f = Fixture::new();
+    f.write("a", "base");
+    f.commit("base");
+    let retained = Arc::new(());
+    let marker = retained.clone();
+    let wake = Arc::new(move || { let _ = &marker; });
+    let watch = RepositoryWatch::new(f.repo().info(), wake).unwrap();
+    drop(watch);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Arc::strong_count(&retained) != 1 {
+        assert!(Instant::now() < deadline, "watch callback leaked after shutdown");
+        thread::sleep(Duration::from_millis(10));
+    }
 }

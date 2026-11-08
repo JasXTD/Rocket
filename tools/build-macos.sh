@@ -35,6 +35,11 @@ fi
 
 root=$(cd "$(dirname "$0")/.." && pwd -P)
 cd "$root"
+scope=${ROCKET_MACOS_CHECK_SCOPE:-platform}
+case "$scope" in
+    platform|followups) ;;
+    *) echo 'ROCKET_MACOS_CHECK_SCOPE must be platform or followups.' >&2; exit 2 ;;
+esac
 toolchain=1.99.1
 target=aarch64-apple-darwin
 # Consume the full producer before matching. grep -q can close its pipe after
@@ -80,6 +85,7 @@ cargo_run() { rustup run "$toolchain" cargo "$@"; }
     echo
     echo 'Development app with ad-hoc integrity signatures; not Developer-ID signed or notarized.'
     echo 'Lua sandbox: unavailable (execution refused). Deployment target: macOS 15.'
+    printf 'Affected check scope: %s\n' "$scope"
     printf 'Commit: '; git rev-parse HEAD
     printf 'Local changes: '; git status --porcelain | wc -l
     sw_vers
@@ -90,6 +96,7 @@ cargo_run() { rustup run "$toolchain" cargo "$@"; }
 
 # New-platform compilation is broad; execution is limited to the affected boundary.
 cargo_run check "${common[@]}" --workspace --all-targets
+if [ "$scope" = platform ]; then
 # Darwin ABI must agree with the installed SDK, not just Rust's cross compiler.
 xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror tools/tests/macos-terminal-abi.c -o "$out/macos-terminal-abi"
 "$out/macos-terminal-abi"
@@ -99,7 +106,7 @@ xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror -Wno-deprecated-declarat
 xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror tools/tests/macos-desktop-abi.c -o "$out/macos-desktop-abi"
 "$out/macos-desktop-abi"
 cargo_run test "${common[@]}" -p rocket-git --lib system_languages::
-for filter in shortcuts:: fonts:: desktop:: folder_browser::; do
+for filter in shortcuts:: desktop:: folder_browser::; do
     cargo_run test "${common[@]}" -p rocket-ui --lib "$filter" -- --test-threads=1
 done
 for filter in forge::protection::macos_policy ssh_keys:: \
@@ -139,6 +146,25 @@ unset ROCKET_TEST_REPOSITORIES
 # Builds the actual worker only for negative tests: it must exit before reading
 # input. It is deliberately absent from the downloadable development artifact.
 cargo_run test "${common[@]}" -p rocket-integrations --features runtime --test unsupported_worker
+fi
+# Native notifications, fallback glyphs and their license/package consumers.
+xcrun --sdk macosx clang -std=c11 -Wall -Wextra -Werror tools/tests/macos-watch-abi.c -o "$out/macos-watch-abi"
+"$out/macos-watch-abi"
+cargo_run test "${common[@]}" -p rocket-git --lib watch::platform::tests
+for filter in fonts:: legal::; do
+    cargo_run test "${common[@]}" -p rocket-ui --lib "$filter" -- --test-threads=1
+done
+export ROCKET_TEST_REPOSITORIES
+ROCKET_TEST_REPOSITORIES=$(mktemp -d /private/tmp/rocket-watch.XXXXXXXX)
+cargo_run test "${common[@]}" -p rocket-git --test watch -- --test-threads=1
+for filter in native_watch_ native_refresh_preserves_selection_drafts_and_detects_repeated_edits \
+    worktree_refresh_reuses_history_but_reads_changes_and_selected_diff_fresh \
+    linked_worktree_observes_shared_refs_and_writes_supersede_auto_refresh \
+    metadata_and_included_configuration_force_complete_refreshes; do
+    cargo_run test "${common[@]}" -p rocket-ui --test refresh_state "$filter" -- --test-threads=1
+done
+rmdir "$ROCKET_TEST_REPOSITORIES"
+unset ROCKET_TEST_REPOSITORIES
 cargo_run build "${common[@]}" --workspace --bins
 
 cargo_run build "${common[@]}" -p rocket-ui --example macos_icon
@@ -157,10 +183,13 @@ for executable in rocket rocket-mcp rocket-cli rocket-rebase-editor rocket-ssh; 
     /usr/bin/otool -L "$app_bin/$executable" >> "$out/native-links.log"
 done
 node tools/tests/test-macos-smoke.cjs "$app_bin" "$out"
+if [ "$scope" = platform ]; then
 node --test tools/tests/test-platform-process.cjs
 ROCKET_MCP_EXE="$app_bin/rocket-mcp" ROCKET_MCP_RESULTS="$out/mcp" node tools/tests/test-mcp-terminal-interrupt.cjs
-ROCKET_MCP_EXE="$app_bin/rocket-mcp" ROCKET_MCP_RESULTS="$out/mcp" node tools/tests/test-mcp-terminal-unicode.cjs
 ROCKET_MCP_EXE="$app_bin/rocket-mcp" ROCKET_MCP_RESULTS="$out/mcp" node tools/tests/test-mcp-ssh-discovery.cjs
+fi
+ROCKET_MCP_EXE="$app_bin/rocket-mcp" ROCKET_MCP_RESULTS="$out/mcp" node tools/tests/test-mcp-watch.cjs
+ROCKET_MCP_EXE="$app_bin/rocket-mcp" ROCKET_MCP_RESULTS="$out/mcp" node tools/tests/test-mcp-terminal-unicode.cjs
 ROCKET_MCP_EXE="$app_bin/rocket-mcp" ROCKET_MCP_RESULTS="$out/mcp" node tools/tests/test-mcp-desktop.cjs
 node tools/macos/bundle.cjs verify "$stage"
 (

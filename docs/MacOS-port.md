@@ -37,11 +37,33 @@ browser, plus usable compact dialogs. They also show missing emoji glyph coverag
 in the diff and the explicit automatic-refresh warning. Passing Unicode cell
 tests does not establish complete glyph rendering or real IME behavior.
 
+## Follow-up implementation (native verification pending)
+
+The next revision adds a recursive FSEvents watcher on a private serial dispatch
+queue. Worktree changes refresh selected diffs; Git/common-directory changes
+invalidate metadata. Lost events force a full refresh, and directory identity
+checks reject replaced roots. Closing detaches and drains callbacks before freeing
+their context. No polling Git commands or directory scans run while idle.
+
+Mac/Linux now include Noto Emoji **3.002** as an outline fallback, ahead of egui's
+older emoji faces but after ordinary interface/code faces. Terminal wide clusters
+use it first. The 1.9 MiB asset was approved, matched Google's Git blob hash and
+passed the owner's Malwarebytes scan before loading. The exact source, hashes and
+license are in `runtime/fonts/noto-emoji/3.002`; nothing is installed system-wide.
+It supplies monochrome outlines, not Apple's color emoji or a replacement IME.
+
+Windows font/license tests, Linux font/license/watcher tests and the Apple-target
+source check pass. The new native Mac notification/emoji checks and screenshots
+must pass before calling this follow-up verified. The original run above does
+not validate the new code. Lua remains refused by agreement; its sandbox is the
+next separate task. [Signing preparation](MacOS-signing.md) is a future runbook,
+not an executed notarization or a release-ready signing pipeline.
+
 ## Build and evidence
 
 `.github/workflows/macos-arm64.yml` is **manual-only**. It has no push, pull-request,
 schedule, release or deployment trigger. It uses a standard Apple Silicon
-`macos-15` runner, one concurrent job, a 45-minute timeout and three-day artifact
+`macos-15` runner, one concurrent job, a 15-minute timeout and three-day artifact
 retention. A newer manual run cancels the previous run. It requests read-only
 repository access and checkout does not retain credentials. It uses no personal
 tokens, signing keys, repository credentials, third-party setup action, or
@@ -89,6 +111,13 @@ creation is unavailable; no headless skip counts as acceptance. Successful unit 
 failed ones are retained locally. `ROCKET_TEST_REPOSITORIES` selects a new absolute
 test-only root outside the source checkout, on the native filesystem. This avoids
 mistaking fixtures for nested repositories or testing Unix semantics on WSL DrvFS.
+
+The manual `checks` input defaults to `followups`: watcher SDK/runtime and UI
+refresh tests, fonts/licenses, packaging, CLI smoke, and HTTP MCP watcher,
+Unicode-terminal and desktop captures. `platform` includes the original broader
+platform boundary checks as well. Local builds default to `platform`; set
+`ROCKET_MACOS_CHECK_SCOPE=followups` to select the focused pass. Both scopes keep
+all-target compilation and package/signature/archive verification mandatory.
 
 The artifact is `Rocket-macos-arm64-development.zip`, with per-file hashes and an
 archive SHA-256 sidecar. It contains `Rocket.app`, notices and this document,
@@ -139,8 +168,8 @@ Rocket remains private; this preparation does not change its visibility.
 | Credentials / SSH | Disposable Keychain roundtrip/tamper/locked checks, disposable-agent tests and SSH discovery/import passed. Normal-account access prompts, signed-helper upgrades and live hosted authentication still need Mac acceptance. |
 | Filesystem / hashing | Native ACL, storage, locks, atomic file/repository operations and recovery checks passed. Additional volumes and Unicode-normalization edge cases need acceptance. Unsupported atomic operations fail without an overwriting fallback. |
 | Git | Step 2 filesystem-only installed-Git discovery and launcher refusal implemented; Finder environment and installed Git versions still need native acceptance. Windows' bundle is never selected. |
-| Automatic repository refresh | No macOS filesystem watcher is implemented. Use F5 to refresh after external changes; the UI displays a warning. Windows and Linux retain their own watchers. |
-| Desktop | Native Command/Control bindings, CJK text, compact dialogs and persistence passed. Real IME, clipboard, Retina, Finder launch and broader emoji coverage still need work/acceptance. A native macOS menu bar is not implemented. |
+| Automatic repository refresh | Native FSEvents implementation added; focused Mac runtime verification pending. Older development artifacts still require F5. Windows and Linux retain their own watchers. |
+| Desktop | Native Command/Control bindings, CJK text, compact dialogs and persistence passed. New outline emoji fallback awaits native visual acceptance. Real IME, clipboard, Retina and Finder launch remain pending. A native macOS menu bar is not implemented. |
 | Spell checking / updates | macOS adapters and signed `.app` update/rollback remain absent. |
 
 The next runtime gate is an isolated ordinary-user account on an **Apple Silicon EC2 Mac**
@@ -166,8 +195,9 @@ fallbacks, including monospace editor/terminal faces. No font is downloaded or
 installed. The development archive includes its license and notice. Color emoji,
 IME composition and physical keyboard layouts still need real Mac inspection.
 The WSL and native Mac captures confirmed CJK and combining accents, but still
-showed a missing crab emoji in the diff's existing outline-font fallback. General
-emoji coverage is not established by the CJK or terminal cell-alignment checks.
+showed a missing crab emoji in the diff's existing outline-font fallback. The
+follow-up adds Noto Emoji; native screenshots still need to confirm rendering.
+General emoji coverage is not established by CJK or terminal cell-alignment checks.
 Preferred language and Region come from read-only CoreFoundation APIs, so a
 Finder launch need not inherit a shell's LANG. Rocket's explicit language setting
 continues to override automatic selection. See Apple's [locale declarations](https://github.com/apple-oss-distributions/CF/blob/main/CFLocale.h)

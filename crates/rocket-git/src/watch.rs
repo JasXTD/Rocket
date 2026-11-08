@@ -19,6 +19,8 @@ pub struct RepositoryWatch {
     shared: Arc<Shared>,
     #[cfg(windows)]
     roots: Option<platform::Roots>,
+    #[cfg(target_os = "macos")]
+    roots: platform::Roots,
     /// Linux: the inotify instance this watch shares with others of the repository.
     #[cfg(target_os = "linux")]
     instance: Arc<platform::Instance>,
@@ -36,13 +38,17 @@ impl RepositoryWatch {
         });
         #[cfg(windows)]
         let roots = platform::Roots::capture(info).ok();
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         platform::start(info, shared.clone(), wake)?;
+        #[cfg(target_os = "macos")]
+        let roots = platform::start(info, shared.clone(), wake)?;
         #[cfg(target_os = "linux")]
         let instance = platform::subscribe(info, shared.clone(), wake)?;
         Ok(Self {
             shared,
             #[cfg(windows)]
+            roots,
+            #[cfg(target_os = "macos")]
             roots,
             #[cfg(target_os = "linux")]
             instance,
@@ -78,7 +84,11 @@ impl RepositoryWatch {
         {
             self.instance.is_current()
         }
-        #[cfg(not(any(windows, target_os = "linux")))]
+        #[cfg(target_os = "macos")]
+        {
+            self.roots.is_current()
+        }
+        #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
         {
             Ok(false)
         }
@@ -1063,7 +1073,11 @@ mod platform {
     }
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(target_os = "macos")]
+#[path = "watch/macos.rs"]
+mod platform;
+
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 mod platform {
     use super::*;
     pub(super) fn start(
@@ -1072,7 +1086,7 @@ mod platform {
         _: Arc<dyn Fn() + Send + Sync>,
     ) -> Result<()> {
         Err(Error::Unsupported(
-            "Automatic refresh currently requires Windows; use F5 to refresh".into(),
+            "Automatic refresh is unavailable on this platform; use F5 to refresh".into(),
         ))
     }
 }

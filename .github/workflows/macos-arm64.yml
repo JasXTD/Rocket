@@ -3,6 +3,14 @@ name: macOS Apple Silicon preparation
 # This is a development build, not a release or an automatic paid job.
 on:
   workflow_dispatch:
+    inputs:
+      checks:
+        description: Affected native checks to run
+        type: choice
+        default: followups
+        options:
+          - followups
+          - platform
 
 permissions:
   contents: read
@@ -14,9 +22,10 @@ concurrency:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 15
     env:
       CARGO_TERM_COLOR: never
+      ROCKET_MACOS_CHECK_SCOPE: ${{ inputs.checks }}
       # Ephemeral runner only: a disposable Keychain, never a normal account item.
       ROCKET_MACOS_DISPOSABLE_KEYCHAIN_TEST: '1'
     steps:

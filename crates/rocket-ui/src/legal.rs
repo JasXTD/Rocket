@@ -1,6 +1,6 @@
 //! About › Legal: Rocket's license and the notices of the software it includes, from
 //! `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-NOTICES.txt` at the workspace root.
-//! The notices cover Windows and Linux builds; Legal lists the running platform's entries.
+//! The notices cover Windows, Linux and macOS; Legal lists the running platform's entries.
 //! After changing dependencies, regenerate the notices with
 //! `cargo run -p rocket-ui --example third_party_notices`.
 use crate::{
@@ -24,6 +24,8 @@ const PLATFORM: Option<&str> = if cfg!(windows) {
     Some("Windows")
 } else if cfg!(target_os = "linux") {
     Some("Linux")
+} else if cfg!(target_os = "macos") {
+    Some("macOS")
 } else {
     None
 };
@@ -35,7 +37,7 @@ pub(crate) struct Notice {
     pub name: String,
     pub version: String,
     pub license: String,
-    /// The platforms whose builds include it: "Windows", "Linux" or "Windows, Linux".
+    /// Comma-separated build platforms: Windows, Linux and/or macOS.
     pub platforms: String,
     pub source: String,
     pub text: String,
@@ -386,7 +388,7 @@ mod tests {
         let lock = include_str!("../../../Cargo.lock").replace("\r\n", "\n");
         let every = parse(NOTICES);
         for n in &every {
-            let named = n.platforms.split(", ").all(|p| ["Windows", "Linux"].contains(&p));
+            let named = n.platforms.split(", ").all(|p| ["Windows", "Linux", "macOS"].contains(&p));
             assert!(named, "{} {} names its platforms, not {:?}", n.name, n.version, n.platforms);
             assert!(!n.license.is_empty() && !n.text.is_empty(), "{} has a license and its text", n.name);
             if n.kind == "crate" {
@@ -401,12 +403,16 @@ mod tests {
         let all = notices();
         let crates: Vec<&Notice> = all.iter().filter(|n| n.kind == "crate").collect();
         assert!(crates.len() > 50, "{} crates", crates.len());
-        let linux_fonts = PLATFORM.is_none_or(|p| p == "Linux");
-        assert_eq!(all.iter().filter(|n| n.kind == "font").count(), if linux_fonts { 5 } else { 4 });
+        let unix_fonts = PLATFORM.is_none_or(|p| p == "Linux" || p == "macOS");
+        assert_eq!(all.iter().filter(|n| n.kind == "font").count(), if unix_fonts { 6 } else { 4 });
         let cjk = every.iter().find(|n| n.name == "Noto Sans CJK Regular").expect("CJK notice");
-        assert_eq!((cjk.version.as_str(), cjk.license.as_str(), cjk.platforms.as_str()), ("2.004", "OFL-1.1", "Linux"));
+        assert_eq!((cjk.version.as_str(), cjk.license.as_str(), cjk.platforms.as_str()), ("2.004", "OFL-1.1", "Linux, macOS"));
         assert!(cjk.text.contains("SIL OPEN FONT LICENSE"));
-        assert_eq!(all.iter().any(|n| n.name == cjk.name), linux_fonts);
+        assert_eq!(all.iter().any(|n| n.name == cjk.name), unix_fonts);
+        let emoji = every.iter().find(|n| n.name == "Noto Emoji outline").expect("Emoji fallback notice");
+        assert_eq!((emoji.version.as_str(), emoji.license.as_str(), emoji.platforms.as_str()), ("3.002", "OFL-1.1", "Linux, macOS"));
+        assert!(emoji.text.contains("SIL OPEN FONT LICENSE"));
+        assert_eq!(all.iter().any(|n| n.name == emoji.name), unix_fonts);
         let conpty = all.iter().any(|n| n.kind == "runtime" && n.name == "Microsoft ConPTY" && n.license == "MIT");
         assert_eq!(conpty, PLATFORM.is_none_or(|p| p == "Windows"));
         assert!(crates.iter().any(|n| n.name == "egui" && n.text.contains("Permission is hereby granted")));

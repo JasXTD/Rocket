@@ -10,6 +10,8 @@ const RESOURCES = new Map([
   ['THIRD-PARTY-NOTICES.txt', 'THIRD-PARTY-NOTICES.txt'],
   ['Noto-CJK-LICENSE', 'runtime/fonts/noto-sans-cjk/2.004/LICENSE'],
   ['Noto-CJK-NOTICE', 'runtime/fonts/noto-sans-cjk/2.004/NOTICE'],
+  ['Noto-Emoji-LICENSE', 'runtime/fonts/noto-emoji/3.002/LICENSE'],
+  ['Noto-Emoji-NOTICE', 'runtime/fonts/noto-emoji/3.002/NOTICE'],
 ]);
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
 function version() {

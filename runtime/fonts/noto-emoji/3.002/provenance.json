@@ -1,0 +1,25 @@
+{
+  "publisher": "Google Fonts / googlefonts",
+  "version": "Noto Emoji 3.002",
+  "font_commit": "b979dba422e445492b0eb9951ac52ee0b4d648c3",
+  "license_commit": "254596e5f8a7991229f4b8292eb3b7fa41662446",
+  "approval": "User approved font, publisher Git blob verification and manual Malwarebytes scan. Not loaded until clean scan.",
+  "files": [
+    {
+      "file": "NotoEmoji.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/b979dba422e445492b0eb9951ac52ee0b4d648c3/ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf",
+      "git_blob": "c2c26ab612a88a8610ff9cfbb89299bf2aea6c7a",
+      "bytes": 1982596,
+      "sha256": "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551"
+    },
+    {
+      "file": "LICENSE",
+      "url": "https://raw.githubusercontent.com/googlefonts/noto-emoji/254596e5f8a7991229f4b8292eb3b7fa41662446/LICENSE",
+      "git_blob": "d09d3d0e09169f6747754e6b25faf5ba5ef6402d",
+      "bytes": 4330,
+      "sha256": "500bb1ccf43df7bbb522112f9133a52b16e1c35e809632f5d8609b179152de5b"
+    }
+  ],
+  "scan": "User confirmed Malwarebytes scan completed with no threats detected on 2026-11-08.",
+  "embedded_version": "Version 3.002"
+}
