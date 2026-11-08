@@ -44,6 +44,7 @@ pub mod file_actions;
 pub mod file_history;
 pub mod folder_browser;
 mod fonts;
+mod desktop;
 pub mod i18n;
 pub mod force_push;
 pub mod atomic_push;

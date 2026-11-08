@@ -249,7 +249,7 @@ impl Rocket {
             let (escape, _) = ctx.input_mut(|i| {
                 (
                     i.consume_key(Modifiers::NONE, Key::Escape),
-                    i.consume_key(Modifiers::CTRL, Key::Enter),
+                    i.consume_key(crate::shortcuts::primary_modifiers(), Key::Enter),
                 )
             });
             if escape {
@@ -589,7 +589,7 @@ mod tests {
 
                 frame(&mut app, vec![key(Key::F1, Modifiers::NONE)]);
                 assert_eq!(app.guide, Some(Topic::Repositories));
-                frame(&mut app, vec![key(Key::Enter, Modifiers::CTRL)]);
+                frame(&mut app, vec![key(Key::Enter, crate::shortcuts::primary_modifiers())]);
                 assert!(
                     app.dialog.is_some(),
                     "Ctrl+Enter submitted the dialog under the guide"
@@ -618,7 +618,7 @@ mod tests {
                     std::thread::sleep(std::time::Duration::from_millis(5));
                     frame(&mut app, vec![]);
                 }
-                frame(&mut app, vec![key(Key::Enter, Modifiers::CTRL)]);
+                frame(&mut app, vec![key(Key::Enter, crate::shortcuts::primary_modifiers())]);
                 assert!(app.dialog.is_none());
             },
         );

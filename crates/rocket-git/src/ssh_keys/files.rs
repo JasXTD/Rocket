@@ -4,6 +4,8 @@ use std::{
     io::{Read, Write},
     path::Component,
 };
+#[cfg(target_os = "macos")]
+use crate::darwin_acl as acl;
 pub(super) struct SecretBytes(pub Vec<u8>);
 impl Drop for SecretBytes {
     fn drop(&mut self) {
@@ -39,18 +41,26 @@ pub(super) fn locked(p: &Path) -> Result<File> {
     safe_path(p)?;
     let mut o = OpenOptions::new();
     o.read(true);
+    #[cfg(unix)]
+    local_files::no_follow(&mut o);
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
         o.share_mode(1).custom_flags(0x00200000);
     }
-    let f = o.open(p).map_err(|e| Error::io("open SSH file", e))?;
+    let f = o.open(p).map_err(|e| {
+        #[cfg(unix)]
+        if e.raw_os_error() == Some(if cfg!(target_os = "macos") { 62 } else { 40 }) {
+            return fail(SshFailure::UnsafePath); // ELOOP from O_NOFOLLOW.
+        }
+        Error::io("open SSH file", e)
+    })?;
     let m = f.metadata().map_err(|e| Error::io("inspect SSH file", e))?;
     if !m.is_file() || local_files::redirected(&m) {
         return Err(fail(SshFailure::UnsafePath));
     }
-    // Linux opens through a link; refuse one, as Windows refuses a reparse point.
-    #[cfg(target_os = "linux")]
+    // Verify the opened vnode, including parent-path redirection on Unix.
+    #[cfg(unix)]
     if !local_files::opened_without_link(&f, p).map_err(|e| Error::io("inspect SSH file", e))? {
         return Err(fail(SshFailure::UnsafePath));
     }
@@ -228,7 +238,9 @@ pub(super) fn private_key(file: &File) -> Result<()> {
     unsafe extern "C" {
         fn geteuid() -> u32;
     }
-    let found = file.metadata().map_err(|e| Error::io("inspect SSH key", e))?;
+    let found = file
+        .metadata()
+        .map_err(|e| Error::io("inspect SSH key", e))?;
     // SAFETY: geteuid takes no arguments and always succeeds.
     if found.uid() != unsafe { geteuid() } {
         return Err(fail(SshFailure::UnsafePath));
@@ -236,6 +248,9 @@ pub(super) fn private_key(file: &File) -> Result<()> {
     if found.mode() & 0o077 != 0 {
         return Err(fail(SshFailure::KeyPermissions));
     }
+    #[cfg(target_os = "macos")]
+    acl::check(file, Path::new("selected SSH key"), &found)
+        .map_err(|_| fail(SshFailure::KeyPermissions))?;
     Ok(())
 }
 pub(super) fn public_path(p: &Path) -> PathBuf {

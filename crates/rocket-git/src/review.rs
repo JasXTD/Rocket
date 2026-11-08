@@ -483,7 +483,14 @@ pub(crate) fn verify_preview_handle(
         let _ = path;
         std::fs::canonicalize(format!("/proc/self/fd/{}", file.as_raw_fd())).map_err(preview_io)?
     };
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
+    let opened = {
+        if !crate::local_files::opened_without_link(file, path).map_err(preview_io)? {
+            return Err(Error::InvalidInput("Preview path changed. Refresh and try again.".into()));
+        }
+        crate::local_files::opened_path(file).map_err(preview_io)?
+    };
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     let opened = {
         use std::os::unix::fs::MetadataExt;
         let actual = file.metadata().map_err(preview_io)?;

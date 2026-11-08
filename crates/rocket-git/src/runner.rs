@@ -4,7 +4,7 @@ use crate::{
     progress::{ProgressParser, ProgressSink},
 };
 use std::{
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     io::{Read, Write},
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
@@ -16,6 +16,8 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[cfg(not(target_os = "macos"))]
+use std::ffi::OsStr;
 
 // An explicit empty value for --config-env, which supports '=' inside ref-derived
 // configuration keys. Override any inherited value only in the child process.
@@ -1214,6 +1216,15 @@ pub(crate) fn find_git() -> Result<PathBuf> {
     find_installed_git()
 }
 
+#[cfg(any(target_os = "macos", all(test, unix)))]
+pub(crate) mod macos_git;
+
+#[cfg(target_os = "macos")]
+pub(crate) fn find_installed_git() -> Result<PathBuf> {
+    macos_git::find(&std::env::var_os("PATH").unwrap_or_default(), std::env::var_os("DEVELOPER_DIR").as_deref())
+}
+
+#[cfg(not(target_os = "macos"))]
 pub(crate) fn find_installed_git() -> Result<PathBuf> {
     let name = if cfg!(windows) { "git.exe" } else { "git" };
     let paths = std::env::var_os("PATH").unwrap_or_default();

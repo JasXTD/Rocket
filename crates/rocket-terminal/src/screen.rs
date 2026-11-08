@@ -121,7 +121,7 @@ impl Screen {
             device_attributes: false,
         }
     }
-    #[cfg(any(target_os = "linux", test))]
+    #[cfg(any(any(target_os = "linux", target_os = "macos"), test))]
     pub(crate) fn answer_device_attributes(&mut self) {
         self.device_attributes = true;
     }
@@ -131,7 +131,7 @@ impl Screen {
         self.previous = None;
         self.revision += 1;
     }
-    #[cfg(any(windows, target_os = "linux", test))]
+    #[cfg(any(windows, any(target_os = "linux", target_os = "macos"), test))]
     pub(crate) fn take_replies(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.replies)
     }

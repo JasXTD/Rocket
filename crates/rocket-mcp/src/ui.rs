@@ -3041,7 +3041,7 @@ fn terminal_grid(screen: &rocket_terminal::Screen) -> (Vec<Value>, bool) {
 
 /// The fixed probes for the shell an MCP window runs: Windows PowerShell, or on Linux
 /// Rocket's bash, whose probes print the same markers.
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 const SHELL_PROBES: &[&str] = &[
     "",
     "Write-Output ('ROCKET_' + 'TERMINAL_OK')",
@@ -3055,7 +3055,7 @@ const SHELL_PROBES: &[&str] = &[
     "Write-Error 'ROCKET_EXPECTED_ERROR'",
     "exit",
 ];
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 const SHELL_PROBES: &[&str] = &[
     "",
     "printf 'ROCKET_%s\\n' TERMINAL_OK",
@@ -3078,16 +3078,16 @@ fn terminal_probe_allowed(text: &str, root: &Path) -> Result<(), String> {
     }
     let file = root.join("rocket-terminal-fixture.txt");
     let path = file.to_string_lossy();
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     let path = path
         .strip_prefix("\\\\?\\")
         .unwrap_or(&path)
         .replace('\'', "''");
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     let expected = format!("[IO.File]::WriteAllText('{path}', 'ROCKET_TERMINAL_EDIT')");
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     let path = path.replace('\'', "'\\''");
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     let expected = format!("printf %s ROCKET_TERMINAL_EDIT > '{path}'");
     if text == expected {
         if let Ok(metadata) = std::fs::symlink_metadata(&file) {
@@ -3893,7 +3893,7 @@ mod terminal_grid_tests {
         ] {
             assert!(terminal_probe_allowed(text, &root).is_err(), "{text}");
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             let quoted = |p: &Path| format!("printf %s ROCKET_TERMINAL_EDIT > '{}'", p.display());
             let fixture = quoted(&root.join("rocket-terminal-fixture.txt"));

@@ -970,6 +970,7 @@ pub fn search_field(ui: &mut Ui, value: &mut String, hint: &str, width: f32) -> 
                     TextEdit::singleline(value)
                         .frame(Frame::NONE)
                         .min_size(vec2(0.0, 22.0))
+                        .vertical_align(Align::Center)
                         .hint_text(hint)
                         .desired_width(ui.available_width()),
                 )

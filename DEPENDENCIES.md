@@ -1,6 +1,22 @@
 # Dependency review
 
+## macOS core/credential adapters — 2026-11-08
+
+No new packages, versions or tools were installed. The previously reviewed and
+locked `sha2 =0.11.1` (core hashes) and `chacha20poly1305 =0.11.0` (`alloc`, default
+features off) now also compile for macOS. Windows remains on its existing native
+APIs; Linux retains the same cipher, envelope and Secret Service implementation.
+Mac uses the installed Security/CoreFoundation frameworks for Keychain access and
+random bytes, without an extra crypto RNG crate or a command-line credential tool.
+No Cargo.lock change is needed. Earlier Linux-only review entries below describe
+their scope at the time; this entry records the additional platform consumers.
+
 ## Embedded Linux CJK font — 2026-11-08
+
+Step 5 also embeds these exact approved bytes on macOS. Windows remains unchanged;
+no new download, font installation, crate or lockfile update was needed. Native
+Mac rendering still needs acceptance. The Mac development archive includes the
+same upstream license and notice.
 
 With user approval, added the unmodified Noto Sans CJK Regular 2.004 collection
 from the official `notofonts/noto-cjk` repository, pinned to

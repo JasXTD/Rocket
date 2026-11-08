@@ -28,11 +28,13 @@ impl GitClient {
             previews: Default::default(),
         }
     }
-    /// Locate the bundled runtime when included, otherwise installed Git on PATH.
+    /// Locate the bundled runtime when included, otherwise installed Git (PATH plus
+    /// standard developer-tool locations on macOS, excluding installation stubs).
     /// This only resolves a path; every client still verifies it before execution.
     pub fn automatic_executable() -> Result<PathBuf> { find_git() }
 
-    /// Resolve the first Git on PATH without selecting or executing the bundle.
+    /// Resolve installed Git without selecting or executing the bundle. macOS also
+    /// checks standard installation folders when Finder supplies a minimal PATH.
     pub fn installed_executable() -> Result<PathBuf> { crate::runner::find_installed_git() }
 
     pub fn discover() -> Result<Self> {
@@ -113,6 +115,10 @@ impl GitClient {
         let executable = executable
             .canonicalize()
             .map_err(|e| Error::io("resolve Git executable", e))?;
+        // Also guard an explicit preference/CLI path, including aliases of Apple's
+        // launcher, before the version probe can start an installation dialog.
+        #[cfg(target_os = "macos")]
+        crate::runner::macos_git::check_explicit(&executable)?;
         if !executable.is_file() {
             return Err(Error::InvalidInput("Git executable must be a file".into()));
         }

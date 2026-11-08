@@ -136,9 +136,9 @@ impl SshManager {
                     return Err(fail(SshFailure::KeyInvalid));
                 }
                 cancel.check()?;
-                // Windows rename refuses an existing destination; never replace an
-                // externally saved credential. The profile/key remain pinned here.
-                fs::rename(&pending, &target).map_err(|_| fail(SshFailure::Changed))?;
+                // Exclusive on every supported OS: a concurrent writer's saved
+                // credential must survive. The profile/key remain pinned here.
+                publish(&pending, &target)?;
                 owned.0 = PathBuf::new();
                 self.load(&profile.alias, &CancellationToken::new())
             })
@@ -164,6 +164,52 @@ impl SshManager {
     }
 }
 
+fn publish(pending: &Path, target: &Path) -> Result<()> {
+    local_files::move_path(pending, target, false).map_err(|_| fail(SshFailure::Changed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn credential_publication_preserves_concurrent_files() {
+        let directory = std::env::temp_dir().join(format!(
+            "rocket-credential-publication-{}",
+            binding::unique()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let pending = directory.join("pending");
+        let target = directory.join("saved");
+        fs::write(&pending, b"new ciphertext fixture").unwrap();
+        fs::write(&target, b"concurrent ciphertext fixture").unwrap();
+        assert!(matches!(
+            publish(&pending, &target),
+            Err(Error::Ssh(SshFailure::Changed))
+        ));
+        assert_eq!(fs::read(&target).unwrap(), b"concurrent ciphertext fixture");
+        assert_eq!(fs::read(&pending).unwrap(), b"new ciphertext fixture");
+        fs::remove_file(&target).unwrap();
+        #[cfg(unix)]
+        {
+            let external = directory.join("external");
+            fs::write(&external, b"external fixture").unwrap();
+            std::os::unix::fs::symlink(&external, &target).unwrap();
+            assert!(matches!(
+                publish(&pending, &target),
+                Err(Error::Ssh(SshFailure::Changed))
+            ));
+            assert_eq!(fs::read(&external).unwrap(), b"external fixture");
+            fs::remove_file(&target).unwrap();
+            fs::remove_file(&external).unwrap();
+        }
+        publish(&pending, &target).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"new ciphertext fixture");
+        assert!(!pending.exists());
+        fs::remove_file(target).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
+}
+
 /// Serializes credential changes without locking or editing the actual key.
 struct CredentialGate {
     _file: fs::File,
@@ -173,6 +219,12 @@ impl CredentialGate {
         let path = p.config.with_file_name("passphrase.lock");
         let mut options = fs::OpenOptions::new();
         options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+            local_files::no_follow(&mut options);
+        }
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
@@ -183,6 +235,12 @@ impl CredentialGate {
         let file = options.open(&path).map_err(|_| fail(SshFailure::Changed))?;
         let meta = file.metadata().map_err(|_| fail(SshFailure::Changed))?;
         if !meta.is_file() || local_files::redirected(&meta) || meta.len() != 0 {
+            return Err(fail(SshFailure::UnsafePath));
+        }
+        #[cfg(unix)]
+        if !local_files::opened_without_link(&file, &path)
+            .map_err(|_| fail(SshFailure::UnsafePath))?
+        {
             return Err(fail(SshFailure::UnsafePath));
         }
         // Keep the empty lock file. Closing this non-inheritable handle also

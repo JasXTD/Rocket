@@ -1632,7 +1632,7 @@ impl Rocket {
                     };
                     pages::control(widgets, "dialog-submit", &button, ui.clip_rect());
                     submit |= button.clicked();
-                    if ready && ui.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Enter)) {
+                    if ready && ui.input_mut(|i| i.consume_key(crate::shortcuts::primary_modifiers(), Key::Enter)) {
                         submit = true;
                     }
                     let status = crate::small_dialogs::status(&dialog, tab);

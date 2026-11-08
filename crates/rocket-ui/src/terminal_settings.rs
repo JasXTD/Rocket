@@ -50,8 +50,12 @@ impl Choice {
         Self::PowerShell7,
         Self::Custom,
     ];
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     pub const ALL: [Self; 5] = [Self::LoginShell, Self::Bash, Self::Zsh, Self::Fish, Self::Custom];
+    // Finder need not provide $SHELL. macOS always has /bin/zsh; selecting an
+    // explicit login/custom shell remains available without altering profiles.
+    #[cfg(target_os = "macos")]
+    pub const ALL: [Self; 5] = [Self::Zsh, Self::LoginShell, Self::Bash, Self::Fish, Self::Custom];
     pub fn label(self) -> &'static str {
         match self {
             Self::WindowsPowerShell => "Windows PowerShell",
@@ -174,6 +178,7 @@ fn installed_shell(name: &str, shells: Option<&str>) -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|path| path.file_name().is_some_and(|file| file == name))
         .chain(Some(Path::new("/usr/bin").join(name)))
+        .chain(cfg!(target_os = "macos").then(|| Path::new("/bin").join(name)))
         .find(|path| path.is_file())
 }
 
@@ -625,6 +630,14 @@ impl Rocket {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_default_and_system_shells_do_not_require_finder_shell_environment() {
+        assert_eq!(Settings::default().choice, Choice::Zsh);
+        assert_eq!(installed_shell("zsh", None), Some(PathBuf::from("/bin/zsh")));
+        assert_eq!(installed_shell("bash", None), Some(PathBuf::from("/bin/bash")));
+        assert!(!Choice::ALL.contains(&Choice::WindowsPowerShell));
+    }
 
     #[cfg(windows)]
     fn located() -> Located {
@@ -728,7 +741,7 @@ mod tests {
     fn linux() -> Located {
         Located { login: Some("/bin/bash".into()), bash: Some("/usr/bin/bash".into()), ..Default::default() }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "linux")]
     #[test]
     fn linux_lists_its_own_shells_and_the_login_shell_comes_first() {
         assert_eq!(Choice::ALL, [Choice::LoginShell, Choice::Bash, Choice::Zsh, Choice::Fish, Choice::Custom]);

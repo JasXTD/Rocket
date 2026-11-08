@@ -4,15 +4,15 @@ use std::{
     fs::{File, OpenOptions},
     io::{Read, Seek, SeekFrom},
 };
-// Used by the Windows and Linux publication; elsewhere publish_change reports Unsupported.
-#[cfg(any(windows, target_os = "linux"))]
+// Used by the Windows, Linux and macOS publication; elsewhere publish_change reports Unsupported.
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 use std::{
     fs,
     io::Write,
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 static NEXT: AtomicU64 = AtomicU64::new(0);
 fn io(action: &'static str, e: std::io::Error) -> Error {
     Error::io(action, e)
@@ -77,7 +77,7 @@ fn open_mode(
         return Err(unsupported());
     }
     // Opening follows a symbolic link here; refuse one as Windows refuses a reparse point.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     if !local_files::opened_without_link(&file, &full).map_err(|e| io("inspect conflict file", e))? {
         return Err(unsupported());
     }
@@ -124,8 +124,8 @@ pub(super) fn read_optional(
 
 /// One checked working-file change and how its failures are reported.
 #[cfg_attr(
-    not(any(windows, target_os = "linux")),
-    expect(dead_code, reason = "only the Windows and Linux publication read a change")
+    not(any(windows, target_os = "linux", target_os = "macos")),
+    expect(dead_code, reason = "only the Windows, Linux and macOS publication read a change")
 )]
 pub(super) struct Change<'a> {
     pub path: &'a RepoPath,
@@ -173,7 +173,7 @@ pub(super) fn publish(
     publish_change(repo, &change, recheck, cancel, saved, recovery)
 }
 
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 pub(super) fn publish_change(
     repo: &Repository,
     change: &Change<'_>,
@@ -280,7 +280,7 @@ pub(super) fn publish_change(
     let replacement = directory.join("replacement");
     // Linux files carry the executable bit Git tracks: keep the replaced file's
     // permissions, or apply the kept version's mode.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     if change.result.is_some() {
         let original = _opened.as_ref().map(|opened| &opened.file);
         local_files::set_published_mode(&replacement, original, change.executable)
@@ -338,7 +338,7 @@ pub(super) fn publish_change(
         if !meta.is_file() || local_files::redirected(&meta) {
             return Err(Error::Conflict(change.bounds.unsupported));
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if !local_files::opened_without_link(&backup_file, &backup)
             .map_err(|e| io("inspect conflict recovery copy", e))?
         {
@@ -365,7 +365,7 @@ pub(super) fn executable_differs(
     path: &RepoPath,
     executable: Option<bool>,
 ) -> Result<bool> {
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         use std::os::unix::fs::PermissionsExt;
         let (Some(executable), Some(root)) = (executable, repo.info().worktree.as_ref()) else {
@@ -380,20 +380,20 @@ pub(super) fn executable_differs(
             Err(e) => Err(io("inspect conflict file permissions", e)),
         }
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         let _ = (repo, path, executable);
         Ok(false)
     }
 }
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn moved(error: Error, action: &'static str) -> Error {
     match error {
         Error::Io { source, .. } => io(action, source),
         other => other,
     }
 }
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(super) fn publish_change(
     _repo: &Repository,
     _change: &Change<'_>,
@@ -403,6 +403,6 @@ pub(super) fn publish_change(
     _recovery: &mut Option<PathBuf>,
 ) -> Result<()> {
     Err(Error::Unsupported(
-        "Checked conflict-file publication currently requires Windows".into(),
+        "Checked conflict-file publication is unavailable on this platform".into(),
     ))
 }

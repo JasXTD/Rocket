@@ -1,5 +1,28 @@
 # Rocket security boundaries
 
+## macOS credential preparation (unreleased)
+
+The macOS port seals local credentials with XChaCha20-Poly1305 and a wrapping key
+in the default file-based Keychain. It uses Security.framework directly, disables
+prompts for its serialized calls, restores that process setting, and fails visibly
+when Keychain access is denied. It never replaces a pre-existing wrapping key,
+creates a missing key during decryption, unlocks/resets a Keychain, or falls back
+to plaintext. On first creation only, the item trusts the creating binary and
+verified sibling Rocket helpers; existing item access lists are preserved.
+Mac envelopes are separate from Windows DPAPI and Linux envelopes. This legacy
+Keychain boundary supports development binaries, including ad-hoc signatures,
+not a stable Developer ID identity or proof of signed/notarized helper upgrades.
+Actual Mac interoperability still requires native acceptance.
+
+Mac SSH uses installed `/usr/bin` tools and the current user's inherited agent
+socket. Direct-key mode disables the agent and Apple's separate `UseKeychain`
+lookup; private-key ACL grants are refused. No user key/config/agent settings are
+edited automatically. Credential publication is exclusive on supported systems,
+and Unix credential locks reject symlinks. See [the Mac port gates](docs/MacOS-port.md)
+for the prepared disposable-Keychain and native OpenSSH tests and their limits.
+
+## Earlier security remediation
+
 This security remediation follows the findings in Codex chat
 `01a14039-a14f-7c23-a3ce-1f9a89ebbcc6`. It applies to the current source;
 see the reports for the first pass in `work/security-remediation-20261023/REPORT.md`

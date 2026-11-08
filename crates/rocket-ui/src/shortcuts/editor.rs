@@ -579,13 +579,14 @@ mod tests {
         assert!(state.edit.is_none());
         assert!(inputs(&state, Action::Sidebar).is_empty(), "Delete clears the cell");
         // Another command's input waits for a choice; Use for this moves it.
-        capture(&mut state, Action::Sidebar, 0, "Ctrl+O");
+        let open = Bindings::default().label(Action::Open);
+        capture(&mut state, Action::Sidebar, 0, &open);
         assert!(state.edit.as_ref().unwrap().error.as_ref().unwrap().contains("Open repository"));
         assert!(inputs(&state, Action::Sidebar).is_empty());
         state.take_over();
         assert!(state.edit.is_none());
-        assert_eq!(inputs(&state, Action::Sidebar), ["Ctrl+O"]);
-        assert!(!inputs(&state, Action::Open).contains(&"Ctrl+O".to_owned()));
+        assert_eq!(inputs(&state, Action::Sidebar), [open.clone()]);
+        assert!(!inputs(&state, Action::Open).contains(&open));
         // An input the model refuses waits too and changes nothing.
         let before = state.bindings.clone();
         capture(&mut state, Action::Sidebar, 1, "MouseLeft");
@@ -608,12 +609,13 @@ mod tests {
         let mut state = State::default();
         let original = state.bindings.clone();
         state.find();
-        let mut input = raw(vec![key("Ctrl+K", true), Event::Text("k".into()), key("Ctrl+K", false)]);
+        let palette = Bindings::default().label(Action::Palette);
+        let mut input = raw(vec![key(&palette, true), Event::Text("k".into()), key(&palette, false)]);
         state.filter(&mut input, &[Action::Palette], true);
         assert!(input.events.is_empty(), "the keys neither type nor run anything");
         assert!(state.finding.is_none() && state.edit.is_none() && state.pending.is_none());
-        assert_eq!(state.found.map(Binding::text).as_deref(), Some("Ctrl+K"));
-        assert_eq!(rows(&state, "ctrl+k"), ["palette"]);
+        assert_eq!(state.found.map(Binding::text).as_deref(), Some(palette.as_str()));
+        assert_eq!(rows(&state, &palette.to_ascii_lowercase()), ["palette"]);
         assert_eq!(state.bindings, original, "finding binds nothing");
         // The match is exact: Ctrl+F1 does not find a command bound to Ctrl+F12, as text would.
         state.bindings.set(Action::Sidebar, vec![Binding::parse("Ctrl+F12").unwrap()]).unwrap();

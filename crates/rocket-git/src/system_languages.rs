@@ -1,13 +1,13 @@
 //! The languages the user's system shows, most preferred first, as the system names
-//! them: zh-CN and ja-JP on Windows, zh_CN.UTF-8 on Linux. Rocket's interface picks the
+//! them: zh-CN and ja-JP on Windows/macOS, zh_CN.UTF-8 on Linux. Rocket's interface picks the
 //! first one it has; nothing here decides which languages that is.
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SystemLanguages {
-    /// Windows: the display languages, the first being the one Windows' own menus use.
+    /// Windows/macOS: the preferred display languages, most preferred first.
     /// Elsewhere: LANGUAGE's list, then the locale LC_ALL, LC_MESSAGES or LANG names.
     pub display: Vec<String>,
-    /// Windows: the Region format's locale, which can differ from the display language.
+    /// Windows/macOS: the Region locale, which can differ from the display language.
     pub region: Option<String>,
 }
 
@@ -16,14 +16,19 @@ pub fn system_languages() -> SystemLanguages {
     SystemLanguages { display: windows::display(), region: windows::region() }
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn system_languages() -> SystemLanguages {
     SystemLanguages { display: from_environment(|name| std::env::var(name).ok()), region: None }
 }
 
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+pub fn system_languages() -> SystemLanguages { macos::languages() }
+
 /// The locale variables in gettext's order. LANGUAGE's list counts only when the
 /// locale itself is not C, as gettext has it.
-#[cfg_attr(windows, allow(dead_code))]
+#[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
 fn from_environment(var: impl Fn(&str) -> Option<String>) -> Vec<String> {
     let set = |name: &str| var(name).filter(|value| !value.is_empty());
     let locale = set("LC_ALL").or_else(|| set("LC_MESSAGES")).or_else(|| set("LANG"));

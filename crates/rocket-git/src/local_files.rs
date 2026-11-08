@@ -8,6 +8,11 @@ use std::{
     path::Path,
 };
 
+#[cfg(target_os = "macos")]
+use darwin as atomic;
+#[cfg(target_os = "linux")]
+use linux as atomic;
+
 pub(crate) fn redirected(meta: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {
@@ -116,7 +121,7 @@ pub(crate) fn move_path(source: &Path, destination: &Path, replace: bool) -> Res
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn move_path(source: &Path, destination: &Path, replace: bool) -> Result<()> {
     if replace {
         return fs::rename(source, destination)
@@ -125,36 +130,47 @@ pub(crate) fn move_path(source: &Path, destination: &Path, replace: bool) -> Res
     move_new(source, destination).map_err(|e| no_replace_error(e, "publish repository metadata"))
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(crate) fn move_path(source: &Path, destination: &Path, replace: bool) -> Result<()> {
     if !replace {
         return Err(Error::Unsupported(
-            "Non-replacing repository publication currently requires Windows".into(),
+            "Non-replacing publication is unavailable on this platform".into(),
         ));
     }
     fs::rename(source, destination).map_err(|e| Error::io("publish repository metadata", e))
 }
 
 /// Move `source` to `destination` only while nothing is there. The check and the
-/// move are one step (`renameat2` with `RENAME_NOREPLACE`), so an entry that appears
+/// move are one step (Linux NOREPLACE / Darwin EXCL), so an entry that appears
 /// concurrently is never replaced. Both paths must be on one filesystem.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn move_new(source: &Path, destination: &Path) -> std::io::Result<()> {
-    linux::rename(source, destination, linux::RENAME_NOREPLACE)
+    atomic::rename(source, destination, atomic::RENAME_NOREPLACE)
 }
 
 /// The error for a failed non-replacing move. A filesystem without the flag (EINVAL
 /// or ENOSYS, as on some network and FUSE mounts) is refused: Rocket never retries
 /// with a move that could replace an existing file.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn no_replace_error(error: std::io::Error, action: &'static str) -> Error {
-    if linux::unsupported(&error) {
-        Error::Unsupported(
-            "This folder's filesystem cannot move files without the risk of replacing \
+    if atomic::unsupported(&error) {
+        #[cfg(target_os = "linux")]
+        {
+            Error::Unsupported(
+                "This folder's filesystem cannot move files without the risk of replacing \
              existing ones (renameat2 RENAME_NOREPLACE), so Rocket did not move anything. \
              Use a folder on a local filesystem such as ext4, XFS or Btrfs"
-                .into(),
-        )
+                    .into(),
+            )
+        }
+        #[cfg(target_os = "macos")]
+        {
+            Error::Unsupported(
+                "This filesystem cannot publish without replacement (renamex_np RENAME_EXCL). \
+             Nothing was replaced; choose a local volume supporting exclusive rename, such as APFS"
+                    .into(),
+            )
+        }
     } else {
         Error::io(action, error)
     }
@@ -165,7 +181,11 @@ pub(crate) fn no_replace_error(error: std::io::Error, action: &'static str) -> E
 /// leave a partial result: never delete the recovery folder, and never assume that an
 /// error means `target` is unchanged.
 #[cfg(windows)]
-pub(crate) fn replace_file(target: &Path, replacement: &Path, backup: &Path) -> std::io::Result<()> {
+pub(crate) fn replace_file(
+    target: &Path,
+    replacement: &Path,
+    backup: &Path,
+) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     #[link(name = "kernel32")]
     unsafe extern "system" {
@@ -203,25 +223,29 @@ pub(crate) fn replace_file(target: &Path, replacement: &Path, backup: &Path) -> 
     Ok(())
 }
 
-/// Linux: swap `replacement` and `target` in one step (`RENAME_EXCHANGE`), so `target`
+/// Swap `replacement` and `target` in one step (Linux EXCHANGE / Darwin SWAP), so `target`
 /// always names a whole file, then move the displaced file to `backup` without
 /// replacing anything. The displaced file is the one actually at `target` at the swap,
 /// even if another program renamed something there after the last check.
-#[cfg(target_os = "linux")]
-pub(crate) fn replace_file(target: &Path, replacement: &Path, backup: &Path) -> std::io::Result<()> {
-    linux::rename(replacement, target, linux::RENAME_EXCHANGE).map_err(|error| {
-        if linux::unsupported(&error) {
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn replace_file(
+    target: &Path,
+    replacement: &Path,
+    backup: &Path,
+) -> std::io::Result<()> {
+    atomic::rename(replacement, target, atomic::RENAME_EXCHANGE).map_err(|error| {
+        if atomic::unsupported(&error) {
             std::io::Error::new(
                 std::io::ErrorKind::Unsupported,
-                "this folder's filesystem cannot replace a file in one step (renameat2 \
-                 RENAME_EXCHANGE), so the file was not changed. Use a folder on a local \
-                 filesystem such as ext4, XFS or Btrfs",
+                "This filesystem cannot atomically swap files; the file was not changed. \
+                 Choose a local filesystem supporting atomic exchange (Linux renameat2 \
+                 RENAME_EXCHANGE or macOS renamex_np RENAME_SWAP)",
             )
         } else {
             error
         }
     })?;
-    linux::rename(replacement, backup, linux::RENAME_NOREPLACE).map_err(|error| {
+    atomic::rename(replacement, backup, atomic::RENAME_NOREPLACE).map_err(|error| {
         std::io::Error::new(
             error.kind(),
             format!(
@@ -232,11 +256,11 @@ pub(crate) fn replace_file(target: &Path, replacement: &Path, backup: &Path) -> 
     })
 }
 
-/// Linux: give a file about to be published the permission bits Git expects. Keep the
+/// Unix: give a file about to be published the permission bits Git expects. Keep the
 /// bits of the file it replaces (`original`), or of `prepared` as created for a new
 /// file; with a known Git mode, set or clear the executable bits to match it, the way
 /// checkout derives them from the read bits. Windows has no executable bit.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn set_published_mode(
     prepared: &Path,
     original: Option<&File>,
@@ -251,7 +275,7 @@ pub(crate) fn set_published_mode(
     fs::set_permissions(prepared, fs::Permissions::from_mode(mode))
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn published_mode(base: u32, executable: Option<bool>) -> u32 {
     let base = base & 0o777;
     match executable {
@@ -261,9 +285,9 @@ fn published_mode(base: u32, executable: Option<bool>) -> u32 {
     }
 }
 
-/// Linux: whether `file`, opened from `path`, is the entry at `path` itself and not a
+/// Unix: whether `file`, opened from `path`, is the entry at `path` itself and not a
 /// file reached through a symbolic link. Windows opens reparse points themselves.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn opened_without_link(file: &File, path: &Path) -> std::io::Result<bool> {
     use std::os::unix::fs::MetadataExt;
     let opened = file.metadata()?;
@@ -271,6 +295,47 @@ pub(crate) fn opened_without_link(file: &File, path: &Path) -> std::io::Result<b
     Ok(!entry.file_type().is_symlink()
         && entry.dev() == opened.dev()
         && entry.ino() == opened.ino())
+}
+
+/// Query the *opened* vnode, not a pathname that could now refer to another file.
+#[cfg(target_os = "macos")]
+pub(crate) fn opened_path(file: &File) -> std::io::Result<std::path::PathBuf> {
+    use std::{
+        ffi::OsString,
+        io,
+        os::{fd::AsRawFd, unix::ffi::OsStringExt},
+    };
+    unsafe extern "C" {
+        fn fcntl(fd: std::ffi::c_int, command: std::ffi::c_int, ...) -> std::ffi::c_int;
+    }
+    let mut path = [0u8; 1024]; // Darwin MAXPATHLEN; F_GETPATH = 50 (sys/fcntl.h).
+    // SAFETY: live descriptor, correctly sized writable F_GETPATH buffer.
+    if unsafe { fcntl(file.as_raw_fd(), 50, path.as_mut_ptr()) } == -1 {
+        return Err(io::Error::last_os_error());
+    }
+    let end = path
+        .iter()
+        .position(|b| *b == 0)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Unterminated file path"))?;
+    let path = std::path::PathBuf::from(OsString::from_vec(path[..end].to_vec()));
+    if !path.is_absolute() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Opened file has no absolute path",
+        ));
+    }
+    Ok(path)
+}
+
+/// Prevent leaf-link traversal at open time; callers still verify parent directories
+/// and the opened file's identity. std retains its own close-on-exec behavior.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) fn no_follow(options: &mut fs::OpenOptions) {
+    use std::os::unix::fs::OpenOptionsExt;
+    #[cfg(target_os = "linux")]
+    options.custom_flags(0x20000); // O_NOFOLLOW, Linux
+    #[cfg(target_os = "macos")]
+    options.custom_flags(0x100); // O_NOFOLLOW, Darwin (not Linux's O_NOCTTY!)
 }
 
 /// glibc's `renameat2` (2.28 and later), declared here: rocket-git has no dependencies.
@@ -310,6 +375,44 @@ mod linux {
     }
     /// EINVAL (a filesystem without the flag) or ENOSYS (a kernel without renameat2),
     /// as reported by the system, not a path Rocket could not pass to it.
+    pub(super) fn unsupported(error: &io::Error) -> bool {
+        error.raw_os_error().is_some()
+            && matches!(
+                error.kind(),
+                io::ErrorKind::InvalidInput | io::ErrorKind::Unsupported
+            )
+    }
+}
+
+// ABI and flags: Apple xnu bsd/sys/stdio.h and renamex_np(2). Darwin's EXCL is
+// not Linux's NOREPLACE value. Unsupported filesystems must fail closed.
+#[cfg(target_os = "macos")]
+mod darwin {
+    use std::{
+        ffi::{CString, c_char, c_int, c_uint},
+        io,
+        os::unix::ffi::OsStrExt,
+        path::Path,
+    };
+    pub(super) const RENAME_NOREPLACE: c_uint = 0x4; // RENAME_EXCL
+    pub(super) const RENAME_EXCHANGE: c_uint = 0x2; // RENAME_SWAP
+    unsafe extern "C" {
+        fn renamex_np(from: *const c_char, to: *const c_char, flags: c_uint) -> c_int;
+    }
+    pub(super) fn rename(source: &Path, destination: &Path, flags: c_uint) -> io::Result<()> {
+        let text = |p: &Path| {
+            CString::new(p.as_os_str().as_bytes()).map_err(|_| {
+                io::Error::new(io::ErrorKind::InvalidInput, "A path cannot contain NUL")
+            })
+        };
+        let (from, to) = (text(source)?, text(destination)?);
+        // SAFETY: owned NUL-terminated byte paths live throughout the system call.
+        if unsafe { renamex_np(from.as_ptr(), to.as_ptr(), flags) } == 0 {
+            Ok(())
+        } else {
+            Err(io::Error::last_os_error())
+        }
+    }
     pub(super) fn unsupported(error: &io::Error) -> bool {
         error.raw_os_error().is_some()
             && matches!(
@@ -378,8 +481,8 @@ mod drive_tests {
     }
 }
 
-#[cfg(all(test, target_os = "linux"))]
-mod linux_tests {
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+mod unix_tests {
     use super::*;
     use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 
@@ -432,11 +535,19 @@ mod linux_tests {
             std::io::Error::from_raw_os_error(22), // EINVAL
             "publish repository metadata",
         );
+        let flag = if cfg!(target_os = "macos") {
+            "RENAME_EXCL"
+        } else {
+            "RENAME_NOREPLACE"
+        };
         assert!(
-            matches!(&refused, Error::Unsupported(text) if text.contains("RENAME_NOREPLACE")),
+            matches!(&refused, Error::Unsupported(text) if text.contains(flag)),
             "{refused}"
         );
-        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
         assert!(matches!(
             no_replace_error(std::io::Error::from_raw_os_error(38), "move"), // ENOSYS
             Error::Unsupported(_)
@@ -447,7 +558,11 @@ mod linux_tests {
             no_replace_error(std::io::Error::from_raw_os_error(13), "move"), // EACCES
             Error::Io { .. }
         ));
-        let nul = move_path(Path::new("/nonexistent/a\0b"), Path::new("/nonexistent/c"), false);
+        let nul = move_path(
+            Path::new("/nonexistent/a\0b"),
+            Path::new("/nonexistent/c"),
+            false,
+        );
         assert!(matches!(nul, Err(Error::Io { .. })), "{nul:?}");
     }
 
@@ -465,7 +580,10 @@ mod linux_tests {
         assert_eq!(fs::read_to_string(&target).unwrap(), "new");
         assert_eq!(fs::read_to_string(&backup).unwrap(), "old");
         assert!(!replacement.exists());
-        assert_eq!(fs::metadata(&target).unwrap().permissions().mode() & 0o777, 0o750);
+        assert_eq!(
+            fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+            0o750
+        );
         // A taken backup name is never replaced. The new file is already in place,
         // and the file it displaced stays as "replacement".
         fs::write(&replacement, "newer").unwrap();
@@ -505,5 +623,37 @@ mod linux_tests {
         fs::rename(&file, s.0.join("moved")).unwrap();
         fs::write(&file, "y").unwrap();
         assert!(!opened_without_link(&opened, &file).unwrap());
+    }
+
+    #[test]
+    fn no_follow_open_preserves_the_target_of_a_leaf_link() {
+        let s = Scratch::new("nofollow");
+        let target = s.0.join("target");
+        fs::write(&target, "preserve me").unwrap();
+        let alias = s.0.join("link");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        let mut options = fs::OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        no_follow(&mut options);
+        assert!(options.open(&alias).is_err());
+        assert!(options.open(&target).is_ok());
+        assert_eq!(fs::read(&target).unwrap(), b"preserve me");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn opened_vnode_tracks_renames_and_detects_escape_from_the_review_root() {
+        let s = Scratch::new("vnode");
+        let root = s.0.join("working tree");
+        fs::create_dir(&root).unwrap();
+        let path = root.join("文件.txt");
+        fs::write(&path, "original").unwrap();
+        let file = File::open(&path).unwrap();
+        crate::review::verify_preview_handle(&file, &root, &path).unwrap();
+        let moved = s.0.join("moved 文件.txt");
+        fs::rename(&path, &moved).unwrap();
+        fs::write(&path, "different").unwrap();
+        assert_eq!(opened_path(&file).unwrap(), moved.canonicalize().unwrap());
+        assert!(crate::review::verify_preview_handle(&file, &root, &path).is_err());
     }
 }

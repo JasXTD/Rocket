@@ -162,6 +162,10 @@ fn launch(arguments: Vec<OsString>) -> Result<i32> {
         ] {
             command.arg("-o").arg(option);
         }
+        // The selected Rocket credential is the only passphrase source in direct
+        // mode. Do not silently consult or modify Apple's separate SSH Keychain.
+        #[cfg(target_os = "macos")]
+        command.args(["-o", "UseKeychain=no"]);
         command.args(&arguments[2..]);
     }
     command

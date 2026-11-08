@@ -74,9 +74,9 @@ impl GitClient {
         let local_only = matches!(source, CloneSource::Local(_));
         let (source, destination) = self.runner.step("clone", "validate_clone", || {
             cancel.check()?;
-            if !cfg!(any(windows, target_os = "linux")) {
+            if !cfg!(any(windows, target_os = "linux", target_os = "macos")) {
                 return Err(Error::Unsupported(
-                    "clone publication currently requires Windows".into(),
+                    "Clone publication is unavailable on this platform".into(),
                 ));
             }
             let source = source_argument(source)?;
@@ -547,7 +547,7 @@ fn publish(source: &Path, destination: &Path) -> Result<()> {
 }
 
 /// As on Windows: never replace, and report a destination that appeared meanwhile.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn publish(source: &Path, destination: &Path) -> Result<()> {
     match crate::local_files::move_new(source, destination) {
         Ok(()) => Ok(()),
@@ -558,9 +558,9 @@ fn publish(source: &Path, destination: &Path) -> Result<()> {
     }
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn publish(_: &Path, _: &Path) -> Result<()> {
     Err(Error::Unsupported(
-        "clone publication currently requires Windows".into(),
+        "Clone publication is unavailable on this platform".into(),
     ))
 }

@@ -317,6 +317,8 @@ fn lock_file(path: &Path, create: bool) -> io::Result<fs::File> {
     if create {
         options.create_new(true);
     }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    crate::local_files::no_follow(&mut options);
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;

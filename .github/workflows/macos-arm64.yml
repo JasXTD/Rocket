@@ -1,0 +1,61 @@
+name: macOS Apple Silicon preparation
+
+# This is a development build, not a release or an automatic paid job.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rocket-macos-arm64
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      CARGO_TERM_COLOR: never
+      ROCKET_MACOS_OUTPUT: ${{ runner.temp }}/rocket-macos-stage1
+      # Ephemeral runner only: a disposable Keychain, never a normal account item.
+      ROCKET_MACOS_DISPOSABLE_KEYCHAIN_TEST: '1'
+    steps:
+      - name: Check out the selected revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Select the pinned Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          exec > >(tee "$RUNNER_TEMP/rocket-macos-bootstrap.log") 2>&1
+          test "$(uname -s)" = Darwin
+          test "$(uname -m)" = arm64
+          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          rustup run 1.99.1 rustc -vV
+
+      - name: Build and run the affected native checks
+        shell: bash
+        run: bash tools/build-macos.sh
+
+      - name: Retain development app and check results
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rocket-macos-arm64-stage1-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/rocket-macos-bootstrap.log
+            ${{ env.ROCKET_MACOS_OUTPUT }}/*.log
+            ${{ env.ROCKET_MACOS_OUTPUT }}/*.json
+            ${{ env.ROCKET_MACOS_OUTPUT }}/*.md
+            ${{ env.ROCKET_MACOS_OUTPUT }}/*.zip
+            ${{ env.ROCKET_MACOS_OUTPUT }}/*.sha256
+            ${{ env.ROCKET_MACOS_OUTPUT }}/mcp/*/result.json
+            ${{ env.ROCKET_MACOS_OUTPUT }}/mcp/*/*.png
+            ${{ env.ROCKET_MACOS_OUTPUT }}/Rocket.iconset/icon_512x512@2x.png
+          if-no-files-found: warn
+          retention-days: 3
+          compression-level: 0

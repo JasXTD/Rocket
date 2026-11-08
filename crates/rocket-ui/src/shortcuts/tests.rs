@@ -1,5 +1,25 @@
 use super::*;
 
+#[cfg(target_os = "macos")]
+#[test]
+fn mac_raw_command_key_dispatches_and_control_and_ime_pass_through() {
+    let mut state = State::default();
+    let mut input = raw(vec![key("Ctrl+B", true), Event::Text("資料 e\u{301}".into()), key("Cmd+C", true)]);
+    state.filter(&mut input, &[Action::Sidebar], true);
+    assert_eq!(input.events.len(), 3);
+    assert!(state.pending.is_none());
+    let mut input = raw(vec![key("Cmd+B", true), key("Cmd+B", false)]);
+    state.filter(&mut input, &[Action::Sidebar], true);
+    assert!(input.events.is_empty()); assert_eq!(state.pending, Some(Action::Sidebar));
+    state.record(Action::Sidebar, 0);
+    let mut input = raw(vec![key("Cmd+F8", true), key("Cmd+F8", false)]);
+    state.filter(&mut input, &[], true);
+    let edit = state.edit.as_ref().unwrap();
+    assert_eq!(edit.candidate.map(Binding::text).as_deref(), Some("Cmd+F8"));
+    assert!(edit.error.is_none());
+    assert!(!edit.recording);
+}
+
 fn key(chord: &str, pressed: bool) -> Event {
     let b = Binding::parse(chord).unwrap();
     let Trigger::Key(key) = b.trigger else {
@@ -38,10 +58,11 @@ fn shortcut_recording_does_not_run_actions_or_change_bindings_and_escape_cancels
     let mut state = State::default();
     let original = state.bindings.clone();
     state.record(Action::Sidebar, 0);
+    let open = Bindings::default().label(Action::Open);
     let mut input = raw(vec![
-        key("Ctrl+O", true),
+        key(&open, true),
         Event::Text("o".into()),
-        key("Ctrl+O", false),
+        key(&open, false),
     ]);
     state.filter(&mut input, &[Action::Open], true);
     assert!(input.events.is_empty());

@@ -6,9 +6,21 @@ use std::{
 };
 
 struct Fixture(PathBuf);
+fn fixture_base() -> PathBuf {
+    // File-lock/rename semantics must be exercised on a native Unix filesystem,
+    // even when the source lives on WSL's Windows mount.
+    #[cfg(unix)]
+    {
+        std::env::temp_dir().join("rocket-write-gate-tests")
+    }
+    #[cfg(not(unix))]
+    {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/write-gate-tests")
+    }
+}
 impl Fixture {
     fn new() -> Self {
-        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/write-gate-tests");
+        let base = fixture_base();
         fs::create_dir_all(&base).unwrap();
         let path = base.join(format!(
             "{}-{}",
@@ -54,10 +66,7 @@ impl Fixture {
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
-        let base = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../work/write-gate-tests")
-            .canonicalize()
-            .unwrap();
+        let base = fixture_base().canonicalize().unwrap();
         let target = self.0.canonicalize().unwrap();
         assert_eq!(target.parent(), Some(base.as_path()));
         fs::remove_dir_all(target).unwrap();
@@ -138,5 +147,24 @@ fn failed_os_acquisition_releases_local_queue_and_never_falls_back_to_unlocked_w
         Err(Error::Io { .. })
     ));
     fs::create_dir(&common).unwrap();
+    let _permit = gate.acquire(&CancellationToken::new()).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn ownership_refuses_redirected_lock_and_preserves_unrelated_file() {
+    let f = Fixture::new();
+    let common = f.0.join("checkout 文/.git");
+    let target = f.0.join("unrelated");
+    fs::write(&target, "keep").unwrap();
+    let lock = common.join("rocket-write.lock");
+    std::os::unix::fs::symlink(&target, &lock).unwrap();
+    let gate = for_repository(&common).unwrap();
+    assert!(matches!(
+        gate.acquire(&CancellationToken::new()),
+        Err(Error::Io { .. })
+    ));
+    assert_eq!(fs::read(&target).unwrap(), b"keep");
+    fs::remove_file(&lock).unwrap();
     let _permit = gate.acquire(&CancellationToken::new()).unwrap();
 }

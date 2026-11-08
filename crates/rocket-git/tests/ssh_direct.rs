@@ -1,6 +1,6 @@
-#![cfg(any(windows, target_os = "linux"))]
+#![cfg(any(windows, target_os = "linux", target_os = "macos"))]
 //! On Linux a saved passphrase is sealed with Rocket's key in the desktop keyring, so the
-//! tests that save one are ignored by default there: run them with --include-ignored in a
+//! tests that save one are ignored by default on Linux/macOS: run them with --include-ignored in a
 //! session with an unlocked keyring (see guide.md).
 #[allow(dead_code)]
 mod common;
@@ -21,6 +21,23 @@ fn quiet(command: &mut Command) -> &mut Command {
         command.creation_flags(0x0800_0000);
     }
     command
+}
+
+#[cfg(unix)]
+#[test]
+fn credential_lock_symlinks_are_refused_before_keyring_access() {
+    isolated("ROCKET_SSH_DIRECT_CASE", "credential_lock_symlinks_are_refused_before_keyring_access", || {
+        let (_f, manager, profile, phrase) = setup();
+        let external = profile.config.with_file_name("external-empty-file");
+        fs::write(&external, b"").unwrap();
+        let lock = profile.config.with_file_name("passphrase.lock");
+        std::os::unix::fs::symlink(&external, &lock).unwrap();
+        let result = manager.remember_passphrase(&profile, phrase, &CancellationToken::new());
+        assert!(matches!(result, Err(Error::Ssh(SshFailure::Changed | SshFailure::UnsafePath))), "{result:?}");
+        assert!(fs::symlink_metadata(lock).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(external).unwrap(), b"");
+        assert!(!profile.config.with_file_name("passphrase.dpapi").exists());
+    });
 }
 
 fn setup() -> (Fixture, SshManager, SshProfile, String) {
@@ -65,7 +82,7 @@ fn helper(p: &SshProfile, args: &[&str]) -> Output {
 }
 
 #[test]
-#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
+#[cfg_attr(any(target_os = "linux", target_os = "macos"), ignore = "needs an unlocked keyring/Keychain in a disposable OS user")]
 fn direct_binding_and_helper_recheck_custom_services_without_contacting_a_host() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",
@@ -164,7 +181,7 @@ fn direct_binding_and_helper_recheck_custom_services_without_contacting_a_host()
 }
 
 #[test]
-#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
+#[cfg_attr(any(target_os = "linux", target_os = "macos"), ignore = "needs an unlocked keyring/Keychain in a disposable OS user")]
 fn direct_key_verifies_encrypts_binds_and_forgets_without_an_agent() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",
@@ -267,6 +284,13 @@ fn unencrypted_direct_key_needs_no_saved_passphrase() {
                 .finish(&c)
                 .unwrap();
             assert!(!p.encrypted && !p.passphrase_saved);
+            #[cfg(target_os = "macos")]
+            {
+                let settings=helper(&p,&["-G","git@github.com"]);
+                assert!(settings.status.success());
+                let settings=String::from_utf8(settings.stdout).unwrap();
+                assert!(settings.lines().any(|line| matches!(line,"usekeychain false"|"usekeychain no")));
+            }
             assert!(
                 m.check_authentication(&p, SshAuthentication::Direct, &c)
                     .unwrap()
@@ -287,7 +311,7 @@ fn unencrypted_direct_key_needs_no_saved_passphrase() {
     );
 }
 #[test]
-#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
+#[cfg_attr(any(target_os = "linux", target_os = "macos"), ignore = "needs an unlocked keyring/Keychain in a disposable OS user")]
 fn direct_key_cancellation_and_external_edits_preserve_credentials() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",
@@ -348,7 +372,7 @@ fn direct_key_cancellation_and_external_edits_preserve_credentials() {
 }
 
 #[test]
-#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
+#[cfg_attr(any(target_os = "linux", target_os = "macos"), ignore = "needs an unlocked keyring/Keychain in a disposable OS user")]
 fn credential_gate_rejects_concurrent_writers_and_recovers_after_owner_releases() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",
@@ -379,7 +403,7 @@ fn credential_gate_rejects_concurrent_writers_and_recovers_after_owner_releases(
     );
 }
 #[test]
-#[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
+#[cfg_attr(any(target_os = "linux", target_os = "macos"), ignore = "needs an unlocked keyring/Keychain in a disposable OS user")]
 fn encrypted_credentials_cannot_move_between_profiles_or_answer_host_prompts() {
     isolated(
         "ROCKET_SSH_DIRECT_CASE",

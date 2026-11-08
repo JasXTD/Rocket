@@ -1,4 +1,4 @@
-#![cfg(any(windows, target_os = "linux"))]
+#![cfg(any(windows, target_os = "linux", target_os = "macos"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;
@@ -342,7 +342,7 @@ fn stash_conflict_resolution_needs_no_operation_marker_and_keeps_stash() {
 
 /// Linux: a save keeps the working file's executable bit, so staging the resolution
 /// records the mode Git's merge checked out and leaves no mode change behind.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn saving_keeps_an_executable_file_executable() {
     isolated(

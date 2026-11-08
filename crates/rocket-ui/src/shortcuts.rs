@@ -12,6 +12,12 @@ use eframe::egui::*;
 use model::{Action, Binding, Bindings, COMMANDS, Trigger, Wheel, modifiers};
 use serde_json::{Value, json};
 
+/// Primary desktop accelerator; terminal Control sequences never use this.
+pub(crate) fn primary_modifiers() -> Modifiers {
+    if cfg!(target_os = "macos") { Modifiers::MAC_CMD | Modifiers::COMMAND }
+    else { Modifiers::CTRL }
+}
+
 pub struct Edit {
     pub action: Action,
     pub index: usize,
@@ -456,6 +462,10 @@ pub fn hint(ctx: &Context, old: &str) -> String {
         .iter()
         .find(|c| !c.default.is_empty() && c.default == old)
     else {
+        // Clipboard/zoom hints are not configurable commands. egui maps these
+        // editing operations to Command on macOS, just like its native input.
+        #[cfg(target_os = "macos")]
+        if let Some(tail) = old.strip_prefix("Ctrl+") { return format!("Cmd+{tail}"); }
         return old.into();
     };
     ctx.data(|d| d.get_temp::<Bindings>(Id::new("rocket-shortcut-hints")))

@@ -117,7 +117,7 @@ pub struct FileEditPreview {
     after: Option<Vec<u8>>,
     /// The source entry's Git mode when it decides the executable bit (Linux): the
     /// index or commit version being restored. None keeps the file's own bits.
-    #[cfg_attr(not(target_os = "linux"), expect(dead_code, reason = "only Linux files have an executable bit"))]
+    #[cfg_attr(not(any(target_os = "linux", target_os = "macos")), expect(dead_code, reason = "Unix files have an executable bit"))]
     executable: Option<bool>,
     commit: Option<ObjectId>,
     conversion: &'static str,

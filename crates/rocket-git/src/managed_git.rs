@@ -12,7 +12,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock, Weak,
-        atomic::{AtomicU64, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     },
 };
 
@@ -209,6 +209,7 @@ pub fn verify_managed_git(
         cancel,
         progress,
         false,
+        None,
     )
 }
 
@@ -223,7 +224,7 @@ pub(crate) fn for_executable(
         return Ok(None);
     };
     let verify = || {
-        let runtime = verify_root(root, cancel, &ManagedGitProgress::default(), true)?;
+        let runtime = verify_root(root, cancel, &ManagedGitProgress::default(), true, log)?;
         let actual = path
             .canonicalize()
             .map_err(|e| Error::io("resolve bundled Git executable", e))?;
@@ -265,6 +266,7 @@ fn verify_root(
     cancel: &CancellationToken,
     progress: &ManagedGitProgress,
     cached: bool,
+    log: Option<&crate::DiagnosticLog>,
 ) -> Result<Arc<ManagedGitRuntime>> {
     cancel.check()?;
     if !cfg!(all(windows, target_arch = "x86_64")) {
@@ -299,7 +301,9 @@ fn verify_root(
         ));
     }
     let entries = inventory(MANIFEST)?;
-    let runtime = Arc::new(verify_inventory(&root, &entries, cancel, progress)?);
+    let runtime = Arc::new(verify_inventory_logged(
+        &root, &entries, cancel, progress, log,
+    )?);
     cancel.check()?;
     let mut leases = leases()
         .lock()
@@ -389,12 +393,23 @@ fn normal_directory(path: &Path) -> Result<()> {
     }
     Ok(())
 }
+#[cfg(test)]
 fn verify_inventory(
     root: &Path,
     entries: &BTreeMap<String, Entry<'_>>,
     cancel: &CancellationToken,
     progress: &ManagedGitProgress,
 ) -> Result<ManagedGitRuntime> {
+    verify_inventory_logged(root, entries, cancel, progress, None)
+}
+fn verify_inventory_logged(
+    root: &Path,
+    entries: &BTreeMap<String, Entry<'_>>,
+    cancel: &CancellationToken,
+    progress: &ManagedGitProgress,
+    log: Option<&crate::DiagnosticLog>,
+) -> Result<ManagedGitRuntime> {
+    let inventory_started = std::time::Instant::now();
     cancel.check()?;
     normal_directory(root)?;
     progress.begin(entries.len(), entries.values().map(|e| e.bytes).sum());
@@ -439,7 +454,10 @@ fn verify_inventory(
             }
             let item = item.map_err(|e| Error::io("inspect bundled Git entry", e))?;
             let path = item.path();
-            let meta = fs::symlink_metadata(&path)
+            // Windows enumeration already supplies no-follow metadata. The
+            // subsequent guarded file open checks the actual handle again.
+            let meta = item
+                .metadata()
                 .map_err(|e| Error::io("inspect bundled Git file", e))?;
             if linked(&meta) {
                 return Err(invalid("The runtime contains a link or reparse point"));
@@ -471,53 +489,25 @@ fn verify_inventory(
     }
     #[cfg(windows)]
     journal.cover(&directory_guards);
-    let mut files = Vec::with_capacity(entries.len());
-    for entry in entries.values() {
-        cancel.check()?;
-        let path = root.join(entry.path);
-        // Recheck the path just before opening; OPEN_REPARSE_POINT also prevents
-        // following a substituted leaf link. The open file is the one hashed.
-        let meta =
-            fs::symlink_metadata(&path).map_err(|e| Error::io("inspect bundled Git file", e))?;
-        if linked(&meta) || !meta.is_file() || meta.len() != entry.bytes {
-            return Err(invalid(&format!(
-                "File changed: {}. Restore the reviewed bundle",
-                entry.path
-            )));
-        }
-        let mut options = OpenOptions::new();
-        options.read(true);
-        #[cfg(windows)]
-        {
-            use std::os::windows::fs::OpenOptionsExt;
-            options.share_mode(1).custom_flags(0x0020_0000); // FILE_SHARE_READ, OPEN_REPARSE_POINT
-        }
-        let mut file = options
-            .open(&path)
-            .map_err(|e| Error::io("open bundled Git file for verification", e))?;
-        let meta = file
-            .metadata()
-            .map_err(|e| Error::io("inspect opened bundled Git file", e))?;
-        if linked(&meta) || !meta.is_file() || meta.len() != entry.bytes {
-            return Err(invalid("Runtime changed while checking it"));
-        }
-        let actual = digest(&mut file, entry.bytes, cancel).map_err(|e| match e {
-            Error::Cancelled => e,
-            _ => invalid(&format!(
-                "Could not verify {}. Restore the reviewed bundle",
-                entry.path
-            )),
-        })?;
-        if !actual.eq_ignore_ascii_case(entry.hash) {
-            return Err(invalid(&format!(
-                "File changed: {}. Restore the reviewed bundle",
-                entry.path
-            )));
-        }
-        files.push(file);
-        progress.0.bytes.fetch_add(entry.bytes, Ordering::Relaxed);
-        progress.0.checked.fetch_add(1, Ordering::Relaxed);
+    if let Some(log) = log {
+        log.observation(
+            "managed_git_inventory",
+            "managed-git-verify",
+            &Ok(()),
+            inventory_started.elapsed(),
+        );
     }
+    let hashing_started = std::time::Instant::now();
+    let files = verify_files(root, entries, cancel, progress);
+    if let Some(log) = log {
+        log.observation(
+            "managed_git_hashes",
+            "managed-git-verify",
+            &files,
+            hashing_started.elapsed(),
+        );
+    }
+    let files = files?;
     cancel.check()?;
     Ok(ManagedGitRuntime {
         root: root.to_owned(),
@@ -528,6 +518,131 @@ fn verify_inventory(
         #[cfg(test)]
         full_reads: AtomicUsize::new(0),
     })
+}
+
+fn verify_files(
+    root: &Path,
+    entries: &BTreeMap<String, Entry<'_>>,
+    cancel: &CancellationToken,
+    progress: &ManagedGitProgress,
+) -> Result<Vec<File>> {
+    let entries: Vec<_> = entries.values().collect();
+    let workers = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(4)
+        .min(entries.len().max(1));
+    let next = AtomicUsize::new(0);
+    let stopped = AtomicBool::new(false);
+    let verify = || {
+        let result = (|| {
+            let mut files = Vec::new();
+            while !stopped.load(Ordering::Acquire) {
+                cancel.check()?;
+                let Some(entry) = entries.get(next.fetch_add(1, Ordering::Relaxed)) else {
+                    break;
+                };
+                files.push(verify_file(root, entry, cancel)?);
+                progress.0.bytes.fetch_add(entry.bytes, Ordering::Relaxed);
+                progress.0.checked.fetch_add(1, Ordering::Relaxed);
+            }
+            Ok(files)
+        })();
+        if result.is_err() {
+            stopped.store(true, Ordering::Release);
+        }
+        result
+    };
+    if workers == 1 {
+        return verify();
+    }
+    // Bound I/O concurrency; keep every successfully hashed file locked. Join
+    // all workers on cancellation, spawn failure or integrity failure before
+    // returning, so a failed verification cannot leave handles or a live lease.
+    std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        let mut failure = None;
+        for _ in 0..workers {
+            match std::thread::Builder::new()
+                .name("git-verify".into())
+                .spawn_scoped(scope, &verify)
+            {
+                Ok(handle) => handles.push(handle),
+                Err(error) => {
+                    stopped.store(true, Ordering::Release);
+                    failure = Some(Error::io("start bundled Git verification worker", error));
+                    break;
+                }
+            }
+        }
+        let mut files = Vec::with_capacity(entries.len());
+        for handle in handles {
+            let result = handle.join().unwrap_or_else(|_| {
+                stopped.store(true, Ordering::Release);
+                Err(invalid(
+                    "A verification worker stopped unexpectedly; retry verification",
+                ))
+            });
+            match result {
+                Ok(mut verified) => files.append(&mut verified),
+                Err(error) => {
+                    failure.get_or_insert(error);
+                }
+            }
+        }
+        if let Some(error) = failure {
+            return Err(error);
+        }
+        cancel.check()?;
+        Ok(files)
+    })
+}
+
+fn verify_file(root: &Path, entry: &Entry<'_>, cancel: &CancellationToken) -> Result<File> {
+    cancel.check()?;
+    let path = root.join(entry.path);
+    // Windows OPEN_REPARSE_POINT plus handle metadata replaces a redundant
+    // path stat. Hash exactly that protected handle, never a later path open.
+    #[cfg(not(windows))]
+    {
+        let meta =
+            fs::symlink_metadata(&path).map_err(|e| Error::io("inspect bundled Git file", e))?;
+        if linked(&meta) || !meta.is_file() || meta.len() != entry.bytes {
+            return Err(invalid(&format!(
+                "File changed: {}. Restore the reviewed bundle",
+                entry.path
+            )));
+        }
+    }
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(1).custom_flags(0x0020_0000); // FILE_SHARE_READ, OPEN_REPARSE_POINT
+    }
+    let mut file = options
+        .open(&path)
+        .map_err(|e| Error::io("open bundled Git file for verification", e))?;
+    let meta = file
+        .metadata()
+        .map_err(|e| Error::io("inspect opened bundled Git file", e))?;
+    if linked(&meta) || !meta.is_file() || meta.len() != entry.bytes {
+        return Err(invalid("Runtime changed while checking it"));
+    }
+    let actual = digest(&mut file, entry.bytes, cancel).map_err(|e| match e {
+        Error::Cancelled => e,
+        _ => invalid(&format!(
+            "Could not verify {}. Restore the reviewed bundle",
+            entry.path
+        )),
+    })?;
+    if !actual.eq_ignore_ascii_case(entry.hash) {
+        return Err(invalid(&format!(
+            "File changed: {}. Restore the reviewed bundle",
+            entry.path
+        )));
+    }
+    Ok(file)
 }
 
 #[cfg(all(test, windows))]
@@ -588,6 +703,61 @@ mod tests {
         drop(lease);
         fs::write(root.join("cmd/git.exe"), b"changed").unwrap();
         assert!(verify_inventory(&root, &entries, &CancellationToken::new(), &progress).is_err());
+    }
+    #[test]
+    fn concurrent_verification_checks_all_files_and_releases_every_handle_on_failure() {
+        let (root, text) = fixture();
+        let mut text = text.replace(
+            "\t25\t",
+            &format!("\t{}\t", b"synthetic, never executed".len()),
+        );
+        fs::create_dir(root.join("資料")).unwrap();
+        let mut total = b"synthetic, never executed".len() as u64;
+        for n in 0..128 {
+            let content = vec![n as u8; 8192 + n];
+            let relative = format!("資料/file-{n:03}.dat");
+            fs::write(root.join(&relative), &content).unwrap();
+            text.push_str(&format!(
+                "{}\t{}\t{relative}\n",
+                crate::sha256_bytes(&content).unwrap(),
+                content.len()
+            ));
+            total += content.len() as u64;
+        }
+        let entries = inventory(&text).unwrap();
+        let progress = ManagedGitProgress::default();
+        let check = || verify_inventory(&root, &entries, &CancellationToken::new(), &progress);
+        let runtime = check().unwrap();
+        assert_eq!(progress.snapshot(), (129, 129, total, total));
+        for entry in entries.values() {
+            assert!(
+                OpenOptions::new()
+                    .write(true)
+                    .open(root.join(entry.path))
+                    .is_err(),
+                "{} was not protected",
+                entry.path
+            );
+        }
+        drop(runtime);
+        // Same-length tampering must be detected, including files handled by
+        // different workers. A failed attempt must release all partial leases.
+        for n in [0, 63, 127] {
+            let path = root.join(format!("資料/file-{n:03}.dat"));
+            let original = fs::read(&path).unwrap();
+            let mut changed = original.clone();
+            changed[0] ^= 0xff;
+            fs::write(&path, changed).unwrap();
+            assert!(matches!(check(), Err(Error::InvalidInput(_))));
+            for entry in entries.values() {
+                OpenOptions::new()
+                    .write(true)
+                    .open(root.join(entry.path))
+                    .unwrap();
+            }
+            fs::write(&path, original).unwrap();
+        }
+        assert!(check().is_ok());
     }
     #[test]
     fn managed_missing_extra_tampered_and_cancelled_files_are_not_accepted() {

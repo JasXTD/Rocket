@@ -1,4 +1,4 @@
-//! Installed fonts supplement egui; Linux also embeds a pinned CJK fallback.
+//! Installed fonts supplement egui; Linux/macOS also embed a pinned CJK fallback.
 //! No font is downloaded at runtime.
 use crate::i18n::Han;
 use eframe::egui::{FontData, FontDefinitions, FontFamily, FontTweak, epaint::text::VariationCoords};
@@ -10,8 +10,8 @@ pub(crate) fn definitions() -> FontDefinitions {
     let mut fonts = loaded();
     let han = crate::i18n::han();
     han_first(&mut fonts, &PLAN, han);
-    #[cfg(target_os = "linux")]
-    linux_cjk::select(&mut fonts, han);
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    bundled_cjk::select(&mut fonts, han);
     fonts
 }
 
@@ -100,9 +100,9 @@ const PLAN: Plan = Plan {
 };
 
 /// Ubuntu Sans ships as one variable file; its weight axis gives both faces.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 const UBUNTU_SANS: &str = "UbuntuSans[wdth,wght].ttf";
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 const PLAN: Plan = Plan {
     interface: &[
         (
@@ -122,6 +122,20 @@ const PLAN: Plan = Plan {
         &[face("NotoSansSymbols2-Regular.ttf"), face("DejaVuSans.ttf")],
     ],
     emoji: 1,
+    han: None,
+};
+
+// Prefer installed outline fonts. Apple Color Emoji is bitmap-based and cannot
+// replace egui's outline emoji fallback. CJK uses the same audited collection as
+// Linux, including its proportional/mono and locale-specific faces.
+#[cfg(target_os = "macos")]
+const PLAN: Plan = Plan {
+    interface: &[(face("Arial.ttf"), face("Arial Bold.ttf"))],
+    fallbacks: &[
+        &[face("NotoEmoji-Regular.ttf"), face("Symbola.ttf")],
+        &[face("Apple Symbols.ttf")],
+    ],
+    emoji: 0,
     han: None,
 };
 
@@ -208,13 +222,13 @@ fn build(plan: &Plan, find: impl Fn(&str) -> Option<PathBuf>) -> FontDefinitions
     fonts
         .families
         .insert(FontFamily::Name("semibold".into()), bold);
-    #[cfg(target_os = "linux")]
-    linux_cjk::append(&mut fonts);
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    bundled_cjk::append(&mut fonts);
     fonts
 }
 
-#[cfg(target_os = "linux")]
-mod linux_cjk {
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod bundled_cjk {
     use super::*;
 
     pub(super) const PROPORTIONAL: &str = "rocket-noto-cjk-2.004";
@@ -295,6 +309,14 @@ mod system {
     const ENTRIES: usize = 50_000;
 
     pub(super) fn installed() -> HashMap<String, PathBuf> {
+        #[cfg(target_os = "macos")]
+        {
+            let mut roots = vec![PathBuf::from("/System/Library/Fonts"), PathBuf::from("/Library/Fonts")];
+            if let Some(home) = std::env::home_dir().filter(|p| p.is_absolute()) { roots.push(home.join("Library/Fonts")); }
+            index(&roots, DEPTH, ENTRIES)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
         let home = std::env::home_dir().filter(|home| home.is_absolute());
         let absolute = |name: &str| std::env::var_os(name).map(PathBuf::from).filter(|p| p.is_absolute());
         let mut roots = Vec::new();
@@ -314,6 +336,7 @@ mod system {
                 .map(|dir| dir.join("fonts")),
         );
         index(&roots, DEPTH, ENTRIES)
+        }
     }
 
     /// Font files below `roots`, at most `depth` folders down, reading at most
@@ -386,7 +409,7 @@ mod tests {
     }
 
     /// Minimal Linux installs must still draw source text, rather than replacement boxes.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn cjk_source_and_preview_have_glyphs_without_system_fonts() {
         let ctx = eframe::egui::Context::default();
@@ -417,7 +440,7 @@ mod tests {
         output.textures_delta.clear();
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
     fn cjk_fallback_preserves_ascii_layout_and_shares_font_bytes() {
         use eframe::egui::{Color32, Context, FontId};
@@ -440,15 +463,15 @@ mod tests {
         assert_eq!(measure(definitions.clone()), measure(FontDefinitions::default()));
         for (han, proportional, mono) in [(Han::Chinese, 2, 7), (Han::Japanese, 0, 5), (Han::Korean, 1, 6)] {
             let mut localized = definitions.clone();
-            linux_cjk::select(&mut localized, han);
-            let p = &localized.font_data[linux_cjk::PROPORTIONAL];
-            let m = &localized.font_data[linux_cjk::MONOSPACE];
+            bundled_cjk::select(&mut localized, han);
+            let p = &localized.font_data[bundled_cjk::PROPORTIONAL];
+            let m = &localized.font_data[bundled_cjk::MONOSPACE];
             assert_eq!((p.index, m.index), (proportional, mono));
             assert_eq!(localized.families, definitions.families, "locale keeps fallback precedence");
             assert!(std::ptr::eq(p.font.as_ptr(), m.font.as_ptr()), "faces share immutable bytes");
-            assert!(std::ptr::eq(p.font.as_ptr(), definitions.font_data[linux_cjk::PROPORTIONAL].font.as_ptr()));
+            assert!(std::ptr::eq(p.font.as_ptr(), definitions.font_data[bundled_cjk::PROPORTIONAL].font.as_ptr()));
         }
-        assert_eq!(definitions.font_data[linux_cjk::PROPORTIONAL].index, 2, "changing a locale preserves the cached definition");
+        assert_eq!(definitions.font_data[bundled_cjk::PROPORTIONAL].index, 2, "changing a locale preserves the cached definition");
     }
 
     /// Bytes that pass for a collection of two faces; past the header nothing is parsed.
@@ -467,15 +490,15 @@ mod tests {
         let fallbacks: Vec<String> = PLAN.fallbacks.iter().map(|role| role[0].name()).collect();
         let proportional = names(&fonts, FontFamily::Proportional);
         assert_eq!(proportional[0], name(regular));
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         let expected_fallbacks = fallbacks.clone();
-        #[cfg(target_os = "linux")]
-        let expected_fallbacks = [fallbacks.as_slice(), &[linux_cjk::PROPORTIONAL.into()]].concat();
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        let expected_fallbacks = [fallbacks.as_slice(), &[bundled_cjk::PROPORTIONAL.into()]].concat();
         assert!(proportional.ends_with(&expected_fallbacks));
         let mut interface_then_fallbacks = vec![name(regular)];
         interface_then_fallbacks.extend(fallbacks.iter().cloned());
-        #[cfg(target_os = "linux")]
-        interface_then_fallbacks.push(linux_cjk::MONOSPACE.into());
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        interface_then_fallbacks.push(bundled_cjk::MONOSPACE.into());
         assert!(names(&fonts, FontFamily::Monospace).ends_with(&interface_then_fallbacks));
         let terminal = names(&fonts, FontFamily::Name("terminal-wide".into()));
         assert_eq!(terminal[0], fallbacks[PLAN.emoji]);
@@ -662,7 +685,7 @@ mod tests {
     }
 
     /// DejaVu Sans alone fills the interface and symbol roles once, with its own bold.
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_os = "macos")))]
     #[test]
     fn a_later_family_brings_its_own_semibold_without_duplicates() {
         let file = std::env::temp_dir().join(format!("rocket-font-dejavu-{}", std::process::id()));

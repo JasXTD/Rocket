@@ -29,7 +29,7 @@ pub enum Mode {
     Repository,
     /// Any folder, such as the MCP test repositories folder.
     Folder,
-    /// A program (`.exe`) for external tools and AI drafts.
+    /// A program for external tools and AI drafts (.exe on Windows, executable on Unix).
     Program,
     File,
 }
@@ -97,7 +97,7 @@ fn read_limited(
                 name,
                 path,
             }
-        } else if !directory && (mode == Mode::File || mode == Mode::Program && is_program(&name)) {
+        } else if !directory && (mode == Mode::File || mode == Mode::Program && is_program(&path, &metadata)) {
             Entry {
                 repository: None,
                 program: true,
@@ -155,10 +155,22 @@ fn hidden(name: &str, metadata: &std::fs::Metadata) -> bool {
     }
 }
 
-fn is_program(name: &str) -> bool {
-    Path::new(name)
+fn is_program(path: &Path, metadata: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    { let _ = metadata; path
         .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("exe"))
+        .is_some_and(|x| x.eq_ignore_ascii_case("exe")) }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Scoped automation rejected links above. Ordinary browsing may select
+        // an installed symlink, but never a non-file or non-executable target.
+        let target = metadata.is_symlink().then(|| std::fs::metadata(path).ok()).flatten();
+        let metadata = target.as_ref().unwrap_or(metadata);
+        metadata.is_file() && metadata.permissions().mode() & 0o111 != 0
+    }
+    #[cfg(not(any(windows, unix)))]
+    { let _ = (path, metadata); false }
 }
 
 /// The branch of the Git repository whose working tree is `folder`, if it is one:
@@ -272,7 +284,8 @@ fn typed_folder(text: &str, scope: Option<&Path>) -> std::result::Result<PathBuf
             .components()
             .any(|c| matches!(c, Component::CurDir | Component::ParentDir))
     {
-        return Err("Enter a full folder path, such as C:\\Projects\\app.".into());
+        return Err(if cfg!(windows) { "Enter a full folder path, such as C:\\Projects\\app." }
+            else { "Enter an absolute folder path, such as /Users/name/Projects/app." }.into());
     }
     if scope.is_some_and(|s| !inside(&path, s)) {
         return Err("This test window can only browse its test repositories folder.".into());
@@ -299,10 +312,15 @@ pub(crate) fn save_folder(scope: Option<&Path>) -> String {
 }
 
 pub(crate) fn home() -> Option<PathBuf> {
+    #[cfg(not(windows))]
+    { std::env::home_dir().filter(|p| p.is_absolute()) }
+    #[cfg(windows)]
+    {
     std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
+    }
 }
 
 #[derive(Clone)]
@@ -351,6 +369,7 @@ fn places(scope: Option<&Path>) -> (Vec<Place>, Vec<Place>) {
             }
         }
     }
+    #[cfg(windows)]
     let drives = rocket_git::drive_letters()
         .into_iter()
         .map(|letter| Place {
@@ -359,6 +378,8 @@ fn places(scope: Option<&Path>) -> (Vec<Place>, Vec<Place>) {
             icon: Icon::Drive,
         })
         .collect();
+    #[cfg(not(windows))]
+    let drives = vec![Place { label: "File system".into(), path: PathBuf::from("/"), icon: Icon::Drive }];
     (folders, drives)
 }
 
@@ -1278,7 +1299,7 @@ impl Rocket {
         // Ctrl+Enter takes the primary action, as in the other dialogs.
         if action.is_none()
             && let Some((path, _)) = target
-            && ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Enter))
+            && ctx.input_mut(|i| i.consume_key(crate::shortcuts::primary_modifiers(), Key::Enter))
         {
             action = Some(Action::Choose(path));
         }
@@ -1394,7 +1415,7 @@ impl Rocket {
             (Icon::Puzzle, "Choose a package", "Pick its integration.json. main.lua must be in the same folder.")
         } else {
             match browser.mode {
-            Mode::Program => (Icon::Console, "Choose a program", "Pick the tool's .exe file."),
+            Mode::Program => (Icon::Console, "Choose a program", if cfg!(windows) { "Pick the tool's .exe file." } else { "Pick the tool's executable file." }),
             Mode::File => (Icon::File, "Choose a file", "Pick a file for the command. It will appear as one literal argument."),
             Mode::Repository => (Icon::Folder, "Choose a repository", "Pick a local Git repository."),
             Mode::Folder => (Icon::Folder, "Choose a folder", "Pick a folder, or open one and choose it."),
@@ -1413,7 +1434,7 @@ impl Rocket {
             Part::Status => {
                 let text = choice.as_ref().map_or_else(
                     || match browser.mode {
-                        Mode::Program => "Select a program (.exe).".to_owned(),
+                        Mode::Program => if cfg!(windows) { "Select a program (.exe)." } else { "Select an executable program." }.to_owned(),
                         _ => String::new(),
                     },
                     |path| crate::views::display_path(path),
@@ -1745,6 +1766,30 @@ mod tests {
         fixture
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn unix_program_picker_uses_execute_bits_and_preserves_scope_and_cancellation() {
+        use std::os::unix::fs::{PermissionsExt, symlink};
+        let fixture = scoped_fixture();
+        let program = fixture.root.join("工具 script");
+        std::fs::write(&program, b"fixture, never executed").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o700)).unwrap();
+        std::fs::write(fixture.root.join("fake.exe"), b"not executable").unwrap();
+        symlink(&program, fixture.root.join("linked-program")).unwrap();
+        symlink("/bin/sh", fixture.root.join("outside-program")).unwrap();
+        let cancel = CancellationToken::new();
+        let listed = read(&fixture.root, Mode::Program, Some(&fixture.root), &cancel).unwrap();
+        let programs: Vec<_> = listed.entries.iter().filter(|e| e.program).map(|e| e.name.as_str()).collect();
+        assert_eq!(programs, ["工具 script"]);
+        let ordinary = read(&fixture.root, Mode::Program, None, &cancel).unwrap();
+        assert!(ordinary.entries.iter().any(|e| e.name == "linked-program"));
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(!read(&fixture.root, Mode::Program, None, &cancel).unwrap().entries.iter().any(|e| e.name == "工具 script" || e.name == "linked-program"));
+        cancel.cancel();
+        assert!(matches!(read(&fixture.root, Mode::Program, None, &cancel), Err(Error::Cancelled)));
+        assert_eq!(std::fs::read(&program).unwrap(), b"fixture, never executed");
+    }
+
     fn frame(ctx: &Context, app: &mut Rocket, events: Vec<Event>) {
         app.frame_widgets.clear();
         let mut output = ctx.run_ui(
@@ -1850,6 +1895,7 @@ mod tests {
         assert!(!nested, "missing child concealed a redirected ancestor");
     }
 
+    #[cfg(windows)]
     #[test]
     fn crumbs_name_the_drive_and_each_folder() {
         let crumbs = crumbs(Path::new(r"C:\Users\dev\Projects"));
@@ -1862,6 +1908,16 @@ mod tests {
         assert_eq!(super::crumbs(Path::new(r"\\server\share\repo"))[0].0, r"\\server\share");
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn crumbs_name_the_root_and_each_unicode_folder() {
+        let path = Path::new("/Users/dev/資料");
+        let crumbs = crumbs(path);
+        assert_eq!(crumbs.iter().map(|(l, _)| l.as_str()).collect::<Vec<_>>(), ["/", "Users", "dev", "資料"]);
+        assert_eq!(crumbs[0].1, PathBuf::from("/"));
+        assert_eq!(crumbs[3].1, path);
+    }
+
     #[test]
     fn typed_paths_must_be_full_and_stay_in_scope() {
         let fixture = scoped_fixture();
@@ -1869,14 +1925,14 @@ mod tests {
         let inside = fixture.repository.to_string_lossy();
         assert!(typed_folder(&inside, Some(scope)).is_ok());
         assert!(typed_folder(&format!("\"{inside}\""), Some(scope)).is_ok());
-        assert!(typed_folder(r"C:\Users", Some(scope)).is_err());
-        assert!(typed_folder(&format!("{inside}\\..\\Users"), Some(scope)).is_err());
+        assert!(typed_folder(if cfg!(windows) { r"C:\Users" } else { "/Users" }, Some(scope)).is_err());
+        assert!(typed_folder(&fixture.repository.join("..").join("Users").to_string_lossy(), Some(scope)).is_err());
         assert!(typed_folder(r"fixtures\repo", None).is_err());
-        assert!(typed_folder(r"D:\work", None).is_ok());
+        assert!(typed_folder(if cfg!(windows) { r"D:\work" } else { "/work" }, None).is_ok());
         // The test host's scope is canonical; a usual spelling inside it is accepted.
         let canonical = fixture.root.canonicalize().unwrap();
         assert!(typed_folder(&inside, Some(&canonical)).is_ok());
-        assert!(typed_folder(r"C:\elsewhere", Some(&canonical)).is_err());
+        assert!(typed_folder(if cfg!(windows) { r"C:\elsewhere" } else { "/elsewhere" }, Some(&canonical)).is_err());
         assert!(super::inside(&fixture.root.join("new-repository"), scope), "creation preview accepts a missing leaf");
     }
 
@@ -1905,6 +1961,9 @@ mod tests {
         std::fs::create_dir(&linked).unwrap();
         std::fs::write(linked.join(".git"), format!("gitdir: {}\n", fixture.repository.join(".git").display())).unwrap();
         std::fs::write(root.join("tool.exe"), b"").unwrap();
+        #[cfg(unix)]
+        { use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(root.join("tool.exe"), std::fs::Permissions::from_mode(0o700)).unwrap(); }
         std::fs::write(root.join("notes.txt"), b"").unwrap();
         let cancel = CancellationToken::new();
 

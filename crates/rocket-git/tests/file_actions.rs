@@ -1,4 +1,4 @@
-#![cfg(any(windows, target_os = "linux"))]
+#![cfg(any(windows, target_os = "linux", target_os = "macos"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;
@@ -266,7 +266,7 @@ fn checkout_line_endings_match_git_without_running_filters() {
 
 /// Linux: a restored file gets the executable bit its index entry records, as a Git
 /// checkout would, and keeps its other permission bits; no mode change is left.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn restored_files_get_the_executable_bit_git_records() {
     isolated(

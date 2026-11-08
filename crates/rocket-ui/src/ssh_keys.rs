@@ -192,6 +192,7 @@ impl Rocket {
                 if let Some(old)=s.profiles.iter_mut().find(|old|old.alias==p.alias){*old=p;}
                 s.notice=Some(if !saved {"Saved passphrase forgotten. The private key, public key and agent are unchanged."}
                     else if cfg!(windows) {"Passphrase verified by OpenSSH and saved with Windows user encryption. Windows ssh-agent and key files were not changed."}
+                    else if cfg!(target_os="macos") {"Passphrase verified by OpenSSH and saved, encrypted with a key in your macOS Keychain. The agent and key files were not changed."}
                     else {"Passphrase verified by OpenSSH and saved, encrypted with a key in your desktop keyring. ssh-agent and key files were not changed."}.into());
             }
             Err(Error::Cancelled)=>s.notice=Some(if reading {"Scan cancelled. The previous list is retained; keys and settings are unchanged."} else {"Cancelled. No profile or repository setting was published. Any incomplete key folder is retained for recovery."}.into()),

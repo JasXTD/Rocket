@@ -1,4 +1,4 @@
-#![cfg(any(windows, target_os = "linux"))]
+#![cfg(any(windows, target_os = "linux", target_os = "macos"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;
@@ -315,7 +315,7 @@ fn preflight_preserves_existing_files_directories_and_junctions() {
 }
 
 /// Linux: symbolic links, to a folder or dangling, are existing entries as junctions are.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn preflight_preserves_existing_files_directories_and_links() {
     run_case(

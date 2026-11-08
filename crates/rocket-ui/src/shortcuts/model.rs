@@ -244,7 +244,26 @@ pub struct Binding {
     pub trigger: Trigger,
 }
 pub fn modifiers(m: Modifiers) -> Option<u8> {
-    (!m.mac_cmd).then_some(u8::from(m.ctrl) | (u8::from(m.alt) * 2) | (u8::from(m.shift) * 4))
+    modifiers_for(m, cfg!(target_os = "macos"))
+}
+fn modifiers_for(m: Modifiers, mac: bool) -> Option<u8> {
+    (mac || !m.mac_cmd).then_some(u8::from(m.ctrl) | (u8::from(m.alt) * 2)
+        | (u8::from(m.shift) * 4) | (u8::from(m.mac_cmd) * 8))
+}
+/// Defaults follow the platform; saved chords always describe physical modifiers.
+fn default_binding(action: Action, mac: bool) -> Option<Binding> {
+    let text = action.command().default;
+    if text.is_empty() { return None; }
+    let mut binding = Binding::parse(text).expect("valid built-in shortcut");
+    if mac {
+        // Cmd+Tab belongs to the OS. Ctrl+Tab keeps repository navigation local.
+        if action == Action::Terminal { return Some(Binding::parse("Ctrl+`").unwrap()); }
+        if action == Action::Activity { return Some(Binding::parse("Cmd+Shift+J").unwrap()); }
+        if !matches!(action, Action::Next | Action::Previous) && binding.modifiers & 1 != 0 {
+            binding.modifiers = (binding.modifiers & !1) | 8;
+        }
+    }
+    Some(binding)
 }
 impl Binding {
     pub fn parse(text: &str) -> Result<Self, String> {
@@ -258,6 +277,7 @@ impl Binding {
                 "Ctrl" => 1,
                 "Alt" => 2,
                 "Shift" => 4,
+                "Cmd" => 8,
                 _ => break,
             };
             if mask & bit != 0 {
@@ -285,7 +305,7 @@ impl Binding {
     }
     pub fn text(self) -> String {
         let mut pieces = vec![];
-        for (bit, name) in [(1, "Ctrl"), (2, "Alt"), (4, "Shift")] {
+        for (bit, name) in [(1, "Ctrl"), (8, "Cmd"), (2, "Alt"), (4, "Shift")] {
             if self.modifiers & bit != 0 {
                 pieces.push(name)
             }
@@ -309,28 +329,37 @@ impl Binding {
         pieces.join("+")
     }
     pub fn validate(self) -> Result<(), String> {
-        if self.modifiers > 7 {
+        self.validate_for(cfg!(target_os = "macos"))
+    }
+    fn validate_for(self, mac: bool) -> Result<(), String> {
+        if self.modifiers > 15 || (!mac && self.modifiers & 8 != 0) {
             return Err("Unsupported modifier.".into());
         }
         match self.trigger {
             Trigger::Mouse(PointerButton::Extra1|PointerButton::Extra2)=>Ok(()),
             Trigger::Mouse(_)|Trigger::Wheel(_) if self.modifiers!=0=>Ok(()),
-            Trigger::Mouse(_)|Trigger::Wheel(_)=>Err("Add Ctrl, Alt or Shift. Plain clicks and wheel scrolling keep their normal behavior.".into()),
+            Trigger::Mouse(_)|Trigger::Wheel(_)=>Err("Add a modifier. Plain clicks and wheel scrolling keep their normal behavior.".into()),
             Trigger::Key(k)=>{
                 let m=self.modifiers;let function=k.name().starts_with('F')&&k.name()[1..].parse::<u8>().is_ok();
                 if matches!(k,Key::Escape|Key::F1) || (m&2!=0&&matches!(k,Key::Tab|Key::F4|Key::Space))
-                    || (m&1!=0&&matches!(k,Key::C|Key::X|Key::V|Key::A|Key::Z|Key::Y|Key::Insert|Key::Backspace|Key::Delete|Key::Plus|Key::Minus|Key::Equals|Key::Num0|Key::ArrowLeft|Key::ArrowRight|Key::ArrowUp|Key::ArrowDown|Key::Home|Key::End))
+                    || (m&9!=0&&matches!(k,Key::C|Key::X|Key::V|Key::A|Key::Z|Key::Y|Key::Insert|Key::Backspace|Key::Delete|Key::Plus|Key::Minus|Key::Equals|Key::Num0|Key::ArrowLeft|Key::ArrowRight|Key::ArrowUp|Key::ArrowDown|Key::Home|Key::End))
+                    || (m&8!=0&&matches!(k,Key::Tab|Key::Space|Key::Q|Key::Backtick))
+                    || (m&8!=0&&m&4==0&&matches!(k,Key::H|Key::M))
                     || (m&3==3&&!function) {
                     return Err("Reserved for text editing, AltGr, zoom, Help or the operating system.".into())
                 }
-                if m&3==0&&!function{return Err("Use Ctrl or Alt with this key so ordinary typing and focus navigation stay available.".into())}Ok(())
+                if m&11==0&&!function{return Err("Use a command modifier with this key so ordinary typing and focus navigation stay available.".into())}Ok(())
             }
         }
     }
     pub fn egui_modifiers(self) -> Modifiers {
+        self.egui_modifiers_for(cfg!(target_os = "macos"))
+    }
+    fn egui_modifiers_for(self, mac: bool) -> Modifiers {
         Modifiers {
             ctrl: self.modifiers & 1 != 0,
-            command: self.modifiers & 1 != 0,
+            command: self.modifiers & if mac { 8 } else { 1 } != 0,
+            mac_cmd: self.modifiers & 8 != 0,
             alt: self.modifiers & 2 != 0,
             shift: self.modifiers & 4 != 0,
             ..Modifiers::NONE
@@ -342,12 +371,7 @@ pub struct Bindings(pub BTreeMap<String, Vec<Binding>>);
 impl Bindings {
     pub fn get(&self, action: Action) -> Vec<Binding> {
         self.0.get(action.command().id).cloned().unwrap_or_else(|| {
-            let d = action.command().default;
-            if d.is_empty() {
-                vec![]
-            } else {
-                vec![Binding::parse(d).expect("valid built-in shortcut")]
-            }
+            default_binding(action, cfg!(target_os = "macos")).into_iter().collect()
         })
     }
     pub fn label(&self, action: Action) -> String {
@@ -457,16 +481,53 @@ impl Bindings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn default(action: Action) -> Binding { Bindings::default().get(action)[0] }
+    #[test]
+    fn mac_command_and_control_are_distinct_with_valid_unique_defaults() {
+        let mut seen = Vec::new();
+        for c in COMMANDS {
+            if let Some(b) = default_binding(c.action, true) {
+                b.validate_for(true).unwrap_or_else(|e| panic!("{}: {e}", c.id));
+                assert!(!seen.contains(&b), "duplicate Mac default: {}", b.text());
+                seen.push(b);
+                assert_eq!(modifiers_for(b.egui_modifiers_for(true), true), Some(b.modifiers));
+            }
+            let existing = if c.default.is_empty() { None } else { Some(Binding::parse(c.default).unwrap()) };
+            assert_eq!(default_binding(c.action, false), existing);
+        }
+        assert_eq!(default_binding(Action::Open, true).unwrap().text(), "Cmd+O");
+        assert_eq!(default_binding(Action::Next, true).unwrap().text(), "Ctrl+Tab");
+        let control = Binding::parse("Ctrl+B").unwrap();
+        assert!(!control.egui_modifiers_for(true).command);
+        let command = Binding::parse("Cmd+B").unwrap();
+        assert!(command.egui_modifiers_for(true).command);
+        assert!(!command.egui_modifiers_for(true).ctrl);
+        assert_eq!(modifiers_for(command.egui_modifiers_for(true), false), None);
+        for text in ["Cmd+C", "Cmd+Q", "Cmd+Tab", "Cmd+Space", "Cmd+H", "Cmd+M", "Cmd+ArrowLeft", "Cmd+Shift+Z"] {
+            assert!(Binding::parse(text).unwrap().validate_for(true).is_err(), "{text}");
+        }
+        for text in ["Cmd+MouseLeft", "Shift+Cmd+WheelUp", "Ctrl+Cmd+F8", "Cmd+O"] {
+            let b = Binding::parse(text).unwrap(); b.validate_for(true).unwrap();
+            assert_eq!(Binding::parse(&b.text()).unwrap(), b);
+        }
+    }
+    #[test]
+    fn saved_control_binding_remains_control_on_every_platform() {
+        let data = br#"[{"command":"sidebar","bindings":["Ctrl+F8"]}]"#;
+        let b = Bindings::decode(data).unwrap();
+        assert_eq!(b.label(Action::Sidebar), "Ctrl+F8");
+        assert_eq!(Bindings::decode(&b.encode().unwrap()).unwrap(), b);
+    }
     #[test]
     fn defaults_and_mouse_bindings_roundtrip_without_prefix_matches() {
         let mut b = Bindings::default();
         assert_eq!(Bindings::decode(&b.encode().unwrap()).unwrap(), b);
         assert_eq!(
-            b.find(Binding::parse("Ctrl+B").unwrap()),
+            b.find(default(Action::Sidebar)),
             Some(Action::Sidebar)
         );
         assert_eq!(
-            b.find(Binding::parse("Ctrl+Shift+B").unwrap()),
+            b.find(default(Action::Branch)),
             Some(Action::Branch)
         );
         b.set(
@@ -489,7 +550,7 @@ mod tests {
         let mut b = Bindings::default();
         let original = b.clone();
         assert!(
-            b.set(Action::Next, vec![Binding::parse("Ctrl+O").unwrap()])
+            b.set(Action::Next, vec![default(Action::Open)])
                 .is_err()
         );
         assert_eq!(b, original);
@@ -523,16 +584,17 @@ mod tests {
         for text in [
             r#"[{"command":"unknown","bindings":[]}]"#,
             r#"[{"command":"open","bindings":[]},{"command":"open","bindings":[]}]"#,
-            r#"[{"command":"open","bindings":["Ctrl+B"]}]"#,
         ] {
             assert!(Bindings::decode(text.as_bytes()).is_err())
         }
+        let duplicate = serde_json::to_vec(&json!([{"command":"open","bindings":[default(Action::Sidebar).text()]}])).unwrap();
+        assert!(Bindings::decode(&duplicate).is_err());
         b.set(Action::Open, vec![]).unwrap();
-        b.set(Action::Next, vec![Binding::parse("Ctrl+O").unwrap()])
+        b.set(Action::Next, vec![default(Action::Open)])
             .unwrap();
         assert!(b.reset(Action::Open).is_err());
         assert_eq!(
-            b.find(Binding::parse("Ctrl+O").unwrap()),
+            b.find(default(Action::Open)),
             Some(Action::Next)
         );
     }

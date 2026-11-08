@@ -172,13 +172,38 @@ impl ProcessLock {
         }
         // The file is persistent and never truncated/unlinked. Closing the
         // non-inheritable handle releases the OS lock, including on process exit.
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(path)
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        crate::local_files::no_follow(&mut options);
+        let file = options
+            .open(&path)
             .map_err(|e| Error::io("open repository write ownership", e))?;
+        if !file
+            .metadata()
+            .map_err(|e| Error::io("inspect repository write ownership", e))?
+            .is_file()
+        {
+            return Err(Error::io(
+                "open repository write ownership",
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Repository ownership file must be a regular file",
+                ),
+            ));
+        }
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        if !crate::local_files::opened_without_link(&file, &path)
+            .map_err(|e| Error::io("inspect repository write ownership", e))?
+        {
+            return Err(Error::io(
+                "open repository write ownership",
+                io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Repository ownership file changed; refresh and retry",
+                ),
+            ));
+        }
         match file.try_lock() {
             Ok(()) => Ok(Self { _file: file }),
             Err(TryLockError::WouldBlock) => Err(Error::RepositoryBusy),

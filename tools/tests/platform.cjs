@@ -16,6 +16,15 @@ function gone(pid, image) {
     if (r.status !== 0) throw Error('tasklist failed');
     return !r.stdout.includes(`"${pid}"`);
   }
+  if (process.platform === 'darwin') {
+    // Darwin has no /proc. ps is the installed OS tool, with separate arguments.
+    const r = cp.spawnSync('/bin/ps', ['-p', String(pid), '-o', 'stat=', '-o', 'comm='], {encoding:'utf8', timeout:5000});
+    if (r.error || (r.status !== 0 && r.status !== 1)) throw Error('macOS process inspection failed');
+    const line = r.stdout.trim();
+    if (!line || /^[ZX]/.test(line)) return true;
+    const command = line.replace(/^\S+\s+/, '');
+    return image !== undefined && require('node:path').basename(command) !== require('node:path').basename(image);
+  }
   // Ended, or ended and only waiting for its parent to collect it.
   let stat;
   try { stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8'); } catch (e) { if (e.code === 'ENOENT') return true; throw e; }

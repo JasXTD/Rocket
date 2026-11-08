@@ -1,5 +1,5 @@
 //! Protected PR drafts and write-ahead recovery. No credentials or executable
-//! previews enter this file; disk I/O and DPAPI always run off the UI thread.
+//! previews enter this file; disk I/O and credential protection run off the UI thread.
 use super::*;
 use serde_json::{Value, json};
 use std::{
@@ -83,6 +83,8 @@ pub struct State {
 fn refused() -> Error {
     Error::InvalidInput(if cfg!(windows) {
         "hosting_drafts_preserved: saved PR drafts changed externally, are invalid, or could not be protected for this Windows user. Existing data was preserved; no new remote write was started."
+    } else if cfg!(target_os = "macos") {
+        "hosting_drafts_preserved: saved PR drafts changed externally, are invalid, or Keychain access was denied. Unlock the default macOS Keychain and review Rocket's access, then retry. Existing data was preserved; no new remote write was started."
     } else {
         "hosting_drafts_preserved: saved PR drafts changed externally, are invalid, or could not be protected with the key in your desktop keyring. Existing data was preserved; no new remote write was started."
     }.into())
@@ -642,6 +644,8 @@ pub(super) fn panel(
     ui.heading("Saved PR drafts and recovery");
     ui.label(if cfg!(windows) {
         "Protected for your Windows user. Connect the same account to restore a draft; saved requests never run automatically."
+    } else if cfg!(target_os = "macos") {
+        "Encrypted with a key in your macOS Keychain. Connect the same account to restore a draft; saved requests never run automatically."
     } else {
         "Encrypted with a key in your desktop keyring. Connect the same account to restore a draft; saved requests never run automatically."
     });

@@ -1,4 +1,4 @@
-#![cfg(any(windows, target_os = "linux"))]
+#![cfg(any(windows, target_os = "linux", target_os = "macos"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;
@@ -634,7 +634,7 @@ fn keeping_a_gitattributes_version_may_change_its_own_attributes() {
 
 /// Linux: keeping a version gives the file that version's executable bit, so the
 /// staged entry and the working file agree.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn keeping_a_version_applies_its_executable_bit() {
     isolated(CASE, "keeping_a_version_applies_its_executable_bit", || {

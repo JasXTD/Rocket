@@ -806,6 +806,7 @@ pub struct Rocket {
     /// Set only by the isolated native MCP host and tests: GitHub links and folders
     /// for File Explorer are recorded here instead of opening the browser or Explorer.
     pub opened_urls: Option<Vec<String>>,
+    pub(crate) desktop_tasks: Vec<ReadTask<()>>,
     pub(crate) closing_terminals: Vec<crate::terminal::TerminalPane>,
     pub(crate) terminal_log: crate::terminal::EventLog,
     /// Repositories closed this session, most recent last, for Ctrl+Shift+T.
@@ -962,6 +963,7 @@ impl Rocket {
             forge: crate::forge::State::default(),
             ssh: crate::ssh_keys::State::default(),
             opened_urls: None,
+            desktop_tasks: Vec::new(),
             closing_terminals: Vec::new(),
             terminal_log: Default::default(),
             closed_tabs: Vec::new(),
@@ -1095,6 +1097,7 @@ impl Rocket {
     pub(crate) fn profile_storage_ready(&self) -> bool { self.state_store.is_some() }
     /// Running work, not counting a drafts/settings save that waits out its debounce.
     pub(crate) fn working(&self) -> bool {
+        if self.quitting && !self.desktop_tasks.is_empty() { return true; }
         self.git_settings.running()
             || self.benchmark.running()
             || self.setup.running()
@@ -2255,13 +2258,18 @@ impl Rocket {
             self.notice = Some("Rocket opens only plain HTTPS links.".into());
             return;
         }
+        if self.opened_urls.is_none() {
+            let url = url.to_owned();
+            self.launch_desktop(move || crate::desktop::browser_command(&url), operation);
+            return;
+        }
         let opened = &mut self.opened_urls;
         let mut open = || match opened {
             Some(list) => {
                 list.push(url.to_owned());
                 Ok(())
             }
-            None => crate::hosting::launch_browser(url),
+            None => unreachable!("real desktop handled above"),
         };
         let result = match &self.backend {
             Some(backend) => backend.log.request(operation, |_| open()),
@@ -2274,16 +2282,15 @@ impl Rocket {
             ));
         }
     }
-    /// Show a folder in File Explorer. The isolated MCP host and tests record it instead.
+    /// Show a folder in the system file manager. MCP records the handoff instead.
     pub(crate) fn show_folder(&mut self, path: &std::path::Path) {
         let folder = crate::views::display_path(path);
         if let Some(opened) = &mut self.opened_urls {
             opened.push(format!("explorer:{folder}"));
             return;
         }
-        if let Err(e) = launch_explorer(&folder) {
-            self.notice = Some(format!("Could not open File Explorer: {e}"));
-        }
+        let path = path.to_owned();
+        self.launch_desktop(move || crate::desktop::folder_command(&path), "desktop-folder-open");
     }
     /// Shared by the native close event and localhost MCP. Programmatic close
     /// must not bypass unsaved drafts or reconciliation of an active write.
@@ -2317,6 +2324,7 @@ impl Rocket {
     pub fn begin_quit(&mut self) {
         if let Err(error)=self.updates.approve_restart(){self.updates.error=Some(user_error(&error));self.updates.open=true;return;}
         self.quitting = true;
+        for task in &self.desktop_tasks { task.cancel(); }
         // Clipboard delivery/expiry is handled by the drawn UI. It must not keep
         // shutdown busy when only logic runs (for example after minimizing).
         self.paste_patch = None;
@@ -2382,6 +2390,7 @@ impl Rocket {
     }
 
     pub fn poll(&mut self, ctx: &Context) {
+        self.poll_desktop(ctx);
         self.crash_reports.poll();
         self.general.publish(ctx);
         self.poll_guided(ctx);
@@ -3324,31 +3333,6 @@ impl eframe::App for Rocket {
         // on workers; unchanged strings are not cloned or serialized each frame.
         self.poll_state(&ctx);
     }
-}
-
-/// Open `folder` in File Explorer.
-#[cfg(windows)]
-fn launch_explorer(folder: &str) -> std::io::Result<()> {
-    rocket_git::ensure_unprivileged_process().map_err(std::io::Error::other)?;
-    use std::os::windows::process::CommandExt;
-    let explorer = std::env::var_os("SystemRoot")
-        .map(|root| PathBuf::from(root).join("explorer.exe"))
-        .ok_or_else(|| {
-            std::io::Error::new(std::io::ErrorKind::NotFound, "SystemRoot is not set")
-        })?;
-    // Explorer splits an unquoted path at commas, so the folder is always quoted;
-    // Windows paths cannot contain quotes.
-    std::process::Command::new(explorer)
-        .raw_arg(format!("\"{folder}\""))
-        .spawn()
-        .map(drop)
-}
-#[cfg(not(windows))]
-fn launch_explorer(_folder: &str) -> std::io::Result<()> {
-    Err(std::io::Error::new(
-        std::io::ErrorKind::Unsupported,
-        "File Explorer is only available on Windows",
-    ))
 }
 
 #[cfg(test)]

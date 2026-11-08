@@ -70,7 +70,7 @@ fn repository_menu(
             .as_ref()
             .and_then(|s| s.info.worktree.clone())
             .unwrap_or_else(|| tab.path.clone());
-        let explorer = ui.button(tr("Open in File Explorer"));
+        let explorer = ui.button(tr(if cfg!(windows) { "Open in File Explorer" } else { crate::desktop::FOLDER_HINT }));
         widgets.insert("tab-menu-explorer".into(), (&explorer).into());
         if explorer.clicked() {
             intents.push(Intent::ShowFolder(folder));

@@ -195,27 +195,6 @@ fn when(time: &str) -> String {
     }
 }
 
-/// Explorer hands an https URL to the default browser. The URL passed
-/// [`github_web_url`] or `rocket_git::https_url`: one argument without spaces
-/// or quotes.
-pub(crate) fn launch_browser(url: &str) -> Result<()> {
-    rocket_git::ensure_unprivileged_process()?;
-    let explorer = std::env::var_os("SystemRoot")
-        .map(|root| std::path::PathBuf::from(root).join("explorer.exe"))
-        .ok_or_else(|| Error::Io {
-            action: "open the browser",
-            source: std::io::Error::new(std::io::ErrorKind::NotFound, "SystemRoot is not set"),
-        })?;
-    std::process::Command::new(explorer)
-        .arg(url)
-        .spawn()
-        .map(drop)
-        .map_err(|source| Error::Io {
-            action: "open the browser",
-            source,
-        })
-}
-
 #[derive(Default)]
 struct Flags {
     dismiss: bool,
@@ -430,21 +409,7 @@ impl Rocket {
             }
             return;
         };
-        let opened = &mut self.opened_urls;
-        let mut open = || match opened {
-            Some(list) => {
-                list.push(url.to_owned());
-                Ok(())
-            }
-            None => launch_browser(url),
-        };
-        let result = match &self.backend {
-            Some(backend) => backend.log.request("github-open", |_| open()),
-            None => open(),
-        };
-        if let (Err(error), Some(d)) = (result, &mut self.dialog) {
-            d.error = Some(user_error(&error));
-        }
+        self.open_reviewed_url(url, "github-open");
     }
 
     pub(crate) fn github_page(&mut self, ui: &mut Ui) {

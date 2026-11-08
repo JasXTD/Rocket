@@ -1,5 +1,36 @@
 # Rocket development tools
 
+## Apple Silicon macOS preparation
+
+The manual-only `.github/workflows/macos-arm64.yml` prepares a development `Rocket.app`
+with pinned Rust/actions and bounded runtime/artifact retention. Local native
+builds use `bash tools/build-macos.sh [--offline]`. It runs only the affected core
+platform, terminal/MCP and Lua refusal checks plus an isolated CLI smoke; it does not publish a release or enable
+Lua. See [the build and acceptance plan](../docs/MacOS-port.md) and
+[the sandbox investigation](../docs/MacOS-lua-sandbox.md). Native linking,
+desktop/MCP acceptance and EC2 Mac testing remain separate verification gates.
+The build now prepares two native localhost terminal runs and an Apple SDK ABI
+check. `ROCKET_MCP_EXE` selects an already-built executable for
+`test-mcp-terminal-interrupt.cjs` and `test-mcp-terminal-unicode.cjs`;
+`ROCKET_MCP_RESULTS` selects their parent results folder. Each creates its own
+synthetic repository/profile. No downloaded dependency, user key or hosted remote
+is needed. Cross-compilation does not count as passing those native Mac runs.
+
+Step 5 adds `test-mcp-desktop.cjs`, using those same executable/results overrides.
+It covers primary/Control/mouse bindings, cancelled capture, persistence, Unicode
+and compact repository browsing, and terminal Ctrl+C with an isolated profile.
+External application handoffs are recorded by MCP; OS launcher argument/status
+behavior and native locale/font handling have separate focused Rust/SDK checks.
+
+`tools/macos/bundle.cjs` stages an exact bundle inventory, signs development code
+with Apple's ad-hoc identity, and verifies architecture, system-only links,
+permissions and hashes. `crates/rocket-ui/examples/macos_icon.rs` renders the
+existing icon into Apple's ten-size iconset. Build that example, then set
+`ROCKET_MACOS_ICON_TOOL` to its executable before running
+`node --test tools/tests/test-macos-bundle.cjs`. These metadata/fixture tests run
+on Windows and Linux too; native signatures, `iconutil` and ZIP roundtrip checks
+remain part of the Mac workflow. No downloaded icon or packaging dependency is used.
+
 ## Direct SSH keys
 
 `tools/mockups/ssh-direct-key/preview.html` preserves key selection and previews

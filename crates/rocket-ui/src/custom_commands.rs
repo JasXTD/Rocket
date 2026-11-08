@@ -1809,7 +1809,7 @@ pub(crate) fn footer(
     let ready = problem.is_none() && e.changed();
     let r = pages::primary(ui, ready, "Save commands");
     control(widgets, "dialog-commands-save", &r, ui.clip_rect());
-    let save = r.clicked() || (ready && ui.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Enter)));
+    let save = r.clicked() || (ready && ui.input_mut(|i| i.consume_key(crate::shortcuts::primary_modifiers(), Key::Enter)));
     let mut discard = false;
     if e.changed() && e.transfer.is_none() {
         let r = ui.button("Discard");

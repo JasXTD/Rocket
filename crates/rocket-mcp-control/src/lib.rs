@@ -1,6 +1,9 @@
 //! Shared by Rocket's settings page and its local MCP service. No third-party dependencies.
 #[path = "../../rocket-git/src/process_privilege.rs"]
 mod process_privilege;
+#[cfg(target_os = "macos")]
+#[path = "../../rocket-git/src/darwin_acl.rs"]
+mod darwin_acl;
 use std::{
     fs::{self, File, OpenOptions},
     io::{self, Read, Write},
@@ -54,7 +57,7 @@ fn invalid(message: &str) -> io::Error {
 fn read_bounded(path: &Path, max: u64, what: &str, repair: &str) -> io::Result<String> {
     #[cfg(unix)]
     unix::profile_folder(path.parent().ok_or_else(|| invalid("Invalid MCP profile"))?)?;
-    let file = File::open(path)?;
+    let file = private_options().read(true).open(path)?;
     #[cfg(unix)]
     unix::private_file(&file, what, repair)?;
     #[cfg(not(unix))]
@@ -172,6 +175,10 @@ fn private_options() -> OpenOptions {
     {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
+        #[cfg(target_os = "linux")]
+        options.custom_flags(0x20000); // O_NOFOLLOW; std also sets close-on-exec.
+        #[cfg(target_os = "macos")]
+        options.custom_flags(0x100); // Darwin O_NOFOLLOW, not Linux's value.
     }
     options
 }
@@ -458,11 +465,26 @@ fn secret() -> io::Result<String> {
         }
         Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    {
+        #[link(name = "Security", kind = "framework")]
+        unsafe extern "C" {
+            fn SecRandomCopyBytes(random: *const std::ffi::c_void, count: usize, bytes: *mut u8) -> i32;
+        }
+        let mut bytes = [0u8; 32];
+        // SAFETY: kSecRandomDefault is NULL; the writable buffer has count bytes.
+        // No keychain access, credentials, or persistent system configuration.
+        let status = unsafe { SecRandomCopyBytes(std::ptr::null(), bytes.len(), bytes.as_mut_ptr()) };
+        if status != 0 {
+            return Err(io::Error::other(format!("macOS could not generate an MCP access token (status {status})")));
+        }
+        Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
         Err(io::Error::new(
             io::ErrorKind::Unsupported,
-            "MCP token generation currently requires Windows or Linux",
+            "MCP token generation currently requires Windows, Linux or macOS",
         ))
     }
 }
@@ -516,6 +538,11 @@ mod unix {
                 profile.display()
             )));
         }
+        #[cfg(target_os = "macos")]
+        {
+            let file = super::private_options().read(true).open(profile)?;
+            super::darwin_acl::check(&file, profile, &found)?;
+        }
         Ok(())
     }
     /// An opened profile file: a regular file of this user that only this user can open.
@@ -534,11 +561,13 @@ mod unix {
                 found.mode() & 0o777
             )));
         }
+        #[cfg(target_os = "macos")]
+        super::darwin_acl::check(file, Path::new(what), &found)?;
         Ok(())
     }
 }
 
-#[cfg(all(test, any(windows, target_os = "linux")))]
+#[cfg(all(test, any(windows, target_os = "linux", target_os = "macos")))]
 mod tests {
     use super::*;
     fn fixture() -> PathBuf {
@@ -547,9 +576,51 @@ mod tests {
         fs::create_dir(&directory).unwrap();
         directory
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
-    fn linux_profiles_are_private_to_their_user_and_locks_are_exclusive() {
+    fn profile_files_refuse_leaf_links_and_preserve_the_target() {
+        use std::os::unix::fs::symlink;
+        let root = fixture();
+        let profile = root.join("profile");
+        initialize(&profile, &root).unwrap();
+        let target = root.join("unchanged");
+        fs::write(&target, "private fixture").unwrap();
+        for name in ["access-token", "settings.lock", "service.lock"] {
+            fs::remove_file(profile.join(name)).unwrap();
+            symlink(&target, profile.join(name)).unwrap();
+            let refused = match name {
+                "access-token" => token(&profile).is_err(),
+                "settings.lock" => lock(&profile).is_err(),
+                _ => service_lock(&profile).is_err(),
+            };
+            assert!(refused, "{name}");
+            assert_eq!(fs::read_to_string(&target).unwrap(), "private fixture");
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_token_and_profile_acl_grants_are_refused_without_changing_permissions() {
+        let root = fixture();
+        let profile = root.join("profile");
+        initialize(&profile, &root).unwrap();
+        let file = profile.join("access-token");
+        let before = fs::read(&file).unwrap();
+        for path in [&file, &profile] {
+            assert!(Command::new("/bin/chmod").args(["+a", "everyone allow read"]).arg(path).status().unwrap().success());
+            let result = token(&profile);
+            let permissions = Command::new("/bin/ls").arg("-lde").arg(path).output().unwrap().stdout;
+            assert!(result.is_err(), "ACL access grants must not be authorized by mode bits");
+            assert_eq!(fs::read(&file).unwrap(), before);
+            assert_eq!(Command::new("/bin/ls").arg("-lde").arg(path).output().unwrap().stdout, permissions);
+            assert!(Command::new("/bin/chmod").arg("-N").arg(path).status().unwrap().success());
+            assert!(token(&profile).is_ok());
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[test]
+    fn unix_profiles_are_private_to_their_user_and_locks_are_exclusive() {
         use std::os::unix::fs::PermissionsExt;
         let mode = |path: &Path| fs::symlink_metadata(path).unwrap().permissions().mode() & 0o777;
         let set = |path: &Path, mode| fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
@@ -563,7 +634,7 @@ mod tests {
         let first = token(&profile).unwrap();
         assert!(first.bytes().all(|b| b.is_ascii_hexdigit()) && first.len() == 64);
         rotate_token(&profile).unwrap();
-        assert_ne!(token(&profile).unwrap(), first, "getrandom gives a new token");
+        assert_ne!(token(&profile).unwrap(), first, "the OS gives a new token");
         assert_eq!(mode(&profile.join("access-token")), 0o600, "rotation keeps it private");
 
         // A lock belongs to its open file: refused in this process too, released on drop.
@@ -596,9 +667,9 @@ mod tests {
         assert!(load(&link).is_err() && service_lock(&link).is_err());
         fs::remove_dir_all(root).unwrap();
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
-    fn linux_tokens_come_from_the_kernel_and_differ_each_time() {
+    fn unix_tokens_come_from_the_os_and_differ_each_time() {
         let tokens: std::collections::HashSet<_> = (0..64).map(|_| secret().unwrap()).collect();
         assert_eq!(tokens.len(), 64);
         assert!(tokens.iter().all(|t| t.len() == 64 && t.bytes().all(|b| b.is_ascii_hexdigit())));

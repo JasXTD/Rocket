@@ -1,4 +1,4 @@
-#![cfg(any(windows, target_os = "linux"))]
+#![cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[allow(dead_code)]
 mod common;
 use common::*;
@@ -37,6 +37,23 @@ fn register(f: &Fixture, m: &SshManager, alias: &str) -> SshProfile {
     .unwrap()
     .finish(&CancellationToken::new())
     .unwrap()
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_key_acl_grants_are_refused_without_changing_permissions() {
+    isolated("ROCKET_SSH_CASE", "macos_key_acl_grants_are_refused_without_changing_permissions", || {
+        let f=Fixture::new();
+        let manager=manager(&f);
+        let profile=register(&f,&manager,"rocket-acl");
+        let bytes=fs::read(&profile.key).unwrap();
+        assert!(std::process::Command::new("/bin/chmod").args(["+a","everyone allow read"]).arg(&profile.key).status().unwrap().success());
+        assert!(matches!(manager.guard(&profile,&CancellationToken::new()),Err(Error::Ssh(SshFailure::KeyPermissions))));
+        assert_eq!(fs::read(&profile.key).unwrap(),bytes);
+        // Remove only the ACL added to this disposable fixture, then verify retry.
+        assert!(std::process::Command::new("/bin/chmod").arg("-N").arg(&profile.key).status().unwrap().success());
+        assert!(manager.guard(&profile,&CancellationToken::new()).is_ok());
+    });
 }
 #[test]
 fn ssh_profiles_unicode_and_matching_pairs() {
@@ -244,18 +261,18 @@ fn ssh_binding_refuses_overrides_and_preserves_existing_locks() {
     );
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn mode(path: &Path) -> u32 {
     use std::os::unix::fs::PermissionsExt;
     fs::symlink_metadata(path).unwrap().permissions().mode() & 0o777
 }
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn set_mode(path: &Path, mode: u32) {
     use std::os::unix::fs::PermissionsExt;
     fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn linux_profiles_are_private_and_keys_other_users_can_open_are_refused() {
     isolated(
@@ -313,7 +330,7 @@ fn linux_profiles_are_private_and_keys_other_users_can_open_are_refused() {
     );
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn linux_ssh_agent_is_the_one_ssh_auth_sock_names() {
     isolated(

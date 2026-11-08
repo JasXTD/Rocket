@@ -331,7 +331,10 @@ impl TerminalPane {
                     // egui-winit translates native Ctrl+C to Copy, without a
                     // Key::C press. Only the focused terminal consumes it;
                     // TextEdit fields retain their normal clipboard behavior.
-                    Event::Copy => self.send(&[3], "terminal_interrupt"),
+                    Event::Copy if !cfg!(target_os = "macos") => self.send(&[3], "terminal_interrupt"),
+                    // On macOS this is Command+C, not the terminal's Ctrl+C.
+                    // Ctrl+C arrives as a key event and is encoded below.
+                    Event::Copy => {},
                     Event::Text(text) | Event::Paste(text) => {
                         self.send(text.as_bytes(), "terminal_input_queued")
                     }
@@ -1341,7 +1344,7 @@ mod linux_tests {
     }
 }
 
-#[cfg(all(test, any(windows, target_os = "linux")))]
+#[cfg(all(test, any(windows, target_os = "linux", target_os = "macos")))]
 mod layout_tests {
     use super::*;
     use std::{

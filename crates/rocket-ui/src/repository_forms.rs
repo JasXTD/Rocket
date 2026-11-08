@@ -315,7 +315,7 @@ impl Rocket {
         if matches!(next, Next::Stay)
             && ready
             && self.picker.is_none()
-            && ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Enter))
+            && ctx.input_mut(|i| i.consume_key(crate::shortcuts::primary_modifiers(), Key::Enter))
         {
             next = Next::Submit;
         }
@@ -441,7 +441,7 @@ impl Rocket {
         if matches!(next, Next::Stay)
             && ready
             && self.picker.is_none()
-            && ctx.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::Enter))
+            && ctx.input_mut(|i| i.consume_key(crate::shortcuts::primary_modifiers(), Key::Enter))
         {
             next = Next::Submit;
         }

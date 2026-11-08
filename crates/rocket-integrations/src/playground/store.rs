@@ -103,7 +103,7 @@ pub fn save(
                 "playground_changed: Scratch source changed outside this window. Your code is retained; reload before saving.",
             ));
         }
-        let raw = protect_hosting_secret(source.as_bytes(), true).map_err(|_|invalid(if cfg!(windows) {"playground_store: Cannot protect scratch source for this Windows user. Your code is retained."} else {"playground_store: Cannot protect scratch source with the key in your desktop keyring. Your code is retained."}))?;
+        let raw = protect_hosting_secret(source.as_bytes(), true).map_err(|_|invalid(if cfg!(windows) {"playground_store: Cannot protect scratch source for this Windows user. Your code is retained."} else if cfg!(target_os="macos") {"playground_store: Cannot protect scratch source. Unlock the default macOS Keychain and review Rocket's access, then retry. Your code is retained."} else {"playground_store: Cannot protect scratch source with the key in your desktop keyring. Your code is retained."}))?;
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|_| invalid("playground_store: Invalid clock."))?

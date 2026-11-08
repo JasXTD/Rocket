@@ -1,9 +1,16 @@
-//! Current-user credential protection: DPAPI on Windows; on Linux a key in the desktop
-//! keyring (see `linux`). The UI remains safe Rust.
-use crate::{Error, Result};
+//! Current-user protection: DPAPI, Linux Secret Service, or macOS Keychain.
+#[cfg(not(target_os = "macos"))]
+use crate::Error;
+use crate::Result;
 #[cfg(target_os = "linux")]
 mod linux;
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(any(target_os = "macos", all(test, target_os = "linux")))]
+mod macos_policy;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+mod sealed;
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 const LIMIT: usize = 512 * 1024;
 #[cfg(windows)]
 fn refused() -> Error {
@@ -19,10 +26,14 @@ pub fn protect_hosting_secret(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>> {
     }
     linux::protect(bytes, encrypt)
 }
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(target_os = "macos")]
+pub fn protect_hosting_secret(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>> {
+    macos::protect(bytes, encrypt)
+}
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub fn protect_hosting_secret(_: &[u8], _: bool) -> Result<Vec<u8>> {
     Err(Error::Unsupported(
-        "Remembering hosting tokens currently requires Windows or Linux.".into(),
+        "Remembering credentials currently requires Windows, Linux or macOS.".into(),
     ))
 }
 #[cfg(windows)]

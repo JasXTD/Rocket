@@ -878,7 +878,7 @@ fn find_field(
     );
     widgets.insert("diff-search".into(), (&r).into());
     if field.clicked()
-        || (!ui.ctx().egui_wants_keyboard_input() && ui.input_mut(|i| i.consume_key(Modifiers::CTRL, Key::F)))
+        || (!ui.ctx().egui_wants_keyboard_input() && ui.input_mut(|i| i.consume_key(crate::shortcuts::primary_modifiers(), Key::F)))
     {
         r.request_focus();
     }

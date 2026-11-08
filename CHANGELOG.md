@@ -8,6 +8,53 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Apple Silicon macOS preparation
+
+- Prepare `Rocket.app` with Rocket's existing icon, five sibling executables,
+  version metadata and license resources. Add strict bundle inventory, Mach-O,
+  hash and permission checks, native ad-hoc signing and ZIP roundtrip validation.
+  Run the affected native checks from packaged helpers in the manual workflow;
+  Developer ID signing, notarization and Finder acceptance remain pending.
+- Add macOS desktop adapters: distinct Command/Control shortcuts and menu hints,
+  system language/Region discovery, installed font roots with the audited CJK
+  fallback, Unix executable selection, and bounded background Finder/browser
+  handoffs. Preserve saved Control bindings and terminal Ctrl+C. Prepare native
+  desktop/SDK checks; actual Mac desktop, IME/Retina and native menus remain pending.
+- Add macOS credential protection through the default Keychain and the existing
+  authenticated cipher, plus system OpenSSH discovery and inherited agent support.
+  Refuse locked/denied Keychain access without prompts or plaintext fallback;
+  preserve existing keys, Keychain access rules and SSH configuration. Reject
+  macOS private-key ACL grants, Unix lock symlinks and concurrent credential-file
+  replacement. Prepare isolated native Keychain/SSH acceptance; actual Mac
+  execution and signed-helper interoperability remain pending.
+- Add the Darwin terminal and localhost MCP source adapters: PTY job control,
+  resize/interrupt and bounded cleanup; zsh default; secure OS-generated tokens,
+  private-file/ACL checks and Mac test probes. Preserve Windows/Linux behavior.
+  Prepare Apple SDK ABI assertions and native terminal/HTTP acceptance runs;
+  Mac runtime verification is still pending, and Lua remains disabled.
+- Port core macOS services: private Application Support storage, bounded SHA-256,
+  exclusive/atomic publication with retained recovery files, Unix executable modes,
+  opened-file checks and installed-Git discovery that avoids Apple's installation
+  launcher. Keep Windows/Linux implementations and Git safety checks. Extend the
+  manual native workflow with focused filesystem, ownership and cancellation tests;
+  actual macOS runtime acceptance remains pending.
+- Add a manual-only macOS build workflow with pinned actions/toolchain, short
+  artifact retention and focused native refusal/CLI checks. Development artifacts
+  are not Developer-ID-signed/notarized releases; native macOS acceptance is pending.
+- Report the unavailable macOS Lua sandbox before checking the worker binding,
+  without offering an unrestricted fallback. Windows/Linux binding checks and
+  cancellation remain enforced. Document the isolation design and required proof.
+
+## 0.92.1 — Search alignment and bundled Git startup
+
+- Center search text and placeholders vertically with their icons in Preferences,
+  the branch filter and history search, including the adjacent code-search path field.
+- Reduce bundled Git startup work by using directory enumeration metadata and at
+  most four verification workers. Every pinned file hash, protected file handle
+  and pre-launch directory membership check remains required. Failed or cancelled
+  checks join their workers and release partial handles before returning.
+- Record directory inventory and file hashing durations separately in diagnostics.
+
 ## Unreleased — Linux CJK fonts and configurable secret-scan budget
 
 - Linux UI builds embed the verified Noto Sans CJK Regular 2.004 fallback for

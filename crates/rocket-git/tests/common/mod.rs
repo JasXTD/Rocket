@@ -7,6 +7,17 @@ use std::{
 };
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
+// WSL checks of Windows-hosted source need native ext4 fixtures for Unix modes,
+// links and atomic renames. This changes only tests, never repository defaults.
+fn fixture_base() -> PathBuf {
+    if let Some(path) = std::env::var_os("ROCKET_TEST_REPOSITORIES").map(PathBuf::from) {
+        assert!(path.is_absolute(), "test repository root must be absolute");
+        path
+    } else {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/test-repositories")
+    }
+}
+
 // Re-exec mutation tests with child-only settings and file-only transports.
 // Other test binaries include this module without needing the isolation helper.
 #[allow(dead_code)]
@@ -77,7 +88,7 @@ impl Fixture {
         Self::with_format("sha1")
     }
     pub fn with_format(format: &str) -> Self {
-        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/test-repositories");
+        let base = fixture_base();
         fs::create_dir_all(&base).unwrap();
         // Git's config environment does not accept Rust's Windows \\?\ verbatim prefix.
         // Keep this absolute, ordinary spelling when passing paths to Git; canonicalize
@@ -168,10 +179,7 @@ impl Fixture {
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
-        let base = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../work/test-repositories")
-            .canonicalize()
-            .unwrap();
+        let base = fixture_base().canonicalize().unwrap();
         let target = self.root.canonicalize().unwrap();
         // Recursive deletion is confined to the uniquely created direct child of the fixture root.
         assert_eq!(target.parent(), Some(base.as_path()));

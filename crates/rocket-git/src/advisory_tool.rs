@@ -345,9 +345,9 @@ pub(crate) fn digest(file: &mut dyn Read, max: u64, cancel: &CancellationToken) 
     Ok(output.iter().map(|b| format!("{b:02x}")).collect())
 }
 
-/// SHA-256 on Linux from RustCrypto's sha2, with the same reads, limit and cancellation
+/// SHA-256 on Linux/macOS from RustCrypto's sha2, with the same reads, limit and cancellation
 /// as BCrypt's above.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn digest(file: &mut dyn Read, max: u64, cancel: &CancellationToken) -> Result<String> {
     use sha2::{Digest, Sha256};
     let mut hash = Sha256::new();
@@ -379,15 +379,15 @@ pub(crate) fn digest(file: &mut dyn Read, max: u64, cancel: &CancellationToken) 
     Ok(hash.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(crate) fn digest(_: &mut dyn Read, _: u64, _: &CancellationToken) -> Result<String> {
     Err(Error::InvalidInput(
-        "SHA-256 verification currently requires Windows or Linux".into(),
+        "SHA-256 verification currently requires Windows, Linux or macOS".into(),
     ))
 }
 
 /// Lowercase hexadecimal SHA-256 of in-memory bytes, for review pins such as
-/// the CLI's `--expect-patch`. Windows and Linux, like the file digest above.
+/// the CLI's `--expect-patch`. Windows, Linux and macOS, like the file digest above.
 pub fn sha256_bytes(bytes: &[u8]) -> Result<String> {
     digest(
         &mut std::io::Cursor::new(bytes),

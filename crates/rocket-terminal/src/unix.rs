@@ -1,4 +1,4 @@
-//! Linux pseudoterminal sessions, through the C library only. The shell starts in a new
+//! Linux and macOS pseudoterminal sessions, through the C library only. The shell starts in a new
 //! session whose controlling terminal is the pseudoterminal, so job control works as in
 //! any terminal emulator: each job is a process group, and the kernel tells the
 //! foreground group about Ctrl+C (SIGINT) and resizes (SIGWINCH).
@@ -6,10 +6,18 @@
 //! Ending a session hangs up every process group left in it, waits briefly, then kills
 //! whatever remains, even after the shell exits by itself. That is what the Windows job
 //! does for everything the shell started. A process that leaves the session itself
-//! (setsid) is not followed, as in any Linux terminal; it only loses the terminal.
+//! (setsid) is not followed, as in a Unix terminal; it only loses the terminal.
 //!
-//! The ioctl requests and open flags below are Linux's, the same on x86_64 and aarch64.
+//! OS-specific ABI, locale and process enumeration live in separate modules.
 use super::*;
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+use linux::*;
+#[cfg(target_os = "macos")]
+mod darwin;
+#[cfg(target_os = "macos")]
+use darwin::*;
 use std::{
     collections::BTreeSet,
     ffi::{OsString, c_int, c_short, c_ulong, c_ushort},
@@ -24,27 +32,12 @@ use std::{
     time::Instant,
 };
 
-const O_RDWR: c_int = 0o2;
-const O_NOCTTY: c_int = 0o400;
-const O_NONBLOCK: c_int = 0o4000;
-const O_CLOEXEC: c_int = 0o2000000;
-const F_GETFL: c_int = 3;
-const F_SETFL: c_int = 4;
-const TIOCSCTTY: c_ulong = 0x540E;
-const TIOCSWINSZ: c_ulong = 0x5414;
-/// Opens the terminal's other end from its master, without a path under /dev/pts.
-const TIOCGPTPEER: c_ulong = 0x5441;
-const TCSANOW: c_int = 0;
-/// Erase whole UTF-8 characters in line editing (`cat`, `read`), not single bytes.
-const IUTF8: u32 = 0o40000;
 const POLLIN: c_short = 0x1;
 const POLLOUT: c_short = 0x4;
 const POLLNVAL: c_short = 0x20;
 const EIO: i32 = 5;
 const SIGHUP: c_int = 1;
 const SIGKILL: c_int = 9;
-const SIGCONT: c_int = 18;
-const SIGSTOP: c_int = 19;
 const SIG_DFL: usize = 0;
 /// How long the shell and its jobs get to exit by themselves after a hang-up, for
 /// example so bash can save its history. Then they are killed.
@@ -65,27 +58,13 @@ struct PollEntry {
     events: c_short,
     returned: c_short,
 }
-/// glibc's Linux `struct termios`.
-#[repr(C)]
-struct Termios {
-    input: u32,
-    output: u32,
-    control: u32,
-    local: u32,
-    line: u8,
-    characters: [u8; 32],
-    input_speed: u32,
-    output_speed: u32,
-}
-const _: () = assert!(std::mem::size_of::<Termios>() == 60);
-
 unsafe extern "C" {
     fn posix_openpt(flags: c_int) -> c_int;
     fn grantpt(fd: c_int) -> c_int;
     fn unlockpt(fd: c_int) -> c_int;
     fn ioctl(fd: c_int, request: c_ulong, ...) -> c_int;
     fn fcntl(fd: c_int, command: c_int, ...) -> c_int;
-    fn poll(entries: *mut PollEntry, count: c_ulong, milliseconds: c_int) -> c_int;
+    fn poll(entries: *mut PollEntry, count: PollCount, milliseconds: c_int) -> c_int;
     fn tcgetattr(fd: c_int, termios: *mut Termios) -> c_int;
     fn tcsetattr(fd: c_int, when: c_int, termios: *const Termios) -> c_int;
     fn setsid() -> c_int;
@@ -112,10 +91,7 @@ fn open_terminal(columns: u16, rows: u16) -> io::Result<(File, OwnedFd)> {
     // SAFETY: a live master descriptor; these only change its peer's permissions and lock.
     checked(unsafe { grantpt(fd) })?;
     checked(unsafe { unlockpt(fd) })?;
-    // SAFETY: TIOCGPTPEER takes the open flags by value and returns a new descriptor.
-    let peer = checked(unsafe { ioctl(fd, TIOCGPTPEER, O_RDWR | O_NOCTTY | O_CLOEXEC) })?;
-    // SAFETY: `peer` is the descriptor just opened and owned only here.
-    let peer = unsafe { OwnedFd::from_raw_fd(peer) };
+    let peer = open_peer(fd)?;
     set_size(fd, columns, rows)?;
     let mut settings = std::mem::MaybeUninit::<Termios>::uninit();
     // SAFETY: tcgetattr fills the whole struct on success, so it is read only then.
@@ -132,19 +108,32 @@ fn open_terminal(columns: u16, rows: u16) -> io::Result<(File, OwnedFd)> {
 }
 
 fn set_size(fd: c_int, columns: u16, rows: u16) -> io::Result<()> {
-    let size = WindowSize { rows, columns, width: 0, height: 0 };
+    let size = WindowSize {
+        rows,
+        columns,
+        width: 0,
+        height: 0,
+    };
     // SAFETY: TIOCSWINSZ reads one live `struct winsize`; the kernel signals SIGWINCH.
     checked(unsafe { ioctl(fd, TIOCSWINSZ, &size as *const WindowSize) }).map(drop)
 }
 
 /// The events that are ready on `fd`, or none once `timeout` passes.
 fn wait_for(fd: c_int, events: c_short, timeout: Duration) -> io::Result<c_short> {
-    let mut entry = PollEntry { fd, events, returned: 0 };
+    let mut entry = PollEntry {
+        fd,
+        events,
+        returned: 0,
+    };
     // SAFETY: one live entry, and the count says so.
     let ready = unsafe { poll(&mut entry, 1, timeout.as_millis() as c_int) };
     if ready < 0 {
         let error = io::Error::last_os_error();
-        return if error.kind() == io::ErrorKind::Interrupted { Ok(0) } else { Err(error) };
+        return if error.kind() == io::ErrorKind::Interrupted {
+            Ok(0)
+        } else {
+            Err(error)
+        };
     }
     if entry.returned & POLLNVAL != 0 {
         return Err(io::Error::other("Terminal descriptor is closed"));
@@ -194,7 +183,10 @@ fn launch(
     if let Some((tool, arguments)) = openssh {
         // The system's OpenSSH, by its fixed path. The passphrase goes to the terminal,
         // never to an askpass program; ssh-add reaches ssh-agent through SSH_AUTH_SOCK.
-        environment.extend([("SSH_ASKPASS", None), ("SSH_ASKPASS_REQUIRE", Some("never".into()))]);
+        environment.extend([
+            ("SSH_ASKPASS", None),
+            ("SSH_ASKPASS_REQUIRE", Some("never".into())),
+        ]);
         return Ok(Launch {
             program: Path::new("/usr/bin").join(tool.trim_end_matches(".exe")),
             arguments: arguments.clone(),
@@ -208,7 +200,9 @@ fn launch(
         Shell::WindowsPowerShell => {
             environment.push(("PS1", Some("$PWD\\n> ".into())));
             if let Some(path) = history {
-                if !path.is_absolute() || path.to_str().is_none_or(|p| p.contains(['\0', '\r', '\n'])) {
+                if !path.is_absolute()
+                    || path.to_str().is_none_or(|p| p.contains(['\0', '\r', '\n']))
+                {
                     return Err(io::Error::new(
                         io::ErrorKind::InvalidInput,
                         "Terminal history needs an absolute Unicode path without line breaks",
@@ -237,83 +231,15 @@ fn launch(
 }
 
 /// Rocket's screen reads UTF-8. With no locale set at all, a shell would run in the C
-/// locale and show other text as escapes, so it gets C.UTF-8 characters then. A locale
+/// locale and show other text as escapes, so it gets the OS's UTF-8 locale then. A locale
 /// the user set is kept, whatever it is.
-fn utf8_locale(variable: impl Fn(&str) -> Option<OsString>) -> Option<(&'static str, Option<OsString>)> {
+fn utf8_locale(
+    variable: impl Fn(&str) -> Option<OsString>,
+) -> Option<(&'static str, Option<OsString>)> {
     let set = ["LC_ALL", "LC_CTYPE", "LANG"]
         .iter()
         .any(|name| variable(name).is_some_and(|value| !value.is_empty()));
-    (!set).then(|| ("LC_CTYPE", Some("C.UTF-8".into())))
-}
-
-/// The process groups of the live processes in `session`, read from /proc.
-fn session_groups(session: i32) -> BTreeSet<i32> {
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return BTreeSet::new();
-    };
-    entries
-        .flatten()
-        .filter_map(|entry| {
-            let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
-            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
-            let (state, group, member) = parse_stat(&stat)?;
-            (member == session && !matches!(state, 'Z' | 'X')).then_some(group)
-        })
-        .collect()
-}
-
-/// A process's state, process group and session from its /proc stat line. The name in
-/// parentheses may itself contain spaces and parentheses, so fields count from the last.
-fn parse_stat(stat: &str) -> Option<(char, i32, i32)> {
-    let mut fields = stat.get(stat.rfind(')')? + 1..)?.split_whitespace();
-    let state = fields.next()?.chars().next()?;
-    let _parent = fields.next()?;
-    let group = fields.next()?.parse().ok()?;
-    let session = fields.next()?.parse().ok()?;
-    Some((state, group, session))
-}
-
-/// Ends the session `child` leads. Its own group is signalled only while it is not
-/// reaped: its ID can't be reused until then. Other groups are those /proc lists.
-fn end_session(child: &mut Child, exited: &mut Option<std::process::ExitStatus>) {
-    let leader = child.id() as i32;
-    let signal_all = |exited: bool, number: c_int| {
-        let mut groups = session_groups(leader);
-        if !exited {
-            groups.insert(leader);
-        }
-        // Never 0 or 1: kill(-0) would signal Rocket's own group.
-        for group in groups.iter().filter(|group| **group > 1) {
-            // SAFETY: a negative ID signals that process group; failures (already gone,
-            // or a root process such as sudo's) are expected and ignored.
-            unsafe { kill(-group, number) };
-        }
-        groups.is_empty()
-    };
-    let mut reap = |exited: &mut Option<std::process::ExitStatus>| {
-        if exited.is_none() {
-            *exited = child.try_wait().ok().flatten();
-        }
-        exited.is_some()
-    };
-    // A hang-up, as when a terminal window closes, and a continue for stopped jobs.
-    signal_all(reap(exited), SIGHUP);
-    signal_all(reap(exited), SIGCONT);
-    let deadline = Instant::now() + GRACE;
-    while Instant::now() < deadline {
-        if reap(exited) && session_groups(leader).is_empty() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-    // Whatever is left is killed; new processes may still appear while this runs.
-    let deadline = Instant::now() + Duration::from_secs(5);
-    while !signal_all(reap(exited), SIGKILL) && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(10));
-    }
-    while !reap(exited) && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    (!set).then(|| ("LC_CTYPE", Some(UTF8_LOCALE.into())))
 }
 
 /// Writes all of `bytes` unless the session stops first. A hung-up terminal takes
@@ -329,7 +255,11 @@ fn write_all(master: &File, mut bytes: &[u8], stop: &AtomicBool) -> io::Result<(
         match (&*master).write(bytes) {
             Ok(0) => return Err(io::Error::from(io::ErrorKind::WriteZero)),
             Ok(written) => bytes = &bytes[written..],
-            Err(error) if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) => {}
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                ) => {}
             Err(error) if error.raw_os_error() == Some(EIO) => return Ok(()),
             Err(error) => return Err(error),
         }
@@ -357,7 +287,10 @@ pub(super) fn run(
     let launch = launch(directory, history, openssh, shell)?;
     // Command would look a bare name up on PATH; the shell is always named in full.
     if !launch.program.is_absolute() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "The shell needs a full path"));
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "The shell needs a full path",
+        ));
     }
     if let Err(error) = std::fs::symlink_metadata(&launch.program)
         && error.kind() == io::ErrorKind::NotFound
@@ -407,7 +340,15 @@ pub(super) fn run(
         .name("rocket-terminal-output".into())
         .spawn(move || -> io::Result<()> {
             let mut buffer = [0u8; 8192];
+            let mut drain_deadline = None;
             loop {
+                if reader_finished.load(Ordering::Acquire) {
+                    let deadline = drain_deadline
+                        .get_or_insert_with(|| Instant::now() + Duration::from_millis(250));
+                    if Instant::now() >= *deadline {
+                        return Ok(());
+                    }
+                }
                 if wait_for(reader_master.as_raw_fd(), POLLIN, POLL)? == 0 {
                     if reader_finished.load(Ordering::Acquire) {
                         return Ok(());
@@ -430,7 +371,11 @@ pub(super) fn run(
                         }
                         (reader_state.wake)();
                     }
-                    Err(error) if matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted) => {}
+                    Err(error)
+                        if matches!(
+                            error.kind(),
+                            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                        ) => {}
                     // Every process in the session has closed the terminal.
                     Err(error) if error.raw_os_error() == Some(EIO) => return Ok(()),
                     Err(error) => return Err(error),
@@ -467,7 +412,7 @@ pub(super) fn run(
                     set_size(master.as_raw_fd(), columns, rows)?;
                     last_size = size;
                 }
-                if let Some(status) = child.try_wait()? {
+                if let Some(status) = poll_exit(&mut child)? {
                     shared.status.lock().unwrap().exit_code = exit_code(status);
                     exited = Some(status);
                     break;
@@ -481,17 +426,29 @@ pub(super) fn run(
     shared.stop.store(true, Ordering::Release);
     // Always end the session, even after the shell exits, so its background jobs can't
     // keep the terminal open or outlive it.
-    end_session(&mut child, &mut exited);
+    let cleanup = end_session(&mut child, &mut exited);
+    #[cfg(target_os = "macos")]
+    if cleanup.is_err() {
+        // A failed process-list query must not strand our directly owned child.
+        // Keep the original diagnostic; collect the child after terminating it.
+        let _ = child.kill();
+        let _ = child.wait();
+    }
     finished.store(true, Ordering::Release);
     let read_result = match reader {
-        Ok(reader) => reader.join().map_err(|_| io::Error::other("Terminal output worker panicked"))?,
+        Ok(reader) => reader
+            .join()
+            .map_err(|_| io::Error::other("Terminal output worker panicked"))?,
         Err(error) => Err(error),
     };
     let write_result = match writer {
-        Ok(writer) => writer.join().map_err(|_| io::Error::other("Terminal input worker panicked"))?,
+        Ok(writer) => writer
+            .join()
+            .map_err(|_| io::Error::other("Terminal input worker panicked"))?,
         Err(error) => Err(error),
     };
     result?;
+    cleanup?;
     read_result?;
     write_result
 }
@@ -501,10 +458,17 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(target_os = "linux")]
     fn stat_lines_give_state_group_and_session_even_with_odd_names() {
-        assert_eq!(parse_stat("42 (bash) S 1 42 42 34816 42 4194560"), Some(('S', 42, 42)));
+        assert_eq!(
+            parse_stat("42 (bash) S 1 42 42 34816 42 4194560"),
+            Some(('S', 42, 42))
+        );
         // A program may name itself with spaces and parentheses.
-        assert_eq!(parse_stat("77 (a (b) c) R 42 77 42 34816"), Some(('R', 77, 42)));
+        assert_eq!(
+            parse_stat("77 (a (b) c) R 42 77 42 34816"),
+            Some(('R', 77, 42))
+        );
         assert_eq!(parse_stat("9 (zombie) Z 1 9 7"), Some(('Z', 9, 7)));
         assert_eq!(parse_stat("broken"), None);
         assert_eq!(parse_stat("1 (x) S 0"), None);
@@ -512,10 +476,20 @@ mod tests {
 
     #[test]
     fn a_missing_locale_gets_utf8_characters_and_a_chosen_one_is_kept() {
+        #[cfg(target_os = "linux")]
+        let expected = "C.UTF-8";
+        #[cfg(target_os = "macos")]
+        let expected = "en_US.UTF-8";
         let none = |_: &str| None;
-        assert_eq!(utf8_locale(none), Some(("LC_CTYPE", Some("C.UTF-8".into()))));
+        assert_eq!(
+            utf8_locale(none),
+            Some(("LC_CTYPE", Some(expected.into())))
+        );
         let empty = |_: &str| Some(OsString::new());
-        assert_eq!(utf8_locale(empty), Some(("LC_CTYPE", Some("C.UTF-8".into()))));
+        assert_eq!(
+            utf8_locale(empty),
+            Some(("LC_CTYPE", Some(expected.into())))
+        );
         for name in ["LC_ALL", "LC_CTYPE", "LANG"] {
             let chosen = |variable: &str| (variable == name).then(|| OsString::from("C"));
             assert_eq!(utf8_locale(chosen), None, "{name}");
@@ -526,28 +500,72 @@ mod tests {
     fn each_launch_names_its_program_and_environment() {
         let directory = Path::new("/tmp/rocket-launch");
         let value = |launch: &Launch, name: &str| {
-            launch.environment.iter().rev().find(|(n, _)| *n == name).map(|(_, v)| v.clone())
+            launch
+                .environment
+                .iter()
+                .rev()
+                .find(|(n, _)| *n == name)
+                .map(|(_, v)| v.clone())
         };
-        let own = launch(directory, Some(Path::new("/tmp/history")), None, &Shell::WindowsPowerShell).unwrap();
+        let own = launch(
+            directory,
+            Some(Path::new("/tmp/history")),
+            None,
+            &Shell::WindowsPowerShell,
+        )
+        .unwrap();
         assert_eq!(own.program, Path::new("/bin/bash"));
         assert_eq!(own.arguments, ["--noprofile", "--norc", "-i"]);
         assert_eq!(value(&own, "HISTFILE"), Some(Some("/tmp/history".into())));
         assert_eq!(value(&own, "TERM"), Some(Some(TERM.into())));
         assert_eq!(value(&own, "COLUMNS"), Some(None));
         assert_eq!(value(&own, "PWD"), Some(Some(directory.into())));
-        assert!(launch(directory, Some(Path::new("relative")), None, &Shell::WindowsPowerShell).is_err());
-        let tool = ("ssh-keygen.exe".to_owned(), vec!["-t".to_owned(), "ed25519".to_owned()]);
+        assert!(
+            launch(
+                directory,
+                Some(Path::new("relative")),
+                None,
+                &Shell::WindowsPowerShell
+            )
+            .is_err()
+        );
+        let tool = (
+            "ssh-keygen.exe".to_owned(),
+            vec!["-t".to_owned(), "ed25519".to_owned()],
+        );
         let openssh = launch(directory, None, Some(&tool), &Shell::WindowsPowerShell).unwrap();
         assert_eq!(openssh.program, Path::new("/usr/bin/ssh-keygen"));
         assert_eq!(openssh.arguments, ["-t", "ed25519"]);
         assert_eq!(value(&openssh, "SSH_ASKPASS"), Some(None));
-        assert_eq!(value(&openssh, "SSH_ASKPASS_REQUIRE"), Some(Some("never".into())));
-        assert_eq!(value(&openssh, "SSH_AUTH_SOCK"), None, "ssh-add needs the agent's socket");
-        let custom = Shell::Custom { program: "/usr/bin/zsh".into(), arguments: vec![] };
+        assert_eq!(
+            value(&openssh, "SSH_ASKPASS_REQUIRE"),
+            Some(Some("never".into()))
+        );
+        assert_eq!(
+            value(&openssh, "SSH_AUTH_SOCK"),
+            None,
+            "ssh-add needs the agent's socket"
+        );
+        let custom = Shell::Custom {
+            program: "/usr/bin/zsh".into(),
+            arguments: vec![],
+        };
         let custom = launch(directory, None, None, &custom).unwrap();
-        assert_eq!((custom.program.as_path(), custom.arguments.len()), (Path::new("/usr/bin/zsh"), 0));
-        for windows in [Shell::CommandPrompt, Shell::GitBash("/x".into()), Shell::PowerShell("/x".into())] {
-            assert_eq!(launch(directory, None, None, &windows).err().map(|e| e.kind()), Some(io::ErrorKind::Unsupported));
+        assert_eq!(
+            (custom.program.as_path(), custom.arguments.len()),
+            (Path::new("/usr/bin/zsh"), 0)
+        );
+        for windows in [
+            Shell::CommandPrompt,
+            Shell::GitBash("/x".into()),
+            Shell::PowerShell("/x".into()),
+        ] {
+            assert_eq!(
+                launch(directory, None, None, &windows)
+                    .err()
+                    .map(|e| e.kind()),
+                Some(io::ErrorKind::Unsupported)
+            );
         }
     }
 }

@@ -1,21 +1,21 @@
-//! OpenSSH profiles: Windows OpenSSH, or on Linux the system's OpenSSH from /usr/bin
+//! OpenSSH profiles: Windows OpenSSH, or on Linux/macOS system OpenSSH from /usr/bin
 //! with ssh-agent reached through SSH_AUTH_SOCK. Private key material is never logged
 //! or returned.
 mod binding;
-mod discovery;
 mod direct;
-mod launcher;
+mod discovery;
 mod files;
-pub use direct::SshAuthentication;
-pub use launcher::ssh_helper_main;
+mod launcher;
 use crate::{
     local_files,
     runner::{Runner, args, git_path},
     *,
 };
 pub use binding::SshBindingReview;
+pub use direct::SshAuthentication;
 pub use discovery::{SshDiscoveredKey, SshDiscovery};
 use files::{create_file, create_private_dir, pin, read};
+pub use launcher::ssh_helper_main;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -43,7 +43,11 @@ pub enum SshFailure {
     KeyPermissions,
 }
 /// What the guidance calls this platform's OpenSSH.
-const OPENSSH: &str = if cfg!(windows) { "Windows OpenSSH" } else { "OpenSSH" };
+const OPENSSH: &str = if cfg!(windows) {
+    "Windows OpenSSH"
+} else {
+    "OpenSSH"
+};
 impl SshFailure {
     pub fn code(self) -> &'static str {
         match self {
@@ -67,18 +71,33 @@ impl SshFailure {
     }
     pub fn guidance(self) -> &'static str {
         match self {
+            Self::KeyPermissions if cfg!(target_os = "macos") => {
+                "The private key grants other users access through permissions or a macOS ACL. Choose a private key owned only by you and review its permissions. Existing permissions were preserved."
+            }
             Self::KeyPermissions => {
                 "Other users can open this private key, so OpenSSH refuses it. Run chmod 600 on the key file, then refresh. Nothing was changed."
             }
             Self::Unavailable if cfg!(windows) => {
                 "Windows OpenSSH Client is unavailable. Enable the Windows optional feature, then refresh."
             }
+            Self::Unavailable if cfg!(target_os = "macos") => {
+                "macOS OpenSSH tools are unavailable in /usr/bin. Check the macOS installation, then refresh. Rocket does not install tools or change PATH."
+            }
             Self::Unavailable => {
                 "OpenSSH is not installed in /usr/bin. Install your system's OpenSSH client package (openssh-client), then refresh."
             }
-            Self::PassphraseUnavailable if cfg!(windows) => "No usable saved passphrase exists for this exact key and profile. Open SSH keys, select the key, and verify/save its passphrase, or use Windows agent mode.",
-            Self::PassphraseUnavailable => "No usable saved passphrase exists for this exact key and profile. Open SSH keys, select the key, and verify/save its passphrase, or use ssh-agent mode.",
-            Self::HelperUnavailable => "Rocket's SSH helper is missing or invalid. Use a complete Rocket bundle; existing SSH settings and keys were preserved.",
+            Self::PassphraseUnavailable if cfg!(windows) => {
+                "No usable saved passphrase exists for this exact key and profile. Open SSH keys, select the key, and verify/save its passphrase, or use Windows agent mode."
+            }
+            Self::PassphraseUnavailable if cfg!(target_os = "macos") => {
+                "No usable saved passphrase exists for this key and profile, or Keychain access was denied. Unlock the default Keychain and review Rocket's access in Keychain Access, then verify/save the passphrase again; agent mode remains available. Existing keys were preserved."
+            }
+            Self::PassphraseUnavailable => {
+                "No usable saved passphrase exists for this exact key and profile. Open SSH keys, select the key, and verify/save its passphrase, or use ssh-agent mode."
+            }
+            Self::HelperUnavailable => {
+                "Rocket's SSH helper is missing or invalid. Use a complete Rocket bundle; existing SSH settings and keys were preserved."
+            }
             Self::InvalidProfile => {
                 "Use a unique rocket- alias, a DNS hostname, a simple SSH username and a port from 1 to 65535."
             }
@@ -99,6 +118,9 @@ impl SshFailure {
             }
             Self::AgentUnavailable if cfg!(windows) => {
                 "Windows ssh-agent is unavailable. Start the ssh-agent service in Windows, then refresh. Rocket does not change service settings."
+            }
+            Self::AgentUnavailable if cfg!(target_os = "macos") => {
+                "The macOS SSH agent is unavailable: SSH_AUTH_SOCK does not name your agent's socket. Reopen Rocket from the desktop session with the agent available. Rocket does not start an agent or change launchd/SSH settings."
             }
             Self::AgentUnavailable => {
                 "ssh-agent is unavailable: SSH_AUTH_SOCK doesn't name your agent's socket. Start ssh-agent in your desktop session, then reopen Rocket. Rocket starts no agent itself."
@@ -182,7 +204,9 @@ impl SshManager {
                 transport_scope: None,
                 secret_protection: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
                 guard_ai_api_keys: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
-                secret_scan_bytes: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(crate::DEFAULT_SECRET_SCAN_MIB as usize * 1024 * 1024)),
+                secret_scan_bytes: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(
+                    crate::DEFAULT_SECRET_SCAN_MIB as usize * 1024 * 1024,
+                )),
                 push_check: Default::default(),
                 git_http_allowed: false, // This runner launches only OpenSSH tools.
                 managed_git: None,
@@ -567,13 +591,12 @@ fn agent_socket() -> bool {
         .is_some_and(|found| found.file_type().is_socket() && found.uid() == unsafe { geteuid() })
 }
 /// A system OpenSSH tool, by its Windows file name: from Windows' OpenSSH folder, or on
-/// Linux the same tool from /usr/bin. Nothing is looked up on PATH. Other systems have
-/// none yet.
+/// Linux/macOS the same tool from /usr/bin. Nothing is looked up on PATH.
 pub fn openssh(tool: &str) -> Result<PathBuf> {
     if !matches!(tool, "ssh-keygen.exe" | "ssh-add.exe" | "ssh.exe") {
         return Err(fail(SshFailure::Unavailable));
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         let path = Path::new("/usr/bin").join(tool.trim_end_matches(".exe"));
         if !path.is_file() {
@@ -601,7 +624,7 @@ pub fn openssh(tool: &str) -> Result<PathBuf> {
         }
         Ok(p)
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
         Err(fail(SshFailure::Unavailable))
     }

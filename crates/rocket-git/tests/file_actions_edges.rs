@@ -1,4 +1,4 @@
-#![cfg(any(windows, target_os = "linux"))]
+#![cfg(any(windows, target_os = "linux", target_os = "macos"))]
 mod common;
 use common::{Fixture, isolated};
 use rocket_git::*;

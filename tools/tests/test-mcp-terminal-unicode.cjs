@@ -4,7 +4,7 @@ const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_pro
 const crypto=require('node:crypto'),net=require('node:net'),assert=require('node:assert/strict');
 const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');
 const platform=require('./platform.cjs');
-const root=path.resolve('work/mcp-fixtures/terminal-unicode-'+crypto.randomUUID().replaceAll('-',''));
+const root=path.resolve(process.env.ROCKET_MCP_RESULTS || 'work/mcp-fixtures', 'terminal-unicode-'+crypto.randomUUID().replaceAll('-',''));
 const repo=path.join(root,'client'),profile=path.join(root,'http-profile');
 const branch='rocket-ui-test/terminal-unicode';
 const version=fs.readFileSync('Cargo.toml','utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([^"]+)"/)[1];
@@ -22,6 +22,12 @@ fs.writeFileSync(path.join(root,'rocket-private-state'),'synthetic-content-only-
 fs.mkdirSync(path.join(root,'hooks'));fs.writeFileSync(path.join(root,'empty.config'),'');
 const env={...process.env};for(const key of Object.keys(env))if(/^(GIT_|SSH_)|_PROXY$/i.test(key))delete env[key];
 Object.assign(env,{GIT_CONFIG_GLOBAL:path.join(root,'empty.config'),GIT_CONFIG_SYSTEM:path.join(root,'empty.config'),GIT_CONFIG_NOSYSTEM:'1',GIT_ALLOW_PROTOCOL:'file',GIT_TERMINAL_PROMPT:'0',GIT_TEMPLATE_DIR:path.join(root,'hooks')});
+// Isolated Unix home: readline may inspect inputrc even with --norc.
+if (!platform.windows) {
+ fs.mkdirSync(path.join(root,'home'), {mode:0o700});
+ Object.assign(env,{HOME:path.join(root,'home'),XDG_CONFIG_HOME:path.join(root,'home','.config'),XDG_STATE_HOME:path.join(root,'home','.local','state'),INPUTRC:'/dev/null'});
+ delete env.BASH_ENV; delete env.ENV; delete env.PROMPT_COMMAND;
+}
 function git(args){return cp.execFileSync('git',['-C',repo,...args],{env,windowsHide:true,encoding:'utf8'});}
 git(['init','--initial-branch='+branch]);for(const [key,value]of [['user.name','Rocket Terminal Fixture'],['user.email','rocket@example.invalid'],['commit.gpgsign','false'],['core.autocrlf','false'],['core.hooksPath',path.join(root,'hooks')]])git(['config',key,value]);
 fs.writeFileSync(path.join(repo,'baseline.txt'),'synthetic unchanged\n');git(['add','.']);git(['commit','-m','Synthetic terminal baseline']);fs.writeFileSync(path.join(repo,'.git/rocket-ui-fixture'),branch);
@@ -59,14 +65,14 @@ async function closeWindow(){
 }
 async function run(){
   try{
-    const exe=path.resolve(platform.exe('target/release/rocket-mcp'));cp.execFileSync(exe,['--init-http',profile,root],{env,windowsHide:true});
+    const exe=path.resolve(process.env.ROCKET_MCP_EXE || platform.exe('target/release/rocket-mcp'));cp.execFileSync(exe,['--init-http',profile,root],{env,windowsHide:true});
     const listener=net.createServer();await new Promise(resolve=>listener.listen(0,'127.0.0.1',resolve));const port=listener.address().port;await new Promise(resolve=>listener.close(resolve));
     fs.writeFileSync(path.join(profile,'settings'),`ROCKET-MCP-1\n${port}\n${root}\n`);report.endpoint=`http://127.0.0.1:${port}/mcp`;
     const log=fs.openSync(path.join(root,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env,windowsHide:true,stdio:['ignore','ignore',log]});fs.closeSync(log);
     client=new RocketHttpClient(profile);
     for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break;}catch(error){if(i===100)throw error;await delay(100);}}
     assert.equal((await client.initialize()).serverInfo.version,version);
-    await client.tool('rocket_open',{path:repo});await settle();await click('view-changes');await click('menu-terminal');await click('terminal-new');
+    await client.tool('rocket_open',{path:fs.realpathSync(repo)});await settle();await click('view-changes');await click('menu-terminal');await click('terminal-new');
     await until(s=>s.terminal?.running&&s.terminal.tail.trimEnd().endsWith('>'),'Initial shell');const pid=state.terminal.pid;
     const denied=await client.request('tools/call',{name:'rocket_type',arguments:{target:'terminal-command',text:basic+'; Get-ChildItem',expected_tab:state.active_tab}});assert(denied.isError);assert(JSON.stringify(denied).includes('fixed synthetic probes'));
     passed('HTTP MCP refuses modified probes; native terminal starts without errors');

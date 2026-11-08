@@ -587,7 +587,7 @@ fn key_card(
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 10.0;
             let path = crate::views::display_path(&k.path);
-            if info_row(ui, widgets, "Location", &path, ("ssh-show-folder", Icon::Folder, "Show in File Explorer")) {
+            if info_row(ui, widgets, "Location", &path, ("ssh-show-folder", Icon::Folder, crate::desktop::FOLDER_HINT)) {
                 out.reveal = k.path.parent().map(Path::to_path_buf);
             }
             if info_row(ui, widgets, "Fingerprint", &k.fingerprint, ("ssh-copy-fingerprint", Icon::Copy, "Copy fingerprint")) {
@@ -625,7 +625,7 @@ fn key_card(
                 ui.label(RichText::new("Uses this key directly. Unknown or changed host keys are rejected.").size(12.0).color(HINT()));
                 if let Some(p)=s.profile() {
                     let saved=p.passphrase_saved;
-                    let saved_text = if cfg!(windows) {"Passphrase saved with Windows user encryption."} else {"Passphrase saved, encrypted with a key in your desktop keyring."};
+                    let saved_text = if cfg!(windows) {"Passphrase saved with Windows user encryption."} else if cfg!(target_os="macos") {"Passphrase saved, encrypted with a key in your macOS Keychain."} else {"Passphrase saved, encrypted with a key in your desktop keyring."};
                     ui.label(RichText::new(if saved {saved_text} else if p.encrypted {"Save this key's passphrase before using it directly."} else {"This key has no passphrase."}).size(12.0).color(if saved {GREEN()}else{HINT()}));
                     ui.horizontal_wrapped(|ui| {
                         if btn(ui,widgets,"ssh-remember","Save passphrase",p.encrypted&&!saved){out.action=Some("remember");}

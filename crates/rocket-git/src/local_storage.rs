@@ -1,27 +1,38 @@
 //! Rocket's per-user folder outside Windows, where it stays %LOCALAPPDATA%\Rocket.
-//! This follows the XDG Base Directory specification: state belongs in
-//! $XDG_STATE_HOME, by default ~/.local/state, and a relative value is ignored.
+//! Linux follows XDG ($XDG_STATE_HOME or ~/.local/state); macOS uses the user's
+//! Library/Application Support/Rocket. Neither silently falls back to /tmp.
+#[cfg(any(not(target_os = "macos"), test))]
+use std::ffi::OsString;
 use std::{
-    ffi::OsString,
     io,
     path::{Path, PathBuf},
 };
+#[cfg(target_os = "macos")]
+mod darwin;
 
-/// `$XDG_STATE_HOME/rocket`, by default `~/.local/state/rocket`, for logs, settings,
+/// XDG on Linux; `~/Library/Application Support/Rocket` on macOS, for logs, settings,
 /// crash reports and previews. Missing folders are created for this user only (0700).
 /// An unavailable or unsafe location is an error, never a temporary-folder fallback.
 pub fn directory() -> io::Result<PathBuf> {
-    let directory =
-        resolve(std::env::var_os("XDG_STATE_HOME"), std::env::home_dir()).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::NotFound,
-                "Rocket needs an absolute HOME or XDG_STATE_HOME for private storage.",
-            )
-        })?;
+    #[cfg(target_os = "macos")]
+    let location = resolve_macos(std::env::home_dir());
+    #[cfg(not(target_os = "macos"))]
+    let location = resolve(std::env::var_os("XDG_STATE_HOME"), std::env::home_dir());
+    let directory = location.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::NotFound,
+            if cfg!(target_os = "macos") {
+                "Rocket needs an absolute home directory for private Application Support storage."
+            } else {
+                "Rocket needs an absolute HOME or XDG_STATE_HOME for private storage."
+            },
+        )
+    })?;
     create_private(&directory)?;
     Ok(directory)
 }
 
+#[cfg(any(not(target_os = "macos"), test))]
 fn resolve(state_home: Option<OsString>, home: Option<PathBuf>) -> Option<PathBuf> {
     state_home
         .map(PathBuf::from)
@@ -31,6 +42,19 @@ fn resolve(state_home: Option<OsString>, home: Option<PathBuf>) -> Option<PathBu
                 .map(|home| home.join(".local").join("state"))
         })
         .map(|state| state.join("rocket"))
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn resolve_macos(home: Option<PathBuf>) -> Option<PathBuf> {
+    home.filter(|p| p.is_absolute())
+        .map(|p| p.join("Library/Application Support/Rocket"))
+}
+
+/// Normalize only the two verified root-owned Darwin aliases, without following
+/// arbitrary user links. Repository creation uses the same strict spelling check.
+#[cfg(target_os = "macos")]
+pub(crate) fn resolve_system_alias(path: &Path) -> io::Result<PathBuf> {
+    unix::darwin_root(path)
 }
 
 /// Create private storage, refusing unsafe existing folders without changing them.
@@ -109,6 +133,13 @@ mod unix {
                 "Rocket storage must use an absolute path without parent traversal.",
             ));
         }
+        // macOS exposes /tmp and /var through root-owned OS aliases. Resolve only
+        // those exact aliases, after validating them. Arbitrary links (including
+        // ones further down the path) still fail the ordinary ancestor checks.
+        #[cfg(target_os = "macos")]
+        let normalized = darwin_root(directory)?;
+        #[cfg(target_os = "macos")]
+        let directory = normalized.as_path();
         unsafe extern "C" {
             fn geteuid() -> u32;
         }
@@ -156,15 +187,86 @@ mod unix {
                     ),
                 ));
             }
+            // Darwin ACLs can grant access even when POSIX mode bits say 0700.
+            // Deny-only ACLs are common on home folders; allow entries need an
+            // explicit user choice of another storage location, never chmod repair.
+            #[cfg(target_os = "macos")]
+            super::darwin::check_acl(part, &metadata)?;
             private_parent |= private;
         }
         Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn darwin_root(path: &Path) -> io::Result<PathBuf> {
+        for (alias, target) in [("/tmp", "/private/tmp"), ("/var", "/private/var")] {
+            if let Ok(tail) = path.strip_prefix(alias) {
+                let entry = fs::symlink_metadata(alias)?;
+                if !entry.file_type().is_symlink() {
+                    return Ok(path.to_path_buf());
+                }
+                let root = fs::symlink_metadata("/")?;
+                let link = fs::read_link(alias)?;
+                let expected_relative = Path::new(target).strip_prefix("/").unwrap();
+                if root.uid() != 0
+                    || root.mode() & 0o022 != 0
+                    || entry.uid() != 0
+                    || (link != Path::new(target) && link != expected_relative)
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Untrusted macOS storage alias",
+                    ));
+                }
+                return Ok(Path::new(target).join(tail));
+            }
+        }
+        Ok(path.to_path_buf())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn macos_uses_private_application_support_under_an_absolute_home() {
+        assert_eq!(
+            resolve_macos(Some("/Users/测试 user".into())),
+            Some(PathBuf::from(
+                "/Users/测试 user/Library/Application Support/Rocket"
+            ))
+        );
+        assert_eq!(resolve_macos(None), None);
+        assert_eq!(resolve_macos(Some("relative".into())), None);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_system_temp_alias_is_allowed_but_user_links_are_not() {
+        let root = PathBuf::from(format!("/tmp/rocket-mac-alias-{}", std::process::id()));
+        create_private_new(&root).unwrap();
+        assert!(matches!(
+            crate::check_init_destination(&root.join("new repo 文")).unwrap(),
+            crate::InitDestination::New
+        ));
+        let target = root.join("target");
+        create_private(&target).unwrap();
+        let alias = root.join("alias");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        assert_eq!(
+            create_private(&alias.join("nested")).unwrap_err().kind(),
+            io::ErrorKind::PermissionDenied
+        );
+        assert!(!target.join("nested").exists());
+        assert_eq!(
+            create_private(&root.join("../traversal"))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::InvalidInput
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn an_absolute_xdg_state_home_wins_over_the_home_default() {

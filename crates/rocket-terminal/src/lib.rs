@@ -1,16 +1,18 @@
 //! A bounded terminal model and an owned, asynchronous terminal session: a Windows
-//! ConPTY, or a Linux pseudoterminal. No shell input or output is persisted or sent to
+//! ConPTY, or a Linux/macOS pseudoterminal. No shell input or output is persisted or sent to
 //! application diagnostics.
+#[path = "../../rocket-git/src/process_privilege.rs"]
+mod process_privilege;
 #[cfg(all(test, windows))]
 mod resize_tests;
 mod screen;
-#[path = "../../rocket-git/src/process_privilege.rs"]
-mod process_privilege;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 mod unix;
 #[cfg(windows)]
 mod windows;
 pub use screen::{Cell, Row, Screen};
+#[cfg(any(windows, any(target_os = "linux", target_os = "macos")))]
+use std::time::Duration;
 use std::{
     io,
     path::{Path, PathBuf},
@@ -20,9 +22,7 @@ use std::{
         mpsc::{self, SyncSender},
     },
 };
-#[cfg(any(windows, target_os = "linux"))]
-use std::time::Duration;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 use unix as platform;
 #[cfg(windows)]
 use windows as platform;
@@ -198,7 +198,15 @@ impl Session {
         wake: Arc<dyn Fn() + Send + Sync>,
         history: Option<&Path>,
     ) -> io::Result<Self> {
-        Self::start_owned(directory, columns, rows, wake, history, None, Shell::WindowsPowerShell)
+        Self::start_owned(
+            directory,
+            columns,
+            rows,
+            wake,
+            history,
+            None,
+            Shell::WindowsPowerShell,
+        )
     }
     fn start_owned(
         directory: &Path,
@@ -220,7 +228,7 @@ impl Session {
             wake,
         });
         let (input, receive) = mpsc::sync_channel::<Vec<u8>>(32);
-        #[cfg(any(windows, target_os = "linux"))]
+        #[cfg(any(windows, any(target_os = "linux", target_os = "macos")))]
         {
             let worker = shared.clone();
             let directory = directory.to_path_buf();
@@ -246,15 +254,15 @@ impl Session {
                     (worker.wake)();
                 })?;
         }
-        #[cfg(not(any(windows, target_os = "linux")))]
+        #[cfg(not(any(windows, any(target_os = "linux", target_os = "macos"))))]
         {
             let _ = (directory, receive, history, openssh, shell, shared, input);
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
-                "Interactive terminal currently requires Windows 10 1809 or later, or Linux.",
+                "Interactive terminal currently requires Windows 10 1809 or later, or Linux/macOS.",
             ));
         }
-        #[cfg(any(windows, target_os = "linux"))]
+        #[cfg(any(windows, any(target_os = "linux", target_os = "macos")))]
         Ok(Self { shared, input })
     }
     pub fn input(&self, bytes: &[u8]) -> io::Result<()> {
@@ -310,7 +318,7 @@ impl Drop for Session {
 fn pack(columns: u16, rows: u16) -> u32 {
     u32::from(columns) | (u32::from(rows) << 16)
 }
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, any(target_os = "linux", target_os = "macos")))]
 const POLL: Duration = Duration::from_millis(30);
 
 #[cfg(all(test, windows))]
@@ -318,19 +326,35 @@ mod privilege_tests {
     use super::*;
     #[test]
     fn terminal_and_openssh_refuse_before_starting_workers() {
-        for state in [Err(()), Ok((true, 0x2000)), Ok((false, 0x3000)), Ok((true, 0x4000))] {
+        for state in [
+            Err(()),
+            Ok((true, 0x2000)),
+            Ok((false, 0x3000)),
+            Ok((true, 0x4000)),
+        ] {
             process_privilege::with_test_token(state, || {
                 let directory = Path::new(r"C:\rocket-absent-privilege-fixture");
-                let shell = Shell::Custom { program: directory.join("absent.exe"), arguments: vec![] };
-                let denied = Session::start_shell(directory, 80, 24, Arc::new(|| {}), &shell).err().expect("must not start a session worker");
+                let shell = Shell::Custom {
+                    program: directory.join("absent.exe"),
+                    arguments: vec![],
+                };
+                let denied = Session::start_shell(directory, 80, 24, Arc::new(|| {}), &shell)
+                    .err()
+                    .expect("must not start a session worker");
                 assert_eq!(denied.kind(), io::ErrorKind::PermissionDenied);
-                let denied = Session::start_openssh(directory, "ssh-keygen.exe", vec![], Arc::new(|| {})).err().expect("must not start OpenSSH");
+                let denied =
+                    Session::start_openssh(directory, "ssh-keygen.exe", vec![], Arc::new(|| {}))
+                        .err()
+                        .expect("must not start OpenSSH");
                 assert_eq!(denied.kind(), io::ErrorKind::PermissionDenied);
             });
         }
     }
     #[test]
     fn command_prompt_disables_autorun_before_startup_command() {
-        assert_eq!(Shell::CommandPrompt.arguments().unwrap(), ["/d", "/K", "chcp 65001>nul"]);
+        assert_eq!(
+            Shell::CommandPrompt.arguments().unwrap(),
+            ["/d", "/K", "chcp 65001>nul"]
+        );
     }
 }

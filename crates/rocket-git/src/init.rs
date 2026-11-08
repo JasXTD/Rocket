@@ -74,9 +74,9 @@ impl GitClient {
     ) -> Result<InitReport> {
         let (destination, existed) = self.runner.step("init", "validate_init", || {
             cancel.check()?;
-            if !cfg!(any(windows, target_os = "linux")) {
+            if !cfg!(any(windows, target_os = "linux", target_os = "macos")) {
                 return Err(Error::Unsupported(
-                    "Repository creation currently requires Windows".into(),
+                    "Repository creation is unavailable on this platform".into(),
                 ));
             }
             let destination = destination_path(destination.as_ref())?;
@@ -201,6 +201,11 @@ impl GitClient {
 }
 
 pub(crate) fn destination_path(path: &Path) -> Result<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let normalized = crate::local_storage::resolve_system_alias(path)
+        .map_err(|e| Error::io("resolve macOS repository parent", e))?;
+    #[cfg(target_os = "macos")]
+    let path = normalized.as_path();
     if !path.is_absolute() {
         return Err(Error::InvalidInput(
             "Choose an absolute folder path with an existing parent".into(),

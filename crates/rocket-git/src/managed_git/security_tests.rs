@@ -44,6 +44,7 @@ fn cached(root: &Path) -> Result<Arc<ManagedGitRuntime>> {
         &CancellationToken::new(),
         &ManagedGitProgress::default(),
         true,
+        None,
     )
 }
 
@@ -582,7 +583,7 @@ fn reviewed_runtime_membership_rechecks_remain_cancellable_without_rehashing() {
     );
     let cancel = CancellationToken::new();
     let progress = ManagedGitProgress::default();
-    let runtime = verify_root(&root, &cancel, &progress, false).unwrap();
+    let runtime = verify_root(&root, &cancel, &progress, false, None).unwrap();
     let before = progress.snapshot();
     let mut times = Vec::new();
     for _ in 0..10 {

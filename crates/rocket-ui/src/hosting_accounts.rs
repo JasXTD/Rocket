@@ -25,6 +25,8 @@ pub struct Loaded {
 fn refused() -> Error {
     Error::InvalidInput(if cfg!(windows) {
         "Saved hosting accounts are invalid, changed externally, or cannot be decrypted for this Windows user. The existing file was preserved."
+    } else if cfg!(target_os = "macos") {
+        "Saved hosting accounts changed externally, are invalid, or could not be decrypted. Unlock the default macOS Keychain and review Rocket's access, then retry. The existing file was preserved."
     } else {
         "Saved hosting accounts are invalid, changed externally, or cannot be decrypted with the key in your desktop keyring. The existing file was preserved."
     }.into())

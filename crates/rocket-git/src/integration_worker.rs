@@ -39,9 +39,7 @@ impl IntegrationWorker {
         }
         #[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
         {
-            Err(Error::Unsupported(
-                "Lua worker isolation is unavailable on this platform".into(),
-            ))
+            Err(unsupported_platform())
         }
     }
 
@@ -53,28 +51,96 @@ impl IntegrationWorker {
     ) -> Result<Output> {
         cancel.check()?;
         crate::ensure_unprivileged_process()?;
-        if self.sha256.len() != 64 || !self.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
-            let script = if cfg!(windows) {
-                "tools/Build-Local.ps1"
-            } else {
-                "tools/build-local.sh"
-            };
-            return Err(Error::InvalidInput(format!(
-                "integration_worker_unbound: This build has no valid embedded Lua worker hash. Build the complete bundle with {script}."
-            )));
-        }
-        #[cfg(windows)]
-        {
-            windows::run(self, input, limits, cancel)
-        }
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-        {
-            linux::run(self, input, limits, cancel)
-        }
+        // An unsupported host cannot become safe by binding a worker hash. Refuse
+        // before inspecting the worker or suggesting a Windows/Linux rebuild.
         #[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
         {
-            let _ = (&self.path, input, limits);
-            Err(Error::Unsupported("integration_worker_sandbox: Lua execution needs the worker sandbox of Windows or Linux x86_64; no unrestricted fallback is provided.".into()))
+            let _ = (&self.path, &self.sha256, input, limits);
+            Err(unsupported_platform())
         }
+        #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+        {
+            if self.sha256.len() != 64 || !self.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
+                let script = if cfg!(windows) {
+                    "tools/Build-Local.ps1"
+                } else {
+                    "tools/build-local.sh"
+                };
+                return Err(Error::InvalidInput(format!(
+                    "integration_worker_unbound: This build has no valid embedded Lua worker hash. Build the complete bundle with {script}."
+                )));
+            }
+            #[cfg(windows)]
+            {
+                windows::run(self, input, limits, cancel)
+            }
+            #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+            {
+                linux::run(self, input, limits, cancel)
+            }
+        }
+    }
+}
+
+#[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
+fn unsupported_platform() -> Error {
+    Error::Unsupported(
+        if cfg!(target_os = "macos") {
+            "integration_worker_sandbox: Lua extensions are unavailable in the macOS preview until its worker sandbox is implemented and verified. No script was run."
+        } else {
+            "integration_worker_sandbox: Lua execution needs the worker sandbox of Windows or Linux x86_64; no unrestricted fallback is provided."
+        }
+        .into(),
+    )
+}
+
+#[cfg(test)]
+mod preflight_tests {
+    use super::*;
+
+    #[test]
+    fn cancellation_precedes_worker_access() {
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let worker = IntegrationWorker::new(PathBuf::from("absent-worker"), "");
+        assert!(matches!(
+            worker.run(Vec::new(), &CommandLimits::default(), &cancel),
+            Err(Error::Cancelled)
+        ));
+    }
+
+    #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+    #[test]
+    fn supported_platform_still_requires_a_bound_worker() {
+        for digest in ["".to_owned(), "g".repeat(64), "a".repeat(63)] {
+            let worker = IntegrationWorker::new(PathBuf::from("absent-worker"), &digest);
+            let error = worker
+                .run(
+                    Vec::new(),
+                    &CommandLimits::default(),
+                    &CancellationToken::new(),
+                )
+                .err()
+                .expect("unbound workers must be refused before file access");
+            assert!(
+                matches!(error, Error::InvalidInput(ref message) if message.starts_with("integration_worker_unbound:"))
+            );
+        }
+    }
+
+    #[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
+    #[test]
+    fn unsupported_platform_refuses_bound_and_unbound_workers() {
+        for digest in ["".to_owned(), "a".repeat(64)] {
+            let worker = IntegrationWorker::new(PathBuf::from("absent-worker"), &digest);
+            assert!(matches!(
+                worker.run(Vec::new(), &CommandLimits::default(), &CancellationToken::new()),
+                Err(Error::Unsupported(message)) if message.starts_with("integration_worker_sandbox:")
+            ));
+        }
+        assert!(matches!(
+            IntegrationWorker::enter_isolation(),
+            Err(Error::Unsupported(_))
+        ));
     }
 }

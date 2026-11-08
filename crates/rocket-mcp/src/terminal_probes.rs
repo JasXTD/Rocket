@@ -1,17 +1,17 @@
 //! Exact, synthetic Unicode probes. These only write to the fixture terminal,
 //! then pause so MCP can inspect the native frame. Interrupt ends the pause.
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub const BASIC: &str = "[Console]::Clear(); [Console]::Write(\"ASCII |abcd    |END`r`nCJK   |中文    |END`r`nJPN   |日本語  |END`r`nKOR   |한국어  |END`r`nEMOJI |🚀🎉    |END`r`nMARKS |éö      |END\"); Start-Sleep -Seconds 30";
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub const EMOJI: &str = "[Console]::Clear(); [Console]::Write(\"ZWJ   |👩🏽‍💻      |END`r`nFAMILY|👨‍👩‍👧‍👦      |END`r`nFLAG  |🇲🇾      |END`r`nKEYCAP|1️⃣      |END`r`nHEART |❤️      |END`r`nTEXT  |☺︎       |END\"); Start-Sleep -Seconds 30";
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub const MARGIN: &str = "[Console]::Clear(); [Console]::Write((' ' * ([Console]::WindowWidth - 1)) + '中|END'); Start-Sleep -Seconds 30";
 // Linux: the same rows through bash's printf, as an MCP window runs bash there.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub const BASIC: &str = "printf '\\033[H\\033[2J\\033[3JASCII |abcd    |END\\r\\nCJK   |中文    |END\\r\\nJPN   |日本語  |END\\r\\nKOR   |한국어  |END\\r\\nEMOJI |🚀🎉    |END\\r\\nMARKS |éö      |END'; sleep 30";
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub const EMOJI: &str = "printf '\\033[H\\033[2J\\033[3JZWJ   |👩🏽‍💻      |END\\r\\nFAMILY|👨‍👩‍👧‍👦      |END\\r\\nFLAG  |🇲🇾      |END\\r\\nKEYCAP|1️⃣      |END\\r\\nHEART |❤️      |END\\r\\nTEXT  |☺︎       |END'; sleep 30";
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub const MARGIN: &str = "printf '\\033[H\\033[2J\\033[3J%*s中|END' \"$(($(stty size | cut -d' ' -f2) - 1))\" ''; sleep 30";
 
 pub fn allowed(text: &str) -> bool {
@@ -32,6 +32,7 @@ pub const KEYBOARD_NAMES: &[&str] = &[
     "unicode",
     "submit",
     "cancel-line",
+    "copy-shortcut",
     "redraw",
     "resize-draft",
     "resize-edit",
@@ -42,7 +43,7 @@ pub const KEYBOARD_NAMES: &[&str] = &[
 
 /// What a named probe types first, or None for one that only presses keys; None overall
 /// for a name that is not a probe. This is Windows PowerShell's text.
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn typed(name: &str) -> Option<Option<&'static str>> {
     Some(match name {
         "status" => Some(
@@ -72,6 +73,7 @@ fn typed(name: &str) -> Option<Option<&'static str>> {
         | "completion-argument"
         | "submit"
         | "cancel-line"
+        | "copy-shortcut"
         | "redraw"
         | "resize-edit" => None,
         _ => return None,
@@ -80,7 +82,7 @@ fn typed(name: &str) -> Option<Option<&'static str>> {
 
 /// Linux: the same probes for Rocket's bash, whose readline edits, recalls and completes
 /// lines. They print the same markers as the PowerShell text.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn typed(name: &str) -> Option<Option<&'static str>> {
     Some(match name {
         "status" => Some(
@@ -110,6 +112,7 @@ fn typed(name: &str) -> Option<Option<&'static str>> {
         | "completion-argument"
         | "submit"
         | "cancel-line"
+        | "copy-shortcut"
         | "redraw"
         | "resize-edit" => None,
         _ => return None,
@@ -168,7 +171,13 @@ pub fn keyboard(name: &str) -> Option<Vec<eframe::egui::Event>> {
         "history-next" => key(&mut events, Key::ArrowDown, Modifiers::NONE),
         // Match the native egui-winit Ctrl+C event, rather than bypassing its
         // clipboard translation with a synthetic Key::C press.
-        "cancel-line" => events.push(Event::Copy),
+        "cancel-line" => {
+            #[cfg(target_os = "macos")]
+            key(&mut events, Key::C, Modifiers::CTRL);
+            #[cfg(not(target_os = "macos"))]
+            events.push(Event::Copy);
+        },
+        "copy-shortcut" => events.push(Event::Copy),
         "redraw" => key(&mut events, Key::L, Modifiers::CTRL),
         _ => unreachable!(),
     }

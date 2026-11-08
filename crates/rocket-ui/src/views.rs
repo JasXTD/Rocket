@@ -1301,6 +1301,7 @@ pub(crate) fn query_field(
                         .frame(Frame::NONE)
                         .char_limit(1024)
                         .min_size(vec2(0.0, 22.0))
+                        .vertical_align(Align::Center)
                         .hint_text(hint)
                         .desired_width((ui.available_width() - room).max(20.0)),
                 );
@@ -1356,6 +1357,7 @@ pub(crate) fn path_field(
                             .frame(Frame::NONE)
                             .char_limit(4096)
                             .min_size(vec2(0.0, 22.0))
+                            .vertical_align(Align::Center)
                             .hint_text(tr("In path"))
                             .desired_width((ui.available_width() - room).max(20.0)),
                     )

@@ -1,4 +1,4 @@
-#![cfg(any(windows, target_os = "linux"))]
+#![cfg(any(windows, target_os = "linux", target_os = "macos"))]
 #[allow(dead_code)]
 mod common;
 use common::*;
@@ -246,7 +246,7 @@ fn ssh_found_key_shows_its_public_key_and_is_held_while_unchanged() {
 
 /// Linux: a found key other users can open is listed, so the page can say why, but it
 /// is never handed to ssh-add or a profile; a key replaced after the scan is refused.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn linux_found_keys_other_users_can_open_are_listed_but_not_used() {
     isolated(

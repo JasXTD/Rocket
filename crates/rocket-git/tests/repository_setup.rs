@@ -1,4 +1,4 @@
-#![cfg(any(windows, target_os = "linux"))]
+#![cfg(any(windows, target_os = "linux", target_os = "macos"))]
 mod common;
 use common::Fixture;
 use rocket_git::*;
@@ -558,7 +558,7 @@ fn init_rejects_junction_destination_and_parent_without_touching_target() {
 }
 
 /// Linux: a symbolic link is refused as a junction is, as the folder and as its parent.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 #[test]
 fn init_rejects_linked_destination_and_parent_without_touching_target() {
     isolated(

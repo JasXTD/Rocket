@@ -5,15 +5,15 @@ use std::{
     io::Read,
     path::Path,
 };
-// Used by the Windows and Linux publication; elsewhere publish reports Unsupported.
-#[cfg(any(windows, target_os = "linux"))]
+// Used by the Windows, Linux and macOS publication; elsewhere publish reports Unsupported.
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 use std::{
     io::Write,
     sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 const FOLDER: &str = "rocket-file-backups";
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 static NEXT: AtomicU64 = AtomicU64::new(0);
 pub(super) fn validate_path(path: &RepoPath) -> Result<()> {
     for part in path.as_bytes().split(|b| *b == b'/') {
@@ -58,7 +58,7 @@ fn open(root: &Path, path: &Path) -> Result<Option<File>> {
         return fail(FileEditFailure::Unsupported);
     }
     // Opening follows a symbolic link here; refuse one as Windows refuses a reparse point.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     if !local_files::opened_without_link(&file, path)
         .map_err(|e| Error::io("inspect reviewed file", e))?
     {
@@ -127,7 +127,7 @@ pub(super) fn read_working(
     let _guard = local_files::pin_directories(root, full.parent().unwrap())?;
     read(root, &full, cancel)
 }
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn write(directory: &Path, name: &str, bytes: &[u8], cancel: &CancellationToken) -> Result<()> {
     let mut file = OpenOptions::new()
         .write(true)
@@ -230,7 +230,7 @@ pub(super) fn backup_contents(
     }
     Err(Error::parse("file-backups", "recovery content is missing"))
 }
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 pub(super) fn publish(
     repo: &Repository,
     p: &FileEditPreview,
@@ -297,7 +297,7 @@ pub(super) fn publish(
         let replacement = directory.join("replacement");
         // Linux files carry the executable bit Git tracks: keep the file's own
         // permissions, or apply the restored entry's mode.
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if p.after.is_some() {
             local_files::set_published_mode(&replacement, opened.as_ref(), p.executable)
                 .map_err(|e| Error::io("prepare file permissions", e))?;
@@ -332,7 +332,7 @@ pub(super) fn publish(
     }
     Ok(())
 }
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 pub(super) fn publish(
     _: &Repository,
     _: &FileEditPreview,

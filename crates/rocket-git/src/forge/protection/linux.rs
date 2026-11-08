@@ -6,11 +6,10 @@
 //! libsecret is loaded when first needed, so Rocket builds and runs without it; it
 //! handles the keyring's encrypted session and any unlock prompt. Its calls can wait
 //! for that prompt, so they are made only from workers, never the UI thread.
+#[cfg(test)]
+use super::sealed::TAG;
+use super::sealed::{self, NONCE};
 use crate::{Error, Result};
-use chacha20poly1305::{
-    Key, KeyInit, XChaCha20Poly1305, XNonce,
-    aead::{Aead, Payload},
-};
 use std::{
     ffi::{CStr, c_char, c_int, c_void},
     sync::{Mutex, OnceLock, PoisonError},
@@ -20,8 +19,6 @@ use std::{
 const MAGIC: &[u8; 4] = b"RKS1";
 /// Binds each blob to this use: data sealed for another purpose never opens here.
 const AAD: &[u8] = b"Rocket protected credential v1";
-const NONCE: usize = 24;
-const TAG: usize = 16;
 
 fn refused() -> Error {
     Error::InvalidInput(
@@ -31,31 +28,13 @@ fn refused() -> Error {
 
 /// Seal `bytes` under `key`. The nonce must be fresh random bytes for every call.
 fn seal(key: &[u8; 32], nonce: [u8; NONCE], bytes: &[u8]) -> Result<Vec<u8>> {
-    let cipher = XChaCha20Poly1305::new(&Key::from(*key));
-    let sealed = cipher
-        .encrypt(&XNonce::from(nonce), Payload { msg: bytes, aad: AAD })
-        .map_err(|_| refused())?;
-    let mut blob = Vec::with_capacity(MAGIC.len() + NONCE + sealed.len());
-    blob.extend_from_slice(MAGIC);
-    blob.extend_from_slice(&nonce);
-    blob.extend_from_slice(&sealed);
-    Ok(blob)
+    sealed::seal(MAGIC, AAD, key, nonce, bytes).ok_or_else(refused)
 }
-
-/// Open a blob from `seal`. Anything else, such as a Windows DPAPI blob, a damaged or
-/// changed file, or data sealed under another key, is refused.
+/// Keep the existing Linux envelope and associated data; only the cipher primitive
+/// is shared with macOS. Other platforms' protected files remain incompatible.
 fn open(key: &[u8; 32], blob: &[u8]) -> Result<Vec<u8>> {
-    let rest = blob.strip_prefix(MAGIC.as_slice()).ok_or_else(refused)?;
-    if rest.len() < NONCE + TAG {
-        return Err(refused());
-    }
-    let (nonce, sealed) = rest.split_at(NONCE);
-    let nonce: [u8; NONCE] = nonce.try_into().map_err(|_| refused())?;
-    XChaCha20Poly1305::new(&Key::from(*key))
-        .decrypt(&XNonce::from(nonce), Payload { msg: sealed, aad: AAD })
-        .map_err(|_| refused())
+    sealed::open(MAGIC, AAD, key, blob).ok_or_else(refused)
 }
-
 pub(super) fn protect(bytes: &[u8], encrypt: bool) -> Result<Vec<u8>> {
     let key = key(encrypt)?;
     if encrypt {
