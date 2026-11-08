@@ -27,29 +27,29 @@ keep detailed test evidence in `VALIDATION.md`.
 - Add macOS desktop adapters: distinct Command/Control shortcuts and menu hints,
   system language/Region discovery, installed font roots with the audited CJK
   fallback, Unix executable selection, and bounded background Finder/browser
-  handoffs. Preserve saved Control bindings and terminal Ctrl+C. Prepare native
-  desktop/SDK checks; actual Mac desktop, IME/Retina and native menus remain pending.
+  handoffs. Preserve saved Control bindings and terminal Ctrl+C. Native desktop/
+  SDK checks pass; physical IME/Retina, Finder acceptance and native menus remain pending.
 - Add macOS credential protection through the default Keychain and the existing
   authenticated cipher, plus system OpenSSH discovery and inherited agent support.
   Refuse locked/denied Keychain access without prompts or plaintext fallback;
   preserve existing keys, Keychain access rules and SSH configuration. Reject
   macOS private-key ACL grants, Unix lock symlinks and concurrent credential-file
-  replacement. Prepare isolated native Keychain/SSH acceptance; actual Mac
-  execution and signed-helper interoperability remain pending.
+  replacement. Isolated native Keychain/SSH checks pass; normal-account prompts
+  and Developer-ID-signed helper interoperability remain pending.
 - Add the Darwin terminal and localhost MCP source adapters: PTY job control,
   resize/interrupt and bounded cleanup; zsh default; secure OS-generated tokens,
   private-file/ACL checks and Mac test probes. Preserve Windows/Linux behavior.
-  Prepare Apple SDK ABI assertions and native terminal/HTTP acceptance runs;
-  Mac runtime verification is still pending, and Lua remains disabled.
+  Apple SDK ABI and isolated native terminal/HTTP checks pass; real-user shell
+  profiles remain an acceptance gate, and Lua stays disabled.
 - Port core macOS services: private Application Support storage, bounded SHA-256,
   exclusive/atomic publication with retained recovery files, Unix executable modes,
   opened-file checks and installed-Git discovery that avoids Apple's installation
   launcher. Keep Windows/Linux implementations and Git safety checks. Extend the
-  manual native workflow with focused filesystem, ownership and cancellation tests;
-  actual macOS runtime acceptance remains pending.
+  manual native workflow with passing filesystem, ownership and cancellation
+  checks; bare-metal acceptance remains pending.
 - Add a manual-only macOS build workflow with pinned actions/toolchain, short
   artifact retention and focused native refusal/CLI checks. Development artifacts
-  are not Developer-ID-signed/notarized releases; native macOS acceptance is pending.
+  are not Developer-ID-signed/notarized releases; bare-metal acceptance is pending.
 - Report the unavailable macOS Lua sandbox before checking the worker binding,
   without offering an unrestricted fallback. Windows/Linux binding checks and
   cancellation remain enforced. Document the isolation design and required proof.

@@ -1,45 +1,53 @@
 # Apple Silicon macOS preparation
 
-Status: steps 1–5 and the native Apple Silicon CI gate passed, including the
+Status: steps 1–5 and the native watcher/emoji follow-up passed, including the
 development app bundle. Bare-metal acceptance remains pending; no supported
 macOS release is published by this workflow.
 
 ## Native result (2026-11-08)
 
-[Run 42491021304](https://github.com/JasXTD/Rocket/actions/runs/42491021304) passed
-on source commit `424db2e0b601606b4d3ddc641accb82d2a837510`, with no local changes.
+[Run 42495686349](https://github.com/JasXTD/Rocket/actions/runs/42495686349) passed
+on source commit `261105a14bd7e86a2802c35f7e186cfa3a0415af`, with no local changes.
 The runner used macOS **15.8.2 (24H232)**, the **15.5 SDK**, Rust **1.99.1** and
 Git **2.56.0**, all native arm64.
 
-- All-target compilation, SDK ABI checks and **198 affected Rust test executions**
-  passed. These include storage/ACL safety, process cleanup, cancellation, Git
-  operations, disposable Keychain, SSH and the explicit Lua refusal boundary.
-- **33 localhost MCP checks** passed across terminal interruption, Unicode cell
-  alignment, SSH discovery/import and desktop controls. They include compact
-  windows, external edits, cancellation, local-change preservation and private
-  diagnostics. Tests use disposable repositories, keys and profiles.
-- Packaged CLI checks passed for version/JSON, Unicode status, cancellation,
-  errors, preservation and diagnostics. Package/icon/process checks passed;
-  checks that require the normal user keyring remain deliberately excluded.
+- All-target compilation, watcher SDK ABI checks and **24 affected Rust tests**
+  passed: callback invalidation, fonts/licenses, real recursive notifications,
+  linked worktrees, root replacement, selective refresh and repeated edits.
+- **20 localhost MCP checks** passed: notifications (6), Unicode terminal (7)
+  and desktop controls (7). They cover compact windows, external stage/commit,
+  repeated selected-diff updates, disable/re-enable, close/reopen, cancellation,
+  local-change preservation and diagnostic privacy in temporary repositories.
+- Closing an active automatic refresh took **262 ms**; Git's measured stop time
+  was **27.155 ms**. The watcher suite recorded 329 diagnostic events with zero
+  drops and no file payloads. These are fixture timings, not universal guarantees.
+- All six packaged CLI checks passed, plus ten package tests (one test explicitly
+  for refusing non-Mac signing is skipped on Mac), three preflight cases and
+  native icon/signature/archive checks. Normal user credentials are untouched.
 - The five arm64 executables linked and passed package validation; the packaged
   CLI and native UI through MCP ran successfully. Bundle inventory, per-file hashes,
   ad-hoc signatures and ZIP extraction/verification passed on macOS. The downloaded
   artifact digest, archive checksum and manifest were independently rechecked.
 
-`Rocket-macos-arm64-development.zip` is **90,052,302 bytes**. SHA-256:
-`aa453c3796039a413130f454464a5d79373ec70f36c4dcb77ec6f7997a7ec49d`.
+`Rocket-macos-arm64-development.zip` is **92,611,883 bytes**. SHA-256:
+`66ab2528e12e93f098d2b625d589ae87a7eaf52f15c0bc67ffe44655e4c9e37d`.
 This is a development build for macOS 15+, not a notarized distribution.
 Its embedded build record identifies the tested source; subsequent documentation
 changes do not change these binaries.
 
-Native screenshots confirm readable CJK text in the diff, terminal and repository
-browser, plus usable compact dialogs. They also show missing emoji glyph coverage
-in the diff and the explicit automatic-refresh warning. Passing Unicode cell
-tests does not establish complete glyph rendering or real IME behavior.
+Native screenshots confirm CJK and monochrome emoji in the diff/terminal,
+aligned emoji clusters and usable compact dialogs. The older missing-crab and
+automatic-refresh warning are resolved in this build. This does not establish
+all Unicode sequences or real IME/Retina behavior.
 
-## Follow-up implementation (native verification pending)
+The earlier [platform gate](https://github.com/JasXTD/Rocket/actions/runs/42491021304)
+on `424db2e` passed 198 core-platform Rust test executions and 33 MCP checks,
+including disposable Keychain/SSH, process containment and Lua refusal. Those
+unchanged areas were not rerun in this focused follow-up.
 
-The next revision adds a recursive FSEvents watcher on a private serial dispatch
+## Notifications and emoji
+
+Rocket uses a recursive FSEvents watcher on a private serial dispatch
 queue. Worktree changes refresh selected diffs; Git/common-directory changes
 invalidate metadata. Lost events force a full refresh, and directory identity
 checks reject replaced roots. Closing detaches and drains callbacks before freeing
@@ -52,10 +60,8 @@ passed the owner's Malwarebytes scan before loading. The exact source, hashes an
 license are in `runtime/fonts/noto-emoji/3.002`; nothing is installed system-wide.
 It supplies monochrome outlines, not Apple's color emoji or a replacement IME.
 
-Windows font/license tests, Linux font/license/watcher tests and the Apple-target
-source check pass. The new native Mac notification/emoji checks and screenshots
-must pass before calling this follow-up verified. The original run above does
-not validate the new code. Lua remains refused by agreement; its sandbox is the
+Windows font/license/MCP watcher tests, Linux font/license/watcher/package tests
+and native Mac checks passed. Lua remains refused by agreement; its sandbox is the
 next separate task. [Signing preparation](MacOS-signing.md) is a future runbook,
 not an executed notarization or a release-ready signing pipeline.
 
@@ -168,8 +174,8 @@ Rocket remains private; this preparation does not change its visibility.
 | Credentials / SSH | Disposable Keychain roundtrip/tamper/locked checks, disposable-agent tests and SSH discovery/import passed. Normal-account access prompts, signed-helper upgrades and live hosted authentication still need Mac acceptance. |
 | Filesystem / hashing | Native ACL, storage, locks, atomic file/repository operations and recovery checks passed. Additional volumes and Unicode-normalization edge cases need acceptance. Unsupported atomic operations fail without an overwriting fallback. |
 | Git | Step 2 filesystem-only installed-Git discovery and launcher refusal implemented; Finder environment and installed Git versions still need native acceptance. Windows' bundle is never selected. |
-| Automatic repository refresh | Native FSEvents implementation added; focused Mac runtime verification pending. Older development artifacts still require F5. Windows and Linux retain their own watchers. |
-| Desktop | Native Command/Control bindings, CJK text, compact dialogs and persistence passed. New outline emoji fallback awaits native visual acceptance. Real IME, clipboard, Retina and Finder launch remain pending. A native macOS menu bar is not implemented. |
+| Automatic repository refresh | Native FSEvents and focused Mac runtime checks passed, including linked/common directories, repeated edits, root replacement, shutdown and idle behavior. Older development artifacts still require F5. Windows and Linux retain their own watchers. |
+| Desktop | Native Command/Control bindings, CJK, outline emoji, compact dialogs and persistence passed. Real IME, clipboard, Retina and Finder launch remain pending. A native macOS menu bar is not implemented. |
 | Spell checking / updates | macOS adapters and signed `.app` update/rollback remain absent. |
 
 The next runtime gate is an isolated ordinary-user account on an **Apple Silicon EC2 Mac**
@@ -196,8 +202,8 @@ installed. The development archive includes its license and notice. Color emoji,
 IME composition and physical keyboard layouts still need real Mac inspection.
 The WSL and native Mac captures confirmed CJK and combining accents, but still
 showed a missing crab emoji in the diff's existing outline-font fallback. The
-follow-up adds Noto Emoji; native screenshots still need to confirm rendering.
-General emoji coverage is not established by CJK or terminal cell-alignment checks.
+follow-up's Noto Emoji outlines render the crab, rocket and tested clusters in
+native captures. This does not promise every Unicode sequence or color emoji.
 Preferred language and Region come from read-only CoreFoundation APIs, so a
 Finder launch need not inherit a shell's LANG. Rocket's explicit language setting
 continues to override automatic selection. See Apple's [locale declarations](https://github.com/apple-oss-distributions/CF/blob/main/CFLocale.h)
