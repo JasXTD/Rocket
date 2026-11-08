@@ -98,7 +98,9 @@ fn typed(name: &str) -> Option<Option<&'static str>> {
         "completion-path" => Some("ls ./rocket-comple"),
         "unicode" => Some(r"printf 'ROCKET_UNICODE_%s\n' '中文 🚀 é'"),
         "interrupt-start" => Some(
-            r"RocketInterruptState=42; RocketInterruptPid=$$; printf 'ROCKET_SHELL_PID_%s\n' $$; printf 'ROCKET_INTERRUPT_%s\n' READY; sleep 60; printf 'ROCKET_INTERRUPT_%s\n' UNEXPECTED",
+            // Bash 3.2 may continue a semicolon list after SIGINT. A successful
+            // sleep alone reaches the canary; interrupted commands must not.
+            r"RocketInterruptState=42; RocketInterruptPid=$$; printf 'ROCKET_SHELL_PID_%s\n' $$; printf 'ROCKET_INTERRUPT_%s\n' READY; sleep 60 && printf 'ROCKET_INTERRUPT_%s\n' UNEXPECTED",
         ),
         "interrupt-status" => Some(
             r#"printf 'ROCKET_SHELL_%s\n' "$([ "$$" = "$RocketInterruptPid" ] && echo True || echo False)"; printf 'ROCKET_STATE_%s\n' "$RocketInterruptState""#,

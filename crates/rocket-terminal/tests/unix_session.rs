@@ -1,5 +1,5 @@
 #![cfg(any(target_os = "linux", target_os = "macos"))]
-//! Linux pseudoterminal sessions with the real bash and OpenSSH, in private folders.
+//! Unix pseudoterminal sessions with the real bash and OpenSSH, in private folders.
 use rocket_terminal::{Screen, Session, Shell};
 use std::{
     fs,
@@ -137,24 +137,50 @@ fn rocket_bash_has_its_own_session_job_control_resize_interrupt_unicode_and_hist
         s.text().lines().any(|l| l == "12 76") && prompt(s)
     });
 
-    // Ctrl+C reaches the foreground job, and the shell stays.
+    // Wait for a real foreground child, rather than guessing its startup time.
+    // Bash 3.2 (macOS) can continue a semicolon list after its child gets SIGINT,
+    // so test the child's status directly. Keep the newer Bash list check below.
     session
-        .input(b"sleep 30; echo ROCKET_NOT_INTERRUPTED\r")
+        .input(b"/bin/sh -c 'printf \"ROCKET_FOREGROUND_%s\\n\" \"$$\"; exec /bin/sleep 30'\r")
         .unwrap();
-    thread::sleep(Duration::from_millis(400));
+    let ready = wait(&session, "foreground child", |s| {
+        s.text().lines().any(|line| {
+            line.strip_prefix("ROCKET_FOREGROUND_")
+                .is_some_and(|pid| pid.parse::<u32>().is_ok())
+        })
+    });
+    let foreground: u32 = ready.text().lines().find_map(|line| {
+        line.strip_prefix("ROCKET_FOREGROUND_")?.parse().ok()
+    }).unwrap();
+    let (_, group, member) = stat(foreground).unwrap();
+    assert_eq!((group, member), (foreground as i32, shell as i32));
     let asked = Instant::now();
     session.input(&[3]).unwrap();
     wait(&session, "prompt after Ctrl+C", prompt);
     assert!(asked.elapsed() < Duration::from_secs(3));
     session.input(b"echo ROCKET_STATUS_$?\r").unwrap();
-    let screen = wait(&session, "interrupted status", |s| {
-        s.text().contains("ROCKET_STATUS_130") && prompt(s)
+    wait(&session, "interrupted status", |s| {
+        s.text().lines().any(|line| line == "ROCKET_STATUS_130") && prompt(s)
     });
-    assert!(
-        !screen.text().lines().any(|l| l == "ROCKET_NOT_INTERRUPTED"),
-        "the list ran on"
-    );
+    assert!(gone(foreground), "The foreground child survived Ctrl+C");
+    assert!(!gone(background), "Ctrl+C stopped an unrelated background job");
     assert_eq!(session.status().pid, Some(shell));
+
+    #[cfg(target_os = "linux")]
+    {
+        session.input(b"sleep 30; echo ROCKET_NOT_INTERRUPTED\r").unwrap();
+        thread::sleep(Duration::from_millis(400));
+        session.input(&[3]).unwrap();
+        wait(&session, "prompt after list interrupt", prompt);
+        session.input(b"echo ROCKET_LIST_STATUS_$?\r").unwrap();
+        let screen = wait(&session, "interrupted list status", |s| {
+            s.text().lines().any(|line| line == "ROCKET_LIST_STATUS_130") && prompt(s)
+        });
+        assert!(
+            !screen.text().lines().any(|line| line == "ROCKET_NOT_INTERRUPTED"),
+            "the list ran on"
+        );
+    }
 
     session
         .input("printf '%s\\n' 'é 中文 🚀'\r".as_bytes())
