@@ -36,6 +36,41 @@ mod tests {
         );
     }
     #[test]
+    fn entry_updates_get_a_fresh_acl_but_permission_identity_and_file_changes_fail() {
+        let root = std::env::temp_dir().join(format!(
+            "rocket-mac-acl-change-{}-{}", std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),
+        ));
+        crate::local_storage::create_private_new(&root).unwrap();
+        let fixture = Fixture(root);
+        let directory = fixture.0.join("directory");
+        crate::local_storage::create_private_new(&directory).unwrap();
+        let before = fs::symlink_metadata(&directory).unwrap();
+        fs::write(directory.join("draft"), b"preserve").unwrap();
+        let changed = fs::symlink_metadata(&directory).unwrap();
+        assert_ne!((before.ctime(), before.ctime_nsec()), (changed.ctime(), changed.ctime_nsec()));
+        check_acl(&directory, &before).unwrap();
+
+        chmod(&directory, &["+a", "everyone allow read,search"]);
+        assert_eq!(check_acl(&directory, &before).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        chmod(&directory, &["-N"]);
+        chmod(&directory, &["750"]);
+        assert_eq!(check_acl(&directory, &before).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        chmod(&directory, &["700"]);
+
+        let draft = directory.join("draft");
+        let file_before = fs::symlink_metadata(&draft).unwrap();
+        fs::write(&draft, b"edited").unwrap();
+        assert_eq!(check_acl(&draft, &file_before).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+
+        let preserved = fixture.0.join("preserved");
+        fs::rename(&directory, &preserved).unwrap();
+        crate::local_storage::create_private_new(&directory).unwrap();
+        assert_eq!(check_acl(&directory, &before).unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(fs::read(preserved.join("draft")).unwrap(), b"edited");
+    }
+
+    #[test]
     fn private_storage_accepts_deny_acls_and_refuses_allow_acls_without_repair() {
         let root = std::env::temp_dir().join(format!(
             "rocket-mac-acl-{}-{}",

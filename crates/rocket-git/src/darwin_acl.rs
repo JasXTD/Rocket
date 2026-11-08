@@ -26,36 +26,48 @@ impl Drop for Acl {
 }
 
 pub(super) fn check(file: &fs::File, path: &Path, expected: &fs::Metadata) -> io::Result<()> {
-    let stable = |now: &fs::Metadata| {
+    let same_entry = |now: &fs::Metadata| {
         now.dev() == expected.dev()
             && now.ino() == expected.ino()
             && now.uid() == expected.uid()
+            && now.gid() == expected.gid()
             && now.mode() == expected.mode()
-            && now.ctime() == expected.ctime()
-            && now.ctime_nsec() == expected.ctime_nsec()
     };
-    if !stable(&file.metadata()?) {
-        return Err(changed());
-    }
-    // SAFETY: live open descriptor; ACL_TYPE_EXTENDED is 0x100 on Darwin.
-    let raw = unsafe { acl_get_fd_np(file.as_raw_fd(), 0x100) };
-    let result = if raw.is_null() {
-        let error = io::Error::last_os_error();
-        // Darwin Libc's descriptor-bound getter reports ENOENT for an absent
-        // FILESEC_ACL property. The descriptor, unlike a pathname, cannot vanish
-        // during lookup. Recheck its metadata below; other failures stay errors.
-        if error.raw_os_error() == Some(2) {
-            Ok(())
-        } else {
-            Err(error)
+    let stamp = |metadata: &fs::Metadata| (metadata.ctime(), metadata.ctime_nsec());
+    // Directory entry creation also changes ctime (especially under /tmp). Bind
+    // identity/ownership/mode to the caller's check, then bracket a fresh ACL read
+    // with descriptor metadata. Retry boundedly if entries or ACLs changed during
+    // that read; never infer that a ctime change was harmless or reuse an old ACL.
+    // Regular files still require the caller's exact ctime, including content edits.
+    for _ in 0..3 {
+        let before = file.metadata()?;
+        if !same_entry(&before) || (!expected.is_dir() && stamp(&before) != stamp(expected)) {
+            return Err(changed());
         }
-    } else {
-        inspect(&Acl(raw), path)
-    };
-    if !stable(&file.metadata()?) {
-        return Err(changed());
+        // SAFETY: live open descriptor; ACL_TYPE_EXTENDED is 0x100 on Darwin.
+        let raw = unsafe { acl_get_fd_np(file.as_raw_fd(), 0x100) };
+        let result = if raw.is_null() {
+            let error = io::Error::last_os_error();
+            // Descriptor-bound ENOENT means an absent FILESEC_ACL property.
+            // The opened entry cannot vanish; its metadata is checked again below.
+            if error.raw_os_error() == Some(2) { Ok(()) } else { Err(error) }
+        } else {
+            inspect(&Acl(raw), path)
+        };
+        let after = file.metadata()?;
+        if !same_entry(&after) {
+            return Err(changed());
+        }
+        // A rejected ACL is never retried into acceptance.
+        result?;
+        if stamp(&before) == stamp(&after) {
+            return Ok(());
+        }
+        if !expected.is_dir() {
+            return Err(changed());
+        }
     }
-    result
+    Err(changed())
 }
 
 fn changed() -> io::Error {
