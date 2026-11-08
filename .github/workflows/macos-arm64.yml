@@ -40,7 +40,10 @@ jobs:
         shell: bash
         env:
           ROCKET_MACOS_OUTPUT: ${{ runner.temp }}/rocket-macos-stage1
-        run: bash tools/build-macos.sh
+        run: |
+          set -euo pipefail
+          node --test tools/tests/test-macos-preflight.cjs 2>&1 | tee "$RUNNER_TEMP/rocket-macos-preflight.log"
+          bash tools/build-macos.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"
 
       - name: Retain development app and check results
         if: ${{ always() && !cancelled() }}
@@ -49,6 +52,8 @@ jobs:
           name: rocket-macos-arm64-stage1-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/rocket-macos-bootstrap.log
+            ${{ runner.temp }}/rocket-macos-invocation.log
+            ${{ runner.temp }}/rocket-macos-preflight.log
             ${{ runner.temp }}/rocket-macos-stage1/*.log
             ${{ runner.temp }}/rocket-macos-stage1/*.json
             ${{ runner.temp }}/rocket-macos-stage1/*.md

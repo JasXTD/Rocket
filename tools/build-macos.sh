@@ -37,8 +37,14 @@ root=$(cd "$(dirname "$0")/.." && pwd -P)
 cd "$root"
 toolchain=1.99.1
 target=aarch64-apple-darwin
-if ! rustup run "$toolchain" rustc -vV | grep -qx "host: $target"; then
+# Consume the full producer before matching. grep -q can close its pipe after
+# the host line, causing rustup to receive SIGPIPE and fail under pipefail.
+if ! rust_identity=$(rustup run "$toolchain" rustc -vV); then
     echo 'Rust 1.99.1 for aarch64-apple-darwin must already be installed.' >&2
+    exit 2
+fi
+if ! printf '%s\n' "$rust_identity" | grep -Fx "host: $target" >/dev/null; then
+    echo 'Rust 1.99.1 must use the native aarch64-apple-darwin host.' >&2
     exit 2
 fi
 out=${ROCKET_MACOS_OUTPUT:-"$root/target/macos-stage1"}
@@ -77,7 +83,7 @@ cargo_run() { rustup run "$toolchain" cargo "$@"; }
     printf 'Commit: '; git rev-parse HEAD
     printf 'Local changes: '; git status --porcelain | wc -l
     sw_vers
-    rustup run "$toolchain" rustc -vV
+    printf '%s\n' "$rust_identity"
     printf 'macOS SDK: '; xcrun --sdk macosx --show-sdk-version
     git --version
 } > "$out/build-info.md"
