@@ -16,6 +16,8 @@ pub mod app_update;
 pub mod crash_reports;
 #[cfg(target_os = "macos")]
 mod darwin_acl;
+#[cfg(target_os = "macos")]
+mod darwin_wait;
 #[cfg(not(windows))]
 pub mod local_storage;
 mod system_languages;

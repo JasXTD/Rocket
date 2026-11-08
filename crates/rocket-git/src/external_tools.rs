@@ -257,7 +257,7 @@ impl Repository {
                 let tree=match ProcessTree::attach(starting,&child) {Ok(tree)=>tree,Err(e)=>{let _=child.kill();let _=child.wait();return Err(Error::io("contain external process",e));}};
                 let result=loop {
                     if let Err(e)=cancel.check() { break Err(e); }
-                    match child.try_wait() {
+                    match crate::process_tree::poll_exit(&mut child) {
                         Ok(Some(status))=>break if status.success(){Ok(())}else{Err(Error::ExternalTool(ExternalToolFailure::Exit(status.code())))},
                         Ok(None)=>std::thread::sleep(Duration::from_millis(20)),
                         Err(e)=>break Err(Error::io("wait for external tool",e)),

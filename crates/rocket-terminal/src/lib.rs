@@ -3,6 +3,9 @@
 //! application diagnostics.
 #[path = "../../rocket-git/src/process_privilege.rs"]
 mod process_privilege;
+#[cfg(target_os = "macos")]
+#[path = "../../rocket-git/src/darwin_wait.rs"]
+mod darwin_wait;
 #[cfg(all(test, windows))]
 mod resize_tests;
 mod screen;

@@ -6,6 +6,17 @@ use std::{
 
 #[cfg(windows)]
 mod threads;
+#[cfg(target_os = "macos")]
+mod darwin;
+
+/// macOS keeps the leader PID reserved until group cleanup finishes. Other
+/// platforms retain their existing Child::try_wait behavior.
+pub(crate) fn poll_exit(child: &mut Child) -> io::Result<Option<std::process::ExitStatus>> {
+    #[cfg(target_os = "macos")]
+    return crate::darwin_wait::poll_exit(child);
+    #[cfg(not(target_os = "macos"))]
+    child.try_wait()
+}
 
 #[cfg(windows)]
 mod platform {
@@ -272,6 +283,13 @@ mod platform {
                 return Ok(());
             }
             let error = io::Error::last_os_error();
+            // Darwin killpg skips zombies and reports EPERM for an all-zombie
+            // group. Do not suppress real permission failures: inspect every
+            // remaining member while the caller still owns the unreaped leader.
+            #[cfg(target_os = "macos")]
+            if error.raw_os_error() == Some(1) && !super::darwin::has_live_members(self.0)? {
+                return Ok(());
+            }
             if error.raw_os_error() == Some(3) {
                 Ok(())
             } else {

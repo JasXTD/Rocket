@@ -1,6 +1,7 @@
 //! Darwin ABI, from Apple's sys/{termios,ttycom,fcntl,poll,signal,wait,proc_info}.h.
 //! No Linux ioctl values, /proc lookup, or shell process-list commands.
 use super::*;
+pub(super) use crate::darwin_wait::poll_exit;
 use std::{
     ffi::c_void,
     os::unix::fs::{FileTypeExt, OpenOptionsExt},
@@ -65,22 +66,6 @@ pub(super) fn open_peer(fd: c_int) -> io::Result<OwnedFd> {
 
 #[repr(C)]
 #[derive(Default)]
-struct SigInfo {
-    signo: i32,
-    errno: i32,
-    code: i32,
-    pid: i32,
-    uid: u32,
-    status: i32,
-    address: usize,
-    value: usize,
-    band: isize,
-    reserved: [usize; 7],
-}
-const _: () = assert!(std::mem::size_of::<SigInfo>() == 104);
-
-#[repr(C)]
-#[derive(Default)]
 struct BsdInfo {
     pid: u32,
     parent: u32,
@@ -98,7 +83,6 @@ struct BsdInfo {
 }
 const _: () = assert!(std::mem::size_of::<BsdInfo>() == 64);
 unsafe extern "C" {
-    fn waitid(kind: c_int, id: u32, info: *mut SigInfo, options: c_int) -> c_int;
     fn getsid(pid: c_int) -> c_int;
     fn geteuid() -> u32;
 }
@@ -112,37 +96,6 @@ unsafe extern "C" {
         buffer: *mut c_void,
         bytes: c_int,
     ) -> c_int;
-}
-
-/// Observe exit without reaping. Keep the leader PID reserved until session cleanup
-/// is finished, so an unrelated process cannot acquire the session's numeric ID.
-pub(super) fn poll_exit(child: &mut Child) -> io::Result<Option<std::process::ExitStatus>> {
-    let mut info = SigInfo::default();
-    // SAFETY: correct Darwin siginfo_t; P_PID=1, WEXITED|WNOHANG|WNOWAIT.
-    let result = unsafe { waitid(1, child.id(), &mut info, 4 | 1 | 0x20) };
-    if result != 0 {
-        let error = io::Error::last_os_error();
-        return if error.kind() == io::ErrorKind::Interrupted {
-            Ok(None)
-        } else {
-            Err(error)
-        };
-    }
-    if info.pid == 0 {
-        return Ok(None);
-    }
-    if info.pid as u32 != child.id() {
-        return Err(io::Error::other("Terminal wait returned another process"));
-    }
-    // Darwin CLD_EXITED=1, CLD_KILLED=2, CLD_DUMPED=3. Stopped/continued
-    // children were not requested. Child::wait later reaps the same exit status.
-    let raw = match info.code {
-        1 => (info.status & 0xff) << 8,
-        2 => info.status & 0x7f,
-        3 => (info.status & 0x7f) | 0x80,
-        _ => return Err(io::Error::other("Unexpected terminal exit status")),
-    };
-    Ok(Some(std::process::ExitStatus::from_raw(raw)))
 }
 
 fn session_groups(session: i32) -> io::Result<BTreeSet<i32>> {

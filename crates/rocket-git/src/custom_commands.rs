@@ -575,12 +575,14 @@ impl Repository {
                     if timeout.is_some() { tree.wait_stopped().map_err(|e| Error::io("wait for test processes to stop", e))?; }
                     return Err(error);
                 }
-                match child.try_wait() {
+                match crate::process_tree::poll_exit(&mut child) {
                     Ok(Some(status)) => {
                         if timeout.is_some() {
                             tree.terminate().map_err(|e| Error::io("stop test subprocesses", e))?;
                             tree.wait_stopped().map_err(|e| Error::io("wait for test processes to stop", e))?;
                         }
+                        #[cfg(target_os = "macos")]
+                        child.wait().map_err(|e| Error::io("reap the command", e))?;
                         return Ok(status.code());
                     }
                     Ok(None) => std::thread::sleep(Duration::from_millis(20)),

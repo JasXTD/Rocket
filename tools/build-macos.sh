@@ -121,13 +121,13 @@ cargo_run test "${common[@]}" -p rocket-git --lib integration_worker::preflight_
 # Core platform services only. These calls are real Darwin runtime tests, unlike
 # cross-compilation. Fixtures use the runner's native filesystem and synthetic data.
 for filter in advisory_tool::tests::sha256 local_files::unix_tests local_storage:: \
-    runner::macos_git::tests runner::tests write_gate::tests; do
+    runner::macos_git::tests runner::tests process_tree:: write_gate::tests; do
     cargo_run test "${common[@]}" -p rocket-git --lib "$filter"
 done
 export ROCKET_TEST_REPOSITORIES
 ROCKET_TEST_REPOSITORIES=$(mktemp -d "${TMPDIR:-/tmp}/rocket-core-repositories.XXXXXXXX")
 echo "Isolated repository fixtures: $ROCKET_TEST_REPOSITORIES"
-for suite in preview_lock repository_setup clone file_actions conflict_editor ssh_keys ssh_discovery ssh_direct; do
+for suite in preview_lock repository_setup clone file_actions conflict_editor ssh_keys ssh_discovery ssh_direct custom_commands; do
     cargo_run test "${common[@]}" -p rocket-git --test "$suite"
 done
 # Never recursively clean a failed fixture; rmdir requires successful cleanup.

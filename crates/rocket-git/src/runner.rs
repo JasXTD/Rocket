@@ -971,7 +971,7 @@ struct GitProcess {
 impl RunningProcess for GitProcess {
     fn terminate(&self) -> std::io::Result<()> { self.tree.terminate() }
     fn wait(&mut self) -> std::io::Result<std::process::ExitStatus> { self.child.wait() }
-    fn try_wait(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> { self.child.try_wait() }
+    fn try_wait(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> { crate::process_tree::poll_exit(&mut self.child) }
 }
 
 pub(crate) struct ProcessPipes<I, O, E> {
@@ -1169,6 +1169,14 @@ fn collect_process(
                     // Helpers retaining inherited pipes must not survive their Git parent.
                     process.terminate()
                         .map_err(|e| Error::io("close Git process tree", e))?;
+                    // Darwin's observation kept the PID reserved during cleanup.
+                    #[cfg(target_os = "macos")]
+                    {
+                        let reaped = process.wait().map_err(|e| Error::io("reap Git", e))?;
+                        debug_assert_eq!(status, reaped);
+                        break reaped;
+                    }
+                    #[cfg(not(target_os = "macos"))]
                     break status;
                 }
                 Ok(None) => thread::sleep(Duration::from_millis(5)),
