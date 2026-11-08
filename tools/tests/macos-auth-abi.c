@@ -22,7 +22,7 @@ SIGNATURE(SecItemCopyMatching, OSStatus (*)(CFDictionaryRef, CFTypeRef *));
 SIGNATURE(SecItemAdd, OSStatus (*)(CFDictionaryRef, CFTypeRef *));
 SIGNATURE(SecAccessCreate, OSStatus (*)(CFStringRef, CFArrayRef, SecAccessRef *));
 SIGNATURE(SecTrustedApplicationCreateFromPath, OSStatus (*)(const char *, SecTrustedApplicationRef *));
-SIGNATURE(SecRandomCopyBytes, int (*)(SecRandomRef, size_t, uint8_t *));
+SIGNATURE(SecRandomCopyBytes, int (*)(SecRandomRef, size_t, void *));
 SIGNATURE(SecKeychainCreate, OSStatus (*)(const char *, UInt32, const void *, Boolean, SecAccessRef, SecKeychainRef *));
 SIGNATURE(SecKeychainDelete, OSStatus (*)(SecKeychainRef));
 SIGNATURE(SecKeychainUnlock, OSStatus (*)(SecKeychainRef, UInt32, const void *, Boolean));

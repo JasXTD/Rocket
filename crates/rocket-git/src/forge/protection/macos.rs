@@ -47,7 +47,7 @@ unsafe extern "C" {
 }
 #[link(name = "Security", kind = "framework")]
 unsafe extern "C" {
-    fn SecRandomCopyBytes(random: Cf, count: usize, bytes: *mut u8) -> i32;
+    fn SecRandomCopyBytes(random: Cf, count: usize, bytes: *mut c_void) -> i32;
     fn SecKeychainCopyDefault(keychain: *mut Cf) -> i32;
     fn SecKeychainGetUserInteractionAllowed(allowed: *mut u8) -> i32;
     fn SecKeychainSetUserInteractionAllowed(allowed: u8) -> i32;
@@ -348,7 +348,7 @@ impl Store for Keychain {
         }
     }
     fn random(&self, bytes: &mut [u8]) -> Result<()> {
-        check(unsafe { SecRandomCopyBytes(ptr::null(), bytes.len(), bytes.as_mut_ptr()) })
+        check(unsafe { SecRandomCopyBytes(ptr::null(), bytes.len(), bytes.as_mut_ptr().cast()) })
     }
 }
 

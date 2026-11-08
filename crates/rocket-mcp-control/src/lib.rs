@@ -469,12 +469,12 @@ fn secret() -> io::Result<String> {
     {
         #[link(name = "Security", kind = "framework")]
         unsafe extern "C" {
-            fn SecRandomCopyBytes(random: *const std::ffi::c_void, count: usize, bytes: *mut u8) -> i32;
+            fn SecRandomCopyBytes(random: *const std::ffi::c_void, count: usize, bytes: *mut std::ffi::c_void) -> i32;
         }
         let mut bytes = [0u8; 32];
         // SAFETY: kSecRandomDefault is NULL; the writable buffer has count bytes.
         // No keychain access, credentials, or persistent system configuration.
-        let status = unsafe { SecRandomCopyBytes(std::ptr::null(), bytes.len(), bytes.as_mut_ptr()) };
+        let status = unsafe { SecRandomCopyBytes(std::ptr::null(), bytes.len(), bytes.as_mut_ptr().cast()) };
         if status != 0 {
             return Err(io::Error::other(format!("macOS could not generate an MCP access token (status {status})")));
         }
