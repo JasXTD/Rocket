@@ -1,10 +1,41 @@
 # Apple Silicon macOS preparation
 
-Status: steps 1–5, local preparation, core platform services, terminal/MCP,
-credentials/SSH, desktop adapters and development app packaging.
-A cross-compilation check is not proof that
-the app links, launches or works on macOS. GitHub Actions and EC2 Mac acceptance
-are separate gates; no supported macOS release is published by this workflow.
+Status: steps 1–5 and the native Apple Silicon CI gate passed, including the
+development app bundle. Bare-metal acceptance remains pending; no supported
+macOS release is published by this workflow.
+
+## Native result (2026-11-08)
+
+[Run 42491021304](https://github.com/JasXTD/Rocket/actions/runs/42491021304) passed
+on source commit `424db2e0b601606b4d3ddc641accb82d2a837510`, with no local changes.
+The runner used macOS **15.8.2 (24H232)**, the **15.5 SDK**, Rust **1.99.1** and
+Git **2.56.0**, all native arm64.
+
+- All-target compilation, SDK ABI checks and **198 affected Rust test executions**
+  passed. These include storage/ACL safety, process cleanup, cancellation, Git
+  operations, disposable Keychain, SSH and the explicit Lua refusal boundary.
+- **33 localhost MCP checks** passed across terminal interruption, Unicode cell
+  alignment, SSH discovery/import and desktop controls. They include compact
+  windows, external edits, cancellation, local-change preservation and private
+  diagnostics. Tests use disposable repositories, keys and profiles.
+- Packaged CLI checks passed for version/JSON, Unicode status, cancellation,
+  errors, preservation and diagnostics. Package/icon/process checks passed;
+  checks that require the normal user keyring remain deliberately excluded.
+- The five arm64 executables linked and passed package validation; the packaged
+  CLI and native UI through MCP ran successfully. Bundle inventory, per-file hashes,
+  ad-hoc signatures and ZIP extraction/verification passed on macOS. The downloaded
+  artifact digest, archive checksum and manifest were independently rechecked.
+
+`Rocket-macos-arm64-development.zip` is **90,052,302 bytes**. SHA-256:
+`aa453c3796039a413130f454464a5d79373ec70f36c4dcb77ec6f7997a7ec49d`.
+This is a development build for macOS 15+, not a notarized distribution.
+Its embedded build record identifies the tested source; subsequent documentation
+changes do not change these binaries.
+
+Native screenshots confirm readable CJK text in the diff, terminal and repository
+browser, plus usable compact dialogs. They also show missing emoji glyph coverage
+in the diff and the explicit automatic-refresh warning. Passing Unicode cell
+tests does not establish complete glyph rendering or real IME behavior.
 
 ## Build and evidence
 
@@ -103,16 +134,16 @@ Rocket remains private; this preparation does not change its visibility.
 | Area | Current boundary / follow-up |
 | --- | --- |
 | Lua | Execution explicitly refused. See [sandbox investigation](MacOS-lua-sandbox.md). |
-| Terminal | Step 3 Darwin PTY source implemented; native job-control, zsh, resize, Ctrl+C and keyboard acceptance pending. |
-| Localhost MCP | Step 3 secure token generation and macOS process/probe adapters implemented; native Mac execution pending. |
-| Credentials / SSH | Step 4 Keychain and system OpenSSH source adapters implemented; native locked/access-denied behavior, disposable-agent tests and signed-helper interoperability still require Mac acceptance. |
-| Filesystem / hashing | Step 2 source port complete; native APFS/ACL/Unicode-normalization acceptance pending. Unsupported atomic operations fail without an overwriting fallback. |
+| Terminal | Native isolated Bash job control, resize, Ctrl+C, same-shell recovery, history and completion passed. Normal interactive zsh, user profiles and physical keyboard acceptance remain pending. |
+| Localhost MCP | Native windows, secure tokens, Host/Origin refusal and the four affected suites passed. This does not certify every Rocket workflow on Mac. |
+| Credentials / SSH | Disposable Keychain roundtrip/tamper/locked checks, disposable-agent tests and SSH discovery/import passed. Normal-account access prompts, signed-helper upgrades and live hosted authentication still need Mac acceptance. |
+| Filesystem / hashing | Native ACL, storage, locks, atomic file/repository operations and recovery checks passed. Additional volumes and Unicode-normalization edge cases need acceptance. Unsupported atomic operations fail without an overwriting fallback. |
 | Git | Step 2 filesystem-only installed-Git discovery and launcher refusal implemented; Finder environment and installed Git versions still need native acceptance. Windows' bundle is never selected. |
-| Desktop | Step 5 Command bindings, CJK fonts, system languages, executable picker and Finder/browser handoffs implemented. A development `.app` is prepared; actual Mac IME, clipboard, Retina, native menu bar and Finder launch still need acceptance. |
+| Automatic repository refresh | No macOS filesystem watcher is implemented. Use F5 to refresh after external changes; the UI displays a warning. Windows and Linux retain their own watchers. |
+| Desktop | Native Command/Control bindings, CJK text, compact dialogs and persistence passed. Real IME, clipboard, Retina, Finder launch and broader emoji coverage still need work/acceptance. A native macOS menu bar is not implemented. |
 | Spell checking / updates | macOS adapters and signed `.app` update/rollback remain absent. |
 
-The next runtime gate is a native window and localhost MCP on GitHub's Mac runner.
-After that, use an isolated ordinary-user account on an **Apple Silicon EC2 Mac**
+The next runtime gate is an isolated ordinary-user account on an **Apple Silicon EC2 Mac**
 for bare-metal acceptance: Finder/Gatekeeper, Keychain, SSH agent, terminal,
 Unicode files, cancellation and recovery. An Intel EC2 Mac needs a separate build.
 Do not use a headless build or a remote desktop session to claim physical-display,
@@ -134,9 +165,9 @@ the existing approved Noto Sans CJK 2.004 bytes supply Chinese/Japanese/Korean
 fallbacks, including monospace editor/terminal faces. No font is downloaded or
 installed. The development archive includes its license and notice. Color emoji,
 IME composition and physical keyboard layouts still need real Mac inspection.
-The step-5 WSL capture confirmed CJK and combining accents, but still showed a
-missing crab emoji in the diff's existing outline-font fallback. General emoji
-coverage is not established by the CJK checks.
+The WSL and native Mac captures confirmed CJK and combining accents, but still
+showed a missing crab emoji in the diff's existing outline-font fallback. General
+emoji coverage is not established by the CJK or terminal cell-alignment checks.
 Preferred language and Region come from read-only CoreFoundation APIs, so a
 Finder launch need not inherit a shell's LANG. Rocket's explicit language setting
 continues to override automatic selection. See Apple's [locale declarations](https://github.com/apple-oss-distributions/CF/blob/main/CFLocale.h)
@@ -203,7 +234,7 @@ the same byte limits, error propagation and per-chunk cancellation checks.
   requires **Git 2.46+** and uses the caller's limits/cancellation. A non-default
   Xcode installation can be selected explicitly; Rocket does not change the
   active developer directory or start an installer. Credentials/SSH are covered
-  by step 4 below, with native runtime acceptance still pending.
+  by step 4 below; live hosted authentication from a normal Mac remains pending.
 
 Implementation references: Apple's [Application Support directory](https://developer.apple.com/library/archive/documentation/FileManagement/Conceptual/FileSystemProgrammingGuide/MacOSXDirectories/MacOSXDirectories.html),
 [rename flags/ABI](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/sys/stdio.h),
@@ -283,8 +314,9 @@ missing key or malformed record fails visibly without replacing anything. No key
 is created during decryption, and simultaneous creation reads back the winning
 add-only item. The wrapping key is not cached on Mac, so a later lock/access change
 is honored. The synchronous OS call cannot be interrupted internally; cancellation
-is checked around it and before credential-file publication. The native gate must
-measure prompt-free failures on the actual OS.
+is checked around it and before credential-file publication. The native fixture
+passed its locked-Keychain refusal check; a normal user's access prompts and
+permissions still need separate acceptance.
 
 This first implementation uses the legacy/file-based Keychain because the
 development binaries do not have a Developer ID/access-group identity. Ad-hoc
@@ -316,7 +348,9 @@ restores the search list (creation can register it), verifies the default/search
 list remain unchanged, and covers roundtrip, duplicate adds, tampering and a
 locked Keychain. Do not enable this fixture in a personal macOS login. It does not
 read/write ordinary Keychain items, unlock the login Keychain or reset any Keychain.
-The prepared test is not yet executed on Mac.
+This disposable-Keychain fixture passed on the ephemeral native Apple Silicon
+runner. That does not establish access prompts, upgrades or helper interoperability
+with a normal user's existing Keychain.
 
 Sources: Apple's [SecItem declarations](https://github.com/apple-oss-distributions/Security/blob/main/keychain/headers/SecItem.h),
 [Keychain API](https://github.com/apple-oss-distributions/Security/blob/main/OSX/libsecurity_keychain/lib/SecKeychain.h),
@@ -333,7 +367,7 @@ cargo check --offline --locked --workspace --all-targets --target aarch64-apple-
 ```
 
 It does not compile the optional C Lua runtime, link against Apple's SDK, or
-execute the macOS-only tests. The native workflow handles those checks later.
+execute the macOS-only tests. The native workflow provides that separate evidence.
 For supported-platform preflight regressions:
 
 ```sh
