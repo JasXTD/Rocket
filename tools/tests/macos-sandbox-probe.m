@@ -45,7 +45,7 @@ static NSDictionary *file_probe(const char *path, bool write_mode) {
         saved = success ? 0 : errno;
         close(fd);
     }
-    return @{ @"opened": @(fd >= 0), @"success": @(success), @"errno": @(saved) };
+    return @{ @"opened": fd >= 0 ? @YES : @NO, @"success": success ? @YES : @NO, @"errno": @(saved) };
 }
 
 static NSDictionary *limit_probe(int resource, rlim_t value) {
@@ -57,7 +57,7 @@ static NSDictionary *limit_probe(int resource, rlim_t value) {
     errno = 0;
     int result = setrlimit(resource, &desired), saved = errno;
     bool checked = getrlimit(resource, &actual) == 0;
-    return @{ @"set": @(result == 0), @"errno": @(saved), @"read_back": @(checked),
+    return @{ @"set": result == 0 ? @YES : @NO, @"errno": @(saved), @"read_back": checked ? @YES : @NO,
               @"soft": @(checked ? actual.rlim_cur : 0), @"hard": @(checked ? actual.rlim_max : 0),
               @"requested": @(value) };
 }
@@ -75,7 +75,7 @@ static void memory_probe(const char *kind) {
         mach_vm_address_t address = 0;
         kern_return_t result = mach_vm_allocate(mach_task_self(), &address, allocation_bytes, VM_FLAGS_ANYWHERE);
         if (result == KERN_SUCCESS) mach_vm_deallocate(mach_task_self(), address, allocation_bytes);
-        emit(@{ @"limit": limit, @"attempted": @YES, @"allocated": @(result == KERN_SUCCESS),
+        emit(@{ @"limit": limit, @"attempted": @YES, @"allocated": result == KERN_SUCCESS ? @YES : @NO,
                 @"native_code": @(result), @"bytes": @(allocation_bytes) });
     } else {
         int flags = MAP_ANON | (strstr(kind, "shared") ? MAP_SHARED : MAP_PRIVATE);
@@ -84,7 +84,7 @@ static void memory_probe(const char *kind) {
         int saved = errno;
         bool allocated = address != MAP_FAILED;
         if (allocated) munmap(address, allocation_bytes);
-        emit(@{ @"limit": limit, @"attempted": @YES, @"allocated": @(allocated),
+        emit(@{ @"limit": limit, @"attempted": @YES, @"allocated": allocated ? @YES : @NO,
                 @"errno": @(saved), @"bytes": @(allocation_bytes) });
     }
 }
@@ -128,7 +128,7 @@ int main(int argc, const char **argv) {
                 saved = connected ? 0 : errno;
                 close(fd);
             }
-            emit(@{ @"socket": @(fd >= 0), @"connected": @(connected), @"errno": @(saved) });
+            emit(@{ @"socket": fd >= 0 ? @YES : @NO, @"connected": connected ? @YES : @NO, @"errno": @(saved) });
         } else if (strcmp(operation, "fork") == 0 || strcmp(operation, "limited-fork") == 0) {
             NSDictionary *limit = strcmp(operation, "limited-fork") == 0 ? limit_probe(RLIMIT_NPROC, 0) : @{};
             errno = 0;
@@ -136,8 +136,8 @@ int main(int argc, const char **argv) {
             int saved = errno, status = 0;
             if (child == 0) _exit(0);
             if (child > 0 && waitpid(child, &status, 0) != child) return 93;
-            emit(@{ @"created": @(child > 0), @"errno": @(child < 0 ? saved : 0),
-                    @"reaped": @(child > 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0), @"limit": limit });
+            emit(@{ @"created": child > 0 ? @YES : @NO, @"errno": @(child < 0 ? saved : 0),
+                    @"reaped": child > 0 && WIFEXITED(status) && WEXITSTATUS(status) == 0 ? @YES : @NO, @"limit": limit });
         } else if (strncmp(operation, "as-", 3) == 0 || strncmp(operation, "data-", 5) == 0) {
             if (!strstr(operation, "private") && !strstr(operation, "shared") && !strstr(operation, "mach")) return 90;
             memory_probe(operation);
