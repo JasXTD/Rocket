@@ -284,13 +284,6 @@ fn unencrypted_direct_key_needs_no_saved_passphrase() {
                 .finish(&c)
                 .unwrap();
             assert!(!p.encrypted && !p.passphrase_saved);
-            #[cfg(target_os = "macos")]
-            {
-                let settings=helper(&p,&["-G","git@github.com"]);
-                assert!(settings.status.success());
-                let settings=String::from_utf8(settings.stdout).unwrap();
-                assert!(settings.lines().any(|line| matches!(line,"usekeychain false"|"usekeychain no")));
-            }
             assert!(
                 m.check_authentication(&p, SshAuthentication::Direct, &c)
                     .unwrap()

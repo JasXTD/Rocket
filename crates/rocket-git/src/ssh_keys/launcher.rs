@@ -138,34 +138,7 @@ fn launch(arguments: Vec<OsString>) -> Result<i32> {
             &CancellationToken::new(),
         )?;
         command.arg("-F").arg(git_path(&p.config));
-        for option in [
-            "IdentityAgent=none",
-            "IdentitiesOnly=yes",
-            "AddKeysToAgent=no",
-            "StrictHostKeyChecking=yes",
-            "UpdateHostKeys=no",
-            "VerifyHostKeyDNS=no",
-            "ForwardAgent=no",
-            "ClearAllForwardings=yes",
-            "PasswordAuthentication=no",
-            "KbdInteractiveAuthentication=no",
-            "PreferredAuthentications=publickey",
-            "BatchMode=no",
-            "NumberOfPasswordPrompts=1",
-            "ConnectTimeout=15",
-            "ConnectionAttempts=1",
-            "ProxyCommand=none",
-            "ProxyJump=none",
-            "PermitLocalCommand=no",
-            "ControlMaster=no",
-            "ControlPath=none",
-        ] {
-            command.arg("-o").arg(option);
-        }
-        // The selected Rocket credential is the only passphrase source in direct
-        // mode. Do not silently consult or modify Apple's separate SSH Keychain.
-        #[cfg(target_os = "macos")]
-        command.args(["-o", "UseKeychain=no"]);
+        restrict_direct_authentication(&mut command);
         command.args(&arguments[2..]);
     }
     command
@@ -179,6 +152,37 @@ fn launch(arguments: Vec<OsString>) -> Result<i32> {
         .env_remove("SSH_AGENT_PID");
     let status = command.status().map_err(|_| fail(SshFailure::ToolFailed))?;
     Ok(status.code().unwrap_or(1))
+}
+
+fn restrict_direct_authentication(command: &mut Command) {
+    for option in [
+        "IdentityAgent=none",
+        "IdentitiesOnly=yes",
+        "AddKeysToAgent=no",
+        "StrictHostKeyChecking=yes",
+        "UpdateHostKeys=no",
+        "VerifyHostKeyDNS=no",
+        "ForwardAgent=no",
+        "ClearAllForwardings=yes",
+        "PasswordAuthentication=no",
+        "KbdInteractiveAuthentication=no",
+        "PreferredAuthentications=publickey",
+        "BatchMode=no",
+        "NumberOfPasswordPrompts=1",
+        "ConnectTimeout=15",
+        "ConnectionAttempts=1",
+        "ProxyCommand=none",
+        "ProxyJump=none",
+        "PermitLocalCommand=no",
+        "ControlMaster=no",
+        "ControlPath=none",
+    ] {
+        command.arg("-o").arg(option);
+    }
+    // The selected Rocket credential is the only passphrase source in direct
+    // mode. Do not silently consult or modify Apple's separate SSH Keychain.
+    #[cfg(target_os = "macos")]
+    command.args(["-o", "UseKeychain=no"]);
 }
 
 fn validate_git_arguments(arguments: &[OsString], p: &SshProfile) -> Result<()> {
@@ -334,6 +338,24 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn direct_ssh_launch_disables_other_credential_sources_and_refuses_overrides() {
+        let mut command = Command::new("ssh"); // inspect argv; no PATH lookup or launch
+        restrict_direct_authentication(&mut command);
+        let arguments: Vec<_> = command.get_args().collect();
+        for option in ["IdentityAgent=none", "AddKeysToAgent=no", "StrictHostKeyChecking=yes"] {
+            assert!(arguments.windows(2).any(|pair| pair == ["-o", option]));
+        }
+        // Apple's ssh -G omits UseKeychain even though readconf.c parses it.
+        // Assert the actual command boundary, not a fabricated configuration line.
+        #[cfg(target_os = "macos")]
+        assert!(arguments.windows(2).any(|pair| pair == ["-o", "UseKeychain=no"]));
+        let p = test_profile();
+        for option in ["UseKeychain=yes", "IdentityAgent=external", "AddKeysToAgent=yes"] {
+            assert!(validate_git_arguments(&args(&["-o", option, "git@example.invalid", "git-upload-pack 'repo'"]), &p).is_err());
+        }
     }
 
     #[test]
