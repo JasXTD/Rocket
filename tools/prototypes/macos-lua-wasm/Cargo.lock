@@ -737,6 +737,8 @@ dependencies = [
 name = "rocket-lua-wasm-probe"
 version = "0.0.0"
 dependencies = [
+ "cc",
+ "libc",
  "serde_json",
  "wasmtime",
  "wat",

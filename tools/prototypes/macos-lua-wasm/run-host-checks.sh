@@ -21,9 +21,13 @@ cargo test --offline --locked -p rocket-lua-wasm-probe --lib
 cargo build --offline --locked -p rocket-lua-wasm-probe --bin rocket-lua-wasm-probe
 "$CARGO_TARGET_DIR/debug/rocket-lua-wasm-probe" "$guest" "$out/compiled"
 export ROCKET_WASM_GUEST="$out/compiled/guest.cwasm"
-cargo build --offline --locked -p rocket-lua-wasm-probe --features embedded --bin rocket-lua-wasm-worker-prototype
-node test-worker.cjs "$CARGO_TARGET_DIR/debug/rocket-lua-wasm-worker-prototype" "$out/pulley.json" pulley "$out/native-reference.json"
-node - "$guest" "$ROCKET_WASM_GUEST" "$CARGO_TARGET_DIR/debug/rocket-lua-wasm-worker-prototype" "$out/artifacts.json" <<'JS'
+cargo build --offline --locked -p rocket-lua-wasm-probe --features embedded --bin rocket-lua-wasm-worker-prototype --bin containment-probe
+node test-containment.cjs "$CARGO_TARGET_DIR/debug/rocket-lua-wasm-worker-prototype" "$CARGO_TARGET_DIR/debug/containment-probe" "$out/containment"
+cp "$out/containment/containment.json" "$out/containment.json"
+worker=$(node -e 'process.stdout.write(require(process.argv[1]).worker)' "$out/containment.json")
+export ROCKET_TEST_LIFELINE=1
+node test-worker.cjs "$worker" "$out/pulley.json" pulley "$out/native-reference.json"
+node - "$guest" "$ROCKET_WASM_GUEST" "$worker" "$out/artifacts.json" <<'JS'
 const fs = require('node:fs'), crypto = require('node:crypto');
 const inputs = process.argv.slice(2), output = inputs.pop(), labels = ['wasm', 'pulley', 'worker'];
 const artifacts = inputs.map((p, i) => ({ name: labels[i], bytes: fs.statSync(p).size, sha256: crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex') }));

@@ -275,6 +275,47 @@ The CI and WSL guest hashes differ, so this is not a reproducible-byte build cla
 Both were built from the reviewed source with the approved tools and independently
 passed the same contract and output checks.
 
+### Containment qualification in progress (2026-11-09)
+
+The standalone prototype now refuses Mac input unless it verifies an exact
+App Sandbox-only entitlement dictionary and hardened runtime signing. Disposable
+CI signs the actual embedded-guest worker and a separate, fixed native probe.
+This is ad-hoc development signing, not Developer ID or broker/helper identity
+authentication. Windows/Linux production sandboxes and root dependencies remain
+unchanged. The prototype directly reuses already approved `libc 0.2.191` and
+`cc 1.11.1`; its 124-version registry graph is unchanged.
+
+A fourth pipe is a parent lifeline, separate from request stdin. Startup checks
+the expected parent PID, rejects a closed lifeline, closes inherited descriptors
+above 3 on Mac, and lowers/read-backs core, process, CPU, file-size and descriptor
+limits. A native watchdog stops on parent loss, a five-second deadline, failed
+memory sampling or observed memory above 192 MiB. It samples the larger of RSS
+and physical footprint every five milliseconds, including shared/compressed
+memory accounting. **192 MiB is a monitor threshold, not a kernel-enforced hard
+allocation cap.** Scheduling and allocation bursts permit overshoot. The extra
+64 MiB above linear memory provides prototype headroom for VM, exception heap,
+request/output buffers and the native process; native results must qualify it.
+The watchdog is trusted native code and cannot contain a native VM compromise.
+
+The hard VM limits remain 128 MiB linear memory, 4 MiB exception heap reservation,
+4096 table elements and 512 KiB Wasm stack, with fuel and a fresh store/process.
+The guest has no host imports or access to persistent App Sandbox container
+storage. This does not assert that macOS creates a fresh container per run.
+
+Local WSL checks pass: 12 VM checks including touched linear memory, retained
+exceptions and repeated catches; eight parent/lifeline/deadline checks; and 14 full
+Lua output comparisons plus input refusal/cancellation with the guard enabled.
+Windows passes the seven affected controller checks. Native Mac qualification
+is pending: actual signed worker parity, external file/symlink/TCP/Unix-socket
+denial with positive controls, inherited high descriptors, blocked fork, bounded
+private/shared pressure, and parent death during startup/input/Lua/native wait.
+Only disposable native tests allocate above the guest cap, bounded at 256 MiB.
+
+Public SDK contracts used for the first-party native shim:
+[code signing information](https://developer.apple.com/documentation/security/seccodecopysigninginformation(_:_:_:)),
+[hardened runtime flag](https://developer.apple.com/documentation/security/seccodesignatureflags/runtime),
+and Apple's [task VM info declarations](https://github.com/apple-oss-distributions/xnu/blob/xnu-11417.140.69/osfmk/mach/task_info.h).
+
 After the run, the conservative ledger is 57 rounded minutes / **$3.534 of $6**,
 counting the Linux job at the Mac rate. This is a budget estimate, not an invoice.
 No further workflow was dispatched. The prototype compatibility stage passes;

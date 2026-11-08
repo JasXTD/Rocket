@@ -19,6 +19,21 @@ fn run() -> Result<Vec<u8>> {
     invoke_ready(&e, &m, &input, || eprintln!("{{\"event\":\"running\"}}"))
 }
 fn main() {
+    // The Mac executable never accepts input without its signed native guard.
+    // Linux can opt into the same lifeline for focused lifecycle checks only.
+    #[cfg(unix)]
+    let guard = if cfg!(target_os = "macos") || std::env::args().len() > 1 {
+        use rocket_lua_wasm_probe::guard::{self, SETUP};
+        match guard::parent_argument().and_then(guard::start) {
+            Ok(value) => Some(value),
+            Err(code) => {
+                eprintln!("{{\"event\":\"guard_refused\",\"code\":\"{code}\"}}");
+                std::process::exit(SETUP);
+            }
+        }
+    } else {
+        None
+    };
     let (output, status) = match run() {
         Ok(bytes) => (bytes, 0),
         Err(error) => {
@@ -38,6 +53,13 @@ fn main() {
         }
     };
     // Never log source text, VM error payloads or user data to stderr.
+    #[cfg(unix)]
+    if let Some(guard) = guard {
+        eprintln!(
+            "{{\"event\":\"guard\",\"peak_bytes\":{}}}",
+            guard.peak_bytes()
+        );
+    }
     if std::io::stdout().write_all(&output).is_err() {
         std::process::exit(3);
     }

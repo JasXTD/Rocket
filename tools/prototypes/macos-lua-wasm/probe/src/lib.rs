@@ -1,4 +1,6 @@
 //! Test-only Pulley boundary. No production caller or general WASI context.
+#[cfg(unix)]
+pub mod guard;
 use wasmtime::{
     Config, Engine, Error, Instance, Linker, Module, Result, Store, StoreLimits, StoreLimitsBuilder,
 };
@@ -326,6 +328,113 @@ mod tests {
         assert_eq!(
             error.downcast_ref::<wasmtime::Trap>(),
             Some(&wasmtime::Trap::Interrupt)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn resident_linear_pages_stay_bounded_and_fresh_store_recovers() -> Result<()> {
+        let e = engine()?;
+        let m = Module::new(
+            &e,
+            r#"(module (memory (export "memory") 1 2048)
+            (func (export "fill") (result i32)
+                i32.const 2047 memory.grow drop
+                i32.const 0 i32.const 90 i32.const 134217728 memory.fill
+                i32.const 1 memory.grow))"#,
+        )?;
+        let mut s = store(&e)?;
+        let i = instantiate(&e, &m, &mut s)?;
+        assert_eq!(
+            i.get_typed_func::<(), i32>(&mut s, "fill")?
+                .call(&mut s, ())?,
+            -1
+        );
+        let memory = i.get_memory(&mut s, "memory").unwrap();
+        assert_eq!(memory.data_size(&s), MEMORY_LIMIT);
+        assert!(memory.data(&s).iter().step_by(4096).all(|b| *b == 90));
+        drop(s);
+        let mut fresh = store(&e)?;
+        let i = instantiate(&e, &m, &mut fresh)?;
+        assert_eq!(
+            i.get_memory(&mut fresh, "memory").unwrap().data(&fresh)[0],
+            0
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn retained_exceptions_exhaust_bounded_heap_then_fresh_store_works() -> Result<()> {
+        let e = engine()?;
+        // Large retained payloads reach the 4 MiB exception heap before fuel or
+        // the 4096-element table. Never request an unbounded native allocation.
+        let parameters = "i64 ".repeat(512);
+        let payload = "i64.const 1 ".repeat(512);
+        let source = format!(
+            r#"(module
+            (tag $e (param {parameters})) (table 4096 exnref)
+            (global (export "count") (mut i32) (i32.const 0))
+            (func (export "retain")
+                (loop $again
+                    global.get 0
+                    (block $caught (result exnref)
+                        (try_table (catch_all_ref $caught) {payload} throw $e)
+                        unreachable)
+                    table.set
+                    global.get 0 i32.const 1 i32.add global.set 0
+                    br $again)))"#
+        );
+        let m = Module::new(&e, source)?;
+        for _ in 0..2 {
+            let mut s = store(&e)?;
+            let i = instantiate(&e, &m, &mut s)?;
+            let error = i
+                .get_typed_func::<(), ()>(&mut s, "retain")?
+                .call(&mut s, ())
+                .unwrap_err();
+            assert!(error.is::<wasmtime::GcHeapOutOfMemory<()>>(), "{error:?}");
+            let count = i
+                .get_global(&mut s, "count")
+                .unwrap()
+                .get(&mut s)
+                .i32()
+                .unwrap();
+            assert!(count > 0 && count < 4096, "{count}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn repeated_catch_releases_exceptions_and_fuel_still_interrupts() -> Result<()> {
+        let e = engine()?;
+        let m = Module::new(
+            &e,
+            r#"(module (tag $e)
+            (global (export "count") (mut i32) (i32.const 0))
+            (func (export "run")
+                (loop $again
+                    (block $caught (try_table (catch $e $caught) throw $e))
+                    global.get 0 i32.const 1 i32.add global.set 0
+                    br $again)))"#,
+        )?;
+        let mut s = store(&e)?;
+        s.set_fuel(2_000_000)?;
+        let i = instantiate(&e, &m, &mut s)?;
+        let error = i
+            .get_typed_func::<(), ()>(&mut s, "run")?
+            .call(&mut s, ())
+            .unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<wasmtime::Trap>(),
+            Some(&wasmtime::Trap::OutOfFuel)
+        );
+        assert!(
+            i.get_global(&mut s, "count")
+                .unwrap()
+                .get(&mut s)
+                .i32()
+                .unwrap()
+                > 10_000
         );
         Ok(())
     }

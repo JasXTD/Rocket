@@ -44,6 +44,11 @@ On a native host with the approved Rust 1.99.1, run `prepare-deps.cjs NEW_DEPS h
 with Node, set `CARGO_HOME` to `NEW_DEPS/cargo-home` and `CARGO_TARGET_DIR` to a
 separate cache, then run `run-host-checks.sh ABSOLUTE_GUEST_WASM NEW_RESULTS` with
 Bash. The fixed Wasm must come from the reviewed source build, never an extension.
+Mac containment tests additionally require `ROCKET_MACOS_SANDBOX_DISPOSABLE_USER=1`
+and an ordinary disposable OS user. They create fresh ad-hoc signed app bundles
+and leave their containers to runner teardown. Never use a personal Mac account
+for these probes. The actual Mac worker refuses unsigned or extra-entitlement
+launches and requires a dedicated parent lifeline on descriptor 3.
 `build-guest.sh` and `run-checks.sh` retain the original failing stable-std baseline;
 the unwind-enabled guest uses `build-guest-unwind.sh`.
 
@@ -52,9 +57,13 @@ Linux job (10-minute timeout) and verifies its same-run SHA-256 before testing a
 Pulley host on Apple Silicon (15-minute timeout). It does not change a release or
 enable production Lua. Results have one-day retention; no build output enters Git.
 
-The 128 MiB limit applies to guest linear memory, not total native RSS. Native
-memory-pressure/exception-heap testing, signed helper binding, OS containment,
-parent death, inherited handles and production packaging remain separate gates.
+The 128 MiB limit applies to guest linear memory, not total native RSS. The new
+qualification runner covers bounded exception pressure, signed App Sandbox
+file/network controls, inherited descriptors, parent/lifeline loss and private/
+shared native pressure. Its 192 MiB native watchdog is a sampled threshold with
+possible overshoot, not a hard allocation cap. Local lifecycle/VM checks pass;
+this containment batch still needs native CI results. Production helper identity,
+broker integration, packaging and bare-metal testing remain separate gates.
 The current test worker also contains compiler code and is not a release-size
 measurement. Windows AppContainer and Linux Landlock/seccomp stay untouched.
 

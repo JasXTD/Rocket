@@ -46,6 +46,9 @@ jobs:
       CARGO_BUILD_JOBS: '3'
       CARGO_TERM_COLOR: never
       RUSTUP_TOOLCHAIN: '1.99.1'
+      # Fresh GitHub runner user only: ad-hoc App Sandbox containers are left to
+      # runner teardown, never created/removed in a developer's macOS account.
+      ROCKET_MACOS_SANDBOX_DISPOSABLE_USER: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -86,5 +89,6 @@ jobs:
             ${{ runner.temp }}/prototype-results/*.log
             ${{ runner.temp }}/prototype-results/*.json
             ${{ runner.temp }}/prototype-results/compiled/module.json
+            ${{ runner.temp }}/prototype-results/containment/containment.json
           retention-days: 1
           compression-level: 0

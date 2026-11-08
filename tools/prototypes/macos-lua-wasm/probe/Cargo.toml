@@ -9,6 +9,10 @@ publish.workspace = true
 embedded = []
 
 [[bin]]
+name = "containment-probe"
+path = "src/bin/containment.rs"
+
+[[bin]]
 name = "rocket-lua-wasm-worker-prototype"
 path = "src/bin/worker.rs"
 required-features = ["embedded"]
@@ -16,6 +20,12 @@ required-features = ["embedded"]
 [dependencies]
 wasmtime = { version = "=50.0.1", default-features = false, features = ["std", "runtime", "pulley", "cranelift", "gc", "gc-drc", "wat", "reexport-wasmparser"] }
 serde_json = "=1.0.151"
+
+[target.'cfg(unix)'.dependencies]
+libc = "=0.2.191"
+
+[build-dependencies]
+cc = "=1.11.1"
 
 [dev-dependencies]
 wat = "=1.263.0"
