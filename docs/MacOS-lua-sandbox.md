@@ -1,6 +1,7 @@
 # macOS Lua sandbox investigation
 
-Status: native characterization harness prepared, 2026-11-09. **No production
+Status: native characterization completed; WebAssembly route investigated,
+2026-11-09. **No production
 macOS sandbox is implemented or verified. Lua remains unavailable on macOS.** There is no environment variable,
 missing-hash workaround, in-process execution or unrestricted worker fallback.
 The development CI artifact excludes the Lua worker.
@@ -142,5 +143,40 @@ Apple explicitly documents unrestricted access to an app's own container in
 [Protecting user data with App Sandbox](https://developer.apple.com/documentation/security/protecting-user-data-with-app-sandbox).
 The persistence probe checks the concrete impact on Rocket's per-invocation contract.
 
-Native results are pending. No production launcher, VM security rule, dependency,
-Windows/Linux sandbox or release package has been changed by this first probe pass.
+### Measured result
+
+[Native run 42499156369](https://github.com/JasXTD/Rocket/actions/runs/42499156369)
+passed on `b1a4cbfefcb9f1a9f11bf2b434e3b52724d02823`, macOS 15.8.2,
+Apple Silicon, SDK 15.5. It ran 10 controller regressions, six native checks and
+four actual host/worker refusal tests, with no failures or skipped tests. The same
+10 controller regressions passed on Windows and WSL; WSL also verified the script
+refuses a non-Mac host before creating output.
+
+| Observation | Measured result and limit of the evidence |
+| --- | --- |
+| Exact entitlement and ordinary-user launch | Verified; only App Sandbox was granted. |
+| Synthetic outside-container file access and loopback connection | Denied, with successful unsandboxed positive controls. This does not cover every filesystem or IPC route. |
+| Container state across fresh processes | The second process read the first process's marker. Fresh processes alone do not remove persistent capabilities. |
+| Child creation | App Sandbox allowed one child, which immediately exited and was reaped. A separately tested hard `RLIMIT_NPROC=0` prevented that fork. |
+| 128 MiB `RLIMIT_AS` / `RLIMIT_DATA` | Both setters returned `EINVAL` in this Foundation helper. All six allocation probes correctly reported `attempted: false`; no memory cap was established. This is not a measurement of every possible native helper design. |
+| Stop | The controller observed process close 0.339 ms after sending its kill signal in this run. This is test-supervisor timing, not Rocket UI cancellation or parent-death proof. |
+
+The downloaded evidence ZIP was checked against GitHub's SHA-256:
+`87f52ef7365d8e2ad303b585584da46be2bd33e63cdd71b5d20e86f7bd80b33e`.
+Resource-limit read-backs use decimal strings so `RLIM_INFINITY` cannot be rounded
+into misleading evidence by JavaScript. The earlier run exposed two harness
+representation bugs (Objective-C numeric booleans and large-integer precision);
+both were corrected before the final result above.
+
+**App Sandbox alone does not meet the current invocation contract.** The user
+approved investigating an additional WebAssembly boundary; see the
+[proposed Lua-in-WebAssembly prototype](MacOS-lua-wasm.md). This is a change to
+the candidate architecture, not permission to weaken the existing isolation or
+enable production Lua. Broker identity, Mach/credential access, inherited handles,
+parent/supervisor death and final package binding remain unproved.
+
+No production launcher, VM security rule, dependency, Windows/Linux sandbox or
+release package changed in this characterization pass. The final workflow took
+38 seconds. The existing task ledger totals 53 rounded job-minutes, approximately
+$3.286 of the user-approved $6 included-compute cap; this is a conservative estimate,
+not a GitHub invoice. No further native run is needed for this research report.
