@@ -71,13 +71,15 @@ possible overshoot, not a hard allocation cap. Local lifecycle/VM checks and all
 the actual Lua worker's explicit lifeline-loss exit code. The native run also
 passes 12 VM, 18 runtime/schema, 14 Node checks, all 14 exact Lua comparisons and
 input/Stop cases; artifact digests and the zero-import guest were verified.
-Production helper identity,
-broker integration, packaging and bare-metal testing remain separate gates.
+App helper identity, broker integration and packaging subsequently passed in
+[run 42517429117](https://github.com/JasXTD/Rocket/actions/runs/42517429117).
+Bare-metal and Developer ID distribution testing remain separate gates.
 The current test worker also contains compiler code and is not a release-size
 measurement. Windows AppContainer and Linux Landlock/seccomp stay untouched.
 
 The test plan covers declarative UI/Unicode, callback errors and Lua unwinding,
 resource limits, exact imports, malformed output, cancellation and fresh state.
-Use only synthetic fixtures. The ordinary application remains fail-closed on Mac.
+Use only synthetic fixtures. Mac applications without a matching bound helper
+remain fail-closed; the integration workflow builds and tests the bound app.
 
 See [the architecture and remaining qualification gates](../../../docs/MacOS-lua-wasm.md).

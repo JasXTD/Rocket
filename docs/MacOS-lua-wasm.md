@@ -6,10 +6,11 @@ The approved dependency/tool archives were hash-verified, source-reviewed, scann
 by the user with Malwarebytes and staged outside production builds. An approved
 unwind-enabled standard-library rebuild fixed the initial callback-error failures.
 Native containment/lifecycle/pressure qualification passed (evidence below).
-The next authorized step binds that helper to Rocket.app. The native integration
-checks are pending in this working change; do not confuse earlier prototype
-qualification with app integration acceptance. Windows/Linux retain their native
-sandboxes and root Cargo dependencies.
+The signed helper is now bound to Rocket.app; native integration passed on
+2026-11-09 in [run 42517429117](https://github.com/JasXTD/Rocket/actions/runs/42517429117)
+on `d94c0dcf557967f18d04d31d5a33d5963c7623a1`. Windows/Linux retain their native
+sandboxes and root Cargo dependencies. Developer ID and bare-metal acceptance
+remain separate from this development-runner result.
 
 ## Recommendation
 
@@ -51,6 +52,38 @@ process can also replace an unsigned Rocket host. This is **not** Linux's sealed
 memfd guarantee. The in-process watchdog's trust/suspension limits and sampled
 192 MiB native threshold still apply; 128 MiB is the guest linear-memory limit.
 No new dependency versions or system software are introduced by integration.
+
+### Native app integration evidence
+
+The Darwin/arm64 run passed nine worker/preflight test entries (including the
+child-process fixture), two native-entry refusal checks and the production
+playground consumer test. These cover a real signed worker, Unicode results,
+sanitized script errors, instruction limits, pre-cancel, cancellation/reaping,
+output limits, timeout, parent exit during startup, changed hashes/resources,
+linked/writable-file refusal and normal snapshot removal. The native Lua entry
+point still refuses Mac execution; only the bound Wasm helper is accepted.
+
+All five application executables built with the final helper binding. Thirteen
+bundle tests were discovered: twelve passed, and the test that explicitly refuses
+native signing on other operating systems was skipped on Mac. Exact inventory,
+helper entitlements/identity, system-only dynamic dependencies, code signatures,
+host/hash matching and extracted ZIP verification passed. Both retained evidence
+ZIPs matched GitHub's SHA-256; the guest digest also matched its build sidecar.
+The earlier zero-import guest is unchanged:
+`c99cfc35909a145fd978668b216cbfadf9ce4ad1a89721c7af88ca7aed6a0c9b`.
+
+Signed helper SHA-256:
+`30052b155857800f0ee8eb6f1ed46570f71e9776d03157d3bb13438fd571075d`.
+The development ZIP was 103,270,986 bytes, SHA-256
+`5d04568616ca303320c0d695db0305eb8ac3c29d243b3e3e6069c355fe410243`.
+The ZIP was verified on the runner; only compact evidence was retained, not a
+release download. No GitHub release was published and no interactive desktop
+Lua UI or bare-metal session is claimed by these backend/package tests.
+
+Windows preflight/UI-MCP compilation and WSL's real native Lua worker/consumer
+tests passed. The final cumulative ledger is 69 rounded minutes, conservatively
+**$4.278 of the $6 included-compute cap** (all jobs counted at the Mac rate).
+This is a compute estimate, not an invoice; no billing settings were changed.
 
 The objective is unchanged Lua scripts and Rocket's existing reviewed request/UI
 protocol. A Lua/native-library fault should still be confined to WebAssembly
@@ -391,7 +424,7 @@ and Apple's [task VM info declarations](https://github.com/apple-oss-distributio
 This completes the requested prototype containment/lifecycle/pressure batch, not
 an exhaustive sandbox audit. The VM and native watchdog remain trusted code; a
 native VM compromise or externally suspended whole worker is outside the sampled
-watchdog guarantee. Production broker/helper identity, tamper-resistant package
-binding, reviewed IPC integration, Developer ID/notarization and bare-metal tests
-remain open. Production Mac Lua still refuses execution. Windows/Linux production
+watchdog guarantee. At this earlier prototype checkpoint, app binding and broker
+integration remained open; the app-integration evidence above supersedes that
+status. Developer ID/notarization and bare-metal tests remain open. Windows/Linux
 sandbox source and root Cargo manifests/lockfile remain unchanged.
