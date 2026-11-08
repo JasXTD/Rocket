@@ -1,5 +1,6 @@
 #!/bin/bash
-# Apple Silicon development build only. Lua remains disabled; no publisher identity,
+# Apple Silicon development build; optionally includes the qualified signed Lua helper.
+# No publisher identity,
 # credentials, release publication, system Git installation or system settings needed.
 set -euo pipefail
 umask 077
@@ -74,6 +75,15 @@ export CARGO_PROFILE_DEV_DEBUG=0
 export CARGO_PROFILE_TEST_DEBUG=0
 export MACOSX_DEPLOYMENT_TARGET=15.0
 export ROCKET_LUA_WORKER_SHA256=
+if [ -n "${ROCKET_MACOS_LUA_APP:-}" ]; then
+    # Built with tools/macos/build-lua-helper.sh first. Derive the hash from the
+    # final signed bytes, not a caller-supplied sidecar. Never re-sign this helper.
+    export ROCKET_LUA_WORKER_SHA256=$(node - "$ROCKET_MACOS_LUA_APP" <<'JS'
+const b=require('./tools/macos/bundle.cjs'),l=require('./tools/macos/lua-helper.cjs');
+l.native(process.argv[2]);process.stdout.write(l.inspect(process.argv[2],b.read,b.walk,b.macho));
+JS
+)
+fi
 build_target="$root/target/macos-stage1-cargo"
 common=(--locked --target "$target" --target-dir "$build_target")
 # macOS ships Bash 3.2: expanding an empty array with nounset fails there.
@@ -84,7 +94,12 @@ cargo_run() { rustup run "$toolchain" cargo "$@"; }
     echo '# macOS development app build identity'
     echo
     echo 'Development app with ad-hoc integrity signatures; not Developer-ID signed or notarized.'
-    echo 'Lua sandbox: unavailable (execution refused). Deployment target: macOS 15.'
+    if [ -n "$ROCKET_LUA_WORKER_SHA256" ]; then
+        echo "Lua sandbox: fixed Pulley guest + App Sandbox. Signed helper SHA-256: $ROCKET_LUA_WORKER_SHA256"
+    else
+        echo 'Lua sandbox: helper not supplied (execution refused).'
+    fi
+    echo 'Deployment target: macOS 15.'
     printf 'Affected check scope: %s\n' "$scope"
     printf 'Commit: '; git rev-parse HEAD
     printf 'Local changes: '; git status --porcelain | wc -l
@@ -203,4 +218,4 @@ mkdir "$out/archive-check"
 node tools/macos/bundle.cjs verify "$out/archive-check/Rocket-macos-arm64-development"
 (cd "$out"; /usr/bin/shasum -a 256 "$archive" > "$archive.sha256")
 echo 'PASS macOS compilation, affected native checks, packaged helpers, ad-hoc signatures and archive roundtrip.'
-echo 'Finder/Gatekeeper/EC2 Mac acceptance, Lua sandbox and distribution signing remain pending.'
+echo 'Finder/Gatekeeper/EC2 Mac acceptance and distribution signing remain pending. Lua requires a separately qualified bound helper.'

@@ -321,12 +321,25 @@ committed-memory accounting. CPU soft/hard limits are five/six seconds, alongsid
 the host's five-second wall deadline. The launcher clears ambient, effective,
 permitted and inheritable capabilities in the child; it does not change the host.
 This needs Landlock, which Linux 5.13 and later provide when it is switched on.
-Unsupported Windows policies, Linux without Landlock and other platforms fail closed;
+Apple Silicon macOS builds can include `Contents/Helpers/RocketLua.app`. It embeds
+the same Lua runtime as an import-free Wasm guest executed by Wasmtime/Pulley,
+with App Sandbox and hardened runtime around the native helper. Guest linear
+memory is bounded to 128 MiB; the native watchdog samples a 192 MiB RSS/footprint
+threshold (not a hard allocation cap). A dedicated lifeline stops it after parent
+exit, with an independent five-second deadline. CPU/kernel limits and VM fuel
+provide additional bounds. The host verifies a private copy's bound hash and
+signed resources before launch. No external Wasm/AOT module can be supplied.
+Mac builds without the matching signed helper refuse execution. Windows/Linux
+continue to use their existing native Lua workers.
+
+Unsupported Windows policies, Linux without Landlock and other architectures fail closed;
 there is no unrestricted fallback.
 
 Rocket compares the worker to the SHA-256 embedded in the host during the build,
-holds the source and staged image against modification (on Linux, it seals its copy
-in memory), and rejects mismatches before execution. Unsigned executables are supported without a certificate. A
+protects the staged image (on Linux, it seals its copy in memory), and rejects
+mismatches before execution. Mac copies use private per-run storage and ad-hoc
+code integrity signatures; this does not defend against arbitrary native code
+already executing as the same user. Developer ID is not needed for development. A
 hash binds the worker to its host; it cannot authenticate a host that was itself
 replaced. Review scripts and their requested access: the sandbox cannot prevent
 misuse of data deliberately supplied through the approved API or guarantee against

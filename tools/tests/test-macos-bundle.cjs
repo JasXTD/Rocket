@@ -17,8 +17,8 @@ function fixture(fn){
   const png=fs.readFileSync(path.join(__dirname,'../../docs/images/rocket-logo.png'));
   const bytes=Buffer.alloc(16+png.length);bytes.write('icns',0);bytes.writeUInt32BE(bytes.length,4);bytes.write('ic08',8);bytes.writeUInt32BE(png.length+8,12);png.copy(bytes,16);
   fs.writeFileSync(icon,bytes);fs.writeFileSync(info,'Synthetic bundle metadata fixture; not a runnable application.\n');
-  const stage=()=>b.stage(bins,icon,out,info),seal=()=>{stage();b.manifest(out);};
-  try{fn({root,bins,icon,out,stage,seal});assert.equal(path.dirname(root),parent);assert.equal(fs.realpathSync(root),root);assert(path.basename(root).startsWith('rocket-macos-bundle-'));fs.rmSync(root,{recursive:true});}
+  const stage=()=>b.stage(bins,icon,out,info,null),seal=()=>{stage();b.manifest(out);};
+  try{fn({root,bins,icon,out,info,stage,seal});assert.equal(path.dirname(root),parent);assert.equal(fs.realpathSync(root),root);assert(path.basename(root).startsWith('rocket-macos-bundle-'));fs.rmSync(root,{recursive:true});}
   catch(error){console.error('Failed package fixture preserved: '+root);throw error;}
 }
 test('Complete Unicode-path bundle has exact metadata, existing artwork and five sibling helpers',()=>fixture(f=>{
@@ -77,6 +77,30 @@ test('Non-executable helpers and writable package content fail on Unix',{skip:pr
 test('Signing/native validation refuses other operating systems',{skip:process.platform==='darwin'},()=>{
   assert.throws(()=>b.signDevelopment('/unused'),/macOS/);assert.throws(()=>b.nativeVerify('/unused'),/macOS/);
 });
+function luaFixture(f) {
+  const l=require('../macos/lua-helper.cjs'),app=path.join(f.root,'RocketLua.app');
+  for(const name of l.FILES) {
+    const file=path.join(app,name);fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o755});
+    fs.writeFileSync(file,name===l.EXE?binary():name.endsWith('Info.plist')?l.plist():'synthetic resource seal',{mode:name===l.EXE?0o755:0o644});
+  }
+  fs.writeFileSync(path.join(f.root,'LUA-NOTICES'),'Synthetic license fixture');
+  const digest=l.inspect(app,b.read,b.walk,b.macho);
+  return {l,app,digest,bind:()=>{for(const name of ['rocket','rocket-mcp'])fs.appendFileSync(path.join(f.bins,name),digest);},stage:()=>b.stage(f.bins,f.icon,f.out,f.info,app)};
+}
+test('Signed-helper snapshot requires both UI and MCP host hash bindings before packaging',()=>fixture(f=>{
+  const l=luaFixture(f);assert.throws(l.stage,/not bound/);assert(!fs.existsSync(f.out));
+  l.bind();l.stage();b.manifest(f.out);assert.deepEqual(b.verify(f.out).lua,{runtime:'pulley',sha256:l.digest});
+  const source=fs.readFileSync(path.join(l.app,l.l.EXE));
+  assert(fs.readFileSync(path.join(f.out,l.l.PREFIX,l.l.EXE)).equals(source));
+}));
+test('Missing sealed resources, changed helper metadata and signed-byte changes fail closed',()=>fixture(f=>{
+  const l=luaFixture(f),info=path.join(l.app,'Contents/Info.plist'),original=fs.readFileSync(info);
+  fs.appendFileSync(info,'changed');assert.throws(l.stage,/metadata/);assert(!fs.existsSync(f.out));fs.writeFileSync(info,original);
+  l.bind();l.stage();b.manifest(f.out);
+  fs.appendFileSync(path.join(f.out,l.l.PREFIX,l.l.EXE),'changed');assert.throws(()=>b.verify(f.out),/not bound/);
+  fs.writeFileSync(path.join(f.out,l.l.PREFIX,l.l.EXE),binary(),{mode:0o755});
+  fs.unlinkSync(path.join(f.out,l.l.PREFIX,'Contents/_CodeSignature/CodeResources'));assert.throws(()=>b.verify(f.out),/inventory/);
+}));
 test('The icon exporter writes ten correctly sized PNGs and never overwrites an existing directory',()=>{
   assert(process.env.ROCKET_MACOS_ICON_TOOL,'Set ROCKET_MACOS_ICON_TOOL to the built macos_icon example');
   fixture(f=>{

@@ -61,8 +61,10 @@ license are in `runtime/fonts/noto-emoji/3.002`; nothing is installed system-wid
 It supplies monochrome outlines, not Apple's color emoji or a replacement IME.
 
 Windows font/license/MCP watcher tests, Linux font/license/watcher/package tests
-and native Mac checks passed. Lua remains refused by agreement; its sandbox is the
-next separate task. [Signing preparation](MacOS-signing.md) is a future runbook,
+and native Mac checks passed. Those earlier packages leave Lua unbound. The new
+[Mac Lua helper integration](MacOS-lua-wasm.md#app-binding-and-build-order) adds an
+optional signed, hash-bound helper with its own focused acceptance workflow.
+[Signing preparation](MacOS-signing.md) is a future runbook,
 not an executed notarization or a release-ready signing pipeline.
 
 ## Build and evidence

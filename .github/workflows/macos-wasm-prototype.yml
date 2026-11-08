@@ -1,8 +1,14 @@
-name: macOS Lua Pulley prototype
+name: macOS Lua helper qualification
 
-# Manual, isolated development check. Does not enable production Mac Lua.
+# Manual, capped development check; never publishes release assets.
 on:
   workflow_dispatch:
+    inputs:
+      checks:
+        description: Affected Lua checks
+        type: choice
+        default: integration
+        options: [integration, prototype]
 
 permissions:
   contents: read
@@ -15,7 +21,7 @@ concurrency:
 jobs:
   guest:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
       guest_sha: ${{ steps.guest.outputs.guest_sha }}
@@ -72,13 +78,17 @@ jobs:
           gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$GUEST_ARTIFACT_ID/zip" > "$RUNNER_TEMP/guest.zip"
           unzip -p "$RUNNER_TEMP/guest.zip" guest.wasm > "$RUNNER_TEMP/guest.wasm"
           test "$(shasum -a 256 "$RUNNER_TEMP/guest.wasm" | cut -d ' ' -f1)" = "$EXPECTED_GUEST_SHA"
-      - name: Run only prototype and Lua compatibility checks
+      - name: Run only the selected Lua checks
         shell: bash
         run: |
           set -euo pipefail
           export CARGO_HOME="$RUNNER_TEMP/prototype-deps/cargo-home"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/prototype-target"
-          bash tools/prototypes/macos-lua-wasm/run-host-checks.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results"
+          if [ '${{ inputs.checks }}' = integration ]; then
+            bash tools/macos/test-lua-integration.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results" "$RUNNER_TEMP/root-cargo-home"
+          else
+            bash tools/prototypes/macos-lua-wasm/run-host-checks.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results"
+          fi
       - name: Retain native results
         if: ${{ always() && !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

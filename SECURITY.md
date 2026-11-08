@@ -866,6 +866,21 @@ embedded digest and OS isolation described below.
 
 ## Lua worker identity and OS isolation (2026-10-29)
 
+Apple Silicon Mac integration uses the separately locked fixed-guest Pulley
+helper, described in [Mac Lua isolation](docs/MacOS-lua-wasm.md). Its executable
+is signed before its SHA-256 is embedded in the host. Only that helper's three
+sealed files are copied into fresh private run storage, then signature/resources
+and the copied executable hash are checked before launch. There is no script-
+selected executable, guest module, native import or environment. A pipe lifeline,
+bounded host collector and trusted worker monitor handle cancellation/parent exit.
+Windows/Linux launchers remain unchanged. Mac private copies do not provide the
+same immutable-file guarantee as Linux memfd against a malicious native process
+of the same user; replacement of the trusted host is outside this boundary too.
+The native 192 MiB threshold is sampled, not a kernel allocation limit. App Sandbox
+alone is insufficient; isolation depends on the fixed import-free Wasm guest.
+
+The following LPAC and atomic job-attachment details apply to Windows:
+
 All package execution, syntax validation and playground calls use the same
 hash-bound launcher. It rejects unbound builds, hash changes, oversized files,
 network paths and reparse points. Read-only image handles deny writes/deletion

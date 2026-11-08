@@ -10,6 +10,13 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased — Apple Silicon macOS preparation
 
+- Integrate the fixed Lua/Pulley helper with Mac extension and playground calls.
+  Bind UI/MCP hosts to the final signed helper inside Rocket.app; refuse missing,
+  changed or unbound helpers, validate sealed resources, and use private per-run
+  snapshots, parent lifelines and bounded cancellation. Windows/Linux keep their
+  existing native Lua sandboxes. Native app-integration qualification is recorded
+  separately from the earlier prototype checks.
+
 - Add native macOS repository notifications for external worktree, index and
   shared-ref changes. Coalesce notifications without idle Git scans, invalidate
   cached metadata on lost events, and release callbacks safely when closing.

@@ -1,4 +1,5 @@
-//! Test-only Pulley boundary. No production caller or general WASI context.
+//! Fixed-guest Pulley boundary shared by the Mac helper and its qualification tests.
+//! No general WASI context or extension-supplied module is accepted.
 #[cfg(unix)]
 pub mod guard;
 use wasmtime::{

@@ -5,6 +5,7 @@ const cp = require('node:child_process'), assert = require('node:assert/strict')
 const ROOT = path.resolve(__dirname, '../..');
 const ID = 'io.github.jasxtd.rocket', MINIMUM = '15.0';
 const BINARIES = ['rocket', 'rocket-cli', 'rocket-mcp', 'rocket-rebase-editor', 'rocket-ssh'];
+const LUA = require('./lua-helper.cjs');
 const RESOURCES = new Map([
   ['LICENSE-MIT', 'LICENSE-MIT'], ['LICENSE-APACHE', 'LICENSE-APACHE'],
   ['THIRD-PARTY-NOTICES.txt', 'THIRD-PARTY-NOTICES.txt'],
@@ -89,14 +90,24 @@ function walk(root, relative = '') {
     return [rel];
   });
 }
-function expected() {
+function expected(lua = false) {
   return ['Rocket.app/Contents/Info.plist','Rocket.app/Contents/PkgInfo','Rocket.app/Contents/Resources/Rocket.icns',
     ...BINARIES.map(n=>'Rocket.app/Contents/MacOS/'+n), ...[...RESOURCES.keys()].map(n=>'Rocket.app/Contents/Resources/'+n),
+    ...(lua ? [...LUA.FILES.map(n=>LUA.PREFIX+n),'Rocket.app/Contents/Resources/LUA-NOTICES'] : []),
     'README.md','BUILD.md'].sort();
 }
+function luaInfo(directory) {
+  const app=path.join(directory,LUA.PREFIX);
+  if(!fs.existsSync(app)) return 'disabled';
+  const digest=LUA.inspect(app,read,walk,macho);
+  for(const name of ['rocket','rocket-mcp']) assert(read(path.join(directory,'Rocket.app/Contents/MacOS',name)).includes(Buffer.from(digest)), 'Host is not bound to this signed Lua helper: '+name);
+  assert(read(path.join(directory,'Rocket.app/Contents/Resources/LUA-NOTICES'),4*1024*1024).length>0,'Missing Lua licenses');
+  return {runtime:'pulley',sha256:digest};
+}
 function structure(directory, v = version()) {
+  const lua=luaInfo(directory);
   const actual = walk(directory).filter(n=>!['bundle-manifest.json','SHA256SUMS','Rocket.app/Contents/_CodeSignature/CodeResources'].includes(n));
-  assert.deepEqual(actual.sort(), expected(), 'Bundle is incomplete or contains unexpected files');
+  assert.deepEqual(actual.sort(), expected(lua!=='disabled'), 'Bundle is incomplete or contains unexpected files');
   assert.equal(read(path.join(directory,'Rocket.app/Contents/Info.plist'),32768).toString(), plist(v), 'Bundle metadata mismatch');
   assert.equal(read(path.join(directory,'Rocket.app/Contents/PkgInfo'),32).toString(),'APPL????');
   icns(read(path.join(directory,'Rocket.app/Contents/Resources/Rocket.icns'),16*1024*1024));
@@ -106,13 +117,19 @@ function structure(directory, v = version()) {
   }
   for (const [name,source] of RESOURCES) assert(read(path.join(directory,'Rocket.app/Contents/Resources',name)).equals(read(path.join(ROOT,source))), 'License/notice mismatch: '+name);
 }
-function stage(binaries, icon, directory, buildInfo) {
+function stage(binaries, icon, directory, buildInfo, luaApp = process.env.ROCKET_MACOS_LUA_APP) {
   const v=version(), input = new Map();
   for (const name of BINARIES) { const data=read(path.join(binaries,name));macho(data);input.set('Rocket.app/Contents/MacOS/'+name,data); }
   const image=read(icon,16*1024*1024);icns(image);input.set('Rocket.app/Contents/Resources/Rocket.icns',image);
   for (const [name,source] of RESOURCES) input.set('Rocket.app/Contents/Resources/'+name,read(path.join(ROOT,source)));
   input.set('Rocket.app/Contents/Info.plist',Buffer.from(plist(v)));input.set('Rocket.app/Contents/PkgInfo',Buffer.from('APPL????'));
   input.set('README.md',read(path.join(ROOT,'docs/MacOS-port.md')));input.set('BUILD.md',read(buildInfo,1024*1024));
+  if(luaApp) {
+    const digest=LUA.inspect(luaApp,read,walk,macho);
+    for(const name of ['rocket','rocket-mcp']) assert(input.get('Rocket.app/Contents/MacOS/'+name).includes(Buffer.from(digest)),'Host is not bound to this signed Lua helper: '+name);
+    for(const name of LUA.FILES) input.set(LUA.PREFIX+name,read(path.join(luaApp,name)));
+    input.set('Rocket.app/Contents/Resources/LUA-NOTICES',read(path.join(path.dirname(luaApp),'LUA-NOTICES'),4*1024*1024));
+  }
   directory=path.resolve(directory);assert(!fs.existsSync(directory) && !fs.lstatSync(directory,{throwIfNoEntry:false}), 'Output exists; preserve it and choose a new directory');
   fs.mkdirSync(directory,{mode:0o755});
   for(const rel of ['','Rocket.app','Rocket.app/Contents','Rocket.app/Contents/MacOS','Rocket.app/Contents/Resources']) {
@@ -129,7 +146,7 @@ function stage(binaries, icon, directory, buildInfo) {
 function manifest(directory) {
   structure(directory);
   const files=walk(directory).filter(n=>!['bundle-manifest.json','SHA256SUMS'].includes(n)).map(file=>({path:file,sha256:sha(read(path.join(directory,file)))}));
-  const record={schema:1,version:version(),platform:'macos-arm64',minimum_macos:MINIMUM,identity:ID,lua:'disabled',files};
+  const record={schema:1,version:version(),platform:'macos-arm64',minimum_macos:MINIMUM,identity:ID,lua:luaInfo(directory),files};
   fs.writeFileSync(path.join(directory,'bundle-manifest.json'),JSON.stringify(record,null,2)+'\n',{flag:'wx',mode:0o644});
   fs.writeFileSync(path.join(directory,'SHA256SUMS'),[...files,{path:'bundle-manifest.json',sha256:sha(read(path.join(directory,'bundle-manifest.json')))}]
     .map(f=>f.sha256+'  '+f.path+'\n').join(''),{flag:'wx',mode:0o644});
@@ -137,7 +154,8 @@ function manifest(directory) {
 }
 function verify(directory) {
   const data=JSON.parse(read(path.join(directory,'bundle-manifest.json'),1024*1024));
-  assert(data.schema===1&&data.platform==='macos-arm64'&&data.identity===ID&&data.minimum_macos===MINIMUM&&data.lua==='disabled','Invalid bundle manifest');
+  assert(data.schema===1&&data.platform==='macos-arm64'&&data.identity===ID&&data.minimum_macos===MINIMUM,'Invalid bundle manifest');
+  assert.deepEqual(data.lua,luaInfo(directory),'Invalid Lua bundle binding');
   structure(directory,data.version);
   const files=walk(directory).filter(n=>!['bundle-manifest.json','SHA256SUMS'].includes(n));
   assert.deepEqual(data.files.map(f=>f.path),files,'Manifest inventory mismatch');
@@ -152,8 +170,12 @@ function run(program,args) {
 function nativeVerify(directory) {
   assert.equal(process.platform,'darwin','Native bundle validation requires macOS');structure(directory);
   const app=path.join(directory,'Rocket.app');run('/usr/bin/plutil',['-lint',path.join(app,'Contents/Info.plist')]);
-  for(const name of BINARIES) {
-    const file=path.join(app,'Contents/MacOS',name);
+  const executables=BINARIES.map(name=>path.join(app,'Contents/MacOS',name));
+  if(luaInfo(directory)!=='disabled') {
+    LUA.native(path.join(directory,LUA.PREFIX));
+    executables.push(path.join(directory,LUA.PREFIX,LUA.EXE));
+  }
+  for(const file of executables) {
     assert.equal(run('/usr/bin/lipo',['-archs',file]).trim(),'arm64','Unexpected architecture');
     const lines=run('/usr/bin/otool',['-L',file]).trimEnd().split('\n').slice(1);
     for(const line of lines) assert(/^\s+(\/System\/Library\/|\/usr\/lib\/)/.test(line),'Non-system dynamic dependency: '+line.trim());
@@ -177,9 +199,12 @@ function signDevelopment(directory) {
   assert(!fs.existsSync(path.join(directory,'bundle-manifest.json')),'Never sign over a finalized package');
   const app=path.join(directory,'Rocket.app');
   // Sign nested executable code first, then the app. No key/certificate, no
-  // entitlements, no --deep signing and no Gatekeeper/security-policy changes.
+  // host entitlements, no --deep signing and no Gatekeeper/security-policy changes.
+  // The already-signed Lua sub-app MUST stay byte-identical to the host binding.
+  const luaBefore=luaInfo(directory);
   for(const name of BINARIES.filter(n=>n!=='rocket')) run('/usr/bin/codesign',['--force','--sign','-','--timestamp=none','--identifier',ID+'.'+name,path.join(app,'Contents/MacOS',name)]);
   run('/usr/bin/codesign',['--force','--sign','-','--timestamp=none','--identifier',ID,app]);
+  assert.deepEqual(luaInfo(directory),luaBefore,'Signing changed the bound Lua helper');
   nativeVerify(directory);manifest(directory);
 }
 module.exports={BINARIES,ID,version,read,macho,icns,iconset,plist,walk,stage,structure,manifest,verify,nativeVerify,signDevelopment};

@@ -1,4 +1,4 @@
-//! Trusted native watchdog for the isolated prototype, not a production sandbox.
+//! Trusted native watchdog shared by qualification tests and the bound Mac helper.
 //! The VM cannot call these functions. A compromised native VM could defeat this
 //! thread; App Sandbox and kernel limits are separate defense in depth.
 use std::sync::{

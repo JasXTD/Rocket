@@ -1,7 +1,10 @@
 # Lua / Pulley compatibility experiment
 
-This standalone workspace does not enable Lua on macOS or change Rocket's
-Windows/Linux runtime. It is not a production sandbox or release component.
+This separately locked workspace supplies the qualified Mac fixed-guest helper
+as well as its tests and offline compiler. `tools/macos/build-lua-helper.sh` signs
+and packages only the worker; Rocket's host embeds that final signed hash. The
+standalone probes are not shipped. Windows/Linux keep their native workers and
+root dependency graph. See `docs/MacOS-lua-wasm.md` for the app binding and limits.
 
 The guest compiles the application's actual `runtime.rs` and schema `model.rs`
 through a small compatibility facade, avoiding a second implementation of the
@@ -53,9 +56,10 @@ launches and requires a dedicated parent lifeline on descriptor 3.
 the unwind-enabled guest uses `build-guest-unwind.sh`.
 
 The manual `macos-wasm-prototype.yml` workflow rebuilds the guest in a disposable
-Linux job (10-minute timeout) and verifies its same-run SHA-256 before testing a
-Pulley host on Apple Silicon (15-minute timeout). It does not change a release or
-enable production Lua. Results have one-day retention; no build output enters Git.
+Linux job (5-minute timeout) and verifies its same-run SHA-256 before testing a
+Pulley host on Apple Silicon (15-minute timeout). Its integration scope builds
+and verifies the bound development app; prototype scope reruns isolated checks.
+It publishes no release. Results have one-day retention; build output stays out of Git.
 
 The 128 MiB limit applies to guest linear memory, not total native RSS. The new
 qualification runner covers bounded exception pressure, signed App Sandbox

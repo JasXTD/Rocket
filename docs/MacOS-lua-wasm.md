@@ -1,21 +1,56 @@
-# macOS Lua: WebAssembly isolation proposal
+# macOS Lua: WebAssembly isolation and app integration
 
 Status: isolated compatibility prototype passed on WSL and native Apple Silicon,
 2026-11-09, following the [native App Sandbox probes](MacOS-lua-sandbox.md#measured-result).
 The approved dependency/tool archives were hash-verified, source-reviewed, scanned
 by the user with Malwarebytes and staged outside production builds. An approved
 unwind-enabled standard-library rebuild fixed the initial callback-error failures.
-Native containment/lifecycle/pressure qualification remains open, so production
-Mac Lua stays unavailable. Windows and Linux retain their existing implementations
-and root Cargo dependencies. Native evidence and budget accounting appear below.
+Native containment/lifecycle/pressure qualification passed (evidence below).
+The next authorized step binds that helper to Rocket.app. The native integration
+checks are pending in this working change; do not confuse earlier prototype
+qualification with app integration acceptance. Windows/Linux retain their native
+sandboxes and root Cargo dependencies.
 
 ## Recommendation
 
 Continue from the tested Lua prototype inside **Wasmtime 50.0.1 using its Pulley
 interpreter**, toward a separate Mac worker with App Sandbox as an outer boundary.
-This version is approved for the isolated experiment, not production adoption or
-a safety certification. Complete the remaining containment and lifecycle gates
-before UI integration.
+The user approved app integration after the isolated qualification. This is not
+a safety certification; the native VM and operating system remain trusted.
+
+## App binding and build order
+
+The helper workspace remains separate under `tools/prototypes/macos-lua-wasm`
+to preserve the approved lock and keep Wasmtime out of Windows/Linux builds.
+It now also supplies the Mac app helper; its compiler/probe executables are not
+shipped. Build the same-source guest with the approved unwind-enabled toolchain,
+then run `tools/macos/build-lua-helper.sh GUEST_WASM NEW_OUTPUT` on Apple Silicon
+using that workspace's offline Cargo home and separate target directory.
+
+The output is `RocketLua.app`, its final signed executable digest, and
+`LUA-NOTICES` containing approved dependencies' license texts. Set
+`ROCKET_MACOS_LUA_APP` to this app when running `tools/build-macos.sh`. The build
+verifies its exact App Sandbox entitlement and hardened runtime, derives the
+SHA-256 from signed bytes, then embeds it into UI/MCP hosts. Package it at
+`Rocket.app/Contents/Helpers/RocketLua.app`. Finalizing the outer app must never
+re-sign the bound helper. Developer ID signing must occur before host binding too.
+Without this helper, ordinary Mac builds remain unbound and refuse execution.
+
+The launcher copies only the three sealed helper files into a new private
+per-run directory, checks the copied executable against the embedded hash,
+verifies the app signature/resources using Security.framework, and starts it
+with no environment, three I/O pipes and a separate parent lifeline. It never
+executes the mutable installed pathname. The guard checks its own signature and
+entitlements before reading input. Cancellation terminates/reaps the owned
+process; normal cleanup removes only its fixed snapshot files. A parent crash
+can leave inert snapshot files, never adopted by a later run.
+
+This copy is protected against packages, guest code and other users, not an
+arbitrary malicious native process already running as the same user. Such a
+process can also replace an unsigned Rocket host. This is **not** Linux's sealed
+memfd guarantee. The in-process watchdog's trust/suspension limits and sampled
+192 MiB native threshold still apply; 128 MiB is the guest linear-memory limit.
+No new dependency versions or system software are introduced by integration.
 
 The objective is unchanged Lua scripts and Rocket's existing reviewed request/UI
 protocol. A Lua/native-library fault should still be confined to WebAssembly

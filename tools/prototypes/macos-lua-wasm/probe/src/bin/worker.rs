@@ -1,4 +1,4 @@
-//! Test-only one-shot process. Only the trusted build artifact is deserialized.
+//! One-shot fixed-guest helper, qualified in isolation and bound by the Mac app build.
 use rocket_lua_wasm_probe::{INPUT_LIMIT, engine, invoke_ready};
 use std::io::{Read, Write};
 use wasmtime::{Error, Module, Result};
@@ -14,7 +14,8 @@ fn run() -> Result<Vec<u8>> {
     let e = engine()?;
     // SAFETY: bytes are embedded at build time from this exact locked compiler
     // and engine configuration. No path, Wasm or AOT bytes come from extension
-    // input. Production must separately bind/sign its helper and guest package.
+    // input. tools/macos/build-lua-helper.sh signs this complete executable before
+    // the Rocket host embeds its hash; the bundle must preserve those signed bytes.
     let m = unsafe { Module::deserialize(&e, GUEST) }?;
     invoke_ready(&e, &m, &input, || eprintln!("{{\"event\":\"running\"}}"))
 }

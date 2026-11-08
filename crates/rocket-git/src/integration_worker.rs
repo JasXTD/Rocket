@@ -4,6 +4,8 @@ use std::path::PathBuf;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod linux;
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+mod macos;
 #[cfg(windows)]
 mod windows;
 
@@ -16,6 +18,24 @@ pub struct IntegrationWorker {
 }
 
 impl IntegrationWorker {
+    /// Resolve the helper shipped with this host. The digest must be embedded in
+    /// trusted host code, never loaded from the bundle's informational manifest.
+    pub fn for_host_executable(host: &std::path::Path, embedded_sha256: &str) -> Option<Self> {
+        let directory = host.parent()?;
+        let path = if cfg!(target_os = "macos") {
+            directory
+                .parent()?
+                .join("Helpers/RocketLua.app/Contents/MacOS/rocket-lua-host")
+        } else {
+            directory.join(if cfg!(windows) {
+                "rocket-lua-host.exe"
+            } else {
+                "rocket-lua-host"
+            })
+        };
+        Some(Self::new(path, embedded_sha256))
+    }
+
     pub fn new(path: PathBuf, embedded_sha256: &str) -> Self {
         Self {
             path,
@@ -53,16 +73,26 @@ impl IntegrationWorker {
         crate::ensure_unprivileged_process()?;
         // An unsupported host cannot become safe by binding a worker hash. Refuse
         // before inspecting the worker or suggesting a Windows/Linux rebuild.
-        #[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
+        #[cfg(not(any(
+            windows,
+            all(target_os = "linux", target_arch = "x86_64"),
+            all(target_os = "macos", target_arch = "aarch64")
+        )))]
         {
             let _ = (&self.path, &self.sha256, input, limits);
             Err(unsupported_platform())
         }
-        #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+        #[cfg(any(
+            windows,
+            all(target_os = "linux", target_arch = "x86_64"),
+            all(target_os = "macos", target_arch = "aarch64")
+        ))]
         {
             if self.sha256.len() != 64 || !self.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
                 let script = if cfg!(windows) {
                     "tools/Build-Local.ps1"
+                } else if cfg!(target_os = "macos") {
+                    "tools/build-macos.sh with the signed Lua helper"
                 } else {
                     "tools/build-local.sh"
                 };
@@ -78,6 +108,10 @@ impl IntegrationWorker {
             {
                 linux::run(self, input, limits, cancel)
             }
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            {
+                macos::run(self, input, limits, cancel)
+            }
         }
     }
 }
@@ -86,7 +120,7 @@ impl IntegrationWorker {
 fn unsupported_platform() -> Error {
     Error::Unsupported(
         if cfg!(target_os = "macos") {
-            "integration_worker_sandbox: Lua extensions are unavailable in the macOS preview until its worker sandbox is implemented and verified. No script was run."
+            "integration_worker_sandbox: macOS Lua requires the bound Apple Silicon Wasm helper. The native Lua entry point cannot run here; no script was run."
         } else {
             "integration_worker_sandbox: Lua execution needs the worker sandbox of Windows or Linux x86_64; no unrestricted fallback is provided."
         }
@@ -109,7 +143,11 @@ mod preflight_tests {
         ));
     }
 
-    #[cfg(any(windows, all(target_os = "linux", target_arch = "x86_64")))]
+    #[cfg(any(
+        windows,
+        all(target_os = "linux", target_arch = "x86_64"),
+        all(target_os = "macos", target_arch = "aarch64")
+    ))]
     #[test]
     fn supported_platform_still_requires_a_bound_worker() {
         for digest in ["".to_owned(), "g".repeat(64), "a".repeat(63)] {
@@ -128,7 +166,11 @@ mod preflight_tests {
         }
     }
 
-    #[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
+    #[cfg(not(any(
+        windows,
+        all(target_os = "linux", target_arch = "x86_64"),
+        all(target_os = "macos", target_arch = "aarch64")
+    )))]
     #[test]
     fn unsupported_platform_refuses_bound_and_unbound_workers() {
         for digest in ["".to_owned(), "a".repeat(64)] {
@@ -142,5 +184,22 @@ mod preflight_tests {
             IntegrationWorker::enter_isolation(),
             Err(Error::Unsupported(_))
         ));
+    }
+
+    #[test]
+    fn helper_is_resolved_from_the_host_not_the_current_directory() {
+        let path = std::path::Path::new("/package 資料/Rocket.app/Contents/MacOS/rocket");
+        let worker = IntegrationWorker::for_host_executable(path, "").unwrap();
+        if cfg!(target_os = "macos") {
+            assert_eq!(
+                worker.path,
+                std::path::Path::new(
+                    "/package 資料/Rocket.app/Contents/Helpers/RocketLua.app/Contents/MacOS/rocket-lua-host"
+                )
+            );
+            assert!(IntegrationWorker::enter_isolation().is_err());
+        } else {
+            assert_eq!(worker.path.parent(), path.parent());
+        }
     }
 }

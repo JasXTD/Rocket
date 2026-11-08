@@ -1108,17 +1108,10 @@ fn unique_id() -> String {
     )
 }
 pub(crate) fn worker_path() -> Option<rocket_git::IntegrationWorker> {
-    Some(rocket_git::IntegrationWorker::new(
-        std::env::current_exe()
-            .ok()?
-            .parent()?
-            .join(if cfg!(windows) {
-                "rocket-lua-host.exe"
-            } else {
-                "rocket-lua-host"
-            }),
+    rocket_git::IntegrationWorker::for_host_executable(
+        &std::env::current_exe().ok()?,
         env!("ROCKET_LUA_WORKER_SHA256"),
-    ))
+    )
 }
 fn basic(s: &str) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

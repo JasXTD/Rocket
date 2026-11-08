@@ -1,4 +1,4 @@
-// First-party test prototype. Uses only public SDK declarations; no downloaded
+// First-party helper guard. Uses only public SDK declarations; no downloaded
 // implementation. App Sandbox is a second boundary around the import-free VM.
 #include <Security/Security.h>
 #include <CoreFoundation/CoreFoundation.h>

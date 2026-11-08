@@ -25,6 +25,15 @@ that future implementation, not an automated release path.
 
 ## Sign the helpers, then the application
 
+When including Lua, first sign `RocketLua.app` with the final distribution
+identity, hardened runtime and **only** `com.apple.security.app-sandbox=true`.
+Use identifier `io.github.jasxtd.rocket.lua`. Then rebuild UI/MCP hosts with the
+SHA-256 of that final executable (`ROCKET_LUA_WORKER_SHA256`) and stage the exact
+helper at `Contents/Helpers/RocketLua.app`. Changing its signature afterward
+invalidates the host binding. The development helper builder uses ad-hoc signing;
+the future distribution mode must implement this same order with Developer ID.
+The normal outer-app signing loop below deliberately excludes the bound Lua app.
+
 With `ROCKET_APP` pointing to the new workspace's `Rocket.app`, and
 `ROCKET_SIGNING_IDENTITY` containing the reviewed certificate fingerprint, sign
 inside out. A stable helper identifier matters for Keychain access after an
@@ -45,8 +54,9 @@ done
 
 Confirm the intended Developer ID authority, Team ID, secure timestamp and
 hardened-runtime flag for every executable. Start with no extra entitlements;
-add an exception only for a demonstrated need and test it. Lua remains disabled;
-hardened runtime alone is not the extension sandbox. Apple's
+add an exception only for a demonstrated need and test it. The separate Lua helper
+uses a fixed import-free Wasm guest and App Sandbox; hardened runtime alone is not
+the extension sandbox. Apple's
 [signing guidance](https://developer.apple.com/library/archive/technotes/tn2206/)
 and [notarization requirements](https://developer.apple.com/documentation/security/resolving-common-notarization-issues)
 describe these checks.
@@ -93,4 +103,5 @@ Repeat signature, ticket and hash checks on the downloaded copy. Do not remove
 quarantine or disable Gatekeeper to turn a rejection into a pass.
 
 Do not ship until the distribution packager and these checks pass. The future
-Lua sandbox and signed app-update/rollback paths require their own validation.
+Developer-ID-bound Lua helper and signed app-update/rollback paths require their
+own distribution validation; ad-hoc CI checks cannot establish that acceptance.
