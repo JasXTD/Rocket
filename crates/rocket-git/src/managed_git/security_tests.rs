@@ -86,6 +86,7 @@ fn existing_runner_clones_refuse_new_runtime_files_before_starting_a_process() {
         transport_scope: None,
         secret_protection: Arc::new(AtomicBool::new(false)),
         guard_ai_api_keys: Arc::new(AtomicBool::new(false)),
+        secret_scan_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(crate::DEFAULT_SECRET_SCAN_MIB as usize * 1024 * 1024)),
         push_check: Default::default(),
         git_http_allowed: true,
         managed_git: Some(runtime.clone()),

@@ -475,6 +475,7 @@ impl Ui {
             "verified":self.app.git_settings.managed_verified,"progress":self.app.git_settings.managed_progress.snapshot()});
         state["preferences"] = json!({"page":self.app.preferences_page().map(|p|p.key()),"sidebar":self.app.show_sidebar,"details":self.app.show_details,"row_height":self.app.row_height,"auto_refresh":self.app.auto_refresh,"secret_protection":self.app.secret_protection,"guard_ai_api_keys":self.app.guard_ai_api_keys,"secret_protection_user_control":self.app.secret_protection_editable});
         state["shortcuts"] = self.app.keybindings.snapshot();
+        state["preferences"]["secret_scan_mib"] = json!(self.app.secret_scan_mib);
         state["appearance"] = self.app.appearance_snapshot();
         state["language"] = json!({"shown":rocket_ui::i18n::current().tag(),"choice":self.app.language.map(|l|l.tag()),
             "system":rocket_ui::i18n::system().tag(),"offered":rocket_ui::i18n::offered().iter().map(|l|l.tag()).collect::<Vec<_>>()});
@@ -2176,6 +2177,7 @@ impl Ui {
                             | "picker-path"
                             | "picker-filter"
                             | "pref-search"
+                            | "pref-secret-scan-mib"
                             | "pref-source-folder"
                             | "pref-shortcuts-filter"
                             | "theme-accent-code"

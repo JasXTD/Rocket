@@ -1992,6 +1992,9 @@ impl Backend {
     pub fn set_guard_ai_api_keys(&self, enabled: bool) {
         self.client.set_guard_ai_api_keys(enabled);
     }
+    pub fn set_secret_scan_mib(&self, mib: u64) -> Result<()> {
+        self.client.set_secret_scan_mib(mib)
+    }
     pub(crate) fn set_push_check(&self, check: Option<Arc<dyn rocket_git::PushCheck>>) -> Result<()> {
         self.client.set_push_check(check)
     }

@@ -119,7 +119,7 @@ fn output_folder() -> Result<PathBuf> {
     {
         rocket_git::local_storage::directory()
             .map(|p| p.join("cli").join("bisect-output"))
-            .ok_or_else(|| Error::InvalidInput("HOME or XDG_STATE_HOME must name an absolute folder for bisect test output.".into()))
+            .map_err(|source| Error::Io { action: "open private bisect output storage", source })
     }
 }
 fn target(head: &Head) -> Option<&str> {

@@ -1,4 +1,5 @@
-//! Local system fonts supplement egui's embedded fonts. Nothing is downloaded.
+//! Installed fonts supplement egui; Linux also embeds a pinned CJK fallback.
+//! No font is downloaded at runtime.
 use crate::i18n::Han;
 use eframe::egui::{FontData, FontDefinitions, FontFamily, FontTweak, epaint::text::VariationCoords};
 use std::{path::PathBuf, sync::OnceLock};
@@ -7,7 +8,10 @@ use std::{path::PathBuf, sync::OnceLock};
 /// character takes different forms in Chinese and Japanese fonts (直, 骨, 角).
 pub(crate) fn definitions() -> FontDefinitions {
     let mut fonts = loaded();
-    han_first(&mut fonts, &PLAN, crate::i18n::han());
+    let han = crate::i18n::han();
+    han_first(&mut fonts, &PLAN, han);
+    #[cfg(target_os = "linux")]
+    linux_cjk::select(&mut fonts, han);
     fonts
 }
 
@@ -204,7 +208,44 @@ fn build(plan: &Plan, find: impl Fn(&str) -> Option<PathBuf>) -> FontDefinitions
     fonts
         .families
         .insert(FontFamily::Name("semibold".into()), bold);
+    #[cfg(target_os = "linux")]
+    linux_cjk::append(&mut fonts);
     fonts
+}
+
+#[cfg(target_os = "linux")]
+mod linux_cjk {
+    use super::*;
+
+    pub(super) const PROPORTIONAL: &str = "rocket-noto-cjk-2.004";
+    pub(super) const MONOSPACE: &str = "rocket-noto-mono-cjk-2.004";
+    // One immutable collection shared by both faces, with no file I/O or font
+    // installation. Include the same bytes in cargo-run and portable builds.
+    const BYTES: &[u8] = include_bytes!("../../../runtime/fonts/noto-sans-cjk/2.004/NotoSansCJK-Regular.ttc");
+
+    pub(super) fn append(fonts: &mut FontDefinitions) {
+        for name in [PROPORTIONAL, MONOSPACE] {
+            fonts.font_data.insert(name.into(), FontData::from_static(BYTES).into());
+        }
+        for (family, names) in &mut fonts.families {
+            let mono = *family == FontFamily::Monospace
+                || *family == FontFamily::Name("terminal-wide".into());
+            // Preserve installed fonts and the embedded Latin/emoji metrics.
+            names.push(if mono { MONOSPACE } else { PROPORTIONAL }.into());
+        }
+        select(fonts, Han::Chinese);
+    }
+
+    pub(super) fn select(fonts: &mut FontDefinitions, han: Han) {
+        // The pinned collection: JP=0, KR=1, SC=2; mono faces start at index 5.
+        let index = match han { Han::Chinese => 2, Han::Japanese => 0, Han::Korean => 1 };
+        for (name, offset) in [(PROPORTIONAL, 0), (MONOSPACE, 5)] {
+            if let Some(data) = fonts.font_data.get_mut(name) {
+                // FontData borrows BYTES; changing locale clones only metadata.
+                std::sync::Arc::make_mut(data).index = index + offset;
+            }
+        }
+    }
 }
 
 /// Loads a face under its own name, or returns that name if an earlier role loaded it.
@@ -344,6 +385,72 @@ mod tests {
         output.textures_delta.clear();
     }
 
+    /// Minimal Linux installs must still draw source text, rather than replacement boxes.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cjk_source_and_preview_have_glyphs_without_system_fonts() {
+        let ctx = eframe::egui::Context::default();
+        ctx.set_fonts(build(&PLAN, |_| None));
+        let mut output = ctx.run_ui(Default::default(), |ui| {
+            ui.ctx().fonts_mut(|fonts| {
+                for family in [
+                    FontFamily::Monospace,
+                    FontFamily::Proportional,
+                    FontFamily::Name("semibold".into()),
+                    FontFamily::Name("terminal-wide".into()),
+                ] {
+                    let id = eframe::egui::FontId::new(13.0, family);
+                    // epaint's has_glyph compares face IDs with the replacement
+                    // face, which also owns valid glyphs. Check the actual cmap
+                    // coverage across this family's fallback chain instead.
+                    let mut font = fonts.fonts.font(&id.family);
+                    let characters = font.characters();
+                    for text in ["简体中文 文件路径", "繁體中文 資料夾", "日本語 ひらがな カタカナ", "한국어 파일 변경"] {
+                        for c in text.chars() {
+                            assert!(characters.contains_key(&c), "Missing glyph {c:?} in {:?}", id.family);
+                        }
+                    }
+                    assert!(!characters.contains_key(&'\u{0378}'), "an unassigned code point is still missing");
+                }
+            });
+        });
+        output.textures_delta.clear();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn cjk_fallback_preserves_ascii_layout_and_shares_font_bytes() {
+        use eframe::egui::{Color32, Context, FontId};
+        let definitions = build(&PLAN, |_| None);
+        let measure = |definitions: FontDefinitions| {
+            let ctx = Context::default();
+            ctx.set_fonts(definitions);
+            let mut sizes = Vec::new();
+            let mut output = ctx.run_ui(Default::default(), |ui| {
+                ui.ctx().fonts_mut(|fonts| {
+                    for id in [FontId::monospace(13.0), FontId::proportional(13.0)] {
+                        let galley = fonts.layout_no_wrap("local x = 123; return x + 1".into(), id, Color32::WHITE);
+                        sizes.push(galley.size());
+                    }
+                });
+            });
+            output.textures_delta.clear();
+            sizes
+        };
+        assert_eq!(measure(definitions.clone()), measure(FontDefinitions::default()));
+        for (han, proportional, mono) in [(Han::Chinese, 2, 7), (Han::Japanese, 0, 5), (Han::Korean, 1, 6)] {
+            let mut localized = definitions.clone();
+            linux_cjk::select(&mut localized, han);
+            let p = &localized.font_data[linux_cjk::PROPORTIONAL];
+            let m = &localized.font_data[linux_cjk::MONOSPACE];
+            assert_eq!((p.index, m.index), (proportional, mono));
+            assert_eq!(localized.families, definitions.families, "locale keeps fallback precedence");
+            assert!(std::ptr::eq(p.font.as_ptr(), m.font.as_ptr()), "faces share immutable bytes");
+            assert!(std::ptr::eq(p.font.as_ptr(), definitions.font_data[linux_cjk::PROPORTIONAL].font.as_ptr()));
+        }
+        assert_eq!(definitions.font_data[linux_cjk::PROPORTIONAL].index, 2, "changing a locale preserves the cached definition");
+    }
+
     /// Bytes that pass for a collection of two faces; past the header nothing is parsed.
     const TWO_FACES: &[u8] = b"ttcf\x00\x01\x00\x00\x00\x00\x00\x02font bytes";
 
@@ -360,9 +467,15 @@ mod tests {
         let fallbacks: Vec<String> = PLAN.fallbacks.iter().map(|role| role[0].name()).collect();
         let proportional = names(&fonts, FontFamily::Proportional);
         assert_eq!(proportional[0], name(regular));
-        assert!(proportional.ends_with(&fallbacks));
+        #[cfg(not(target_os = "linux"))]
+        let expected_fallbacks = fallbacks.clone();
+        #[cfg(target_os = "linux")]
+        let expected_fallbacks = [fallbacks.as_slice(), &[linux_cjk::PROPORTIONAL.into()]].concat();
+        assert!(proportional.ends_with(&expected_fallbacks));
         let mut interface_then_fallbacks = vec![name(regular)];
         interface_then_fallbacks.extend(fallbacks.iter().cloned());
+        #[cfg(target_os = "linux")]
+        interface_then_fallbacks.push(linux_cjk::MONOSPACE.into());
         assert!(names(&fonts, FontFamily::Monospace).ends_with(&interface_then_fallbacks));
         let terminal = names(&fonts, FontFamily::Name("terminal-wide".into()));
         assert_eq!(terminal[0], fallbacks[PLAN.emoji]);

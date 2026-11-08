@@ -17,6 +17,8 @@ pub struct Handoff {
 impl Handoff {
     pub fn approve(&mut self) -> Result<()> {
         if !self.approved {
+            #[cfg(unix)]
+            rocket_git::local_storage::check_private(&self.job).map_err(io)?;
             write_json(&self.job.join("approved.json"), &json!({"install":true}))?;
             self.approved = true;
         }
@@ -116,6 +118,8 @@ pub fn handoff(
     plain(target)?;
     plain(helper)?;
     plain(&prepared.job)?;
+    #[cfg(unix)]
+    rocket_git::local_storage::check_private(&prepared.job).map_err(io)?;
     let old = installed(target, cancel)?;
     if manifest(&prepared.job.join("bundle"), prepared.version, cancel)? != prepared.files {
         return Err(error("Prepared update changed. Download it again."));
@@ -210,6 +214,10 @@ pub fn handoff(
     result
 }
 pub fn cancel(handoff: &Handoff) {
+    #[cfg(unix)]
+    if rocket_git::local_storage::check_private(&handoff.job).is_err() {
+        return;
+    }
     let _ = fs::write(handoff.job.join("cancel"), b"cancel");
 }
 
@@ -223,6 +231,8 @@ pub fn apply(path: &Path) -> Result<()> {
     let job = path
         .parent()
         .ok_or_else(|| error("Update plan directory is missing."))?;
+    #[cfg(unix)]
+    rocket_git::local_storage::check_private(job).map_err(io)?;
     let plan = json_file(path)?;
     if plan["schema"] != 1 {
         return Err(error("Unknown update plan schema."));
@@ -401,6 +411,44 @@ pub fn apply(path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn unsafe_jobs_and_ancestors_are_refused_before_handoff_or_plan_reads() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = unique(&std::env::temp_dir()).unwrap();
+        let target = root.join("installation");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("SHA256SUMS.txt"), b"untouched installation").unwrap();
+        let helper = root.join("helper");
+        fs::write(&helper, b"never executed").unwrap();
+        let parent = root.join("updates");
+        rocket_git::local_storage::create_private(&parent).unwrap();
+        let job = unique(&parent).unwrap();
+        let prepared = Prepared { job: job.clone(), version: rocket_git::app_update::UpdateVersion(9, 0, 0), files: BTreeMap::new() };
+        let plan = job.join("install.json");
+        fs::write(&plan, b"not read before the permission check").unwrap();
+        let chmod = |path: &Path, mode| fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
+        for unsafe_folder in [&job, &parent] {
+            chmod(unsafe_folder, 0o777);
+            let refused = handoff(&prepared, &target, &helper, &[], &CancellationToken::new())
+                .err().expect("unsafe job must not launch a helper");
+            assert!(matches!(refused, rocket_git::Error::Io { source, .. } if source.kind() == std::io::ErrorKind::PermissionDenied));
+            let refused = apply(&plan).unwrap_err();
+            assert!(matches!(refused, rocket_git::Error::Io { source, .. } if source.kind() == std::io::ErrorKind::PermissionDenied));
+            {
+                let mut handoff = Handoff { job: job.clone(), approved: false };
+                assert!(handoff.approve().is_err());
+            }
+            assert!(!job.join("update-worker").exists());
+            assert!(!job.join("approved.json").exists());
+            assert!(!job.join("cancel").exists());
+            assert_eq!(fs::read(target.join("SHA256SUMS.txt")).unwrap(), b"untouched installation");
+            chmod(unsafe_folder, 0o700);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn discarded_handoff_cancels_without_approving_installation() {
         let root = unique(&std::env::temp_dir()).unwrap();

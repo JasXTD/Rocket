@@ -1,5 +1,6 @@
 //! Local dependency scans and an optional review before publishing pushed tips.
 mod page;
+mod scan_budget;
 mod push;
 mod push_page;
 #[cfg(test)]
@@ -43,6 +44,7 @@ pub struct State {
     pub update_notice: Option<String>,
     pub(crate) setup_page: bool,
     setup: setup::Setup,
+    scan_budget: scan_budget::Edit,
     /// Set only by Rust fixture tests, never by repository content or MCP commands.
     #[cfg(test)]
     pub fixture_executable: Option<PathBuf>,
@@ -61,6 +63,7 @@ impl Default for State {
             update_notice: None,
             setup_page: false,
             setup: setup::Setup::default(),
+            scan_budget: Default::default(),
             #[cfg(test)]
             fixture_executable: None,
             #[cfg(test)]

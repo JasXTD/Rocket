@@ -1,5 +1,5 @@
 //! Writes `THIRD-PARTY-NOTICES.txt` at the workspace root: the notices of every crate
-//! compiled into Rocket's programs on Windows or Linux, the fonts egui embeds and the
+//! compiled into Rocket's programs on Windows or Linux, the embedded fonts and the
 //! bundled ConPTY runtime. Each entry names the platforms whose builds include it, so one
 //! file ships with every package and About › Legal shows the running platform's entries.
 //! Run it after changing dependencies:
@@ -200,6 +200,15 @@ fn main() -> ExitCode {
     }
     assert!(!fonts.is_empty(), "egui's fonts were not found");
     entries.extend(fonts);
+    entries.push(Entry {
+        kind: "font",
+        name: "Noto Sans CJK Regular".into(),
+        version: "2.004".into(),
+        license: "OFL-1.1".into(),
+        platforms: "Linux".into(),
+        source: "https://github.com/notofonts/noto-cjk/tree/523d033d6cb47f4a80c58a35753646f5c3608a78".into(),
+        text: read_text(&root.join("runtime/fonts/noto-sans-cjk/2.004/NOTICE")),
+    });
     entries.push(conpty(&root));
 
     let text = render(&entries);

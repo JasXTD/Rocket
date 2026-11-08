@@ -85,6 +85,7 @@ pub(crate) struct Runner {
     pub transport_scope: Option<crate::TransportScope>,
     pub secret_protection: Arc<AtomicBool>,
     pub guard_ai_api_keys: Arc<AtomicBool>,
+    pub secret_scan_bytes: Arc<std::sync::atomic::AtomicUsize>,
     pub push_check: crate::push_check::Policy,
     pub git_http_allowed: bool,
     // Holds bundled files read-only for this runner and all request/repository clones.

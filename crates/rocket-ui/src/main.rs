@@ -48,7 +48,18 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Rocket",
         options,
-        Box::new(move |cc| {let mut app=Rocket::new(&cc.egui_ctx,paths);app.updates.result_directory=update_result;app.pending_review=launch.map(|(path,request)|(std::fs::canonicalize(&path).unwrap_or(path),request));Ok(Box::new(app))}),
+        Box::new(move |cc| {
+            let mut app = match Rocket::new(&cc.egui_ctx, paths) {
+                Ok(app) => app,
+                Err(error) => {
+                    eprintln!("{error}");
+                    return Ok(Box::new(StartupRefusal(error.to_string())));
+                }
+            };
+            app.updates.result_directory = update_result;
+            app.pending_review = launch.map(|(path, request)| (std::fs::canonicalize(&path).unwrap_or(path), request));
+            Ok(Box::new(app))
+        }),
     )
 }
 
@@ -56,7 +67,7 @@ struct StartupRefusal(String);
 impl eframe::App for StartupRefusal {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::Frame::central_panel(ui.style()).show(ui, |ui| {
-            ui.heading("Open Rocket normally");
+            ui.heading("Rocket cannot start");
             ui.add_space(12.0);
             ui.label(&self.0);
             ui.add_space(12.0);

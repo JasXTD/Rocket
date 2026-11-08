@@ -59,6 +59,7 @@ fn scoped() -> (Runner, PathBuf) {
             transport_scope: Some(crate::TransportScope::new(&root, vec![]).unwrap()),
             secret_protection: Arc::new(AtomicBool::new(true)),
             guard_ai_api_keys: Arc::new(AtomicBool::new(true)),
+            secret_scan_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(crate::DEFAULT_SECRET_SCAN_MIB as usize * 1024 * 1024)),
             push_check: Default::default(),
             git_http_allowed: true,
             managed_git: None,

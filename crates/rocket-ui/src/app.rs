@@ -867,6 +867,7 @@ pub struct Rocket {
     pub auto_refresh: bool,
     pub secret_protection: bool,
     pub guard_ai_api_keys: bool,
+    pub secret_scan_mib: u64,
     /// The native application permits this user preference; MCP-hosted windows do not automate it.
     pub secret_protection_editable: bool,
     pub dependencies: crate::dependency_security::State,
@@ -889,21 +890,18 @@ pub struct Rocket {
 }
 
 impl Rocket {
-    pub fn new(ctx: &Context, paths: Vec<PathBuf>) -> Self {
+    pub fn new(ctx: &Context, paths: Vec<PathBuf>) -> std::io::Result<Self> {
         #[cfg(windows)]
         let log_path = std::env::var_os("LOCALAPPDATA")
             .map(PathBuf::from)
             .unwrap_or_else(std::env::temp_dir)
             .join("Rocket/logs");
-        // Without a home folder, a temporary one, as without LOCALAPPDATA on Windows.
         #[cfg(not(windows))]
-        let log_path = rocket_git::local_storage::directory()
-            .unwrap_or_else(|| std::env::temp_dir().join("rocket"))
-            .join("logs");
+        let log_path = rocket_git::local_storage::directory()?.join("logs");
         let state_path = log_path.parent().expect("Rocket directory").join("state");
         let mut app=Self::with_storage(ctx, paths, log_path, state_path);
         app.updates.endpoint=Some(rocket_git::app_update::UpdateEndpoint::Public);
-        app
+        Ok(app)
     }
     pub fn with_log_directory(ctx: &Context, paths: Vec<PathBuf>, log_path: PathBuf) -> Self {
         let state_path = log_path.join("state");
@@ -1007,6 +1005,7 @@ impl Rocket {
             auto_refresh: true,
             secret_protection: true,
             guard_ai_api_keys: true,
+            secret_scan_mib: rocket_git::DEFAULT_SECRET_SCAN_MIB,
             secret_protection_editable: true,
             dependencies: Default::default(),
             previous_auto_refresh: true,
@@ -1053,6 +1052,11 @@ impl Rocket {
         let state_directory = self.state_directory.clone();
         let transport_scope = self.transport_scope.clone();
         match crate::read_task::spawn(&self.context, move |cancel| {
+            #[cfg(unix)]
+            for path in [&state_directory, &directory] {
+                rocket_git::local_storage::create_protected(path)
+                    .map_err(|source| Error::Io { action: "open private Rocket storage", source })?;
+            }
             let selected = crate::git_settings::selection(&state_directory)?;
             let backend = Backend::discover_selected(&directory, transport_scope, selected.as_deref(), &cancel)?;
             let state = backend.log.request("load_state", |_| {
@@ -2482,6 +2486,7 @@ impl Rocket {
                             self.auto_refresh = p.auto_refresh;
                             self.secret_protection = p.secret_protection;
                             self.guard_ai_api_keys = p.guard_ai_api_keys;
+                            self.secret_scan_mib = p.secret_scan_mib;
                             self.dependencies.enabled = p.dependency_warnings;
                             self.dependencies.before_push = p.dependency_before_push;
                             self.previous_auto_refresh = p.auto_refresh;
@@ -2518,6 +2523,11 @@ impl Rocket {
                     }
                     startup.backend.set_secret_protection(self.secret_protection);
                     startup.backend.set_guard_ai_api_keys(self.guard_ai_api_keys);
+                    // Decoding validates this preference before startup applies it.
+                    if let Err(error) = startup.backend.set_secret_scan_mib(self.secret_scan_mib) {
+                        self.startup_error = Some(error.to_string());
+                        return;
+                    }
                     self.backend = Some(startup.backend);
                     if !self.quitting {
                         for path in std::mem::take(&mut self.pending_paths) {
@@ -3066,6 +3076,7 @@ impl Rocket {
             auto_refresh: self.auto_refresh,
             secret_protection: self.secret_protection,
             guard_ai_api_keys: self.guard_ai_api_keys,
+            secret_scan_mib: self.secret_scan_mib,
             dependency_warnings: self.dependencies.enabled,
             dependency_before_push: self.dependencies.before_push,
             row_height: self.row_height,

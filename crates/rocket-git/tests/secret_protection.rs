@@ -1447,13 +1447,13 @@ fn scan_limits_and_missing_parent_objects_refuse_without_sending_a_push() {
         "scan_limits_and_missing_parent_objects_refuse_without_sending_a_push",
         || {
             let (f, remote) = base("sha1");
+            f.git.set_secret_scan_mib(512).unwrap();
             let file = fs::File::create(f.repository.join("large.bin")).unwrap();
             file.set_len(128 * 1024 * 1024 + 1).unwrap();
             f.commit("large blob");
-            blocked(
-                push(&f).result.as_ref().unwrap_err(),
-                "secret_scan_incomplete",
-            );
+            let refusal = push(&f).result.unwrap_err();
+            blocked(&refusal, "secret_scan_incomplete");
+            assert!(refusal.to_string().contains("128 MiB per-object"));
             assert!(refs(&f, &remote).is_empty());
             let (f, remote) = base("sha1");
             let parent = String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap();
@@ -1552,9 +1552,10 @@ fn cumulative_large_object_budget_remains_bounded() {
         "cumulative_large_object_budget_remains_bounded",
         || {
             let (f, remote) = base("sha1");
+            f.git.set_secret_scan_mib(1).unwrap();
             for name in ["first.bin", "second.bin"] {
                 let mut file = fs::File::create(f.repository.join(name)).unwrap();
-                file.set_len(64 * 1024 * 1024 + 1).unwrap();
+                file.set_len(600 * 1024).unwrap();
                 // Distinct objects must both be charged to the cumulative budget.
                 use std::io::Write;
                 file.write_all(name.as_bytes()).unwrap();
@@ -1564,7 +1565,7 @@ fn cumulative_large_object_budget_remains_bounded() {
             let report = repo.commit("over total budget", &c()).unwrap();
             let error = report.result.as_ref().unwrap_err();
             blocked(error, "secret_scan_incomplete");
-            assert!(error.to_string().contains("128 MiB"));
+            assert!(error.to_string().contains("configured 1 MiB total"));
             f.commit("pre-existing over-budget history");
             blocked(
                 push(&f).result.as_ref().unwrap_err(),

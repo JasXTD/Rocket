@@ -123,6 +123,7 @@ impl GitClient {
             transport_scope: None,
             secret_protection: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             guard_ai_api_keys: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            secret_scan_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(crate::DEFAULT_SECRET_SCAN_MIB as usize * 1024 * 1024)),
             push_check: Default::default(),
             git_http_allowed: !cfg!(windows),
             managed_git,
@@ -198,6 +199,18 @@ impl GitClient {
         self.runner.guard_ai_api_keys.store(enabled, std::sync::atomic::Ordering::Release);
     }
 
+    /// Applies to future scans, including clones and already-open repositories.
+    /// Running scans retain their starting budget; no allocation scales with it.
+    pub fn set_secret_scan_mib(&self, mib: u64) -> Result<()> {
+        crate::validate_secret_scan_mib(mib)?;
+        self.runner.secret_scan_bytes.store(mib as usize * 1024 * 1024, std::sync::atomic::Ordering::Release);
+        Ok(())
+    }
+
+    pub fn secret_scan_mib(&self) -> u64 {
+        (self.runner.secret_scan_bytes.load(std::sync::atomic::Ordering::Acquire) / (1024 * 1024)) as u64
+    }
+
     /// Optional application-owned check shared with existing and request-specific clients.
     pub fn set_push_check(&self, check: Option<Arc<dyn crate::PushCheck>>) -> Result<()> {
         self.runner.push_check.set(check)
@@ -209,6 +222,7 @@ impl GitClient {
             .with_transport_scope(self.runner.transport_scope.clone());
         client.runner.secret_protection = self.runner.secret_protection.clone();
         client.runner.guard_ai_api_keys = self.runner.guard_ai_api_keys.clone();
+        client.runner.secret_scan_bytes = self.runner.secret_scan_bytes.clone();
         client.runner.push_check = self.runner.push_check.clone();
         client.previews = self.previews.clone();
         Ok(client)

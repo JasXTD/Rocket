@@ -361,6 +361,14 @@ uses the first `git` on `PATH`; Linux has no bundled Git. Settings, logs and cra
 `$XDG_STATE_HOME/rocket`, by default `~/.local/state/rocket`. As it refuses Run as
 administrator on Windows, Rocket refuses to run as root, for example under `sudo`.
 
+On Linux, Rocket's state root must be a real folder owned by your user with private
+permissions (0700). Rocket creates missing folders privately and refuses unsafe
+existing folders, links, or parents another user could replace. It reports the
+offending path and preserves its files and permissions; it never switches to a
+shared temporary profile. Older 0755 subfolders inside a private state root remain
+usable. Review and correct an unsafe path's ownership/permissions before restarting,
+or choose an absolute `XDG_STATE_HOME` under your own protected home folder.
+
 Some features use what the system provides, and nothing else is needed to build:
 
 - the terminal runs your login shell, or bash, zsh or fish as `/etc/shells` lists them;
@@ -455,6 +463,9 @@ setup and authorization.
 - **Guard AI API keys:** a separate, default-on Security setting checks supported
   OpenAI, Anthropic, DeepSeek, GLM/Z.ai and other provider key formats locally.
   Both guards also check outgoing history; neither sends keys to a provider.
+- **Scan budget:** Preferences → Security lets you change the total scan budget,
+  starting at 256 MiB of uncompressed Git objects, including reachable history.
+  The separate 128 MiB per-object limit and cancellation/time limits remain active.
 - **Diagnostics:** operation history and structured logs help trace failures and
   cancellation. Review any exported diagnostic information before sharing it.
 

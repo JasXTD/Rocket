@@ -158,6 +158,7 @@ impl Rocket {
                 );
             });
         });
+        self.scan_budget_card(ui);
         self.dependency_page(ui);
         self.sync_dependency_push_check();
         preferences::status_line(

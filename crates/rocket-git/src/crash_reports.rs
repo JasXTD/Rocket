@@ -322,7 +322,7 @@ pub fn default_directory() -> io::Result<PathBuf> {
     #[cfg(windows)]
     let directory = std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("Rocket/crashes"));
     #[cfg(not(windows))]
-    let directory = crate::local_storage::directory().map(|p| p.join("crashes"));
+    let directory = Some(crate::local_storage::directory()?.join("crashes"));
     directory
         .filter(|p| p.is_absolute())
         .ok_or_else(|| {

@@ -6,6 +6,30 @@ see the reports for the first pass in `work/security-remediation-20261023/REPORT
 and the follow-up in `work/security-remediation-20261024-v2/REPORT.md` for tested
 artifacts and limits.
 
+## Linux state storage and preview ownership (unreleased, 2026-11-08)
+
+Rocket fails closed when its XDG state root is unavailable or unsafe. It checks each
+path component from the filesystem root before creating/using the next: real
+directories only, owned by the effective user or root, with no group/other write
+permission. Trusted sticky ancestors such as root-owned `/tmp` are allowed because
+other users cannot rename the checked user/root-owned entry. The state root and
+each new update job must belong to the effective user and have no group/other
+permissions. Missing directories are created with 0700; failures propagate. No
+existing data or permissions are repaired automatically and no temporary profile
+fallback is used. This boundary trusts root and processes running as the same user.
+
+Settings, logs and update-cache subfolders may inherit privacy from an owned 0700
+ancestor, preserving earlier 0755 children within a private Rocket root. Directory
+checks precede saved-state reads and update handoff/helper plan reads. The private
+job and protected ancestry prevent a different local user from replacing the
+hash-checked update helper between verification and execution. Signing remains
+optional; Lua worker digest binding and sandbox policy are unchanged.
+
+Preview slots take a nonblocking exclusive OS file lock on Unix as well as Windows.
+Unix cleanup/discard retains that lock through deletion. A second process leaves
+live previews alone; process exit/crash releases ownership so later cleanup can
+remove stale slots. Windows retains its exclusive share-mode behavior.
+
 ## Direct SSH and Preview audit fixes (unreleased, 2026-11-06)
 
 Direct SSH accepts exactly one fixed Git service and one shell-quoted repository
@@ -500,9 +524,17 @@ includes `operation_started: false` and `retry_requires_changes: true`; refused
 normal pushes report `remote_outcome: "not_attempted"`.
 
 The scanner refuses incomplete checks, missing objects or limits: 100,000 objects,
-128 MiB total raw object bytes, and the configured operation timeout. The 8 MiB
+128 MiB per object, a configurable total raw-object budget (default **256 MiB**),
+and the configured operation timeout. Preferences → Security → Total scan budget
+accepts positive whole MiB values up to the platform's representable size. This
+application-owned setting is saved locally; repository config cannot change it.
+Existing profiles use the new default. Each scan snapshots its starting budget;
+changes apply to future scans. CLI clients also default to 256 MiB but do not read
+desktop preferences. The 8 MiB
 batch target groups smaller objects; larger individual objects are read separately
-within the same total budget. That budget includes unchanged staged files for a
+within the separate 128 MiB per-object cap and the total budget. Increasing the
+total does not increase a single read or remove cancellation/time limits. The
+total includes unchanged staged files for a
 commit and all reachable history for a push, with duplicate objects counted once.
 Object reads use a size-derived output bound and remain buffered; this is not an
 unlimited or constant-memory scan. Content inspection checks cancellation and the

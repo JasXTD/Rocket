@@ -768,6 +768,7 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 - Rocket checks staged content before explicit commits and checks reachable history before pushes. Recognized GitHub tokens, private keys, likely credential literals and .env files cause a refusal with a location and instructions. Deleting a secret only from the newest commit does not remove it from history.
 - Use placeholder-only .env.example, .env.sample or .env.template files. Keep real secrets outside Git. Revoke credentials that have already been exposed.
 - MCP cannot change this preference. This guard covers Rocket operations; raw Git and custom shell commands are outside it. Detection is bounded and cannot recognize every secret or encoding. An incomplete scan also refuses the write.
+- **Total scan budget** on the same page defaults to **256 MiB**. Enter a positive whole number of MiB and select **Apply**, or reset to the default. This counts uncompressed objects, including unchanged staged content for a commit and reachable older history for a push; it is not the compressed upload size. Raising it can take longer. The separate 128 MiB per-object cap, time limit and cancellation remain active. Changes apply to future scans and are saved for this desktop profile; the CLI uses its own 256 MiB default.
 
 ### Guard AI API keys
 

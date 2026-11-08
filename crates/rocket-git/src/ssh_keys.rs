@@ -182,6 +182,7 @@ impl SshManager {
                 transport_scope: None,
                 secret_protection: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
                 guard_ai_api_keys: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                secret_scan_bytes: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(crate::DEFAULT_SECRET_SCAN_MIB as usize * 1024 * 1024)),
                 push_check: Default::default(),
                 git_http_allowed: false, // This runner launches only OpenSSH tools.
                 managed_git: None,

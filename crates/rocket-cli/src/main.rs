@@ -27,24 +27,29 @@ fn log_directory(options: &Options) -> io::Result<PathBuf> {
     let path = options
         .log_dir
         .clone()
-        .or_else(|| std::env::var_os("ROCKET_LOG_DIR").map(PathBuf::from))
-        .or_else(|| {
+        .or_else(|| std::env::var_os("ROCKET_LOG_DIR").map(PathBuf::from));
+    let path = match path {
+        Some(path) => path,
+        None => {
             #[cfg(windows)]
             {
                 std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("Rocket/logs/cli"))
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "log directory unavailable"))?
             }
             #[cfg(not(windows))]
             {
-                rocket_git::local_storage::directory().map(|p| p.join("logs").join("cli"))
+                rocket_git::local_storage::directory()?.join("logs").join("cli")
             }
-        })
-        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "log directory unavailable"))?;
+        }
+    };
     if !path.is_absolute() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "log directory must be absolute",
         ));
     }
+    #[cfg(unix)]
+    rocket_git::local_storage::create_protected(&path)?;
     Ok(path)
 }
 

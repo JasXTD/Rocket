@@ -178,6 +178,9 @@ impl Rocket {
         let log = self.backend.as_ref().map(|b| b.log.clone());
         let task = crate::read_task::spawn(ctx, move |cancel| {
             package::plain(&cache)?;
+            #[cfg(not(windows))]
+            rocket_git::local_storage::create_protected(&cache).map_err(package::io)?;
+            #[cfg(windows)]
             std::fs::create_dir_all(&cache).map_err(package::io)?;
             let read = |log| {
                 UpdateClient::new(endpoint, log)?

@@ -128,9 +128,8 @@ fn missing() -> Error {
 
 /// Held while a key is created: `credential-key.lock` in Rocket's folder.
 fn creation_lock() -> Result<std::fs::File> {
-    let directory = crate::local_storage::directory().ok_or_else(|| {
-        Error::InvalidInput("Rocket needs a home folder to keep its credential key lock.".into())
-    })?;
+    let directory = crate::local_storage::directory()
+        .map_err(|e| Error::io("open private credential key storage", e))?;
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)

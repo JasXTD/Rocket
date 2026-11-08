@@ -125,7 +125,7 @@ pub use repository_summary::{RepositorySummary, SummaryChanges, SummaryReads};
 mod review;
 mod runner;
 mod secret_guard;
-pub use secret_guard::{SecretKind, SecretProtectionFailure};
+pub use secret_guard::{SecretKind, SecretProtectionFailure, DEFAULT_SECRET_SCAN_MIB, MAX_SECRET_SCAN_MIB, validate_secret_scan_mib};
 mod sequence;
 mod statistics;
 mod signing;

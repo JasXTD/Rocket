@@ -10,6 +10,20 @@ use crate::{
 };
 use std::{ffi::OsString, fmt, path::Path};
 
+/// Total uncompressed Git-object bytes inspected by one commit/push scan.
+pub const DEFAULT_SECRET_SCAN_MIB: u64 = 256;
+/// Largest whole-MiB budget representable on this platform, not an allocation.
+pub const MAX_SECRET_SCAN_MIB: u64 = (usize::MAX / (1024 * 1024)) as u64;
+
+pub fn validate_secret_scan_mib(mib: u64) -> Result<()> {
+    if !(1..=MAX_SECRET_SCAN_MIB).contains(&mib) {
+        return Err(Error::InvalidInput(format!(
+            "Total scan budget must be a whole number from 1 to {MAX_SECRET_SCAN_MIB} MiB"
+        )));
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SecretKind {
     AiApiKey,
@@ -74,7 +88,7 @@ impl SecretProtectionFailure {
     }
     pub fn guidance(&self) -> &'static str {
         if self.kind == SecretKind::Incomplete {
-            "The safety scan could not finish. Inspect missing objects, repository size and scan limits. No commit or push process was started. Do not bypass protection or retry through another tool."
+            "The safety scan could not finish. Inspect missing objects, repository size and scan limits. For a total-budget refusal, increase Total scan budget in Preferences > Security and retry; per-object and time limits still apply. No commit or push process was started. Do not bypass protection or retry through another tool."
         } else {
             "Remove the secret or environment file from the staged snapshot and every commit being published, then retry. Deleting it only in the latest commit is insufficient. Keep secrets outside Git and use a placeholder-only .env.example. Revoke exposed credentials. Do not bypass protection or retry through another tool."
         }

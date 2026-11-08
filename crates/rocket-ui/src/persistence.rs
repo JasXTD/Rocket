@@ -39,6 +39,9 @@ const COMMIT_HEIGHT_MAGIC: &[u8] = b"ROCKET-STATE\0\x1a";
 // v26's commit height, which a v27 state may leave out. Only a picked language writes it;
 // a language this binary lacks reads as "match the system" rather than refusing the state.
 const LANGUAGE_MAGIC: &[u8] = b"ROCKET-STATE\0\x1b";
+// v28 appends a custom total secret-scan budget. Earlier profiles use 256 MiB;
+// older binaries refuse a custom policy instead of silently discarding it.
+const SCAN_BUDGET_MAGIC: &[u8] = b"ROCKET-STATE\0\x1c";
 /// Heights the commit message area can be dragged to and saved at.
 pub const COMMIT_HEIGHTS: std::ops::RangeInclusive<f32> = 120.0..=2000.0;
 // v15 uses the v14 layout and version-2 definitions for context-specific commands.
@@ -82,6 +85,7 @@ pub struct Preferences {
     pub auto_refresh: bool,
     pub secret_protection: bool,
     pub guard_ai_api_keys: bool,
+    pub secret_scan_mib: u64,
     pub dependency_warnings: bool,
     pub dependency_before_push: bool,
     pub row_height: f32,
@@ -114,6 +118,7 @@ impl Default for Preferences {
             auto_refresh: true,
             secret_protection: true,
             guard_ai_api_keys: true,
+            secret_scan_mib: rocket_git::DEFAULT_SECRET_SCAN_MIB,
             dependency_warnings: true,
             dependency_before_push: false,
             row_height: 33.0,
@@ -211,6 +216,9 @@ fn invalid() -> io::Error {
 }
 impl Store {
     pub fn open(directory: &Path) -> io::Result<(Self, SavedState)> {
+        #[cfg(unix)]
+        rocket_git::local_storage::create_protected(directory)?;
+        #[cfg(not(unix))]
         fs::create_dir_all(directory)?;
         let mut options = OpenOptions::new();
         options.read(true).write(true).create(true).truncate(false);
@@ -345,7 +353,9 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     if p.commit_height.is_some_and(|h| !COMMIT_HEIGHTS.contains(&h)) {
         return Err(invalid());
     }
-    let language = p.language.is_some();
+    rocket_git::validate_secret_scan_mib(p.secret_scan_mib).map_err(|_| invalid())?;
+    let scan_budget = p.secret_scan_mib != rocket_git::DEFAULT_SECRET_SCAN_MIB;
+    let language = scan_budget || p.language.is_some();
     let commit_height = language || p.commit_height.is_some();
     let ai_keys = commit_height || !p.guard_ai_api_keys;
     let push_check = ai_keys || p.dependency_before_push;
@@ -357,7 +367,7 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     let orders = shortcuts || state.worktree_views.values().any(|v| v.history_order != rocket_git::HistoryOrder::default());
     let urls = orders || state.commands.iter().any(|c| c.action == rocket_git::CommandAction::Url);
     let scoped = urls || state.commands.iter().any(|c| c.scope != rocket_git::CommandScope::Repository);
-    let mut bytes = if language { LANGUAGE_MAGIC } else if commit_height { COMMIT_HEIGHT_MAGIC } else if ai_keys { AI_KEYS_MAGIC } else if push_check { PUSH_CHECK_MAGIC } else if shell { SHELL_MAGIC } else if general { GENERAL_MAGIC } else if nested_workspaces { WORKSPACES_MAGIC } else if themes { THEME_MAGIC } else if shortcuts { SHORTCUT_MAGIC } else if orders { ORDER_MAGIC } else if urls { URL_MAGIC } else if scoped { SCOPED_MAGIC } else if state.hosting_searches.is_empty() { DEPENDENCIES_MAGIC } else { SEARCH_MAGIC }.to_vec();
+    let mut bytes = if scan_budget { SCAN_BUDGET_MAGIC } else if language { LANGUAGE_MAGIC } else if commit_height { COMMIT_HEIGHT_MAGIC } else if ai_keys { AI_KEYS_MAGIC } else if push_check { PUSH_CHECK_MAGIC } else if shell { SHELL_MAGIC } else if general { GENERAL_MAGIC } else if nested_workspaces { WORKSPACES_MAGIC } else if themes { THEME_MAGIC } else if shortcuts { SHORTCUT_MAGIC } else if orders { ORDER_MAGIC } else if urls { URL_MAGIC } else if scoped { SCOPED_MAGIC } else if state.hosting_searches.is_empty() { DEPENDENCIES_MAGIC } else { SEARCH_MAGIC }.to_vec();
     bytes.extend([
         u8::from(p.sidebar),
         u8::from(p.details),
@@ -505,7 +515,8 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     if ai_keys { bytes.push(u8::from(p.guard_ai_api_keys)); }
     if language { bytes.push(u8::from(p.commit_height.is_some())); }
     if let Some(height) = p.commit_height { bytes.extend(height.to_le_bytes()); }
-    if let Some(chosen) = p.language { put(&mut bytes, chosen.tag().as_bytes())?; }
+    if language { put(&mut bytes, p.language.map_or("", |chosen| chosen.tag()).as_bytes())?; }
+    if scan_budget { bytes.extend(p.secret_scan_mib.to_le_bytes()); }
     if bytes.len() as u64 > MAX_BYTES {
         return Err(invalid());
     }
@@ -646,7 +657,8 @@ impl<'a> Reader<'a> {
 fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     let mut r = Reader(bytes);
     let magic = r.take(MAGIC.len())?;
-    let language = magic == LANGUAGE_MAGIC;
+    let scan_budget = magic == SCAN_BUDGET_MAGIC;
+    let language = scan_budget || magic == LANGUAGE_MAGIC;
     let commit_height = language || magic == COMMIT_HEIGHT_MAGIC;
     let ai_keys = commit_height || magic == AI_KEYS_MAGIC;
     let push_check = ai_keys || magic == PUSH_CHECK_MAGIC;
@@ -687,6 +699,7 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
         auto_refresh: r.boolean()?,
         secret_protection: true,
         guard_ai_api_keys: true,
+        secret_scan_mib: rocket_git::DEFAULT_SECRET_SCAN_MIB,
         dependency_warnings: true,
         dependency_before_push: false,
         row_height: f32::from_bits(r.u32()?),
@@ -941,11 +954,53 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
         let tag = std::str::from_utf8(r.bytes()?).map_err(|_| invalid())?;
         state.preferences.language = crate::i18n::Language::from_tag(tag).filter(|l| *l != crate::i18n::Language::Pseudo);
     }
+    if scan_budget {
+        state.preferences.secret_scan_mib = u64::from_le_bytes(r.take(8)?.try_into().unwrap());
+    }
     if !r.0.is_empty() {
         return Err(invalid());
     }
     encode(&state)?; // Apply the same value limits on both paths.
     Ok(state)
+}
+
+#[cfg(test)]
+mod scan_budget_tests {
+    use super::*;
+
+    #[test]
+    fn custom_budget_roundtrips_and_legacy_profiles_keep_256_mib() {
+        for language in [None, Some(crate::i18n::Language::English)] {
+            for height in [None, Some(318.5)] {
+                let mut state = SavedState::default();
+                state.preferences.language = language;
+                state.preferences.commit_height = height;
+                let prior = encode(&state).unwrap();
+                assert_ne!(&prior[..MAGIC.len()], SCAN_BUDGET_MAGIC);
+                assert_eq!(decode(&prior).unwrap().preferences.secret_scan_mib, 256);
+                for budget in [1, 257, 4097, rocket_git::MAX_SECRET_SCAN_MIB] {
+                    state.preferences.secret_scan_mib = budget;
+                    let bytes = encode(&state).unwrap();
+                    assert!(bytes.starts_with(SCAN_BUDGET_MAGIC));
+                    assert_eq!(decode(&bytes).unwrap(), state);
+                    assert!(decode(&bytes[..bytes.len() - 1]).is_err());
+                    let mut old_version = bytes.clone();
+                    old_version[MAGIC.len() - 1] = 27;
+                    assert!(decode(&old_version).is_err(), "custom policy cannot be silently ignored");
+                    for invalid_budget in [0, rocket_git::MAX_SECRET_SCAN_MIB + 1, u64::MAX] {
+                        let mut corrupt = bytes.clone();
+                        let at = corrupt.len() - 8;
+                        corrupt[at..].copy_from_slice(&invalid_budget.to_le_bytes());
+                        assert!(decode(&corrupt).is_err());
+                    }
+                }
+                state.preferences.secret_scan_mib = 256;
+                assert_eq!(encode(&state).unwrap(), prior);
+                state.preferences.secret_scan_mib = 0;
+                assert!(encode(&state).is_err());
+            }
+        }
+    }
 }
 
 #[cfg(all(test, windows))]
@@ -957,6 +1012,22 @@ mod nested_workspace_tests;
 #[cfg(all(test, not(windows)))]
 mod lock_tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn unsafe_storage_is_refused_before_reading_settings_or_creating_a_lock() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = std::env::temp_dir().join(format!("rocket-unsafe-state-{}", std::process::id()));
+        rocket_git::local_storage::create_private_new(&directory).unwrap();
+        fs::write(directory.join("state.bin"), b"preserve the existing state").unwrap();
+        fs::set_permissions(&directory, fs::Permissions::from_mode(0o777)).unwrap();
+        let error = Store::open(&directory).err().expect("unsafe storage must be refused");
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(!directory.join("state.lock").exists());
+        assert_eq!(fs::read(directory.join("state.bin")).unwrap(), b"preserve the existing state");
+        assert_eq!(fs::metadata(&directory).unwrap().permissions().mode() & 0o777, 0o777);
+        fs::remove_dir_all(directory).unwrap();
+    }
 
     #[test]
     fn one_store_owns_a_state_folder_until_it_closes() {

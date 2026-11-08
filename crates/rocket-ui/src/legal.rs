@@ -142,7 +142,7 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
                 let rows = [
                     (Section::Rocket, "Rocket".to_owned(), license(), "dialog-legal-rocket"),
                     (Section::Crates, "Rust crates".to_owned(), format!("{} packages", count("crate")), "dialog-legal-crates"),
-                    (Section::Fonts, "egui fonts".to_owned(), format!("{} fonts", count("font")), "dialog-legal-fonts"),
+                    (Section::Fonts, "Fonts".to_owned(), format!("{} fonts", count("font")), "dialog-legal-fonts"),
                     (
                         Section::Runtime,
                         runtime.map_or_else(String::new, |n| n.name.clone()),
@@ -194,8 +194,8 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
                     }
                     Section::Crates => crates(ui, widgets, &mut s, height, top),
                     Section::Fonts => {
-                        heading(ui, "egui fonts");
-                        ui.add(Label::new("The interface library includes these fonts for text, code and symbols.").wrap());
+                        heading(ui, "Fonts");
+                        ui.add(Label::new("Rocket includes these fonts for text, code and symbols.").wrap());
                         let fonts: Vec<&Notice> = all.iter().filter(|n| n.kind == "font").collect();
                         s.font = s.font.min(fonts.len().saturating_sub(1));
                         list_card(ui, |ui| {
@@ -401,7 +401,12 @@ mod tests {
         let all = notices();
         let crates: Vec<&Notice> = all.iter().filter(|n| n.kind == "crate").collect();
         assert!(crates.len() > 50, "{} crates", crates.len());
-        assert_eq!(all.iter().filter(|n| n.kind == "font").count(), 4);
+        let linux_fonts = PLATFORM.is_none_or(|p| p == "Linux");
+        assert_eq!(all.iter().filter(|n| n.kind == "font").count(), if linux_fonts { 5 } else { 4 });
+        let cjk = every.iter().find(|n| n.name == "Noto Sans CJK Regular").expect("CJK notice");
+        assert_eq!((cjk.version.as_str(), cjk.license.as_str(), cjk.platforms.as_str()), ("2.004", "OFL-1.1", "Linux"));
+        assert!(cjk.text.contains("SIL OPEN FONT LICENSE"));
+        assert_eq!(all.iter().any(|n| n.name == cjk.name), linux_fonts);
         let conpty = all.iter().any(|n| n.kind == "runtime" && n.name == "Microsoft ConPTY" && n.license == "MIT");
         assert_eq!(conpty, PLATFORM.is_none_or(|p| p == "Windows"));
         assert!(crates.iter().any(|n| n.name == "egui" && n.text.contains("Permission is hereby granted")));
@@ -448,6 +453,8 @@ mod tests {
                 click(&ctx, &mut app, "dialog-legal-fonts");
                 assert!(enabled(&ctx, &mut app, "dialog-legal-font-3"));
                 if cfg!(target_os = "linux") {
+                    assert!(enabled(&ctx, &mut app, "dialog-legal-font-4"));
+                    click(&ctx, &mut app, "dialog-legal-font-4");
                     assert!(!app.frame_widgets.contains_key("dialog-legal-runtime"));
                 } else {
                     click(&ctx, &mut app, "dialog-legal-runtime");

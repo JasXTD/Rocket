@@ -230,13 +230,18 @@ impl PreviewCache {
             if !meta.is_dir() || reparse_point(&meta) || !slot_name(&path) {
                 continue;
             }
-            // Holding the lock proves no other process has it open.
+            // Holding the lock proves no other process owns this preview.
             match lock_file(&path.join(LOCK_FILE), false) {
                 Ok(lock) => {
+                    // Windows denies deletion of the open lock file; Unix permits
+                    // unlinking it and must keep the flock until cleanup finishes.
+                    #[cfg(windows)]
                     drop(lock);
                     if remove_tree(&self.root, &path).is_ok() {
                         removed += 1;
                     }
+                    #[cfg(not(windows))]
+                    drop(lock);
                 }
                 Err(e) if e.kind() == io::ErrorKind::NotFound => {
                     // A folder being reserved right now has no lock yet: leave young ones.
@@ -282,15 +287,20 @@ impl PreviewSlot {
     /// Delete the preview's files and release its lock. Links inside are removed,
     /// never followed. Files another process still holds are left for the next start.
     pub fn discard(&self) -> Result<()> {
-        if let Ok(mut lock) = self.lock.lock() {
-            drop(lock.take());
-        }
+        let mut guard = self.lock.lock()
+            .map_err(|_| Error::InvalidInput("preview lock is poisoned".into()))?;
+        let lock = guard.take();
+        #[cfg(windows)]
+        drop(lock);
         let parent = self
             .directory
             .parent()
             .map(Path::to_path_buf)
             .ok_or_else(|| Error::InvalidInput("preview folder has no parent".into()))?;
-        remove_tree(&parent, &self.directory)
+        let result = remove_tree(&parent, &self.directory);
+        #[cfg(not(windows))]
+        drop(lock);
+        result
     }
 }
 
@@ -312,7 +322,13 @@ fn lock_file(path: &Path, create: bool) -> io::Result<fs::File> {
         use std::os::windows::fs::OpenOptionsExt;
         options.share_mode(0);
     }
-    options.open(path)
+    let file = options.open(path)?;
+    #[cfg(not(windows))]
+    file.try_lock().map_err(|error| match error {
+        fs::TryLockError::WouldBlock => io::Error::new(io::ErrorKind::WouldBlock, "preview is in use"),
+        fs::TryLockError::Error(error) => error,
+    })?;
+    Ok(file)
 }
 
 /// Delete `target` and everything below it. `target` must lie inside `root`. A

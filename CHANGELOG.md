@@ -8,6 +8,30 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Linux CJK fonts and configurable secret-scan budget
+
+- Linux UI builds embed the verified Noto Sans CJK Regular 2.004 fallback for
+  Chinese, Japanese and Korean text, including code editors on systems without
+  CJK fonts. Existing Latin metrics and installed-font priority are preserved.
+  The font's license is included in About → Legal; no system installation is needed.
+- Secret scans now default to 256 MiB of cumulative uncompressed Git objects.
+  Preferences → Security accepts a custom positive MiB budget and saves it locally.
+  Existing profiles use the new default. Scans retain their starting budget;
+  individual objects remain capped at 128 MiB, with timeouts/cancellation unchanged.
+- Total-budget refusals explain that reachable history counts and point to the
+  setting. Custom budgets use state format v28; older apps refuse that state
+  instead of silently dropping the policy. CLI clients use the default separately.
+
+## Unreleased — Linux storage and preview security
+
+- Refuse unsafe existing state directories, links and replaceable parent folders;
+  create missing storage privately and report failures without a temporary fallback
+  or changes to existing permissions/data. Existing private profiles remain usable.
+- Create private update jobs and recheck their storage before launching the helper
+  or reading its plan, preventing replacement by another local user.
+- Keep previews owned by another running process during cleanup on Linux. A real
+  Unix lock remains held through deletion and is released by process exit/crash.
+
 ## Unreleased — Hosting and extension requests on Linux (preview)
 
 - GitHub sign-in and reads, the other hosting services and the Lua extensions' web

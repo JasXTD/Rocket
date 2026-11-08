@@ -11,9 +11,9 @@ use std::{
 };
 
 const OBJECT_LIMIT: usize = 100_000;
-const BYTE_LIMIT: usize = 128 * 1024 * 1024;
+const OBJECT_BYTES: usize = 128 * 1024 * 1024;
 // Group small objects to amortize Git startup. A single larger object is read
-// separately within BYTE_LIMIT, rather than treating the batch size as a file cap.
+// separately within OBJECT_BYTES; the configurable total is never an allocation.
 const BATCH_BYTES: usize = 8 * 1024 * 1024;
 
 pub(super) fn oid(bytes: &[u8]) -> Option<String> {
@@ -35,6 +35,7 @@ pub(super) struct Scan<'a> {
     queue: VecDeque<(String, String)>,
     seen: HashSet<String>,
     bytes: usize,
+    byte_limit: usize,
     policy: patterns::Policy,
 }
 impl<'a> Scan<'a> {
@@ -53,6 +54,7 @@ impl<'a> Scan<'a> {
             queue: VecDeque::new(),
             seen: HashSet::new(),
             bytes: 0,
+            byte_limit: runner.secret_scan_bytes.load(std::sync::atomic::Ordering::Acquire),
             policy: patterns::Policy {
                 secrets: runner
                     .secret_protection
@@ -204,11 +206,19 @@ impl<'a> Scan<'a> {
                 .ok()
                 .and_then(|n| n.parse().ok())
                 .ok_or_else(|| incomplete(self.operation))?;
-            if length > BYTE_LIMIT.saturating_sub(self.bytes) {
+            if length > OBJECT_BYTES {
                 return Err(refusal(
                     self.operation,
                     SecretKind::Incomplete,
-                    "the 128 MiB total Git object scan budget".into(),
+                    "the 128 MiB per-object limit (independent of the total scan budget)".into(),
+                    None,
+                ));
+            }
+            if length > self.byte_limit.saturating_sub(self.bytes) {
+                return Err(refusal(
+                    self.operation,
+                    SecretKind::Incomplete,
+                    format!("the configured {} MiB total Git object scan budget (uncompressed, including reachable history)", self.byte_limit / (1024 * 1024)),
                     None,
                 ));
             }

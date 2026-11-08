@@ -1,5 +1,22 @@
 # Dependency review
 
+## Embedded Linux CJK font — 2026-11-08
+
+With user approval, added the unmodified Noto Sans CJK Regular 2.004 collection
+from the official `notofonts/noto-cjk` repository, pinned to
+`523d033d6cb47f4a80c58a35753646f5c3608a78`. The 19,484,784-byte collection and its
+license match the publisher's Git object hashes. The user approved this check
+instead of an unavailable upstream SHA-256/signed release, and reported a clean
+Malwarebytes scan before the font was loaded. Recorded font SHA-256:
+`b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a`.
+
+No Cargo dependencies or system fonts were installed. Linux UI builds borrow the
+same embedded bytes for proportional/monospaced CJK fallbacks. Windows builds do
+not embed them. The SIL OFL 1.1 license and copyright are included in notices.
+See [font provenance](runtime/fonts/noto-sans-cjk/2.004/README.md) for exact source,
+license hashes and the advisory-check scope; these checks do not guarantee the
+absence of undisclosed vulnerabilities.
+
 ## Node.js for the MCP runners under WSL — 2026-11-07
 
 Nothing was added to Rocket or Cargo.lock. To run the MCP terminal runners on Linux,

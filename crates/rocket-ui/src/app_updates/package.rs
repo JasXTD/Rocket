@@ -295,13 +295,18 @@ pub struct Prepared {
 }
 pub fn unique(parent: &Path) -> Result<PathBuf> {
     plain(parent)?;
-    fs::create_dir_all(parent).map_err(io)?;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| error("System clock is unavailable."))?
         .as_nanos();
     let job = parent.join(format!("update-{nonce}-{}", std::process::id()));
-    fs::create_dir(&job).map_err(io)?;
+    #[cfg(not(windows))]
+    rocket_git::local_storage::create_private_new(&job).map_err(io)?;
+    #[cfg(windows)]
+    {
+        fs::create_dir_all(parent).map_err(io)?;
+        fs::create_dir(&job).map_err(io)?;
+    }
     Ok(job)
 }
 pub fn prepare(
@@ -311,6 +316,8 @@ pub fn prepare(
     phase: &Arc<AtomicU8>,
     cancel: &CancellationToken,
 ) -> Result<Prepared> {
+    #[cfg(unix)]
+    rocket_git::local_storage::create_protected(cache).map_err(io)?;
     let job = unique(cache)?;
     phase.store(1, Ordering::Release);
     let archive = client.download(release, &job, cancel)?;
@@ -410,6 +417,20 @@ pub fn copy_tree(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn update_jobs_are_private_and_shared_parents_get_no_job() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = unique(&std::env::temp_dir()).unwrap();
+        assert_eq!(fs::metadata(&root).unwrap().permissions().mode() & 0o777, 0o700);
+        let cache = root.join("cache");
+        fs::create_dir(&cache).unwrap();
+        fs::set_permissions(&cache, fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(unique(&cache).is_err());
+        assert_eq!(fs::read_dir(&cache).unwrap().count(), 0);
+        cleanup(root);
+    }
+
     #[test]
     fn paths_reject_windows_aliases_and_escapes() {
         for path in [
