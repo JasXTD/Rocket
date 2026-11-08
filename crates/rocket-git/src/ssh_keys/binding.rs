@@ -257,7 +257,7 @@ impl Repository {
                     return Err(fail(SshFailure::Changed));
                 }
                 // ReplaceFileW gives the new file the old one's permissions; so does this.
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", target_os = "macos"))]
                 local_files::set_published_mode(&lock, Some(&held), None)
                     .map_err(|e| Error::io("prepare SSH binding", e))?;
                 cancel.check()?;
@@ -359,14 +359,14 @@ fn replace(to: &Path, from: &Path, backup: &Path) -> Result<()> {
     }
     Ok(())
 }
-/// Linux: the new config takes the old one's place in one step, and the file it
+/// Linux/macOS: the new config takes the old one's place in one step, and the file it
 /// displaced is kept as the backup (see `local_files::replace_file`).
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn replace(to: &Path, from: &Path, backup: &Path) -> Result<()> {
     local_files::replace_file(to, from, backup)
         .map_err(|e| Error::io("publish SSH repository setting", e))
 }
-#[cfg(not(any(windows, target_os = "linux")))]
+#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 fn replace(_: &Path, _: &Path, _: &Path) -> Result<()> {
     Err(fail(SshFailure::Unavailable))
 }

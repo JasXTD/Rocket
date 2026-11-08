@@ -125,7 +125,10 @@ for filter in advisory_tool::tests::sha256 local_files::unix_tests local_storage
     cargo_run test "${common[@]}" -p rocket-git --lib "$filter"
 done
 export ROCKET_TEST_REPOSITORIES
-ROCKET_TEST_REPOSITORIES=$(mktemp -d "${TMPDIR:-/tmp}/rocket-core-repositories.XXXXXXXX")
+# Darwin sockaddr_un has only 104 bytes; its default per-user TMPDIR plus the
+# nested repository name leaves no room for the disposable agent's socket.
+# Use a new private native directory, never a normal user's SSH files or agent.
+ROCKET_TEST_REPOSITORIES=$(mktemp -d /private/tmp/rocket-core.XXXXXXXX)
 echo "Isolated repository fixtures: $ROCKET_TEST_REPOSITORIES"
 for suite in preview_lock repository_setup clone file_actions conflict_editor ssh_keys ssh_discovery ssh_direct custom_commands; do
     cargo_run test "${common[@]}" -p rocket-git --test "$suite"
