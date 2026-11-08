@@ -71,8 +71,9 @@ async function parentExit(exe, scenario, kind) {
       await pause(5);
     }
     // Positive control: a waiting guarded worker stays alive with parent/lifeline.
-    if (scenario === 'lifeline') { await pause(300); assert(!exit && executionState(pid) === 'running'); }
+    if (scenario === 'lifeline' && kind === 'probe') await pause(300);
     if (scenario === 'before-input') { await pause(100); assert(!exit && executionState(pid) === 'running'); }
+    if (scenario !== 'startup') assert(!exit && executionState(pid) === 'running', 'Worker completed before trigger');
     const trigger = performance.now();
     if (scenario === 'lifeline') parent.send('close-lifeline');
     else if (scenario !== 'startup') parent.kill('SIGKILL');
@@ -175,6 +176,9 @@ async function main() {
   }
   for (const scenario of ['startup', 'before-input', 'during-lua']) await check('actual_worker_parent_exit_' + scenario, () => parentExit(worker, scenario, 'worker'));
   await check('dedicated_lifeline_closes_while_parent_is_alive', () => parentExit(probe, 'lifeline', 'probe'));
+  // Require the guard's distinct exit status from the actual running Lua worker;
+  // natural EOF, fuel or the Lua instruction limit cannot satisfy this check.
+  await check('actual_running_lua_reports_lifeline_exit', () => parentExit(worker, 'lifeline', 'worker'));
   await check('parent_crash_during_native_wait', () => parentExit(probe, 'during-wait', 'probe'));
   await check('worker_deadline_without_controller_timer', async () => {
     const start = performance.now(), r = await launch(probe, ['guarded', String(process.pid), 'wait']).completed;
