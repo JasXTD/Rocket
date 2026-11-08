@@ -153,7 +153,7 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
                     ),
                 ];
                 for (i, (section, title, sub, key)) in rows.into_iter().enumerate() {
-                    // Linux builds bundle no runtime, so there is nothing to list.
+                    // Linux/macOS bundle no runtime, so there is nothing to list.
                     if section == Section::Runtime && runtime.is_none() {
                         continue;
                     }
@@ -431,7 +431,7 @@ mod tests {
     }
 
     /// About shows the license and opens Legal; each section opens and × closes it. Linux
-    /// builds bundle no runtime, so Legal has no runtime section there.
+    /// and macOS builds bundle no runtime, so Legal has no runtime section there.
     #[test]
     fn about_opens_legal_and_its_sections() {
         crate::test_common::isolated(
@@ -458,9 +458,11 @@ mod tests {
                 assert!(enabled(&ctx, &mut app, "dialog-legal-filter"));
                 click(&ctx, &mut app, "dialog-legal-fonts");
                 assert!(enabled(&ctx, &mut app, "dialog-legal-font-3"));
-                if cfg!(target_os = "linux") {
+                if cfg!(any(target_os = "linux", target_os = "macos")) {
                     assert!(enabled(&ctx, &mut app, "dialog-legal-font-4"));
                     click(&ctx, &mut app, "dialog-legal-font-4");
+                    assert!(enabled(&ctx, &mut app, "dialog-legal-font-5"));
+                    click(&ctx, &mut app, "dialog-legal-font-5");
                     assert!(!app.frame_widgets.contains_key("dialog-legal-runtime"));
                 } else {
                     click(&ctx, &mut app, "dialog-legal-runtime");
