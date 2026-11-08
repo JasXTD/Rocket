@@ -20,15 +20,17 @@ fn fixture_base() -> PathBuf {
 }
 impl Fixture {
     fn new() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let base = fixture_base();
         fs::create_dir_all(&base).unwrap();
         let path = base.join(format!(
-            "{}-{}",
+            "{}-{}-{}",
             std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         fs::create_dir(&path).unwrap();
         fs::create_dir_all(path.join("checkout 文/.git")).unwrap();
