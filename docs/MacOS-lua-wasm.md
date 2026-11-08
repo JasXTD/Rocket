@@ -275,7 +275,10 @@ The CI and WSL guest hashes differ, so this is not a reproducible-byte build cla
 Both were built from the reviewed source with the approved tools and independently
 passed the same contract and output checks.
 
-### Containment qualification in progress (2026-11-09)
+The compatibility run left the conservative compute ledger at 57 rounded minutes
+/ $3.534 before the containment work below.
+
+### Native containment and lifecycle verification (2026-11-09)
 
 The standalone prototype now refuses Mac input unless it verifies an exact
 App Sandbox-only entitlement dictionary and hardened runtime signing. Disposable
@@ -294,7 +297,8 @@ and physical footprint every five milliseconds, including shared/compressed
 memory accounting. **192 MiB is a monitor threshold, not a kernel-enforced hard
 allocation cap.** Scheduling and allocation bursts permit overshoot. The extra
 64 MiB above linear memory provides prototype headroom for VM, exception heap,
-request/output buffers and the native process; native results must qualify it.
+request/output buffers and the native process. The samples below qualify only
+these bounded synthetic workloads, not a worst-case native allocation guarantee.
 The watchdog is trusted native code and cannot contain a native VM compromise.
 
 The hard VM limits remain 128 MiB linear memory, 4 MiB exception heap reservation,
@@ -303,21 +307,56 @@ The guest has no host imports or access to persistent App Sandbox container
 storage. This does not assert that macOS creates a fresh container per run.
 
 Local WSL checks pass: 12 VM checks including touched linear memory, retained
-exceptions and repeated catches; eight parent/lifeline/deadline checks; and 14 full
+exceptions and repeated catches; nine parent/lifeline/deadline checks; and 14 full
 Lua output comparisons plus input refusal/cancellation with the guard enabled.
-Windows passes the seven affected controller checks. Native Mac qualification
-is pending: actual signed worker parity, external file/symlink/TCP/Unix-socket
-denial with positive controls, inherited high descriptors, blocked fork, bounded
-private/shared pressure, and parent death during startup/input/Lua/native wait.
+Windows passes the seven affected controller checks. Native Mac passes actual
+signed worker parity, external file/symlink/TCP/Unix-socket denial with positive
+controls, inherited high descriptors, blocked fork, bounded private/shared
+pressure, and parent death during startup/input/Lua/native wait. A distinct
+actual-worker lifeline exit-code assertion cannot pass on natural Lua instruction
+exhaustion or EOF. The native wait fixture stays alive with its parent/lifeline,
+then must stop within 1.2 seconds of parent loss, before its five-second deadline.
 Only disposable native tests allocate above the guest cap, bounded at 256 MiB.
+
+[Final native run 42514579040](https://github.com/JasXTD/Rocket/actions/runs/42514579040)
+passed on `000cea7b3c0245ec044dc5da40510b187b3eb1b2` after
+[the first containment run](https://github.com/JasXTD/Rocket/actions/runs/42514037986)
+passed on `898ef8a05be27e9bd53298d5790b2b753b53e189`. The final run contains 18
+containment/lifecycle checks, 12 VM checks, 18 runtime/schema checks, 14 controller/
+archive checks, 14 exact signed-worker JSON comparisons, input refusal and Stop.
+Both artifact ZIPs match GitHub's SHA-256 digests; the transferred guest matches
+the same-run build hash and retains zero imports. Its hash remains the CI guest
+hash recorded above. No new dependency versions were added or installed locally.
+
+Final native observations (single samples, including test polling overhead):
+
+| Check | Observed result |
+| --- | --- |
+| Parent exit during startup / waiting for input / running Lua | 18.03 / 19.54 / 21.66 ms, worker gone |
+| Parent crash during native wait | 31.40 ms, worker gone |
+| Lifeline closed with parent alive | 17.98 ms, exit code 90 |
+| Actual running Lua lifeline closed | 17.10 ms to exited state, exit code 90; brief zombie observed before live parent collected close |
+| Independent five-second deadline | 5.022 seconds, exit code 91 |
+| Private / shared native pressure | Sampled 192.55 / 192.89 MiB, exit code 92 |
+| Largest sampled worker footprint across the 14 Lua cases | 16.73 MiB |
+| Explicit Stop after running event | 0.565 ms to child close |
+
+The runtime/code paths are unchanged between the two runs; the second strengthens
+the lifecycle test's exit-reason assertion. The final jobs took 54 seconds (Linux
+guest) and 81 seconds (Mac). Cumulative conservative compute is **64 rounded
+minutes / $3.968 of $6**, counting Linux at the Mac rate as well. This is a budget
+estimate, not a GitHub invoice. Billing settings were not changed; no further
+workflow is dispatched. A new full 35-minute reservation would exceed this cap.
 
 Public SDK contracts used for the first-party native shim:
 [code signing information](https://developer.apple.com/documentation/security/seccodecopysigninginformation(_:_:_:)),
 [hardened runtime flag](https://developer.apple.com/documentation/security/seccodesignatureflags/runtime),
 and Apple's [task VM info declarations](https://github.com/apple-oss-distributions/xnu/blob/xnu-11417.140.69/osfmk/mach/task_info.h).
 
-After the run, the conservative ledger is 57 rounded minutes / **$3.534 of $6**,
-counting the Linux job at the Mac rate. This is a budget estimate, not an invoice.
-No further workflow was dispatched. The prototype compatibility stage passes;
-adversarial exception/memory-pressure work, native containment/lifecycle, signed
-helper binding and production integration remain open. Mac Lua remains disabled.
+This completes the requested prototype containment/lifecycle/pressure batch, not
+an exhaustive sandbox audit. The VM and native watchdog remain trusted code; a
+native VM compromise or externally suspended whole worker is outside the sampled
+watchdog guarantee. Production broker/helper identity, tamper-resistant package
+binding, reviewed IPC integration, Developer ID/notarization and bare-metal tests
+remain open. Production Mac Lua still refuses execution. Windows/Linux production
+sandbox source and root Cargo manifests/lockfile remain unchanged.

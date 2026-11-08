@@ -61,8 +61,13 @@ The 128 MiB limit applies to guest linear memory, not total native RSS. The new
 qualification runner covers bounded exception pressure, signed App Sandbox
 file/network controls, inherited descriptors, parent/lifeline loss and private/
 shared native pressure. Its 192 MiB native watchdog is a sampled threshold with
-possible overshoot, not a hard allocation cap. Local lifecycle/VM checks pass;
-this containment batch still needs native CI results. Production helper identity,
+possible overshoot, not a hard allocation cap. Local lifecycle/VM checks and all
+18 containment checks pass on native Apple Silicon in
+[run 42514579040](https://github.com/JasXTD/Rocket/actions/runs/42514579040), including
+the actual Lua worker's explicit lifeline-loss exit code. The native run also
+passes 12 VM, 18 runtime/schema, 14 Node checks, all 14 exact Lua comparisons and
+input/Stop cases; artifact digests and the zero-import guest were verified.
+Production helper identity,
 broker integration, packaging and bare-metal testing remain separate gates.
 The current test worker also contains compiler code and is not a release-size
 measurement. Windows AppContainer and Linux Landlock/seccomp stay untouched.
