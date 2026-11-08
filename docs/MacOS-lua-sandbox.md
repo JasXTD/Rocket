@@ -1,7 +1,7 @@
 # macOS Lua sandbox investigation
 
-Status: design investigation, 2026-11-08. **No macOS sandbox is implemented or
-verified. Lua remains unavailable on macOS.** There is no environment variable,
+Status: native characterization harness prepared, 2026-11-09. **No production
+macOS sandbox is implemented or verified. Lua remains unavailable on macOS.** There is no environment variable,
 missing-hash workaround, in-process execution or unrestricted worker fallback.
 The development CI artifact excludes the Lua worker.
 
@@ -99,3 +99,48 @@ The stage-1 tests prove only **refusal**: the host refuses bound/unbound workers
 pre-cancellation remains effective, and the Cargo-built helper must return the
 sandbox error without waiting for stdin to close or executing supplied Lua.
 They do not count as sandbox escape tests or permission to enable extensions.
+
+## First native characterization
+
+`tools/test-macos-sandbox.sh` runs a first-party Objective-C probe compiled against
+the installed Apple SDK, signed ad hoc with hardened runtime and exactly the App
+Sandbox entitlement. It needs no Developer ID, notarization, Lua input, third-party
+package or system configuration change. Run it only in a disposable ordinary OS
+user: macOS creates an app container with a fresh random bundle identity, and the
+runner deliberately never deletes entries under a normal user's Library/Containers.
+
+The `sandbox` choice in the existing manual Apple Silicon workflow executes only
+this harness, its lifecycle tests, and the real host/worker refusal checks. It does
+not build the UI, overwrite a package, contact a credential service, or enable Lua.
+Its job retains the same 15-minute cap; account/budget approval is still required.
+
+Measurements include:
+
+- Exact signed entitlements, ordinary-user identity and actual container location.
+- A readable/writable synthetic private file and reachable loopback listener as
+  positive controls before asserting that the sandbox denies access.
+- Persistence of a synthetic container marker between two fresh processes.
+- One immediately exiting/reaped child, with and without a hard `RLIMIT_NPROC` of 0.
+- Separate `RLIMIT_AS` and `RLIMIT_DATA` setting/read-back, followed by bounded
+  private/shared `mmap` and Mach VM reservations above 128 MiB. Reservations are
+  released without touching their pages; this tests address-space enforcement,
+  **not** resident-memory pressure. Setter success alone is never a passing limit.
+- Explicit Stop, timed termination, bounded streaming output and preservation of
+  pre-existing output files. Every native probe also has its own five-second alarm.
+
+`result.json` distinguishes completed characterization from production readiness.
+It always keeps `production_ready: false`; remaining IPC, identity, inheritance,
+parent-death, real-worker and package gates cannot be skipped because the initial
+probes pass. The probe is not an XPC implementation, and its Stop measurement is
+the test supervisor's measurement, not proof of Rocket's eventual worker lifecycle.
+
+The public macOS 15-era [XNU resource-limit implementation](https://github.com/apple-oss-distributions/xnu/blob/xnu-11417.140.69/bsd/kern/kern_resource.c)
+routes `RLIMIT_AS` and `RLIMIT_DATA` to VM limits. That is stronger evidence than
+old RSS documentation, but the pre-mapped shared cache and native allocation paths
+still require measurement. Do not infer a 128 MiB hard limit from source alone.
+Apple explicitly documents unrestricted access to an app's own container in
+[Protecting user data with App Sandbox](https://developer.apple.com/documentation/security/protecting-user-data-with-app-sandbox).
+The persistence probe checks the concrete impact on Rocket's per-invocation contract.
+
+Native results are pending. No production launcher, VM security rule, dependency,
+Windows/Linux sandbox or release package has been changed by this first probe pass.

@@ -11,6 +11,7 @@ on:
         options:
           - followups
           - platform
+          - sandbox
 
 permissions:
   contents: read
@@ -51,8 +52,14 @@ jobs:
           ROCKET_MACOS_OUTPUT: ${{ runner.temp }}/rocket-macos-stage1
         run: |
           set -euo pipefail
-          node --test tools/tests/test-macos-preflight.cjs 2>&1 | tee "$RUNNER_TEMP/rocket-macos-preflight.log"
-          bash tools/build-macos.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"
+          if [ "$ROCKET_MACOS_CHECK_SCOPE" = sandbox ]; then
+            # GitHub-hosted disposable OS user only. Never a normal account's container.
+            export ROCKET_MACOS_SANDBOX_DISPOSABLE_USER=1
+            bash tools/test-macos-sandbox.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"
+          else
+            node --test tools/tests/test-macos-preflight.cjs 2>&1 | tee "$RUNNER_TEMP/rocket-macos-preflight.log"
+            bash tools/build-macos.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"
+          fi
 
       - name: Retain development app and check results
         if: ${{ always() && !cancelled() }}
@@ -68,6 +75,7 @@ jobs:
             ${{ runner.temp }}/rocket-macos-stage1/*.md
             ${{ runner.temp }}/rocket-macos-stage1/*.zip
             ${{ runner.temp }}/rocket-macos-stage1/*.sha256
+            ${{ runner.temp }}/rocket-macos-stage1/sandbox/result.json
             ${{ runner.temp }}/rocket-macos-stage1/mcp/*/result.json
             ${{ runner.temp }}/rocket-macos-stage1/mcp/*/*.png
             ${{ runner.temp }}/rocket-macos-stage1/Rocket.iconset/icon_512x512@2x.png
