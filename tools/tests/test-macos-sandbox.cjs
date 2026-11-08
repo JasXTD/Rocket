@@ -54,11 +54,18 @@ function bounded(command, args, options = {}) {
   });
 }
 
+function verifiedLimit(limit) {
+  return limit.set === true && limit.read_back === true &&
+    Number.isSafeInteger(limit.requested) && limit.requested >= 0 &&
+    [limit.soft, limit.hard].every(value => typeof value === 'string' && /^\d{1,20}$/.test(value) &&
+      BigInt(value) <= BigInt(limit.requested));
+}
+
 function qualification(observed) {
   const blockers = [];
   if (observed.container_write.success && observed.container_read.success) blockers.push('persistent_container_between_processes');
   if (observed.fork.created) blockers.push('app_sandbox_alone_allows_child_processes');
-  if (observed.memory.some(item => !item.limit.set || !item.limit.read_back || item.allocated !== false)) {
+  if (observed.memory.some(item => !verifiedLimit(item.limit) || item.allocated !== false)) {
     blockers.push('128_mib_native_memory_limit_not_established');
   }
   // Even an unexpectedly restrictive OS cannot enable production from these few

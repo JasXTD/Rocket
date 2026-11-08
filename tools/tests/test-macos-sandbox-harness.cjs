@@ -37,8 +37,18 @@ test('A measured sandbox gap cannot be reported as production ready', () => {
 });
 test('Passing the limited probes cannot bypass remaining production gates', () => {
   const result = qualification({ container_write: { success: false }, container_read: { success: false },
-    fork: { created: false }, memory: [{ limit: { set: true, read_back: true }, allocated: false }] });
+    fork: { created: false }, memory: [{ limit: { set: true, read_back: true, requested: 134217728,
+      soft: '134217728', hard: '134217728' }, allocated: false }] });
   assert.equal(result.production_ready, false); assert(result.pending.includes('actual_lua_worker'));
+  assert.deepEqual(result.blockers, []);
+});
+test('Rounded or excessive native limits cannot establish memory protection', () => {
+  for (const value of [9223372036854776000, '9223372036854775807', '134217729', 'unavailable']) {
+    const result = qualification({ container_write: { success: false }, container_read: { success: false },
+      fork: { created: false }, memory: [{ limit: { set: true, read_back: true, requested: 134217728,
+        soft: value, hard: value }, allocated: false }] });
+    assert.deepEqual(result.blockers, ['128_mib_native_memory_limit_not_established']);
+  }
 });
 test('Existing output and files are preserved', () => {
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'rocket-sandbox-harness-')));

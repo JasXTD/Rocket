@@ -58,7 +58,9 @@ static NSDictionary *limit_probe(int resource, rlim_t value) {
     int result = setrlimit(resource, &desired), saved = errno;
     bool checked = getrlimit(resource, &actual) == 0;
     return @{ @"set": result == 0 ? @YES : @NO, @"errno": @(saved), @"read_back": checked ? @YES : @NO,
-              @"soft": @(checked ? actual.rlim_cur : 0), @"hard": @(checked ? actual.rlim_max : 0),
+              // rlim_t includes RLIM_INFINITY, beyond JavaScript's exact integer range.
+              @"soft": checked ? @(actual.rlim_cur).stringValue : @"unavailable",
+              @"hard": checked ? @(actual.rlim_max).stringValue : @"unavailable",
               @"requested": @(value) };
 }
 
