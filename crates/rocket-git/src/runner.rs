@@ -1339,15 +1339,18 @@ mod tests {
     }
 
     fn marker() -> PathBuf {
+        // SystemTime can repeat between parallel tests on a coarse OS clock.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/runner-tests");
         std::fs::create_dir_all(&directory).unwrap();
         directory.join(format!(
-            "{}-{}.ready",
+            "{}-{}-{}.ready",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
         ))
     }
 
@@ -1498,7 +1501,23 @@ mod tests {
             );
             (result, timings.cancel_to_stop)
         });
-        wait_ready(&ready);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !ready.is_file() {
+            if worker.is_finished() || Instant::now() >= deadline {
+                cancel.cancel();
+                match worker.join() {
+                    Ok((Ok(output), _)) => panic!(
+                        "fixture exited before readiness: {}; stdout: {}; stderr: {}",
+                        output.status,
+                        String::from_utf8_lossy(&output.stdout[..output.stdout.len().min(2048)]),
+                        String::from_utf8_lossy(&output.stderr[..output.stderr.len().min(2048)]),
+                    ),
+                    Ok((Err(error), _)) => panic!("fixture failed before readiness: {error:?}"),
+                    Err(_) => panic!("fixture worker panicked before readiness"),
+                }
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
         let started = Instant::now();
         cancel.cancel();
         let requested = *cancel.0.requested_at.get().unwrap();
