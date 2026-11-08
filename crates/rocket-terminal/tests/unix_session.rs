@@ -205,6 +205,31 @@ fn rocket_bash_has_its_own_session_job_control_resize_interrupt_unicode_and_hist
 }
 
 #[test]
+fn owned_history_preserves_existing_entries_and_saves_new_commands_before_exit() {
+    let root = folder("saved-history");
+    let history = root.join("history");
+    fs::write(&history, "echo ROCKET_OLD_HISTORY\n").unwrap();
+    let session = Session::start_with_history(&root, 100, 18, Arc::new(|| {}), &history).unwrap();
+    wait(&session, "history prompt", prompt);
+    for marker in ["FIRST", "SECOND"] {
+        session.input(format!("echo ROCKET_HISTORY_{marker}\r").as_bytes()).unwrap();
+        wait(&session, "saved command prompt", |screen| {
+            screen.text().lines().any(|line| line == format!("ROCKET_HISTORY_{marker}"))
+                && prompt(screen)
+        });
+        let saved = fs::read_to_string(&history).unwrap();
+        for entry in ["echo ROCKET_OLD_HISTORY", "echo ROCKET_HISTORY_FIRST"] {
+            assert_eq!(saved.lines().filter(|line| *line == entry).count(), 1, "{saved}");
+        }
+        assert_eq!(saved.lines().filter(|line| *line == format!("echo ROCKET_HISTORY_{marker}")).count(), 1, "{saved}");
+    }
+    session.stop();
+    closed(&session, "history session stop");
+    assert_eq!(session.status().error, None);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn a_shell_that_exits_reports_its_code_and_takes_its_background_jobs_with_it() {
     let root = folder("exit");
     let session =

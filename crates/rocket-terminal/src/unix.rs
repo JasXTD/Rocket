@@ -210,6 +210,13 @@ fn launch(
                 }
                 // Saved after every command, so ending the session loses nothing.
                 environment.push(("HISTFILE", Some(path.as_os_str().to_owned())));
+                // Apple's Bash 3.2 skips `history -a` when a fresh session has no
+                // older entries (bashhist.c: history_lines_this_session < where_history()).
+                // This path belongs to one owned test session; normal/custom shells
+                // never get this hook. Save its full history, including loaded entries.
+                #[cfg(target_os = "macos")]
+                environment.push(("PROMPT_COMMAND", Some("history -w".into())));
+                #[cfg(not(target_os = "macos"))]
                 environment.push(("PROMPT_COMMAND", Some("history -a".into())));
             }
             Ok(Launch {

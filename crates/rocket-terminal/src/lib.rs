@@ -120,6 +120,8 @@ impl Session {
     }
     /// Use a separate history file (PSReadLine's, or bash's HISTFILE) for an owned test
     /// session. Selected before the first prompt; normal sessions keep the default.
+    /// Give each concurrently active macOS session its own file: Apple's Bash 3.2
+    /// needs snapshot saves when starting with empty history, rather than appends.
     pub fn start_with_history(
         directory: &Path,
         columns: u16,
