@@ -26,8 +26,12 @@ The final local run passed 18 runtime/schema tests, 9 VM tests, 7 controller tes
 7 archive tests and 14 complete JSON comparisons against the native runtime,
 plus oversized-input refusal and cancellation of an executing worker. All 149
 registry archives were re-extracted by the CI stager and matched the reviewed
-source checksums. This is Linux-hosted compatibility evidence, not Mac sandbox
-qualification. The original failing baseline is retained in the investigation.
+source checksums. The same affected checks subsequently passed on native Darwin/
+arm64 in [CI run 42507855345](https://github.com/JasXTD/Rocket/actions/runs/42507855345),
+including exact response comparisons and a 0.419 ms Stop-to-close sample. The
+downloaded artifacts and same-run guest hashes were verified. This establishes
+prototype compatibility, not production sandbox qualification. The original
+failing baseline is retained in the investigation.
 
 ### Reproduce in an isolated directory
 

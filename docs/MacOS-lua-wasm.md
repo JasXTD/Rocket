@@ -1,20 +1,21 @@
 # macOS Lua: WebAssembly isolation proposal
 
-Status: isolated compatibility prototype in progress, 2026-11-09, following the
-[native App Sandbox probes](MacOS-lua-sandbox.md#measured-result). The approved
-Wasmtime/Pulley graph, WASI SDK and Rust WASI target were hash-verified, scanned by
-the user with Malwarebytes, and staged outside production builds. A fixed guest
-now builds and executes in WSL. Its first compatibility run exposed Rust callback
-unwinding failures; Mac Lua remains unavailable. Windows and Linux retain their
-existing implementations and root Cargo dependencies.
+Status: isolated compatibility prototype passed on WSL and native Apple Silicon,
+2026-11-09, following the [native App Sandbox probes](MacOS-lua-sandbox.md#measured-result).
+The approved dependency/tool archives were hash-verified, source-reviewed, scanned
+by the user with Malwarebytes and staged outside production builds. An approved
+unwind-enabled standard-library rebuild fixed the initial callback-error failures.
+Native containment/lifecycle/pressure qualification remains open, so production
+Mac Lua stays unavailable. Windows and Linux retain their existing implementations
+and root Cargo dependencies. Native evidence and budget accounting appear below.
 
 ## Recommendation
 
-Prototype the existing Lua runtime inside **Wasmtime 50.0.1 using its Pulley
-interpreter**, in a separate Mac worker with App Sandbox as an outer boundary.
+Continue from the tested Lua prototype inside **Wasmtime 50.0.1 using its Pulley
+interpreter**, toward a separate Mac worker with App Sandbox as an outer boundary.
 This version is approved for the isolated experiment, not production adoption or
-a safety certification. Complete the compiler/runtime compatibility proof before
-UI integration.
+a safety certification. Complete the remaining containment and lifecycle gates
+before UI integration.
 
 The objective is unchanged Lua scripts and Rocket's existing reviewed request/UI
 protocol. A Lua/native-library fault should still be confined to WebAssembly
@@ -250,3 +251,32 @@ Before dispatch, reserve 35 minutes at the Mac rate even for the Linux job, incl
 cleanup margin, against the existing $6 allowance ceiling. Native results are not
 yet established by the WSL pass. Production Mac Lua stays refused until the other
 staged acceptance gates above are complete; Windows/Linux sandboxes stay unchanged.
+
+## Native Apple Silicon verification
+
+[Manual run 42507855345](https://github.com/JasXTD/Rocket/actions/runs/42507855345)
+passed on commit `e44ccab770bacdb55c2c17c1e907f15ce2db4e45`. The disposable Linux
+guest job took 77 seconds; the Mac host job took 76 seconds. Downloaded artifact
+SHA-256 values matched GitHub's digests before inspecting the contained reports.
+The fixed guest transfer was also checked against the same-run build hash.
+
+On Darwin/arm64, all 18 runtime/schema tests, 9 VM-boundary tests, 7 controller
+tests, 7 archive tests and 14 complete native/Pulley JSON comparisons passed.
+Oversized input was refused and Stop closed the executing worker in 0.419 ms in
+the recorded sample. The module has zero imports; no host filesystem, network,
+credential API or general WASI context was added. The native runner is a test
+harness, not Rocket's signed production helper or UI.
+
+The CI guest is 831,702 bytes; its SHA-256 is
+`c99cfc35909a145fd978668b216cbfadf9ce4ad1a89721c7af88ca7aed6a0c9b`. Its Pulley
+artifact is 2,878,528 bytes. The native development worker is 45,784,128 bytes and
+includes compiler code; release-footprint optimization was not part of this pass.
+The CI and WSL guest hashes differ, so this is not a reproducible-byte build claim.
+Both were built from the reviewed source with the approved tools and independently
+passed the same contract and output checks.
+
+After the run, the conservative ledger is 57 rounded minutes / **$3.534 of $6**,
+counting the Linux job at the Mac rate. This is a budget estimate, not an invoice.
+No further workflow was dispatched. The prototype compatibility stage passes;
+adversarial exception/memory-pressure work, native containment/lifecycle, signed
+helper binding and production integration remain open. Mac Lua remains disabled.
