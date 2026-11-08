@@ -17,7 +17,6 @@ jobs:
     timeout-minutes: 45
     env:
       CARGO_TERM_COLOR: never
-      ROCKET_MACOS_OUTPUT: ${{ runner.temp }}/rocket-macos-stage1
       # Ephemeral runner only: a disposable Keychain, never a normal account item.
       ROCKET_MACOS_DISPOSABLE_KEYCHAIN_TEST: '1'
     steps:
@@ -39,6 +38,8 @@ jobs:
 
       - name: Build and run the affected native checks
         shell: bash
+        env:
+          ROCKET_MACOS_OUTPUT: ${{ runner.temp }}/rocket-macos-stage1
         run: bash tools/build-macos.sh
 
       - name: Retain development app and check results
@@ -48,14 +49,14 @@ jobs:
           name: rocket-macos-arm64-stage1-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/rocket-macos-bootstrap.log
-            ${{ env.ROCKET_MACOS_OUTPUT }}/*.log
-            ${{ env.ROCKET_MACOS_OUTPUT }}/*.json
-            ${{ env.ROCKET_MACOS_OUTPUT }}/*.md
-            ${{ env.ROCKET_MACOS_OUTPUT }}/*.zip
-            ${{ env.ROCKET_MACOS_OUTPUT }}/*.sha256
-            ${{ env.ROCKET_MACOS_OUTPUT }}/mcp/*/result.json
-            ${{ env.ROCKET_MACOS_OUTPUT }}/mcp/*/*.png
-            ${{ env.ROCKET_MACOS_OUTPUT }}/Rocket.iconset/icon_512x512@2x.png
+            ${{ runner.temp }}/rocket-macos-stage1/*.log
+            ${{ runner.temp }}/rocket-macos-stage1/*.json
+            ${{ runner.temp }}/rocket-macos-stage1/*.md
+            ${{ runner.temp }}/rocket-macos-stage1/*.zip
+            ${{ runner.temp }}/rocket-macos-stage1/*.sha256
+            ${{ runner.temp }}/rocket-macos-stage1/mcp/*/result.json
+            ${{ runner.temp }}/rocket-macos-stage1/mcp/*/*.png
+            ${{ runner.temp }}/rocket-macos-stage1/Rocket.iconset/icon_512x512@2x.png
           if-no-files-found: warn
           retention-days: 3
           compression-level: 0
