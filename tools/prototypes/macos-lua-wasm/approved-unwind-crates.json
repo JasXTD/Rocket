@@ -1,0 +1,127 @@
+[
+  {
+    "name": "addr2line",
+    "version": "0.27.1",
+    "checksum": "e567177890eb1617b1f774005b66b26b2377afd138a2ca37aae7d8f0c81429d4"
+  },
+  {
+    "name": "adler2",
+    "version": "2.0.1",
+    "checksum": "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
+  },
+  {
+    "name": "cc",
+    "version": "1.4.3",
+    "checksum": "509591b7bcd67f4ef775afad7662703b4935daaa6ec0e5605cfb1090b32a2b6d"
+  },
+  {
+    "name": "cfg-if",
+    "version": "1.0.4",
+    "checksum": "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
+  },
+  {
+    "name": "dlmalloc",
+    "version": "0.2.14",
+    "checksum": "ad5208a115eaba24916f7456929832e310a81518c641f93fee4f89aa93aa3675"
+  },
+  {
+    "name": "find-msvc-tools",
+    "version": "0.1.11",
+    "checksum": "d45db016d36b838f563236e9193d0ee6ce38f3f68b6c94e914b4929c96bbb890"
+  },
+  {
+    "name": "fortanix-sgx-abi",
+    "version": "0.6.1",
+    "checksum": "5efc85edd5b83e8394f4371dd0da6859dff63dd387dab8568fece6af4cde6f84"
+  },
+  {
+    "name": "getopts",
+    "version": "0.2.24",
+    "checksum": "cfe4fbac503b8d1f88e6676011885f34b7174f46e59956bba534ba83abded4df"
+  },
+  {
+    "name": "gimli",
+    "version": "0.34.0",
+    "checksum": "1033caf0b349c518623b5396bfb2cf0bddf44f0306d543a250e5743297aafd10"
+  },
+  {
+    "name": "hermit-abi",
+    "version": "0.5.3",
+    "checksum": "e17592d60ebacc7d5e169f4663c5f84f9161cc90328abcfe8456f41e4dfcb284"
+  },
+  {
+    "name": "miniz_oxide",
+    "version": "0.9.1",
+    "checksum": "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
+  },
+  {
+    "name": "moto-rt",
+    "version": "0.17.4",
+    "checksum": "9f3c01b588c6d37e3f4f065712c4f33e12fad17ad4152a70e8346991e2bbe92e"
+  },
+  {
+    "name": "object",
+    "version": "0.39.1",
+    "checksum": "2e5a6c098c7a3b6547378093f5cc30bc54fd361ce711e05293a5cc589562739b"
+  },
+  {
+    "name": "r-efi",
+    "version": "5.3.0",
+    "checksum": "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
+  },
+  {
+    "name": "r-efi-alloc",
+    "version": "2.1.0",
+    "checksum": "dc2f58ef3ca9bb0f9c44d9aa8537601bcd3df94cc9314a40178cadf7d4466354"
+  },
+  {
+    "name": "rand",
+    "version": "0.9.5",
+    "checksum": "b9ef1d0d795eb7d84685bca4f72f3649f064e6641543d3a8c415898726a57b41"
+  },
+  {
+    "name": "rand_core",
+    "version": "0.9.5",
+    "checksum": "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
+  },
+  {
+    "name": "rand_xorshift",
+    "version": "0.4.0",
+    "checksum": "513962919efc330f829edb2535844d1b912b0fbe2ca165d613e4e8788bb05a5a"
+  },
+  {
+    "name": "rustc-literal-escaper",
+    "version": "0.0.8",
+    "checksum": "bfe6f213fb658c8fb95baabd5420393438cf5a98d707f5dd701d9197c705f71e"
+  },
+  {
+    "name": "unwinding",
+    "version": "0.2.10",
+    "checksum": "4b134ada16dda9e435abe2a6d76a01d497bc60707357845a15f9b0ed42dc88ce"
+  },
+  {
+    "name": "vex-sdk",
+    "version": "0.27.1",
+    "checksum": "79e5fe15afde1305478b35e2cb717fff59f485428534cf49cfdbfa4723379bf6"
+  },
+  {
+    "name": "wasip1",
+    "version": "1.0.0",
+    "checksum": "b5e26842486624357dbeb8f0381cf1fb42f022291fd787d4a816768fec8cc760"
+  },
+  {
+    "name": "wasip2",
+    "version": "2.0.1+wasi-0.2.12",
+    "checksum": "89aafd4b69fb41a64cfd5d7f214cde92ab422ec4d9bcd55fcc816d3f5f49bbf3"
+  },
+  {
+    "name": "wasip3",
+    "version": "0.9.0+wasi-0.3.0",
+    "checksum": "f1d5749fdf69bb9400562eba50f8f25f5cd800ef4b74300038b6f99ae7409674"
+  },
+  {
+    "name": "wit-bindgen",
+    "version": "0.62.0",
+    "checksum": "53cb4b5556c3a791e86838ea287782bdafa704d55b0e68b5b81a3a16b9ea5f4b"
+  }
+]

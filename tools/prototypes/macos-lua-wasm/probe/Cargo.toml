@@ -1,0 +1,21 @@
+[package]
+name = "rocket-lua-wasm-probe"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+embedded = []
+
+[[bin]]
+name = "rocket-lua-wasm-worker-prototype"
+path = "src/bin/worker.rs"
+required-features = ["embedded"]
+
+[dependencies]
+wasmtime = { version = "=50.0.1", default-features = false, features = ["std", "runtime", "pulley", "cranelift", "gc", "gc-drc", "wat", "reexport-wasmparser"] }
+serde_json = "=1.0.151"
+
+[dev-dependencies]
+wat = "=1.263.0"

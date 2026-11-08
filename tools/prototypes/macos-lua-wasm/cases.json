@@ -1,0 +1,16 @@
+[
+  {"name":"unicode_view","source":"return function(ctx) return ui.page{title='資料 🚀',children={ui.text('é 日本語')}} end","kind":"view","title":"資料 🚀"},
+  {"name":"json_callback","source":"return function(ctx) local v=rocket.json.decode(rocket.json.encode({value='同じ',n=42})); assert(v.n==42 and v.value=='同じ'); return ui.text('roundtrip') end","kind":"view"},
+  {"name":"protected_lua_error","source":"return function() local ok=pcall(function() error('synthetic private fixture') end); assert(not ok); return ui.text('handled') end","kind":"view"},
+  {"name":"protected_rust_callback_error","source":"return function() local ok=pcall(function() rocket.json.decode('{broken') end); assert(not ok); return ui.text('handled callback') end","kind":"view"},
+  {"name":"missing_privileged_libraries","source":"return function() assert(os==nil and io==nil and package==nil and require==nil and debug==nil and load==nil and dofile==nil and loadfile==nil and _G==nil and collectgarbage==nil and xpcall==nil and coroutine==nil and string.dump==nil and math.random==nil); return ui.text('bounded') end","kind":"view"},
+  {"name":"reviewed_request","source":"return function() return rocket.http{method='POST',path='/synthetic',body={title='資料'}} end","kind":"request"},
+  {"name":"invalid_request","source":"return function() return rocket.http{method='GET',path='https://invalid.example/'} end","kind":"error","code":"runtime"},
+  {"name":"syntax_error","source":"return function( this is not valid Lua","kind":"error","code":"syntax"},
+  {"name":"runtime_error_privacy","source":"return function() error('PRIVATE_TEST_SENTINEL_DO_NOT_LOG') end","kind":"error","code":"runtime"},
+  {"name":"lua_instruction_limit","source":"return function() while true do end end","kind":"error","code":"instructions"},
+  {"name":"lua_allocation_limit","source":"return function() return string.rep('x',40*1024*1024) end","kind":"error","code":"memory"},
+  {"name":"bounded_conversion","source":"return function() local s=string.rep('x',200000); local t={}; for i=1,1900 do t[i]=s end; return t end","kind":"error","code":"runtime"},
+  {"name":"first_state","source":"return function() previous_invocation='must not persist'; return ui.text('first') end","kind":"view"},
+  {"name":"fresh_state","source":"return function() assert(previous_invocation==nil); return ui.text('fresh') end","kind":"view"}
+]

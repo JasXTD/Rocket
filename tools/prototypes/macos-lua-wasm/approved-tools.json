@@ -1,0 +1,32 @@
+[
+  {
+    "name": "rustc-nightly-x86_64-unknown-linux-gnu.tar.xz",
+    "url": "https://static.rust-lang.org/dist/2026-11-08/rustc-nightly-x86_64-unknown-linux-gnu.tar.xz",
+    "sha256": "9c7cf72535dd83b68e920ff9235466dd613d844f531f41b6478175491315d4a7",
+    "bytes": 84959688
+  },
+  {
+    "name": "cargo-nightly-x86_64-unknown-linux-gnu.tar.xz",
+    "url": "https://static.rust-lang.org/dist/2026-11-08/cargo-nightly-x86_64-unknown-linux-gnu.tar.xz",
+    "sha256": "933f57c1ca9ab478f29b04ed536a3c12ec500124165b2865b4de551aaa35e8a2",
+    "bytes": 10823764
+  },
+  {
+    "name": "rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz",
+    "url": "https://static.rust-lang.org/dist/2026-11-08/rust-std-nightly-x86_64-unknown-linux-gnu.tar.xz",
+    "sha256": "db82d4ea1684d490eb3a49666676e9a8793d271dfeb8c2998342f4b41d16c46d",
+    "bytes": 31890660
+  },
+  {
+    "name": "rust-src-nightly.tar.xz",
+    "url": "https://static.rust-lang.org/dist/2026-11-08/rust-src-nightly.tar.xz",
+    "sha256": "141d8e767382cd839feff84c7cf6937656c53de8997a313c3bbf56b03cae3c45",
+    "bytes": 6033116
+  },
+  {
+    "name": "wasi-sdk-34.0-x86_64-linux.tar.gz",
+    "url": "https://github.com/WebAssembly/wasi-sdk/releases/download/wasi-sdk-34/wasi-sdk-34.0-x86_64-linux.tar.gz",
+    "sha256": "b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4",
+    "bytes": 192383077
+  }
+]

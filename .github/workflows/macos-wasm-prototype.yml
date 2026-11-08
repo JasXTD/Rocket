@@ -1,0 +1,90 @@
+name: macOS Lua Pulley prototype
+
+# Manual, isolated development check. Does not enable production Mac Lua.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rocket-macos-wasm-prototype
+  cancel-in-progress: true
+
+jobs:
+  guest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      guest_sha: ${{ steps.guest.outputs.guest_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Build fixed guest with approved Linux compiler
+        id: guest
+        shell: bash
+        run: bash tools/prototypes/macos-lua-wasm/build-ci-guest.sh "$RUNNER_TEMP/prototype-deps" "$RUNNER_TEMP/prototype-guest"
+      - name: Retain guest and build evidence
+        if: ${{ always() && !cancelled() }}
+        id: upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lua-guest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/prototype-guest/*
+          retention-days: 1
+          compression-level: 0
+
+  mac:
+    needs: guest
+    runs-on: macos-15
+    timeout-minutes: 15
+    env:
+      CARGO_BUILD_JOBS: '3'
+      CARGO_TERM_COLOR: never
+      RUSTUP_TOOLCHAIN: '1.99.1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Stage exact dependencies and the same-run fixed guest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GUEST_ARTIFACT_ID: ${{ needs.guest.outputs.artifact_id }}
+          EXPECTED_GUEST_SHA: ${{ needs.guest.outputs.guest_sha }}
+        run: |
+          set -euo pipefail
+          umask 077
+          exec > >(tee "$RUNNER_TEMP/prototype-bootstrap.log") 2>&1
+          test "$(uname -s)" = Darwin && test "$(uname -m)" = arm64
+          [[ "$GUEST_ARTIFACT_ID" =~ ^[0-9]+$ ]]
+          [[ "$EXPECTED_GUEST_SHA" =~ ^[a-f0-9]{64}$ ]]
+          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          node tools/prototypes/macos-lua-wasm/prepare-deps.cjs "$RUNNER_TEMP/prototype-deps" host
+          gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$GUEST_ARTIFACT_ID/zip" > "$RUNNER_TEMP/guest.zip"
+          unzip -p "$RUNNER_TEMP/guest.zip" guest.wasm > "$RUNNER_TEMP/guest.wasm"
+          test "$(shasum -a 256 "$RUNNER_TEMP/guest.wasm" | cut -d ' ' -f1)" = "$EXPECTED_GUEST_SHA"
+      - name: Run only prototype and Lua compatibility checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          export CARGO_HOME="$RUNNER_TEMP/prototype-deps/cargo-home"
+          export CARGO_TARGET_DIR="$RUNNER_TEMP/prototype-target"
+          bash tools/prototypes/macos-lua-wasm/run-host-checks.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results"
+      - name: Retain native results
+        if: ${{ always() && !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lua-mac-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/prototype-bootstrap.log
+            ${{ runner.temp }}/prototype-results/*.log
+            ${{ runner.temp }}/prototype-results/*.json
+            ${{ runner.temp }}/prototype-results/compiled/module.json
+          retention-days: 1
+          compression-level: 0

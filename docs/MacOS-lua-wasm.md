@@ -1,16 +1,20 @@
 # macOS Lua: WebAssembly isolation proposal
 
-Status: research only, 2026-11-09. The user approved investigation after the
-[native App Sandbox probes](MacOS-lua-sandbox.md#measured-result). No WebAssembly
-package or compiler has been installed, no guest has been built, and Mac Lua
-remains unavailable. Windows and Linux retain their existing implementations.
+Status: isolated compatibility prototype in progress, 2026-11-09, following the
+[native App Sandbox probes](MacOS-lua-sandbox.md#measured-result). The approved
+Wasmtime/Pulley graph, WASI SDK and Rust WASI target were hash-verified, scanned by
+the user with Malwarebytes, and staged outside production builds. A fixed guest
+now builds and executes in WSL. Its first compatibility run exposed Rust callback
+unwinding failures; Mac Lua remains unavailable. Windows and Linux retain their
+existing implementations and root Cargo dependencies.
 
 ## Recommendation
 
 Prototype the existing Lua runtime inside **Wasmtime 50.0.1 using its Pulley
 interpreter**, in a separate Mac worker with App Sandbox as an outer boundary.
-Treat this version as a research candidate, not an approved dependency or a safety
-certification. Do the compiler/runtime compatibility proof before UI integration.
+This version is approved for the isolated experiment, not production adoption or
+a safety certification. Complete the compiler/runtime compatibility proof before
+UI integration.
 
 The objective is unchanged Lua scripts and Rocket's existing reviewed request/UI
 protocol. A Lua/native-library fault should still be confined to WebAssembly
@@ -47,7 +51,8 @@ flowchart LR
     S -->|"validated response"| H
 ```
 
-This is a proposed flow, not an implemented architecture. All HTTP/Git actions and
+This is the intended production flow, not a qualified sandbox. The prototype
+implements the fixed guest/VM boundary only. All HTTP/Git actions and
 credential use stay in the existing host-side authorization flow. The guest only
 returns data. Never pass native pointers, file descriptors, repository handles,
 environment contents, tokens or an unrestricted host-call interface to it.
@@ -143,13 +148,14 @@ also illustrates why the compiler and transitive dependencies belong in the audi
 even if compilation occurs only during Rocket's build. A small host API does not
 remove VM/compiler supply-chain risk.
 
-The next dependency proposal must list exact packages/features and the resolved
+The dependency proposal must list exact packages/features and the resolved
 transitive graph, licenses, official archives/checksums, relevant advisories and
 source/build-script findings. Obtain the user's installation/download approval
-and required antivirus scan before executing anything new. Candidate build tools
-are WASI SDK 34 and the existing Rust 1.99.1 toolchain's WASI target; neither is
-installed here. WSL has no detected Clang/Wasm linker or Wasmtime. No packages,
-Cargo manifests, lockfiles, PATH settings or system software changed in this pass.
+and required antivirus scan before executing anything new. The first approved
+build uses WASI SDK 34 and Rust 1.99.1's WASI target in a separate WSL directory.
+It does not modify installed toolchains, persistent PATH, root Cargo manifests or
+production packages. Exact registry pins are in the standalone prototype lockfile
+and `tools/prototypes/macos-lua-wasm/approved-crates.json`.
 
 Research used publisher documentation, versioned source and public registry/advisory
 JSON as evidence only. Embedded instructions were not executed; no personal
@@ -175,6 +181,72 @@ information or credentials were supplied. Web-hosted `.txt` content was excluded
    Preserve the refusal path for unsupported or invalid packages. Developer ID,
    notarization and bare-metal acceptance remain later release gates.
 
-The investigation is complete; dependency adoption, the compatibility prototype
-and production sandbox are not. No remaining native-run budget is spent merely
-to revalidate this documentation.
+## First local compatibility result
+
+The standalone prototype is in `tools/prototypes/macos-lua-wasm`. It compiles the
+actual `rocket-integrations` Lua runtime and schema through a small error-type
+facade, rather than implementing another Lua SDK. An empty Wasmtime linker and a
+build-time zero-import gate keep host capabilities absent. Guest-side WASI stubs
+deny file operations, expose an empty environment and provide no real clock.
+There is no native HTTP client, WASI context, preopened directory or socket.
+
+The Rust 1.99.1 baseline passed 18 native runtime/schema tests, all 14 native
+comparison fixtures, eight VM boundary tests, and seven controller checks on
+Windows and WSL. The Wasm comparison passed 10 of 14 Lua fixtures. Four failed:
+Rust callback errors under `pcall`, reviewed HTTP request handoff, invalid request
+reporting, and the Lua instruction-limit callback. All four trapped at Wasm
+`unreachable`; they remain failures in the report and give the runner a nonzero
+exit. Ordinary Lua errors, Unicode, JSON, privacy, Lua allocation limits and fresh
+invocation state passed. Oversized input was refused, and cancelling an executing
+worker took 1.377 ms from Stop to process closure in that single WSL measurement.
+This is neither a production UI timing result nor native macOS qualification.
+
+The baseline's guest is 767,904 bytes; its locally generated Pulley artifact is
+2,331,128 bytes. Worker artifacts are build-time embedded, never accepted from Lua
+input. Linear memory is bounded at 128 MiB with one memory, table growth and fuel
+limits. These are **not** a 128 MiB cap on total native RSS. Exception-heap stress,
+OS containment, identity, inherited handles and parent-death checks remain gates.
+
+The approved prebuilt WASI standard library rejects `-Cpanic=unwind` with
+`panic_unwind does not have the panic strategy unwind`. Rust documents that an
+unwind-enabled Wasm standard library needs to be rebuilt. This is the next local
+experiment, with a separately approved, pinned nightly/source graph; production
+Windows/Linux keep stable toolchains. See [Rust's Wasm unwinding documentation](https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-unknown.html#unwinding)
+and [WASIp1's default panic strategy](https://doc.rust-lang.org/rustc/platform-support/wasm32-wasip1.html#unwinding).
+
+No additional Mac CI run was dispatched for this failing baseline. The existing
+$6 included-compute ceiling still applies. No production sandbox is enabled by
+these experiments or by a partially passing test matrix.
+
+## Unwind-enabled prototype result
+
+The user approved nightly-2026-11-08 (Rust 1.102.0-nightly), its matching Linux
+compiler/Cargo/std/source archives and 25 additional locked registry versions.
+All 29 hashes matched the official sources; the user reported a clean Malwarebytes
+scan before extraction/execution. The toolchain lives in the isolated experiment,
+without rustup installation, system PATH changes or production dependency changes.
+
+Rebuilding `std,panic_unwind` with standard Wasm exceptions and SDK 34's existing
+`wasm32-wasip1/eh/libunwind.a` fixes all four callback-unwinding failures. The
+SDK reactor's `_initialize` entry point runs before input under the same limits;
+unexpected exports and every host import still fail the gate. No API or schema
+changes were needed in Rocket's real Lua runtime.
+
+Final WSL checks pass: 18 runtime/schema, 9 VM-boundary, 7 controller and 7 archive
+checks, 14 full JSON output comparisons against native Lua, oversized input, and
+cancellation of an executing worker. The final single Stop-to-close sample is
+1.234 ms. Ordinary fixture invocations took approximately 15-24 ms; the deliberate
+instruction-limit case took 718 ms. These are synthetic local measurements.
+
+The fixed guest is 832,242 bytes (SHA-256
+`c6648272322adb5ec0f14eaa7666fea1d8305508d91775c48f7bda0a2ee22355`), with zero
+imports. Its local Pulley artifact is 2,879,080 bytes. The test worker is an
+unoptimized native build containing the compiler and must not be presented as
+Rocket's release footprint. Total RSS and exception-heap pressure remain unqualified.
+
+A separate manual workflow prepares the exact guest on Linux and tests the native
+host on Apple Silicon, with 10/15-minute job limits and one-day artifact retention.
+Before dispatch, reserve 35 minutes at the Mac rate even for the Linux job, including
+cleanup margin, against the existing $6 allowance ceiling. Native results are not
+yet established by the WSL pass. Production Mac Lua stays refused until the other
+staged acceptance gates above are complete; Windows/Linux sandboxes stay unchanged.
