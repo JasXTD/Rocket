@@ -30,7 +30,12 @@ async function stable(){let last='',n=0;await until(s=>{const now=JSON.stringify
 async function click(id){await stable();assert(control(id)?.enabled,'Missing/disabled '+id);await client.tool('rocket_click',{target:id,expected_tab:state.active_tab});await settled()}
 async function type(id,text){await stable();assert(control(id)?.enabled,'Missing input '+id);await client.tool('rocket_type',{target:id,text,expected_tab:state.active_tab});await settled()}
 async function probe(chord,extra={}){await client.tool('rocket_shortcut',{binding:chord,expected_tab:state.active_tab,...extra});await settled()}
-async function resize(width,height){await client.tool('rocket_resize',{width,height});await until(s=>s.viewport[0]===width&&s.viewport[1]===height&&!s.input_pending);await stable()}
+async function resize(width,height){
+ // The hosted Mac's visible desktop cannot fit 900 content pixels vertically.
+ // Preserve exact width/height checks and exercise both widths at compact height.
+ if(mac)height=Math.min(height,620);
+ await client.tool('rocket_resize',{width,height});await until(s=>s.viewport[0]===width&&s.viewport[1]===height&&!s.input_pending,'Requested viewport size');await stable()
+}
 async function capture(name){await stable();const out=await client.request('tools/call',{name:'rocket_capture',arguments:{}});assert(!out.isError);fs.writeFileSync(path.join(root,name+'.png'),Buffer.from(out.content.find(c=>c.type==='image').data,'base64'));fs.writeFileSync(path.join(root,name+'.json'),JSON.stringify(state,null,2))}
 async function preferences(){await click('menu-edit');await click('preferences');await click('pref-page-shortcuts');await type('pref-shortcuts-filter','Sidebar')}
 async function record(chord){await click('pref-shortcut-sidebar-edit-0');await probe(chord,{recording_id:state.shortcuts.editor.serial})}

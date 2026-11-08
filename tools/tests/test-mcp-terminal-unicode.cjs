@@ -37,13 +37,18 @@ const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const passed=text=>{report.cases.push(text);console.error('PASS '+text);};
 async function until(predicate,label='UI condition'){
   const start=performance.now();
-  for(;;){state=await client.tool('rocket_state');assert(!state.terminal?.error,JSON.stringify(state.terminal));if(predicate(state))return state;assert(performance.now()-start<20000,label+' timed out: '+JSON.stringify(state.terminal));await delay(60);}
+  for(;;){state=await client.tool('rocket_state');assert(!state.terminal?.error,JSON.stringify(state.terminal));if(predicate(state))return state;assert(performance.now()-start<20000,label+' timed out: '+JSON.stringify({viewport:state.viewport,terminal:state.terminal}));await delay(60);}
 }
 async function settle(){return until(s=>!s.busy&&!s.input_pending&&!(s.tabs||[]).some(t=>t.loading||t.search.running));}
 async function click(target){await client.tool('rocket_click',{target,expected_tab:state.active_tab});return settle();}
 async function command(text){await client.tool('rocket_type',{target:'terminal-command',text,expected_tab:state.active_tab});await settle();await client.tool('rocket_terminal_enter',{expected_tab:state.active_tab});}
 async function capture(name){const result=await client.request('tools/call',{name:'rocket_capture',arguments:{}});assert(!result.isError);const image=result.content.find(c=>c.type==='image');assert(image);fs.writeFileSync(path.join(root,name+'.png'),Buffer.from(image.data,'base64'));fs.writeFileSync(path.join(root,name+'.json'),JSON.stringify(state.terminal,null,2));}
-async function resize(width,height){await client.tool('rocket_resize',{width,height});await until(s=>s.viewport[0]===width&&s.viewport[1]===height&&!s.input_pending);await settle();}
+async function resize(width,height){
+  // The hosted Mac desktop clamps content height near 656 logical pixels. Keep
+  // both tested widths and exact-size assertions, using a supported compact height.
+  if(process.platform==='darwin')height=Math.min(height,620);
+  await client.tool('rocket_resize',{width,height});await until(s=>s.viewport[0]===width&&s.viewport[1]===height&&!s.input_pending,'Requested viewport size');await settle();
+}
 async function interrupt(){await click('terminal-interrupt');await until(s=>s.terminal?.tail.trimEnd().endsWith('>'),'PowerShell prompt after interrupt');}
 function printedLabel(label){const grid=state.terminal?.grid||[];return grid.some(first=>first.column===0&&label.split('').every((char,column)=>grid.some(c=>c.row===first.row&&c.column===column&&c.text===char)));}
 function table(labels,clusters){
