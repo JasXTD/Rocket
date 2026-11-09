@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rocket: a native Git client for Windows</title>
-<meta name="description" content="A native Windows Git client built in Rust. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes and add your own features.">
+<title>Rocket: a native Git client for Windows, macOS and Linux</title>
+<meta name="description" content="A native Git client built in Rust, for Windows, macOS and Linux. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes and add your own features.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://jasxtd.github.io/rocket/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Rocket: a native Git client for Windows">
-<meta property="og:description" content="A native Windows Git client built in Rust. An open-source alternative to Fork and GitKraken.">
+<meta property="og:title" content="Rocket: a native Git client for Windows, macOS and Linux">
+<meta property="og:description" content="A native Git client built in Rust, for Windows, macOS and Linux. An open-source alternative to Fork and GitKraken.">
 <meta property="og:url" content="https://jasxtd.github.io/rocket/">
 <meta property="og:image" content="https://jasxtd.github.io/rocket/media/social-preview.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -42,11 +42,11 @@
 <section class="hero" aria-labelledby="hero-title"><div class="wrap">
   <div class="hero-copy">
     <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
-    <div class="tag mono"><b>HEAD</b> native Git client for Windows</div>
+    <div class="tag mono"><b>HEAD</b> native Git client in Rust</div>
     <h1 id="hero-title">Review first.<span>Then launch.</span></h1>
-    <p class="lead">A native Windows Git client built in Rust. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes and add your own features.</p>
+    <p class="lead">A native Git client built in Rust, for Windows, macOS and Linux. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes and add your own features.</p>
     <div class="cta"><a class="btn pri" href="get.html">Build from source</a><a class="btn" href="https://github.com/JasXTD/rocket">View on GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a></div>
-    <p class="meta">In development · Windows x64 · MIT or Apache-2.0</p>
+    <p class="meta">In development · Windows · macOS · Linux · MIT or Apache-2.0</p>
   </div>
   <figure class="hero-shot">
     <div class="zoom" style="--zw: 330%; --zx: -31%; --zy: -24%; --ar: 5/4">
@@ -177,7 +177,7 @@
   <div class="two">
     <div><span class="ref mono">themes</span>
       <h2 id="h-themes">Make the window yours.</h2></div>
-    <div><p>Clay, the default, is warm charcoal with a coral accent, or ivory with terracotta. It follows Windows, or stays dark or light. Ocean is Rocket's original navy. Dark, Light and System are there too, or Custom with your own accent colour and a picture behind the window.</p></div>
+    <div><p>Clay, the default, is warm charcoal with a coral accent, or ivory with terracotta. It follows your system, or stays dark or light. Ocean is Rocket's original navy. Dark, Light and System are there too, or Custom with your own accent colour and a picture behind the window.</p></div>
   </div>
   <div class="thumbs">
     <figure><img src="media/theme-clay-dark.webp" width="960" height="495" loading="lazy" alt="The Commits page in the default Clay theme, dark: warm charcoal with a coral accent."><figcaption>Clay dark</figcaption></figure>
@@ -200,10 +200,10 @@
     <div><h3>Tags</h3><p>Inspect, publish and safely delete remote tags.</p></div>
     <div><h3>Recovery</h3><p>Inspect reflogs, find lost commits and recover them onto new branches.</p></div>
     <div><h3>Bisect</h3><p>Find the commit that introduced a problem, by hand or automated.</p></div>
-    <div><h3>Terminal</h3><p>Windows PowerShell, Git Bash, Command Prompt, PowerShell 7 or your own shell.</p></div>
+    <div><h3>Terminal</h3><p>PowerShell, Git Bash or Command Prompt on Windows, zsh on macOS, your login shell on Linux, or your own.</p></div>
     <div><h3>Command palette</h3><p>Ctrl+K finds commands, branches and views.</p></div>
     <div><h3>Repository manager</h3><p>Saved repositories in folders, nested workspaces and tabs.</p></div>
-    <div><h3>Command line</h3><p><span class="mono inline">rocket-cli.exe</span> calls the same backend, with structured JSON output.</p></div>
+    <div><h3>Command line</h3><p><span class="mono inline">rocket-cli</span> calls the same backend, with structured JSON output.</p></div>
     <div><h3>Your tools</h3><p>External editor, diff and merge profiles, custom commands and your own shortcuts.</p></div>
   </div>
 </section>
@@ -212,10 +212,10 @@
   <div class="rail" aria-hidden="true"><i class="ln end"></i><i class="dot root low"></i></div>
   <div><span class="ref mono">root</span>
     <h2 id="h-get">Get Rocket.</h2>
-    <p>Rocket is in development and has no public installer yet. Build it from source on Windows x64.</p>
+    <p>Rocket is in development and has no public installer yet. Build it from source on Windows, macOS or Linux.</p>
     <div class="cta"><a class="btn pri" href="get.html">See the full steps</a></div>
   </div>
-  <pre class="code mono" tabindex="0" role="region" aria-label="Build commands"><span class="cm"># needs Rust (MSVC), C++ build tools and Git 2.46+</span>
+  <pre class="code mono" tabindex="0" role="region" aria-label="Build commands"><span class="cm"># Windows: needs Rust (MSVC), C++ build tools and Git 2.46+</span>
 git clone https://github.com/JasXTD/rocket.git
 cd rocket
 .\tools\Build-Local.ps1

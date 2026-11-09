@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in Rocket doesn't work as it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please leave out tokens, passwords and private repository content.
+        For a security problem, use **Security → Report a vulnerability** instead.
+  - type: input
+    id: version
+    attributes:
+      label: Rocket version
+      description: Help → About shows it.
+      placeholder: "0.92.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows
+        - Linux
+        - macOS
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Git versions
+      placeholder: "Windows 10 22H2, bundled Git"
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Rocket did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a repository that ...
+        2. Choose ...
+        3. See ...
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Optional. In Help → Crash Reports use Copy report, or in Activity & diagnostics use Copy summary. Read it before pasting.
+      render: text

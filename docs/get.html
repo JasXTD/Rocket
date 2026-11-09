@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Get Rocket: build the Git client from source</title>
-<meta name="description" content="Build Rocket, a native Windows Git client, from source on Windows x64. There is no public installer yet.">
+<meta name="description" content="Build Rocket, a native Git client, from source on Windows, macOS or Linux. There is no public installer yet.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://jasxtd.github.io/rocket/get.html">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Get Rocket">
-<meta property="og:description" content="Build Rocket, a native Windows Git client, from source on Windows x64.">
+<meta property="og:description" content="Build Rocket, a native Git client, from source on Windows, macOS or Linux.">
 <meta property="og:url" content="https://jasxtd.github.io/rocket/get.html">
 <meta property="og:image" content="https://jasxtd.github.io/rocket/media/social-preview.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -41,47 +41,62 @@
 <main id="main"><div class="wrap">
   <div class="page-head">
     <h1>Get Rocket</h1>
-    <p class="lead">Build Rocket from source on Windows x64.</p>
-    <div class="status"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l6 10.5H2zM8 6.5v3.2M8 11.4v.1"></path></svg><span>Rocket is in development, at version 0.87.3. There is no public installer or download yet.</span></div>
+    <p class="lead">Build Rocket from source on Windows, macOS or Linux.</p>
+    <div class="status"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l6 10.5H2zM8 6.5v3.2M8 11.4v.1"></path></svg><span>Rocket is in development. There is no public installer or download yet.</span></div>
   </div>
 
   <div class="build">
     <ol class="steps">
       <li><span class="n mono" aria-hidden="true">1</span>
         <h2>Install the tools</h2>
-        <p>The Rust MSVC toolchain, 1.89 or newer, with Microsoft C++ build tools, and Git 2.46 or newer.</p></li>
+        <p><strong>Windows:</strong> the Rust MSVC toolchain, 1.89 or newer, with Microsoft C++ build tools, and Git 2.46 or newer.</p>
+        <p><strong>Linux x86_64:</strong> Rust 1.95 or newer, a C compiler and Git 2.46 or newer.</p>
+        <p><strong>macOS 15+ on Apple Silicon:</strong> Rust 1.99.1, the Xcode command-line tools, Node.js and Git.</p></li>
       <li><span class="n mono" aria-hidden="true">2</span>
         <h2>Get the source</h2>
         <pre class="code mono" tabindex="0" role="region" aria-label="Clone commands">git clone https://github.com/JasXTD/rocket.git
 cd rocket</pre></li>
       <li><span class="n mono" aria-hidden="true">3</span>
         <h2>Build it</h2>
-        <pre class="code mono" tabindex="0" role="region" aria-label="Build command">.\tools\Build-Local.ps1</pre>
-        <p>This builds the desktop app, the CLI and their helpers under <span class="mono inline">target\release</span>. Plain <span class="mono inline">cargo build</span> compiles too, but turns Lua extensions off.</p></li>
+        <pre class="code mono" tabindex="0" role="region" aria-label="Build commands"><span class="cm"># Windows</span>
+.\tools\Build-Local.ps1
+<span class="cm"># Linux</span>
+tools/build-local.sh
+<span class="cm"># macOS</span>
+bash tools/build-macos.sh</pre>
+        <p>Windows and Linux build the desktop app, the CLI and their helpers under <span class="mono inline">target/release</span>. macOS makes <span class="mono inline">Rocket.app</span> and a ZIP under <span class="mono inline">target/macos-stage1</span>. Plain <span class="mono inline">cargo build</span> compiles too, but turns Lua extensions off.</p></li>
       <li><span class="n mono" aria-hidden="true">4</span>
         <h2>Start Rocket</h2>
-        <pre class="code mono" tabindex="0" role="region" aria-label="Run command">.\target\release\rocket.exe</pre>
-        <p>Help → Setup Guide walks you through a first local commit. Press F1 for the guide and Ctrl+K for the command palette.</p></li>
+        <pre class="code mono" tabindex="0" role="region" aria-label="Run commands"><span class="cm"># Windows</span>
+.\target\release\rocket.exe
+<span class="cm"># Linux</span>
+./target/release/rocket
+<span class="cm"># macOS</span>
+open target/macos-stage1/Rocket-macos-arm64-development/Rocket.app</pre>
+        <p>Help → Setup Guide walks you through a first local commit. Press F1 for the guide, or use the search field in the toolbar for the command palette.</p></li>
     </ol>
 
     <aside class="side" aria-labelledby="h-need">
       <h2 id="h-need">What it uses</h2>
       <table class="tbl" aria-labelledby="h-need"><tbody>
-        <tr><th scope="row">Windows x64</th><td>The validated platform. Testing has focused on Windows 10.</td></tr>
-        <tr><th scope="row">Git</th><td>A build from a fresh clone uses the Git you installed. HTTPS needs Git for Windows 2.56.0.windows.4 or newer; older builds stay on local and SSH.</td></tr>
+        <tr><th scope="row">Windows x64</th><td>The main platform. Testing has focused on Windows 10.</td></tr>
+        <tr><th scope="row">Linux x86_64</th><td>X11 or Wayland, with your system Git.</td></tr>
+        <tr><th scope="row">macOS 15+</th><td>Apple Silicon, with your installed Git. Not yet notarized.</td></tr>
+        <tr><th scope="row">Git</th><td>A build from a fresh clone uses the Git you installed. On Windows, HTTPS needs Git for Windows 2.56.0.windows.4 or newer; older builds stay on local and SSH.</td></tr>
         <tr><th scope="row">Git Credential Manager</th><td>For the supported browser sign-in flows.</td></tr>
-        <tr><th scope="row">Windows OpenSSH</th><td>For SSH keys and profiles.</td></tr>
+        <tr><th scope="row">OpenSSH</th><td>For SSH keys and profiles.</td></tr>
         <tr><th scope="row">Git LFS 3.8.1+</th><td>Only for Git LFS operations.</td></tr>
         <tr><th scope="row">Claude Code or Codex</th><td>Optional, for AI drafts, review and resolve.</td></tr>
       </tbody></table>
-      <p>Moving a build? Keep every file from <span class="mono inline">target\release</span> together.</p>
+      <p>Moving a Windows or Linux build? Keep every file from <span class="mono inline">target/release</span> together.</p>
     </aside>
   </div>
 
   <section class="limits" aria-labelledby="h-limits">
     <h2 id="h-limits">Current limits</h2>
     <ul>
-      <li>Windows is the validated platform. Linux and macOS are not certified.</li>
+      <li>macOS builds aren't yet signed with a Developer ID or notarized, and haven't been tested on a physical Mac.</li>
+      <li>On Linux, Lua extensions need x86_64 with Landlock.</li>
       <li>Live acceptance for hosts other than github.com is still unverified.</li>
       <li>Partial diff and stash actions support specific text and file cases.</li>
       <li>Jira has been tested against mock services, not a live server.</li>

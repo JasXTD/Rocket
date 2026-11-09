@@ -1,0 +1,20 @@
+name: Feature request
+description: Suggest an idea or an improvement.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: What you're trying to do, and what gets in the way.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like Rocket to do?
+      description: A screenshot, sketch or example from another tool helps.
+  - type: textarea
+    id: today
+    attributes:
+      label: What do you do today instead?

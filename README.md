@@ -14,6 +14,7 @@
   <a href="#platforms">Platforms</a> ·
   <a href="#build-and-run">Build and run</a> ·
   <a href="#comparison">Comparison</a> ·
+  <a href="#contributing">Contributing</a> ·
   <a href="docs/wiki/Home.md">Wiki</a> ·
   <a href="crates/rocket-ui/src/guide.md">User guide</a> ·
   <a href="CHANGELOG.md">Changelog</a>
@@ -35,6 +36,10 @@ setup stay as they are.
 **New to Rocket?** Follow the [first-commit walkthrough](docs/wiki/Getting-started.md) or
 open **Help → Setup Guide** in the app. **Ctrl+K** opens the command palette and **F1** the
 guide.
+
+> [!NOTE]
+> Rocket is in active development and has no public release yet.
+> [Build it from source](#build-and-run) to try it.
 
 ## Features
 
@@ -281,6 +286,11 @@ compares documented features, not speed or maturity, and features change.
 - [CLI](CLI.md), [Hosting](HOSTING.md), [Extensions](docs/wiki/Integrations.md) and the
   [extension API](INTEGRATIONS.md).
 - [Security](SECURITY.md), [Dependencies](DEPENDENCIES.md) and the [Changelog](CHANGELOG.md).
+
+## Contributing
+
+Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md)
+first, and report security problems privately as [SECURITY.md](SECURITY.md) describes.
 
 ## License
 

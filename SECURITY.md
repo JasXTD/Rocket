@@ -1,4 +1,33 @@
-# Rocket security boundaries
+# Security
+
+## Reporting a vulnerability
+
+Please report security problems privately, not in a public issue. On GitHub, open the
+repository's **Security** tab and choose **Report a vulnerability**. Include:
+
+- the Rocket version (Help → About) and your operating system;
+- what an attacker could do, with steps or a proof of concept;
+- only files with tokens, passwords and private repository content removed.
+
+You'll get a reply in the report. Please allow time for a fix before you disclose the
+problem publicly.
+
+## Supported versions
+
+Rocket has no public release yet, so security fixes go to `main`. Once releases exist, the
+latest release receives them.
+
+## Scope
+
+In scope: the desktop app, the CLI, the localhost MCP service, the Lua extension sandbox,
+app updates, credential storage, and the components Rocket bundles (an outdated bundled
+Git for Windows, Git LFS or terminal runtime counts). Problems in Git itself, OpenSSH or a
+hosting service belong with those projects, unless Rocket makes them worse.
+
+## Security boundaries
+
+The rest of this file records how Rocket's safeguards work and where they stop, feature by
+feature. The [README](README.md) gives an overview.
 
 ## macOS credential preparation (unreleased)
 
