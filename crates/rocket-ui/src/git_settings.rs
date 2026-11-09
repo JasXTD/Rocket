@@ -1,5 +1,6 @@
 //! Git Preferences. Probes and config writes never run on the drawing thread.
 use crate::{
+    i18n::{tr, trf},
     app::Rocket,
     backend::user_error,
     pages,
@@ -305,9 +306,9 @@ impl State {
         self.error = None;
         self.notice = Some(
             if self.running() {
-                "Wait for Git to finish, or stop it."
+                tr("Wait for Git to finish, or stop it.")
             } else {
-                "Save or discard the identity change first."
+                tr("Save or discard the identity change first.")
             }
             .into(),
         );
@@ -521,7 +522,7 @@ impl Rocket {
                 }
                 Ok(Finished::ManagedVerified) => {
                     s.managed_verified = true;
-                    s.notice = Some("Bundled Git files verified. Your Git choice is unchanged.".into());
+                    s.notice = Some(tr("Bundled Git files verified. Your Git choice is unchanged.").into());
                 }
                 Ok(Finished::IdentitySaved(refreshed)) => match refreshed {
                     Ok(i) => {
@@ -532,7 +533,7 @@ impl Rocket {
                     }
                     Err(e) => {
                         s.identity = None;
-                        s.error = Some(format!("Saved, but reading it back failed: {e}"));
+                        s.error = Some(trf!("Saved, but reading it back failed: {error}", error = e));
                     }
                 },
                 Err(e) => {
@@ -542,15 +543,15 @@ impl Rocket {
                         Job::Choose => {
                             s.show_saved();
                             if stopped {
-                                s.notice = Some("Stopped. The Git choice is unchanged.".into());
+                                s.notice = Some(tr("Stopped. The Git choice is unchanged.").into());
                             } else {
-                                s.error = Some(format!("{} cannot be used: {}", s.trying, user_error(&e)));
+                                s.error = Some(trf!("{choice} cannot be used: {error}", choice = s.trying, error = user_error(&e)));
                             }
                         }
-                        Job::Load if stopped => s.notice = Some("Stopped before Git was found.".into()),
+                        Job::Load if stopped => s.notice = Some(tr("Stopped before Git was found.").into()),
                         Job::Verify => {
                             s.managed_verified = false;
-                            if stopped { s.notice = Some("Stopped. The Git choice is unchanged.".into()); }
+                            if stopped { s.notice = Some(tr("Stopped. The Git choice is unchanged.").into()); }
                             else { s.error = Some(user_error(&e)); }
                         }
                         _ => s.error = Some(user_error(&e)),
@@ -571,7 +572,7 @@ impl Rocket {
         let log_path = self.log_path.clone();
         let s = &mut self.git_settings;
         if !choice.is_empty() && choice != MANAGED && !Path::new(&choice).is_absolute() {
-            s.error = Some("Use the full path to git.exe, starting with the drive.".into());
+            s.error = Some(tr("Use the full path to git.exe, starting with the drive.").into());
             s.notice = None;
             s.about_identity = false;
             return;
@@ -582,9 +583,9 @@ impl Rocket {
             s.path = choice.clone();
         }
         s.trying = if choice.is_empty() {
-            "Automatic".into()
+            tr("Automatic").into()
         } else if s.managed {
-            "Bundled Git".into()
+            tr("Bundled Git").into()
         } else {
             choice.clone()
         };
@@ -666,24 +667,24 @@ impl Rocket {
         let job = s.job;
         let listed = s.listed();
         card_frame(ui, |ui| {
-            card_header(ui, "Git program", |ui| {
+            card_header(ui, tr("Git program"), |ui| {
                 if busy && job != Job::Identity {
                     let r = ui.add_enabled(
                         !s.stopping,
-                        Button::new(if s.stopping { "Stopping" } else { "Stop" }),
+                        Button::new(if s.stopping { tr("Stopping") } else { tr("Stop") }),
                     );
                     pages::control(widgets, "git-cancel", &r, ui.clip_rect());
                     stop |= r.clicked();
                     ui.label(
-                        RichText::new(if job == Job::Load { "Looking for Git" } else { "Checking Git" })
+                        RichText::new(if job == Job::Load { tr("Looking for Git") } else { tr("Checking Git") })
                             .size(12.0)
                             .color(HINT()),
                     );
                     ui.spinner();
                 } else if let Some((version, _)) = &running {
-                    pages::pill(ui, &format!("Git {version} in use"), GREEN());
+                    pages::pill(ui, &trf!("Git {version} in use", version), GREEN());
                 } else {
-                    pages::pill(ui, "Git unavailable", RED());
+                    pages::pill(ui, tr("Git unavailable"), RED());
                 }
             });
             if !s.loaded {
@@ -695,7 +696,7 @@ impl Rocket {
                         } else if let Some(n) = &s.notice {
                             status_line(ui, BLUE(), n);
                         }
-                        let r = ui.button("Try again");
+                        let r = ui.button(tr("Try again"));
                         pages::control(widgets, "git-reload", &r, ui.clip_rect());
                         retry |= r.clicked();
                     });
@@ -705,12 +706,12 @@ impl Rocket {
             ui.add_enabled_ui(!busy, |ui| {
                 let (detail, automatic_check) = match &s.automatic_found {
                     Some(f) => (
-                        format!("Bundled when included, otherwise installed · {}", display_path(&f.path)),
+                        trf!("Bundled when included, otherwise installed · {path}", path = display_path(&f.path)),
                         f.check.clone(),
                     ),
-                    None => ("No bundled or installed Git found".to_owned(), None),
+                    None => (tr("No bundled or installed Git found").to_owned(), None),
                 };
-                let r = choice_row(ui, s.automatic, true, "Automatic", &detail, true, |ui| {
+                let r = choice_row(ui, s.automatic, true, tr("Automatic"), &detail, true, |ui| {
                     check_pill(ui, automatic_check.as_ref())
                 });
                 pages::control(widgets, "git-automatic", &r, ui.clip_rect());
@@ -718,10 +719,10 @@ impl Rocket {
                     choose = Some(String::new());
                     s.custom_open = false;
                 }
-                let detail = format!("Git for Windows {} · travels with Rocket", MANAGED_GIT_VERSION);
+                let detail = trf!("Git for Windows {version} · travels with Rocket", version = MANAGED_GIT_VERSION);
                 let r = ui.add_enabled_ui(s.managed_available, |ui| {
-                    choice_row(ui, s.managed, s.managed_available, "Bundled Git", &detail, false, |ui| {
-                        pages::pill(ui, if !s.managed_available { "Not included" } else if s.managed_verified { "Verified" } else { "Included" },
+                    choice_row(ui, s.managed, s.managed_available, tr("Bundled Git"), &detail, false, |ui| {
+                        pages::pill(ui, if !s.managed_available { tr("Not included") } else if s.managed_verified { tr("Verified") } else { tr("Included") },
                             if s.managed_verified { GREEN() } else { MUTED() });
                     })
                 }).inner;
@@ -731,15 +732,15 @@ impl Rocket {
                     s.custom_open = false;
                 }
                 card_note(ui, |ui| {
-                    ui.label(RichText::new("Pinned runtime. Files are checked before use; installed Git, PATH and your credentials stay unchanged.").size(12.0).color(HINT()));
-                    let r = ui.add_enabled(s.managed_available, Button::new("Verify files"));
+                    ui.label(RichText::new(tr("Pinned runtime. Files are checked before use; installed Git, PATH and your credentials stay unchanged.")).size(12.0).color(HINT()));
+                    let r = ui.add_enabled(s.managed_available, Button::new(tr("Verify files")));
                     pages::control(widgets, "git-managed-verify", &r, ui.clip_rect());
                     verify_managed |= r.clicked();
                 });
                 for (n, found) in listed.iter().enumerate() {
                     let path = display_path(&found.path);
                     let selected = !s.automatic && !s.managed && s.path == path;
-                    let r = choice_row(ui, selected, found.usable(), "Installed copy", &path, true, |ui| {
+                    let r = choice_row(ui, selected, found.usable(), tr("Installed copy"), &path, true, |ui| {
                         check_pill(ui, found.check.as_ref())
                     });
                     pages::control(widgets, format!("git-candidate-{n}"), &r, ui.clip_rect());
@@ -751,12 +752,12 @@ impl Rocket {
                 let custom_saved =
                     !s.automatic && !s.managed && !listed.iter().any(|f| display_path(&f.path) == s.path);
                 let detail = match s.custom.trim() {
-                    "" => "Any git.exe on this computer".to_owned(),
+                    "" => tr("Any git.exe on this computer").to_owned(),
                     path => path.to_owned(),
                 };
                 let path_given = !s.custom.trim().is_empty();
-                let r = choice_row(ui, custom_saved, true, "Custom path", &detail, path_given, |ui| {
-                    let b = ui.button("Browse");
+                let r = choice_row(ui, custom_saved, true, tr("Custom path"), &detail, path_given, |ui| {
+                    let b = ui.button(tr("Browse"));
                     pages::control(widgets, "git-browse", &b, ui.clip_rect());
                     browse |= b.clicked();
                 });
@@ -791,7 +792,7 @@ impl Rocket {
                                 let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
                                 let typed = s.custom.trim();
                                 let ready = !typed.is_empty() && !(custom_saved && typed == s.path.trim());
-                                let r = pages::primary(ui, ready, "Use");
+                                let r = pages::primary(ui, ready, tr("Use"));
                                 pages::control(widgets, "git-save", &r, ui.clip_rect());
                                 if ready && (r.clicked() || enter) {
                                     choose = Some(typed.to_owned());
@@ -804,8 +805,8 @@ impl Rocket {
                 let (checked, total, _, _) = s.managed_progress.snapshot();
                 card_note(ui, |ui| {
                     let fraction = if total == 0 { 0.0 } else { checked as f32 / total as f32 };
-                    ui.add(ProgressBar::new(fraction).text(if s.stopping { "Stopping verification".to_owned() }
-                        else { format!("Checking bundled Git · {checked} / {total} files") }));
+                    ui.add(ProgressBar::new(fraction).text(if s.stopping { tr("Stopping verification").to_owned() }
+                        else { trf!("Checking bundled Git · {checked} / {total} files", checked, total) }));
                 });
             }
             // A choice that failed, and a saved choice that waits for a restart.
@@ -819,7 +820,7 @@ impl Rocket {
                 card_note(ui, |ui| {
                     if let Some(e) = error {
                         status_line(ui, RED(), e);
-                        let r = ui.add_enabled(!busy && !s.dirty(), Button::new("Reload"));
+                        let r = ui.add_enabled(!busy && !s.dirty(), Button::new(tr("Reload")));
                         pages::control(widgets, "git-reload", &r, ui.clip_rect());
                         retry |= r.clicked();
                     }
@@ -827,7 +828,7 @@ impl Rocket {
                         status_line(ui, BLUE(), n);
                     }
                     if restart && !busy {
-                        status_line(ui, BLUE(), "Saved. Restart Rocket to switch to this Git.");
+                        status_line(ui, BLUE(), tr("Saved. Restart Rocket to switch to this Git."));
                     }
                 });
             }
@@ -839,12 +840,9 @@ impl Rocket {
         let saving = busy && job == Job::Identity;
         let value = identity_value(&s.name, &s.email);
         card_frame(ui, |ui| {
-            card_header(ui, "Commit identity", |ui| {
+            card_header(ui, tr("Commit identity"), |ui| {
                 if let Some(i) = &s.identity {
-                    let mut about = format!(
-                        "Saved in {}. A repository can set its own name and email.",
-                        display_path(&i.path)
-                    );
+                    let mut about = trf!("Saved in {path}. A repository can set its own name and email.", path = display_path(&i.path));
                     if !i.origins.is_empty() {
                         about.push_str("\n\n");
                         about.push_str(&i.origins.join("\n"));
@@ -852,12 +850,12 @@ impl Rocket {
                     let (rect, r) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
                     icon(ui.painter(), rect, Icon::Info, FAINT());
                     r.on_hover_text(about);
-                    ui.label(RichText::new("Every repository").size(12.0).color(HINT()));
+                    ui.label(RichText::new(tr("Every repository")).size(12.0).color(HINT()));
                 }
             });
             // An empty field shows the value Git uses, from included files too, as a hint.
             let hint = |value: Option<&String>| {
-                RichText::new(value.map_or("Not set", String::as_str))
+                RichText::new(value.map_or(tr("Not set"), String::as_str))
                     .color(FAINT())
                     .italics()
             };
@@ -870,8 +868,8 @@ impl Rocket {
                 .show(ui, |ui| {
                     ui.add_enabled_ui(s.identity.is_some() && !busy, |ui| {
                         for (label, key, value, hint) in [
-                            ("Name", "git-name", &mut s.name, name_hint),
-                            ("Email", "git-email", &mut s.email, email_hint),
+                            (tr("Name"), "git-name", &mut s.name, name_hint),
+                            (tr("Email"), "git-email", &mut s.email, email_hint),
                         ] {
                             text_row(ui, label, 84.0, |ui| {
                                 let r = ui.add_sized(
@@ -892,9 +890,9 @@ impl Rocket {
             // Saved, unless an included config file overrides what was saved.
             let saved = s.identity.as_ref().filter(|_| s.identity_saved && !dirty).map(|i| {
                 if i.direct == i.effective {
-                    (GREEN(), "Saved for every repository.")
+                    (GREEN(), tr("Saved for every repository."))
                 } else {
-                    (AMBER(), "Saved. An included config file still overrides part of it.")
+                    (AMBER(), tr("Saved. An included config file still overrides part of it."))
                 }
             });
             let retry_shown = s.identity.is_none() && !busy && s.loaded;
@@ -917,7 +915,7 @@ impl Rocket {
                             status_line(ui, color, text);
                         }
                         if retry_shown {
-                            let r = ui.button("Try again");
+                            let r = ui.button(tr("Try again"));
                             pages::control(widgets, "git-reload", &r, ui.clip_rect());
                             retry |= r.clicked();
                         }
@@ -929,7 +927,7 @@ impl Rocket {
                     if saving {
                         let r = ui.add_enabled(
                             !s.stopping,
-                            Button::new(if s.stopping { "Stopping" } else { "Stop" }),
+                            Button::new(if s.stopping { tr("Stopping") } else { tr("Stop") }),
                         );
                         pages::control(widgets, "git-cancel", &r, ui.clip_rect());
                         stop |= r.clicked();
@@ -938,17 +936,17 @@ impl Rocket {
                         let writable = s.identity.as_ref().is_some_and(|i| i.direct != value)
                             && value.validate().is_ok()
                             && !writing;
-                        let r = pages::primary(ui, writable, "Save");
+                        let r = pages::primary(ui, writable, tr("Save"));
                         pages::control(widgets, "git-identity-save", &r, ui.clip_rect());
                         save_identity = r.clicked();
-                        let r = ui.button("Discard");
+                        let r = ui.button(tr("Discard"));
                         pages::control(widgets, "git-reload", &r, ui.clip_rect());
                         discard = r.clicked();
                     }
                     ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
                         if saving {
-                            ui.label(RichText::new("Saving").size(12.5).color(HINT()));
+                            ui.label(RichText::new(tr("Saving")).size(12.5).color(HINT()));
                         } else {
                             let (dot, _) = ui.allocate_exact_size(vec2(7.0, 7.0), Sense::hover());
                             ui.painter().circle_filled(dot.center(), 3.5, AMBER());
@@ -959,9 +957,9 @@ impl Rocket {
                                 )
                             });
                             let text = match (name, email) {
-                                (true, true) => "Name and email changed",
-                                (true, false) => "Name changed",
-                                _ => "Email changed",
+                                (true, true) => tr("Name and email changed"),
+                                (true, false) => tr("Name changed"),
+                                _ => tr("Email changed"),
                             };
                             ui.label(RichText::new(text).size(12.5).color(AMBER()));
                         }
@@ -1087,13 +1085,13 @@ fn check_pill(ui: &mut Ui, check: Option<&Check>) {
             pages::pill(ui, version, MUTED());
         }
         Some(Check::Restricted(details)) => {
-            pages::pill(ui, &format!("{} · HTTP blocked", details.0), AMBER()).on_hover_text(details.1);
+            pages::pill(ui, &trf!("{version} · HTTP blocked", version = details.0), AMBER()).on_hover_text(details.1);
         }
         Some(Check::Old(version)) => {
-            pages::pill(ui, &format!("{version} · needs 2.46"), AMBER());
+            pages::pill(ui, &trf!("{version} · needs 2.46", version), AMBER());
         }
         Some(Check::Broken(reason)) => {
-            pages::pill(ui, "Not usable", AMBER()).on_hover_text(reason);
+            pages::pill(ui, tr("Not usable"), AMBER()).on_hover_text(reason);
         }
         None => {}
     }

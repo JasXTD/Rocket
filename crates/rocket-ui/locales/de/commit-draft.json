@@ -1,0 +1,17 @@
+{
+  "Claude Code was not found. Install it or choose its executable in Preferences.": "Claude Code wurde nicht gefunden. Installieren Sie es oder wählen Sie seine Programmdatei in den Einstellungen.",
+  "Codex was not found. Install the Codex CLI or app, or choose its executable in Preferences.": "Codex wurde nicht gefunden. Installieren Sie die Codex CLI oder App oder wählen Sie die Programmdatei in den Einstellungen.",
+  "Conventional Commits": "Conventional Commits",
+  "Draft with": "Entwurf mit",
+  "Drafts are never committed for you.": "Entwürfe werden nie automatisch committet.",
+  "Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first.": "Jeder Entwurf sendet Ihre gestagten Änderungen über Claude Code an Anthropic. Vor dem ersten Entwurf wird erklärt, was gesendet wird, und Ihre Zustimmung eingeholt.",
+  "Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first.": "Jeder Entwurf sendet Ihre gestagten Änderungen über Codex an OpenAI. Vor dem ersten Entwurf wird erklärt, was gesendet wird, und Ihre Zustimmung eingeholt.",
+  "Enter a language name using letters, spaces and hyphens, up to 64 characters.": "Geben Sie einen Sprachnamen mit Buchstaben, Leerzeichen und Bindestrichen ein, höchstens 64 Zeichen.",
+  "Found automatically when empty": "Wird bei leerem Feld automatisch gefunden",
+  "Found {path}": "Gefunden: {path}",
+  "Language": "Sprache",
+  "Message style": "Nachrichtenstil",
+  "Off: nothing is sent anywhere.": "Aus: Es wird nichts gesendet.",
+  "Plain summary and body": "Einfache Zusammenfassung und Text",
+  "Show a Draft button in the commit composer": "Entwurf-Schaltfläche im Commit-Editor anzeigen"
+}

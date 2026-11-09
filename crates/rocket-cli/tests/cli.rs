@@ -10,6 +10,8 @@ use std::{
 };
 
 static NEXT: AtomicU64 = AtomicU64::new(0);
+#[path = "cli/composed.rs"]
+mod composed;
 
 #[test]
 fn advanced_tags_and_worktrees_preserve_files_and_return_recovery() {

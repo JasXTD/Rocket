@@ -204,6 +204,16 @@ impl ForgeSession {
         mutation: bool,
         cancel: &CancellationToken,
     ) -> Result<(Json, Vec<(String, String)>)> {
+        self.request_content(operation, step, method, path, body, mutation, false, cancel)
+    }
+    pub(super) fn request_diff(&self, path: &str, cancel: &CancellationToken) -> Result<String> {
+        let (value, _) = self.request_content("hosting-pull-details", "read_pull_diff", "GET", path, None, false, true, cancel)?;
+        match value { Json::String(s) => Ok(s), _ => fail(ForgeFailure::InvalidResponse) }
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn request_content(&self, operation: &'static str, step: &'static str, method: &str,
+        path: &str, body: Option<&str>, mutation: bool, text: bool, cancel: &CancellationToken,
+    ) -> Result<(Json, Vec<(String, String)>)> {
         let run = || self.runner.step(operation,step,||{
             // A refusal names only its own request's permission.
             REFUSAL.with(|r|*r.borrow_mut()=None);
@@ -226,6 +236,7 @@ impl ForgeSession {
             // travel on stdin. No response body/stderr is ever included in an error.
             let mut config=format!("url = {}\nrequest = {}\nheader = {}\nheader = \"Accept: application/json\"\nheader = \"Content-Type: application/json; charset=utf-8\"\nheader = \"X-GitHub-Api-Version: 2022-11-28\"\nuser-agent = \"Rocket/{}\"\n",
                 quote(&url),quote(method),quote(&format!("Authorization: {}",self.authorization)),env!("CARGO_PKG_VERSION"));
+            if text { config = config.replace("Accept: application/json", "Accept: text/plain"); }
             // The MCP fixture must stay on loopback even when the host has a proxy configured.
             if self.config.fixture_port().is_some() { config.push_str("noproxy = \"*\"\n"); }
             if let Some(body)=body{config.push_str(&format!("data-binary = {}\n",quote(body)));}
@@ -263,7 +274,12 @@ impl ForgeSession {
             // Gitea confirms synchronous merges with 200 or 204 and no body.
             // The merge adapter must verify the resulting PR with a scoped GET.
             // A re-run is confirmed by 201 alone: GitHub and Gitea send no body.
-            let value=if (self.config.provider()==ForgeProvider::Gitea && operation=="hosting-merge-submit" && mutation && matches!(response.status,200|204) && response.body.is_empty())
+            let value=if text {
+                // The raw diff is inert data. Keep it bounded and validate UTF-8
+                // before parsing paths/hunks. No response links are followed.
+                if response.body.len() > 256 * 1024 { return fail(ForgeFailure::InvalidResponse); }
+                Json::String(std::str::from_utf8(response.body).map_err(|_| Error::Forge(ForgeFailure::InvalidResponse))?.to_owned())
+            } else if (self.config.provider()==ForgeProvider::Gitea && operation=="hosting-merge-submit" && mutation && matches!(response.status,200|204) && response.body.is_empty())
                 || (operation==super::checks::RERUN && mutation && matches!(response.status,201|202|204) && response.body.iter().all(u8::is_ascii_whitespace)) { Json::Null } else {json::parse(response.body).ok_or(Error::Forge(if mutation{ForgeFailure::OutcomeUnknown}else{ForgeFailure::InvalidResponse}))?};
             Ok((value,response.headers))
         });

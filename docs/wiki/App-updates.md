@@ -7,7 +7,7 @@ Rocket checks public releases from
 starts. The request runs in the background. There is no periodic check or silent
 installation. Use **Help → Check for Updates** for another check.
 
-The 0.92.1 packages are also available for manual download from GitHub Releases.
+The 0.92.2 packages are also available for manual download from GitHub Releases.
 The Mac preview ZIP cannot be installed through the updater because Developer ID
 signing and notarization are still pending.
 

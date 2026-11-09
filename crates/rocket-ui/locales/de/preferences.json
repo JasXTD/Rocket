@@ -150,5 +150,10 @@
   "Fetch remotes automatically": "Remotes automatisch fetchen",
   "Fetching…": "Fetch läuft…",
   "Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.": "Wird im nächsten Intervall erneut versucht. Der automatische Fetch fragt nie nach Anmeldedaten; führen Sie zum Anmelden einen manuellen Fetch aus.",
-  "{c} min": "{c} Min."
+  "{c} min": "{c} Min.",
+  "Hunspell dictionary · {language}": "Hunspell-Wörterbuch · {language}",
+  "Remembered accounts are encrypted with a key in your desktop keyring.": "Gespeicherte Konten werden mit einem Schlüssel im Schlüsselbund Ihres Desktops verschlüsselt.",
+  "Uses the Hunspell dictionaries installed on this system.": "Verwendet die auf diesem System installierten Hunspell-Wörterbücher.",
+  "Uses the macOS spell checker. Added words are shared with other apps.": "Verwendet die macOS-Rechtschreibprüfung. Hinzugefügte Wörter gelten auch in anderen Apps.",
+  "macOS spell checker · {language}": "macOS-Rechtschreibprüfung · {language}"
 }

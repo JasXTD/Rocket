@@ -1,0 +1,17 @@
+{
+  "Claude Code was not found. Install it or choose its executable in Preferences.": "Claude Code est introuvable. Installez-le ou choisissez son exécutable dans les Préférences.",
+  "Codex was not found. Install the Codex CLI or app, or choose its executable in Preferences.": "Codex est introuvable. Installez la CLI ou l’application Codex, ou choisissez son exécutable dans les Préférences.",
+  "Conventional Commits": "Conventional Commits",
+  "Draft with": "Rédiger avec",
+  "Drafts are never committed for you.": "Les brouillons ne sont jamais commités automatiquement.",
+  "Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first.": "Chaque brouillon envoie vos changements indexés à Anthropic via Claude Code. Avant le premier brouillon, Rocket explique ce qui sera envoyé et demande votre accord.",
+  "Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first.": "Chaque brouillon envoie vos changements indexés à OpenAI via Codex. Avant le premier brouillon, Rocket explique ce qui sera envoyé et demande votre accord.",
+  "Enter a language name using letters, spaces and hyphens, up to 64 characters.": "Saisissez un nom de langue avec des lettres, espaces et traits d’union, limité à 64 caractères.",
+  "Found automatically when empty": "Détection automatique si vide",
+  "Found {path}": "Trouvé : {path}",
+  "Language": "Langue",
+  "Message style": "Style du message",
+  "Off: nothing is sent anywhere.": "Désactivé : rien n’est envoyé.",
+  "Plain summary and body": "Résumé et corps simples",
+  "Show a Draft button in the commit composer": "Afficher un bouton Brouillon dans l’éditeur de commit"
+}

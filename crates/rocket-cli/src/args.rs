@@ -1,4 +1,5 @@
 use std::{collections::BTreeSet, ffi::OsString, path::PathBuf};
+mod hosting;
 
 pub const HELP: &str = "Rocket CLI — bundled or installed Git, Rocket's guarded backend
 
@@ -41,6 +42,7 @@ Local writes:
   unstage --lines ID,... --expect-patch SHA256 -- PATH
   commit --message MESSAGE (JSON undo: values for undo-commit)
   undo-commit --branch NAME --expect COMMIT_ID --index-sha256 SHA256 [--preview]
+  commit-push REMOTE DESTINATION --message MESSAGE --preview | --expect-review SHA256
   amend --message MESSAGE --expect HEAD_ID [--preview]
   cherry-pick | revert ID... [--mainline N] [--expect HEAD_ID] [--preview]
   cherry-pick | revert continue | skip | abort [--preview]
@@ -49,6 +51,7 @@ Local writes:
   branch list
   branch create NAME [--start REV]
   branch switch NAME
+  branch switch-saved NAME --preview | --expect-review SHA256
   branch rename OLD NEW
   branch delete NAME (merged branches only)
   branch fast-forward [--preview] [-- BRANCH...] (branches behind their upstream)
@@ -125,6 +128,23 @@ Git LFS and SSH keys:
   ssh keys | ssh check ALIAS (public keys and Rocket profiles; nothing is unlocked)
   ssh use ALIAS | ssh restore (--preview | --expect-config SHA256) (this repository's sshCommand)
 
+Hosting (uses HTTPS APIs; no saved-account or Git-credential changes):
+  hosting account | list | pull NUMBER | create | review NUMBER | merge NUMBER
+  Common: --provider PROVIDER [--server HTTPS_URL] --token-env NAME [--username LOGIN]
+    [--api-version VERSION] (Azure Server only); NAME must end in _TOKEN.
+    All except account require --repository OWNER/PROJECT (provider project path).
+  list [--kind pulls|issues] [--state open|closed|all] [--pages 1..20]
+    [--search TEXT --author USER --assignee USER] [--work-item-state STATE]
+  create --source BRANCH --target BRANCH --title TITLE [--body BODY]
+    [--source-repository OWNER/PROJECT] (cross-fork: GitHub/GHES only)
+  review NUMBER --action comment|approve|request-changes [--body BODY] [--comments FILE]
+  merge NUMBER --method merge|squash|rebase
+  Every hosting write requires --preview or --expect-review SHA256 from its preview.
+  Comments JSON uses exact path/start/line/side/head/base/body/diff_revision from pull.
+  GitLab/Bitbucket/Azure: one single-line comment; Gitea: up to 32 in one review.
+  Bitbucket Server/Azure iterations require the exact diff_revision returned by pull.
+  Explicit test-only --fixture-api-port N needs a marked repo and synthetic token.
+
 Use -- before literal paths/names beginning with '-'. All path arguments to
 stage/unstage/diff are relative to the repository root and never wildcards.
 No unconditional force pushes, automatic stashing, shell commands or automatic retries.
@@ -148,6 +168,7 @@ pub struct Options {
 
 #[derive(Debug)]
 pub enum Command {
+    Hosting(crate::hosting::Options),
     Help,
     Version,
     Info,
@@ -198,6 +219,8 @@ pub enum Command {
     },
     StageLines { path: OsString, lines: Vec<usize>, expected: String, unstage: bool },
     Commit(String),
+    CommitPush { remote: String, destination: String, message: String, review: Option<String>, preview: bool },
+    SwitchSaved { branch: String, review: Option<String>, preview: bool },
     UndoCommit { branch: String, expected: String, index: String, preview: bool },
     /// `expected` pins the amended commit, or HEAD for cherry-pick and revert.
     CommitAction { request: rocket_git::CommitActionRequest, expected: Option<String>, message: Option<String>, preview: bool },
@@ -322,6 +345,7 @@ impl Command {
     /// Fixed names also match the backend's diagnostic allowlist.
     pub fn label(&self) -> &'static str {
         match self {
+            Self::Hosting(options) => options.action.label(),
             Self::Help => "help",
             Self::Version => "version",
             Self::Info => "info",
@@ -352,6 +376,8 @@ impl Command {
             },
             Self::StageLines { unstage, .. } => if *unstage { "unstage-selection" } else { "stage-selection" },
             Self::Commit(_) => "commit",
+            Self::CommitPush { preview, .. } => if *preview { "commit-push-preview" } else { "commit-push" },
+            Self::SwitchSaved { preview, .. } => if *preview { "saved-work-preview" } else { "saved-work" },
             Self::UndoCommit { preview, .. } => if *preview { "undo-preview" } else { "undo-commit" },
             Self::CommitAction { request, preview, .. } => if *preview { "commit-preview" } else { request.label() },
             Self::Reset { mode, preview, .. } => if *preview { "recovery-preview" } else { mode.label() },
@@ -450,7 +476,11 @@ fn value_option(s: &str) -> bool {
             | "--choose" | "--result" | "--side" | "--test-timeout"
             | "--mainline" | "--plan" | "--expect-original" | "--expect-onto" | "--index-sha256"
             | "--scope" | "--kind" | "--first" | "--size"
-            | "--at" | "--expect-config" | "--name" | "--email" | "--line"
+            | "--at" | "--expect-config" | "--name" | "--email" | "--line" | "--expect-review"
+            | "--repository" | "--token-env" | "--username" | "--api-version" | "--pages"
+            | "--search" | "--author" | "--assignee" | "--work-item-state" | "--state"
+            | "--title" | "--body" | "--source-repository" | "--action" | "--comments"
+            | "--method" | "--fixture-api-port"
     )
 }
 
@@ -672,6 +702,7 @@ impl Tail {
 
 fn command(mut args: Vec<OsString>) -> Parsed<Command> {
     let verb = text(&args.remove(0))?;
+    if verb == "hosting" { return hosting::parse(args).map(Command::Hosting); }
     let sub = if matches!(
         verb.as_str(),
         "branch" | "stash" | "merge" | "remote" | "rebase" | "review" | "tag" | "worktree"
@@ -699,6 +730,8 @@ fn command(mut args: Vec<OsString>) -> Parsed<Command> {
         ("verify", _) => (&["--require-valid"], &[]),
         ("stage" | "unstage", _) => (&["--all"], &["--lines", "--expect-patch"]),
         ("commit", _) | ("merge", "continue") => (&[], &["--message"]),
+        ("commit-push", _) => (&["--preview"], &["--message", "--expect-review"]),
+        ("branch", "switch-saved") => (&["--preview"], &["--expect-review"]),
         ("undo-commit", _) => (&["--preview"], &["--branch", "--expect", "--index-sha256"]),
         ("amend", _) => (&["--preview"], &["--message", "--expect"]),
         ("cherry-pick" | "revert", _) => (&["--preview"], &["--mainline", "--expect"]),
@@ -919,6 +952,20 @@ fn command(mut args: Vec<OsString>) -> Parsed<Command> {
         ("commit", _) => {
             t.count(0)?;
             Command::Commit(t.required("--message")?)
+        }
+        ("commit-push", _) | ("branch", "switch-saved") => {
+            let preview = t.flag("--preview");
+            let review = t.text("--expect-review")?.map(|v| checked_sha256(&v)).transpose()?;
+            if preview == review.is_some() {
+                return Err("use --preview first, then --expect-review SHA256 to apply that review");
+            }
+            if verb == "commit-push" {
+                t.count(2)?;
+                Command::CommitPush { remote: text(&t.positional[0])?, destination: text(&t.positional[1])?, message: t.required("--message")?, review, preview }
+            } else {
+                t.count(1)?;
+                Command::SwitchSaved { branch: text(&t.positional[0])?, review, preview }
+            }
         }
         ("undo-commit", _) => {
             t.count(0)?;

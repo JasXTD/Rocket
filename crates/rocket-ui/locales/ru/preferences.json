@@ -105,7 +105,7 @@
   "Storage": "Хранилище",
   "Syntax highlighting": "Подсветка синтаксиса",
   "Tags in fetch": "Теги при получении",
-  "The Git program Rocket runs, and your commit identity for every repository.": "Программа Git, которую запускает Rocket, и ваши данные автора коммитов для всех репозиториев.",
+  "The Git program Rocket runs, and your commit identity for every repository.": "Git в Rocket и данные автора коммитов для всех репозиториев.",
   "The shell the Terminal drawer runs.": "Оболочка, которую запускает панель «Терминал».",
   "Theme": "Тема",
   "Theme and row density.": "Тема и плотность строк.",
@@ -150,5 +150,10 @@
   "Fetch remotes automatically": "Автоматически получать из удалённых репозиториев",
   "Fetching…": "Получение…",
   "Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.": "Повтор в следующем интервале. Автоматическое получение никогда не запрашивает учётные данные; чтобы войти, выполните получение вручную.",
-  "{c} min": "{c} мин"
+  "{c} min": "{c} мин",
+  "Hunspell dictionary · {language}": "Словарь Hunspell · {language}",
+  "Remembered accounts are encrypted with a key in your desktop keyring.": "Сохранённые аккаунты зашифрованы ключом из хранилища ключей рабочего стола.",
+  "Uses the Hunspell dictionaries installed on this system.": "Используются словари Hunspell, установленные в этой системе.",
+  "Uses the macOS spell checker. Added words are shared with other apps.": "Используется проверка орфографии macOS. Добавленные слова доступны другим приложениям.",
+  "macOS spell checker · {language}": "Проверка орфографии macOS · {language}"
 }

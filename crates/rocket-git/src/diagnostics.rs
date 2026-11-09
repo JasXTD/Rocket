@@ -742,7 +742,13 @@ fn workflow_failure(message:&str)->Option<&'static str>{
         "ai_exchange_limit", "ai_exchange_exists", "ai_exchange_id", "ai_exchange_closed",
         "ai_exchange_missing", "ai_exchange_data", "ai_exchange_expired", "ai_exchange_cleanup",
     ];
-    CODES.iter().chain(PATCH_SERIES_CODES).chain(INTEGRATION_CODES).copied().find(|known|*known==code)
+    const COMPOSED_CODES: &[&str] = &[
+        "workflow_review_stale", "commit_push_remote", "commit_push_branch", "commit_push_conflicts",
+        "commit_push_empty", "commit_push_limit", "commit_push_stale", "commit_push_unconfirmed",
+        "commit_push_commit_changed", "commit_push_destination_changed", "commit_push_incomplete",
+        "saved_work_same_branch", "saved_work_switch_changed",
+    ];
+    CODES.iter().chain(PATCH_SERIES_CODES).chain(INTEGRATION_CODES).chain(COMPOSED_CODES).copied().find(|known|*known==code)
 }
 fn outcome<T>(result: &Result<T>) -> String {
     let (kind, code, os_error) = match result {
@@ -970,6 +976,8 @@ fn operation_label(value: &str) -> &'static str {
         "conflict-keep",
         "conflict-keep-cancel",
         "hosting-connect",
+        "hosting-account",
+        "hosting-create-preview",
         "integration-run", "integration-read", "integration-submit",
         "integration-discover", "integration-save", "integration-review",
         "integration-draft-save", "integration-profile-save",
@@ -981,6 +989,10 @@ fn operation_label(value: &str) -> &'static str {
         "integration-validation-result",
         "integration-submit-result",
         "hosting-list",
+        "hosting-search",
+        "commit-push-preview",
+        "commit-push",
+        "saved-switch",
         "hosting-preview",
         "hosting-create",
         "hosting-pull-details",
@@ -1536,6 +1548,11 @@ mod tests {
         for code in ["playground_changed","playground_source","ai_conflict_stale","ai_exchange_expired","ai_proposal_schema"] {
             let detail=outcome::<()>(&Err(Error::InvalidInput(format!("{code}: PRIVATE_SOURCE PRIVATE_PROPOSAL"))));
             assert!(detail.contains(&format!("\"failure_code\":\"{code}\"")));assert!(!detail.contains("PRIVATE_"));
+        }
+        for code in ["workflow_review_stale", "commit_push_stale", "commit_push_incomplete", "saved_work_switch_changed"] {
+            let detail=outcome::<()>(&Err(Error::InvalidInput(format!("{code}: PRIVATE_MESSAGE PRIVATE_DESTINATION"))));
+            assert!(detail.contains(&format!("\"failure_code\":\"{code}\"")));
+            assert!(!detail.contains("PRIVATE_"));
         }
     }
 

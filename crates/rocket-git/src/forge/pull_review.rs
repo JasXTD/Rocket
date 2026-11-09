@@ -37,6 +37,16 @@ pub struct ForgePullSummary {
     pub counts_available: bool,
     revision: Option<u64>,
     author_identity: Option<String>,
+    diff_refs: Option<DiffRefs>,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DiffRefs { base: String, head: String, start: String }
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AzureIteration { id: u64, common: String, source: String, target: String }
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FileAnchor {
+    BitbucketServer { from: String, to: String },
+    Azure { iteration: AzureIteration, tracking: u64 },
 }
 #[derive(Clone, Debug)]
 pub struct ForgePullCommit {
@@ -55,6 +65,8 @@ pub struct ForgePullFile {
     pub patch: Option<String>,
     pub lines: Vec<ForgePullLine>,
     raw_path: Option<String>,
+    raw_previous: Option<String>,
+    anchor: Option<FileAnchor>,
 }
 #[derive(Clone, Debug)]
 pub struct ForgePullComment {
@@ -167,6 +179,14 @@ pub struct ForgePullReviewPreview {
     used: AtomicBool,
 }
 impl ForgePullReviewPreview {
+    pub fn review_digest(&self, session: &ForgeSession) -> Result<String> {
+        if self.session != session.id { return fail(ForgeFailure::PullReviewStale); }
+        // Inline anchors include GitLab's base/head/start diff refs. Hash text
+        // and typed locations, never the process-local session capability.
+        let comments = self.comments.iter().map(ForgeInlineComment::review_binding).collect::<Vec<_>>();
+        session.review_digest("review", &[self.repository.path(), &format!("{:?}",self.summary),
+            self.action.event(), &self.body, &format!("{comments:?}")])
+    }
     pub fn repository(&self) -> &ForgeRepository {
         &self.repository
     }
@@ -230,7 +250,7 @@ impl ForgeSession {
                 files: j.u64("changed_files")?,
                 additions: j.u64("additions")?,
                 deletions: j.u64("deletions")?,
-                counts_available: true, revision: None, author_identity: None,
+                counts_available: true, revision: None, author_identity: None, diff_refs: None,
             })
         };
         parse().ok_or(Error::Forge(ForgeFailure::InvalidResponse))
@@ -289,7 +309,9 @@ impl ForgeSession {
                     deletions: j.u64("deletions")?,
                     patch,
                     lines,
+                    raw_previous: j.str("previous_filename").filter(|p| inline::safe_path(p)).map(str::to_owned),
                     raw_path,
+                    anchor: None,
                 })
             },
         )?;
@@ -457,10 +479,12 @@ impl ForgeSession {
             if details.session != self.id { return fail(ForgeFailure::PullReviewStale); }
             providers::validate_review(self.config.provider(),action,body,comments)?;
             inline::validate_comments(details, comments, body.len())?;
-            if body.len() > 64 * 1024 || body.contains('\0') || (action != ForgeReviewAction::Approve && details.review_message_supported(action) && body.trim().is_empty()) { return Err(invalid("This review action requires a message of at most 64 KiB without NUL.")); }
+            if body.len() > 64 * 1024 || body.contains('\0') || (action != ForgeReviewAction::Approve && details.review_message_supported(action) && body.trim().is_empty() && comments.is_empty()) { return Err(invalid("This review action requires a message of at most 64 KiB without NUL.")); }
             let current = self.current_pull(PREVIEW, &details.repository, details.summary.number, c)?;
             if !same_revision(&details.summary, &current) { return fail(ForgeFailure::PullChanged); }
             self.review_allowed(&current, action)?;
+            self.ensure_no_pending_gitea_review(&details.repository, current.number, c)?;
+            self.validate_other_inline_snapshot(&details.repository, current.number, comments, c)?;
             Ok(ForgePullReviewPreview { repository: details.repository.clone(), summary: current, session: self.id, action, body: body.into(), comments: comments.to_vec(), created: Instant::now(), used: AtomicBool::new(false) })
         })
     }
@@ -495,6 +519,8 @@ impl ForgeSession {
                 return fail(ForgeFailure::PullChanged);
             }
             self.review_allowed(&current, preview.action)?;
+            self.ensure_no_pending_gitea_review(&preview.repository, current.number, c)?;
+            self.validate_other_inline_snapshot(&preview.repository, current.number, &preview.comments, c)?;
             c.check()?;
             if preview.used.swap(true, Ordering::AcqRel) {
                 return fail(ForgeFailure::PullReviewStale);
@@ -555,6 +581,7 @@ fn same_revision(a: &ForgePullSummary, b: &ForgePullSummary) -> bool {
         && a.author == b.author
         && a.author_identity == b.author_identity
         && a.revision == b.revision
+        && a.diff_refs == b.diff_refs
 }
 fn oid(s: &str) -> Option<String> {
     (s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit())).then(|| s.to_ascii_lowercase())

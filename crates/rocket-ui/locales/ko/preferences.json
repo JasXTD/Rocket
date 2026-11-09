@@ -150,5 +150,10 @@
   "Fetch remotes automatically": "원격 자동 페치",
   "Fetching…": "페치 중…",
   "Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.": "다음 간격에 다시 시도합니다. 자동 페치는 자격 증명을 묻지 않으므로, 로그인하려면 직접 페치하세요.",
-  "{c} min": "{c}분"
+  "{c} min": "{c}분",
+  "Hunspell dictionary · {language}": "Hunspell 사전 · {language}",
+  "Remembered accounts are encrypted with a key in your desktop keyring.": "저장된 계정은 데스크톱 키링의 키로 암호화됩니다.",
+  "Uses the Hunspell dictionaries installed on this system.": "이 시스템에 설치된 Hunspell 사전을 사용합니다.",
+  "Uses the macOS spell checker. Added words are shared with other apps.": "macOS 맞춤법 검사기를 사용합니다. 추가한 단어는 다른 앱과 공유됩니다.",
+  "macOS spell checker · {language}": "macOS 맞춤법 검사기 · {language}"
 }

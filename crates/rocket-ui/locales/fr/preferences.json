@@ -83,7 +83,7 @@
   "Save or discard the tool profile changes first.": "Enregistrez ou rejetez d'abord les modifications des profils d'outils.",
   "Save profiles": "Enregistrer les profils",
   "Saved state": "État enregistré",
-  "Search settings": "Rechercher dans les paramètres",
+  "Search settings": "Rechercher un réglage",
   "Security": "Sécurité",
   "Shortcuts": "Raccourcis",
   "Show commit details": "Afficher les détails du commit",
@@ -150,5 +150,10 @@
   "Fetch remotes automatically": "Récupérer automatiquement les dépôts distants",
   "Fetching…": "Récupération…",
   "Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.": "Nouvel essai à l'intervalle suivant. La récupération automatique ne demande jamais d'identifiants ; récupérez manuellement pour vous connecter.",
-  "{c} min": "{c} min"
+  "{c} min": "{c} min",
+  "Hunspell dictionary · {language}": "Dictionnaire Hunspell · {language}",
+  "Remembered accounts are encrypted with a key in your desktop keyring.": "Les comptes mémorisés sont chiffrés avec une clé du trousseau de votre bureau.",
+  "Uses the Hunspell dictionaries installed on this system.": "Utilise les dictionnaires Hunspell installés sur ce système.",
+  "Uses the macOS spell checker. Added words are shared with other apps.": "Utilise le correcteur de macOS. Les mots ajoutés sont partagés avec les autres apps.",
+  "macOS spell checker · {language}": "Correcteur macOS · {language}"
 }

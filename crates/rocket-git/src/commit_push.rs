@@ -24,6 +24,18 @@ impl std::fmt::Debug for CommitPushPreview {
     }
 }
 impl CommitPushPreview {
+    pub fn head(&self) -> &Head {
+        &self.head
+    }
+    /// Binds the reviewed staging, message, checkout and effective destination.
+    /// Configuration and URL contents never leave this opaque digest.
+    pub fn review_digest(&self) -> Result<String> {
+        crate::saved_work::review_digest(&[
+            b"commit-push-v1", self.repository.as_os_str().as_encoded_bytes(),
+            format!("{:?}", self.head).as_bytes(), &self.index, &self.config, &self.url,
+            &self.remote, &self.branch, &self.destination, self.message.as_bytes(),
+        ])
+    }
     pub fn destination_display(&self) -> String {
         crate::tags::display_destination(&self.url)
     }

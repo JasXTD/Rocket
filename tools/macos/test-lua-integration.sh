@@ -90,6 +90,13 @@ JS
   trap collect_evidence EXIT
   node tools/tests/test-mcp-desktop.cjs
   node tools/tests/test-mcp-macos-package.cjs
+  if [ "$mode" = release-package ]; then
+    # Exercise changed hosting adapters through the actual extracted CLI. All
+    # requests use loopback fixtures and synthetic credentials, never accounts.
+    export ROCKET_CLI_EXE="$out/roundtrip/package/Rocket.app/Contents/MacOS/rocket-cli"
+    export ROCKET_CLI_RESULTS="$out/mcp-fixtures"
+    node tools/tests/test-cli-hosting-other-inline.cjs
+  fi
   node tools/macos/bundle.cjs verify "$out/roundtrip/package"
 fi
 cp "$out/package/bundle-manifest.json" "$out/bundle-manifest.json"

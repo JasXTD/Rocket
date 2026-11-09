@@ -1,0 +1,17 @@
+{
+  "Claude Code was not found. Install it or choose its executable in Preferences.": "未找到 Claude Code。请安装，或在偏好设置中选择其可执行文件。",
+  "Codex was not found. Install the Codex CLI or app, or choose its executable in Preferences.": "未找到 Codex。请安装 Codex CLI 或应用，或在偏好设置中选择其可执行文件。",
+  "Conventional Commits": "Conventional Commits",
+  "Draft with": "草稿生成工具",
+  "Drafts are never committed for you.": "草稿绝不会自动提交。",
+  "Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first.": "每次生成草稿都会通过 Claude Code 将您的已暂存更改发送给 Anthropic。首次生成前，Rocket 会说明发送内容并征求您的同意。",
+  "Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first.": "每次生成草稿都会通过 Codex 将您的已暂存更改发送给 OpenAI。首次生成前，Rocket 会说明发送内容并征求您的同意。",
+  "Enter a language name using letters, spaces and hyphens, up to 64 characters.": "请输入语言名称，仅使用字母、空格和连字符，最多 64 个字符。",
+  "Found automatically when empty": "留空时自动查找",
+  "Found {path}": "已找到 {path}",
+  "Language": "语言",
+  "Message style": "消息风格",
+  "Off: nothing is sent anywhere.": "已关闭：不会发送任何内容。",
+  "Plain summary and body": "普通摘要和正文",
+  "Show a Draft button in the commit composer": "在提交编辑器中显示草稿按钮"
+}

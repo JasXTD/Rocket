@@ -38,6 +38,7 @@ pub fn execute(
     options: &Options,
     log: Option<&DiagnosticLog>,
     cancel: &CancellationToken,
+    hosting_token: Option<&str>,
 ) -> Result<Outcome> {
     cancel.check()?;
     let limits = CommandLimits {
@@ -47,6 +48,8 @@ pub fn execute(
     let client =
         GitClient::discover_with_options(options.git.as_deref(), limits, log.cloned(), cancel)?;
     match &options.command {
+        Command::Hosting(h) => return crate::hosting::execute(&client, &options.repo, h,
+            hosting_token.ok_or_else(||Error::InvalidInput("Hosting credentials were not supplied.".into()))?, cancel, log),
         Command::Init {
             destination,
             branch,
@@ -266,6 +269,7 @@ pub fn execute(
         Command::BisectStatus | Command::Bisect { .. } | Command::BisectRun { .. } => {
             crate::bisect::execute(&options.command, &repo, cancel)?
         }
+        Command::CommitPush { .. } | Command::SwitchSaved { .. } => crate::composed::execute(&options.command, &repo, cancel)?,
         Command::UndoCommit { .. } | Command::CommitAction { .. } | Command::RebaseStart { .. }
         | Command::Reset { .. } => crate::commits::execute(&options.command, &repo, cancel)?,
         Command::Blame { .. } | Command::FileHistory { .. } | Command::Search { .. } | Command::Grep { .. }
@@ -279,7 +283,7 @@ pub fn execute(
         Command::SshKeys | Command::SshCheck(_) | Command::SshBinding { .. } => {
             crate::ssh::execute(&options.command, &repo, cancel)?
         }
-        Command::Help | Command::Version | Command::Init { .. } | Command::Clone { .. } => {
+        Command::Help | Command::Version | Command::Init { .. } | Command::Clone { .. } | Command::Hosting(_) => {
             unreachable!("handled before opening repository")
         }
     };
@@ -415,7 +419,7 @@ fn push_update(update: &PushUpdate) -> Value {
     };
     json!({"kind":kind,"rejection":rejection,"local_reference":out::bytes(&update.local_reference),"remote_reference":out::bytes(&update.remote_reference)})
 }
-fn push(report: PushReport) -> Outcome {
+pub(crate) fn push(report: PushReport) -> Outcome {
     let mut o = Outcome::success(
         json!({"command_result":out::observation(&report.result,out::write_output),"remote_outcome":report.remote_outcome.code(),"update":out::optional(&report.update,push_update),"upstream":out::optional(&report.upstream,|_|Value::Null),"error_diagnostics":report.error_diagnostics}),
     );

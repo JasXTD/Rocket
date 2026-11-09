@@ -1,0 +1,17 @@
+{
+  "Claude Code was not found. Install it or choose its executable in Preferences.": "Claude Code hittades inte. Installera det eller välj dess programfil i Inställningar.",
+  "Codex was not found. Install the Codex CLI or app, or choose its executable in Preferences.": "Codex hittades inte. Installera Codex CLI eller appen, eller välj dess programfil i Inställningar.",
+  "Conventional Commits": "Conventional Commits",
+  "Draft with": "Utkast med",
+  "Drafts are never committed for you.": "Utkast committas aldrig automatiskt.",
+  "Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first.": "Varje utkast skickar dina köade ändringar till Anthropic via Claude Code. Före det första utkastet förklarar Rocket vad som skickas och ber om ditt godkännande.",
+  "Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first.": "Varje utkast skickar dina köade ändringar till OpenAI via Codex. Före det första utkastet förklarar Rocket vad som skickas och ber om ditt godkännande.",
+  "Enter a language name using letters, spaces and hyphens, up to 64 characters.": "Ange ett språknamn med bokstäver, blanksteg och bindestreck, högst 64 tecken.",
+  "Found automatically when empty": "Hittas automatiskt om fältet är tomt",
+  "Found {path}": "Hittade {path}",
+  "Language": "Språk",
+  "Message style": "Meddelandestil",
+  "Off: nothing is sent anywhere.": "Av: ingenting skickas.",
+  "Plain summary and body": "Enkel sammanfattning och brödtext",
+  "Show a Draft button in the commit composer": "Visa en Utkast-knapp i commit-redigeraren"
+}

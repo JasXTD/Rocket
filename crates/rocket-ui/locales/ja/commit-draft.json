@@ -1,0 +1,17 @@
+{
+  "Claude Code was not found. Install it or choose its executable in Preferences.": "Claude Code が見つかりません。インストールするか、環境設定で実行ファイルを選んでください。",
+  "Codex was not found. Install the Codex CLI or app, or choose its executable in Preferences.": "Codex が見つかりません。Codex CLI またはアプリをインストールするか、環境設定で実行ファイルを選んでください。",
+  "Conventional Commits": "Conventional Commits",
+  "Draft with": "下書き作成ツール",
+  "Drafts are never committed for you.": "下書きが自動でコミットされることはありません。",
+  "Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first.": "下書きの作成時には、ステージ済みの変更を Claude Code 経由で Anthropic に送信します。初回は送信内容を説明し、事前に許可を求めます。",
+  "Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first.": "下書きの作成時には、ステージ済みの変更を Codex 経由で OpenAI に送信します。初回は送信内容を説明し、事前に許可を求めます。",
+  "Enter a language name using letters, spaces and hyphens, up to 64 characters.": "言語名は文字、空白、ハイフンを使い、64 文字以内で入力してください。",
+  "Found automatically when empty": "空欄なら自動検出",
+  "Found {path}": "検出済み: {path}",
+  "Language": "言語",
+  "Message style": "メッセージ形式",
+  "Off: nothing is sent anywhere.": "オフ: 何も送信されません。",
+  "Plain summary and body": "通常の要約と本文",
+  "Show a Draft button in the commit composer": "コミットエディターに下書きボタンを表示"
+}

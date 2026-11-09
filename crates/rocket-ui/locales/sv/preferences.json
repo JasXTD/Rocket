@@ -150,5 +150,10 @@
   "Fetch remotes automatically": "Hämta från remotes automatiskt",
   "Fetching…": "Hämtar…",
   "Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.": "Försöker igen vid nästa intervall. Automatisk hämtning frågar aldrig efter inloggningsuppgifter; hämta manuellt för att logga in.",
-  "{c} min": "{c} min"
+  "{c} min": "{c} min",
+  "Hunspell dictionary · {language}": "Hunspell-ordlista · {language}",
+  "Remembered accounts are encrypted with a key in your desktop keyring.": "Sparade konton krypteras med en nyckel i skrivbordets nyckelring.",
+  "Uses the Hunspell dictionaries installed on this system.": "Använder Hunspell-ordlistorna som är installerade på systemet.",
+  "Uses the macOS spell checker. Added words are shared with other apps.": "Använder macOS stavningskontroll. Tillagda ord delas med andra appar.",
+  "macOS spell checker · {language}": "macOS stavningskontroll · {language}"
 }

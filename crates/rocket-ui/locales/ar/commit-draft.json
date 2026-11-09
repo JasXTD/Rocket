@@ -1,0 +1,17 @@
+{
+  "Claude Code was not found. Install it or choose its executable in Preferences.": "لم يتم العثور على Claude Code. ثبّته أو اختر ملفه التنفيذي في التفضيلات.",
+  "Codex was not found. Install the Codex CLI or app, or choose its executable in Preferences.": "لم يتم العثور على Codex. ثبّت Codex CLI أو التطبيق، أو اختر ملفه التنفيذي في التفضيلات.",
+  "Conventional Commits": "Conventional Commits",
+  "Draft with": "صياغة باستخدام",
+  "Drafts are never committed for you.": "لا تُودع المسودات تلقائيًا أبدًا.",
+  "Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first.": "ترسل كل مسودة تغييراتك المُجهّزة إلى Anthropic عبر Claude Code. قبل المسودة الأولى، يوضح Rocket ما سيُرسل ويطلب إذنك.",
+  "Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first.": "ترسل كل مسودة تغييراتك المُجهّزة إلى OpenAI عبر Codex. قبل المسودة الأولى، يوضح Rocket ما سيُرسل ويطلب إذنك.",
+  "Enter a language name using letters, spaces and hyphens, up to 64 characters.": "أدخل اسم لغة باستخدام الحروف والمسافات والشرطات، بحد أقصى 64 حرفًا.",
+  "Found automatically when empty": "يُكتشف تلقائيًا إذا كان فارغًا",
+  "Found {path}": "تم العثور على {path}",
+  "Language": "اللغة",
+  "Message style": "نمط الرسالة",
+  "Off: nothing is sent anywhere.": "معطّل: لا يُرسل أي شيء.",
+  "Plain summary and body": "ملخص ونص عاديان",
+  "Show a Draft button in the commit composer": "أظهر زر مسودة في محرر الإيداع"
+}

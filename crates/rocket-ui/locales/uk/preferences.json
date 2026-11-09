@@ -150,5 +150,10 @@
   "Fetch remotes automatically": "Автоматично отримувати з віддалених репозиторіїв",
   "Fetching…": "Отримання…",
   "Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.": "Повтор у наступному інтервалі. Автоматичне отримання ніколи не запитує облікові дані; щоб увійти, виконайте отримання вручну.",
-  "{c} min": "{c} хв"
+  "{c} min": "{c} хв",
+  "Hunspell dictionary · {language}": "Словник Hunspell · {language}",
+  "Remembered accounts are encrypted with a key in your desktop keyring.": "Збережені облікові записи зашифровано ключем зі сховища ключів стільниці.",
+  "Uses the Hunspell dictionaries installed on this system.": "Використовуються словники Hunspell, установлені в цій системі.",
+  "Uses the macOS spell checker. Added words are shared with other apps.": "Використовується перевірка правопису macOS. Додані слова доступні іншим програмам.",
+  "macOS spell checker · {language}": "Перевірка правопису macOS · {language}"
 }

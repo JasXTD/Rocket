@@ -2,6 +2,7 @@
 //! turned on in Preferences; the first draft with each CLI explains what is sent and asks
 //! first. A draft only fills the editable message fields: nothing is staged or committed.
 use crate::{
+    i18n::{tr, trf},
     app::*,
     backend::{Backend, user_error},
     pages,
@@ -525,16 +526,16 @@ pub(crate) fn preferences(
 ) -> bool {
     use crate::preferences::{choices, divider, field_row, status_line, switch_row};
     let hint = if settings.enabled {
-        "Drafts are never committed for you."
+        tr("Drafts are never committed for you.")
     } else {
-        "Off: nothing is sent anywhere."
+        tr("Off: nothing is sent anywhere.")
     };
     switch_row(
         ui,
         widgets,
         "pref-ai-enabled",
         &mut settings.enabled,
-        "Show a Draft button in the commit composer",
+        tr("Show a Draft button in the commit composer"),
         hint,
         "",
     );
@@ -542,7 +543,7 @@ pub(crate) fn preferences(
         return false;
     }
     divider(ui);
-    field_row(ui, "Draft with", |ui| {
+    field_row(ui, tr("Draft with"), |ui| {
         let items = [
             ("Claude Code · Anthropic", settings.provider == DraftProvider::Claude),
             ("Codex · OpenAI", settings.provider == DraftProvider::Codex),
@@ -554,12 +555,12 @@ pub(crate) fn preferences(
     });
     let provider = settings.provider;
     let mut browse = false;
-    field_row(ui, "Program", |ui| {
+    field_row(ui, tr("Program"), |ui| {
         let hint = match provider {
             DraftProvider::Claude => {
                 default_claude_path().map_or_else(String::new, |p| p.display().to_string())
             }
-            DraftProvider::Codex => "Found automatically when empty".into(),
+            DraftProvider::Codex => tr("Found automatically when empty").into(),
         };
         ui.horizontal(|ui| {
             let r = ui.add(
@@ -570,33 +571,33 @@ pub(crate) fn preferences(
                     .desired_width((ui.available_width() - 84.0).max(80.0)),
             );
             pages::control(widgets, "pref-ai-executable", &r, ui.clip_rect());
-            let b = ui.button("Browse");
+            let b = ui.button(tr("Browse"));
             pages::control(widgets, "pref-ai-browse", &b, ui.clip_rect());
             browse = b.clicked();
         });
         match check_program(ui.ctx(), settings, provider) {
-            ProgramCheck::Found(path) => status_line(ui, GREEN(), &format!("Found {path}")),
+            ProgramCheck::Found(path) => status_line(ui, GREEN(), &trf!("Found {path}", path)),
             ProgramCheck::Missing => {
                 let missing = match provider {
-                    DraftProvider::Claude => DraftFailure::ClaudeMissing,
-                    DraftProvider::Codex => DraftFailure::CodexMissing,
+                    DraftProvider::Claude => tr("Claude Code was not found. Install it or choose its executable in Preferences."),
+                    DraftProvider::Codex => tr("Codex was not found. Install the Codex CLI or app, or choose its executable in Preferences."),
                 };
-                status_line(ui, AMBER(), missing.guidance(provider));
+                status_line(ui, AMBER(), missing);
             }
             ProgramCheck::Problem(problem) => status_line(ui, AMBER(), &problem),
         }
     });
-    field_row(ui, "Message style", |ui| {
+    field_row(ui, tr("Message style"), |ui| {
         let items = [
-            (DraftStyle::Plain.label(), settings.style == DraftStyle::Plain),
-            (DraftStyle::Conventional.label(), settings.style == DraftStyle::Conventional),
+            (tr("Plain summary and body"), settings.style == DraftStyle::Plain),
+            (tr("Conventional Commits"), settings.style == DraftStyle::Conventional),
         ];
         let ids = ["pref-ai-style-plain".to_owned(), "pref-ai-style-conventional".to_owned()];
         if let Some(i) = choices(ui, widgets, &items, &ids) {
             settings.style = [DraftStyle::Plain, DraftStyle::Conventional][i];
         }
     });
-    field_row(ui, "Language", |ui| {
+    field_row(ui, tr("Language"), |ui| {
         let r = ui.add(
             TextEdit::singleline(&mut settings.language)
                 .hint_text("English")
@@ -605,7 +606,7 @@ pub(crate) fn preferences(
         );
         pages::control(widgets, "pref-ai-language", &r, ui.clip_rect());
         if settings.request().validate().is_err() {
-            status_line(ui, AMBER(), DraftFailure::InvalidSettings.guidance(provider));
+            status_line(ui, AMBER(), tr("Enter a language name using letters, spaces and hyphens, up to 64 characters."));
         }
     });
     divider(ui);
@@ -615,10 +616,10 @@ pub(crate) fn preferences(
             ui.set_width(ui.available_width());
             let text = match provider {
                 DraftProvider::Claude => {
-                    "Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first."
+                    tr("Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first.")
                 }
                 DraftProvider::Codex => {
-                    "Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first."
+                    tr("Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first.")
                 }
             };
             ui.add(Label::new(RichText::new(text).size(12.0).color(HINT())).wrap());

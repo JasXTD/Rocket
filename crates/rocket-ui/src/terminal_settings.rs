@@ -4,6 +4,7 @@
 //! Rocket's own shell (Windows PowerShell, or bash on Linux), whose probes and private
 //! history it relies on. Each platform lists its own shells.
 use crate::{
+    i18n::{tr, trf},
     app::{Rocket, UiControl},
     pages,
     preferences::{card_frame, card_header, status_line},
@@ -16,6 +17,15 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
 };
+
+fn choice_label(choice: Choice) -> &'static str {
+    match choice {
+        Choice::CommandPrompt => tr("Command Prompt"),
+        Choice::LoginShell => tr("Login shell"),
+        Choice::Custom => tr("Custom"),
+        _ => choice.label(),
+    }
+}
 
 /// The label column of the card's rows.
 const LABEL: f32 = 96.0;
@@ -127,11 +137,11 @@ impl Settings {
         // Windows programs are .exe files; on Linux any file can be one.
         let program_file = !cfg!(windows) || path.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe"));
         if program.is_empty() {
-            Some("Choose the shell's program.")
+            Some(crate::i18n::mark("Choose the shell's program."))
         } else if !path.is_absolute() || !program_file {
-            Some(if cfg!(windows) { "Use the full path to a program's .exe file." } else { "Use the full path to the shell's program." })
+            Some(if cfg!(windows) { crate::i18n::mark("Use the full path to a program's .exe file.") } else { crate::i18n::mark("Use the full path to the shell's program.") })
         } else if self.argument_lines().len() > MAX_ARGUMENTS {
-            Some("Use at most 64 arguments, one per line.")
+            Some(crate::i18n::mark("Use at most 64 arguments, one per line."))
         } else {
             None
         }
@@ -205,36 +215,36 @@ enum Readiness {
 
 fn readiness(settings: &Settings, located: &Located, custom: Option<&Status>) -> Readiness {
     if !Choice::ALL.contains(&settings.choice) {
-        return Readiness::CantUse(format!("{} isn't on this system. Choose another shell.", settings.choice.label()));
+        return Readiness::CantUse(trf!("{shell} isn't on this system. Choose another shell.", shell = choice_label(settings.choice)));
     }
     match settings.choice {
         Choice::LoginShell => match (located.login.as_ref(), login_shell()) {
-            (Some(_), _) => Readiness::Ready("Your login shell, from $SHELL".into()),
-            (None, Some(path)) => Readiness::NotFound(format!("$SHELL names {}, which isn't there. Choose another shell.", path.display())),
-            (None, None) => Readiness::NotFound("$SHELL doesn't name a shell. Choose another shell.".into()),
+            (Some(_), _) => Readiness::Ready(tr("Your login shell, from $SHELL").into()),
+            (None, Some(path)) => Readiness::NotFound(trf!("$SHELL names {path}, which isn't there. Choose another shell.", path = path.display())),
+            (None, None) => Readiness::NotFound(tr("$SHELL doesn't name a shell. Choose another shell.").into()),
         },
         Choice::Bash | Choice::Zsh | Choice::Fish => match located.installed(settings.choice) {
-            Some(_) => Readiness::Ready("Installed".into()),
-            None => Readiness::NotFound(format!("{} isn't installed. Choose another shell.", settings.choice.label())),
+            Some(_) => Readiness::Ready(tr("Installed").into()),
+            None => Readiness::NotFound(trf!("{shell} isn't installed. Choose another shell.", shell = choice_label(settings.choice))),
         },
-        Choice::WindowsPowerShell | Choice::CommandPrompt => Readiness::Ready("Comes with Windows".into()),
+        Choice::WindowsPowerShell | Choice::CommandPrompt => Readiness::Ready(tr("Comes with Windows").into()),
         Choice::GitBash if located.git_bash.is_some() => {
             // "git version 2.56.0.windows.4": its prefix and build suffix add nothing here.
             let version = located.git_version.trim_start_matches("git version ");
             let version = version.split(".windows").next().unwrap_or_default();
-            Readiness::Ready(format!("From the Git Rocket uses · Git {version}"))
+            Readiness::Ready(trf!("From the Git Rocket uses · Git {version}", version))
         }
-        Choice::GitBash => Readiness::NotAvailable("Pick a full Git for Windows, or choose Custom.".into()),
-        Choice::PowerShell7 if located.powershell_7.is_some() => Readiness::Ready("Found".into()),
-        Choice::PowerShell7 => Readiness::NotFound("PowerShell 7 isn't installed any more. Choose another shell.".into()),
+        Choice::GitBash => Readiness::NotAvailable(tr("Pick a full Git for Windows, or choose Custom.").into()),
+        Choice::PowerShell7 if located.powershell_7.is_some() => Readiness::Ready(tr("Found").into()),
+        Choice::PowerShell7 => Readiness::NotFound(tr("PowerShell 7 isn't installed any more. Choose another shell.").into()),
         Choice::Custom => {
             if let Some(problem) = settings.custom_problem() {
-                return Readiness::CantUse(problem.into());
+                return Readiness::CantUse(tr(problem).into());
             }
             match custom {
-                Some(Status::Exists) => Readiness::Ready("Found. It runs at New Terminal, not before.".into()),
+                Some(Status::Exists) => Readiness::Ready(tr("Found. It runs at New Terminal, not before.").into()),
                 Some(Status::Refused(reason)) => Readiness::NotFound(reason.clone()),
-                Some(_) => Readiness::NotFound("File not found. Save stays off until it exists.".into()),
+                Some(_) => Readiness::NotFound(tr("File not found. Save stays off until it exists.").into()),
                 None => Readiness::Checking,
             }
         }
@@ -287,16 +297,16 @@ fn shown(settings: &Settings, located: &Located) -> (String, String) {
     let arguments = shell
         .as_ref()
         .and_then(Shell::arguments)
-        .map_or_else(|| "Set by Rocket".to_owned(), |a| if a.is_empty() { "None".to_owned() } else { a.join(" ") });
+        .map_or_else(|| tr("Set by Rocket").to_owned(), |a| if a.is_empty() { tr("None").to_owned() } else { a.join(" ") });
     (program, arguments)
 }
 
 /// The Program row when the chosen shell isn't there.
 fn missing_program(choice: Choice) -> &'static str {
     match choice {
-        Choice::GitBash => "No bash.exe beside this Git",
-        Choice::LoginShell => "$SHELL doesn't name an installed shell",
-        _ => "Not installed",
+        Choice::GitBash => tr("No bash.exe beside this Git"),
+        Choice::LoginShell => tr("$SHELL doesn't name an installed shell"),
+        _ => tr("Not installed"),
     }
 }
 
@@ -505,34 +515,34 @@ impl Rocket {
         s.savable = editable && matches!(ready, Readiness::Ready(_));
         let (color, text) = match &ready {
             Readiness::Ready(text) => (GREEN(), text.as_str()),
-            Readiness::Checking => (MUTED(), "Looking for the file"),
+            Readiness::Checking => (MUTED(), tr("Looking for the file")),
             Readiness::NotAvailable(text) | Readiness::NotFound(text) => (AMBER(), text.as_str()),
             Readiness::CantUse(text) => (RED(), text.as_str()),
         };
         let mut browse = false;
         let mut picked = None;
         card_frame(ui, |ui| {
-            card_header(ui, "Shell", |ui| {
+            card_header(ui, tr("Shell"), |ui| {
                 if editable {
                     let label = match &ready {
-                        Readiness::Ready(_) => "Ready",
-                        Readiness::Checking => "Checking",
-                        Readiness::NotAvailable(_) => "Not available",
-                        Readiness::NotFound(_) => "Not found",
-                        Readiness::CantUse(_) => "Can't use",
+                        Readiness::Ready(_) => tr("Ready"),
+                        Readiness::Checking => tr("Checking"),
+                        Readiness::NotAvailable(_) => tr("Not available"),
+                        Readiness::NotFound(_) => tr("Not found"),
+                        Readiness::CantUse(_) => tr("Can't use"),
                     };
                     pages::pill(ui, label, color);
                 } else {
-                    ui.label(RichText::new("Locked").size(12.0).color(HINT()));
+                    ui.label(RichText::new(tr("Locked")).size(12.0).color(HINT()));
                     let (rect, _) = ui.allocate_exact_size(vec2(13.0, 13.0), Sense::hover());
                     icon(ui.painter(), rect, Icon::Lock, FAINT());
                 }
             });
             ui.add_space(6.0);
             ui.add_enabled_ui(editable, |ui| {
-                row(ui, "Shell", |ui| {
+                row(ui, tr("Shell"), |ui| {
                     let combo = ComboBox::from_id_salt("shell-choice")
-                        .selected_text(s.editing.choice.label())
+                        .selected_text(choice_label(s.editing.choice))
                         .width(ui.available_width())
                         .show_ui(ui, |ui| {
                             // Modal and popup share a layer order; keep the list above the dialog.
@@ -540,24 +550,24 @@ impl Rocket {
                             ui.spacing_mut().item_spacing.y = 0.0;
                             for choice in Choice::ALL {
                                 let (detail, enabled) = match choice {
-                                    Choice::WindowsPowerShell => ("Default", true),
-                                    Choice::GitBash if s.located.git_bash.is_some() => ("From the Git Rocket uses", true),
-                                    Choice::GitBash => ("Not in this Git", false),
-                                    Choice::CommandPrompt => ("Comes with Windows", true),
-                                    Choice::PowerShell7 if s.located.powershell_7.is_some() => ("Installed", true),
-                                    Choice::PowerShell7 => ("Not installed", false),
-                                    Choice::LoginShell if s.located.login.is_some() => ("Default · from $SHELL", true),
-                                    Choice::LoginShell => ("$SHELL isn't set", false),
-                                    Choice::Bash | Choice::Zsh | Choice::Fish if s.located.installed(choice).is_some() => ("Installed", true),
-                                    Choice::Bash | Choice::Zsh | Choice::Fish => ("Not installed", false),
-                                    Choice::Custom => ("Your own program", true),
+                                    Choice::WindowsPowerShell => (tr("Default"), true),
+                                    Choice::GitBash if s.located.git_bash.is_some() => (tr("From the Git Rocket uses"), true),
+                                    Choice::GitBash => (tr("Not in this Git"), false),
+                                    Choice::CommandPrompt => (tr("Comes with Windows"), true),
+                                    Choice::PowerShell7 if s.located.powershell_7.is_some() => (tr("Installed"), true),
+                                    Choice::PowerShell7 => (tr("Not installed"), false),
+                                    Choice::LoginShell if s.located.login.is_some() => (tr("Default · from $SHELL"), true),
+                                    Choice::LoginShell => (tr("$SHELL isn't set"), false),
+                                    Choice::Bash | Choice::Zsh | Choice::Fish if s.located.installed(choice).is_some() => (tr("Installed"), true),
+                                    Choice::Bash | Choice::Zsh | Choice::Fish => (tr("Not installed"), false),
+                                    Choice::Custom => (tr("Your own program"), true),
                                 };
                                 if choice == Choice::Custom {
                                     ui.add_space(4.0);
                                     ui.separator();
                                     ui.add_space(4.0);
                                 }
-                                let r = choice_row(ui, choice.label(), detail, choice == s.editing.choice, enabled);
+                                let r = choice_row(ui, choice_label(choice), detail, choice == s.editing.choice, enabled);
                                 pages::control(widgets, format!("shell-choice-{}", choice.key()), &r, ui.clip_rect());
                                 if r.clicked() {
                                     picked = Some(choice);
@@ -568,14 +578,14 @@ impl Rocket {
                     pages::control(widgets, "shell-choice", &combo.response, ui.clip_rect());
                 });
                 if s.editing.choice == Choice::Custom {
-                    row(ui, "Program", |ui| {
+                    row(ui, tr("Program"), |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 8.0;
                             let width = (ui.available_width() - 86.0 - 8.0).max(80.0);
                             let r = ui.add_sized(
                                 [width, CONTROL],
                                 TextEdit::singleline(&mut s.editing.program)
-                                    .hint_text(RichText::new(if cfg!(windows) { "Full path to the shell's .exe" } else { "Full path to the shell's program" }).font(FontId::proportional(13.0)).color(FAINT()))
+                                    .hint_text(RichText::new(if cfg!(windows) { tr("Full path to the shell's .exe") } else { tr("Full path to the shell's program") }).font(FontId::proportional(13.0)).color(FAINT()))
                                     .font(FontId::monospace(12.0))
                                     .vertical_align(Align::Center)
                                     .char_limit(32768)
@@ -585,17 +595,17 @@ impl Rocket {
                             if !matches!(ready, Readiness::Ready(_) | Readiness::Checking) {
                                 ui.painter().rect_stroke(r.rect, 6.0, Stroke::new(1.0, color.gamma_multiply(0.6)), StrokeKind::Inside);
                             }
-                            let r = ui.add_sized([86.0, CONTROL], Button::new("Browse"));
+                            let r = ui.add_sized([86.0, CONTROL], Button::new(tr("Browse")));
                             pages::control(widgets, "shell-browse", &r, ui.clip_rect());
                             browse = r.clicked();
                         });
                     });
-                    row(ui, "Arguments", |ui| {
+                    row(ui, tr("Arguments"), |ui| {
                         crate::external_tools::arguments_editor(ui, widgets, "shell-arguments", &mut s.editing.arguments, true);
                     });
                 } else {
                     let (program, arguments) = shown(&s.editing, &s.located);
-                    row(ui, "Program", |ui| {
+                    row(ui, tr("Program"), |ui| {
                         if program.is_empty() {
                             fixed(ui, widgets, "shell-program", missing_program(s.editing.choice), false);
                         } else {
@@ -603,7 +613,7 @@ impl Rocket {
                         }
                     });
                     let set_by_rocket = launch(&s.editing, &s.located).is_ok_and(|shell| shell.arguments().is_none());
-                    row(ui, "Arguments", |ui| fixed(ui, widgets, "shell-arguments", &arguments, !set_by_rocket));
+                    row(ui, tr("Arguments"), |ui| fixed(ui, widgets, "shell-arguments", &arguments, !set_by_rocket));
                 }
             });
             // Under the fields, not the labels.
@@ -617,17 +627,17 @@ impl Rocket {
                             status_line(ui, color, text);
                             if matches!(ready, Readiness::NotAvailable(_)) {
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    let r = ui.add(Button::new(RichText::new("Git settings").size(12.0)));
+                                    let r = ui.add(Button::new(RichText::new(tr("Git settings")).size(12.0)));
                                     pages::control(widgets, "shell-git-settings", &r, ui.clip_rect());
                                     *open_git = r.clicked();
                                 });
                             }
                         });
                     } else {
-                        status_line(ui, AMBER(), &format!("MCP windows always use {ROCKET_SHELL}."));
+                        status_line(ui, AMBER(), &trf!("MCP windows always use {shell}.", shell = ROCKET_SHELL));
                     }
                     if let Some(name) = &open_terminal {
-                        status_line(ui, AMBER(), &format!("Open terminals keep {name} until you end them."));
+                        status_line(ui, AMBER(), &trf!("Open terminals keep {name} until you end them.", name));
                     }
                 });
         });

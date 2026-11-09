@@ -1,5 +1,16 @@
 # Rocket development tools
 
+## CLI hosting and GitLab/Gitea inline reviews
+
+`node tools/tests/test-cli-hosting.cjs` runs the built CLI against temporary repos
+and loopback APIs. `node tools/tests/test-mcp-hosting-inline.cjs gitlab` (then
+`gitea`) drives the native review UI over localhost MCP. Use the shared build/MCP
+slot and run native hosts sequentially. These runners require matching release
+binaries and create their own fixture/profile/log folders. They use synthetic
+tokens, isolated Git configuration and no real hosting account or external API.
+`fixtures/hosting-inline.cjs` is their shared bounded mock API. Results, snapshots
+and rendered captures stay under ignored `work/`; no fixtures belong in a package.
+
 ## Apple Silicon macOS preparation
 
 The manual-only `.github/workflows/macos-arm64.yml` prepares a development `Rocket.app`
@@ -30,6 +41,59 @@ existing icon into Apple's ten-size iconset. Build that example, then set
 `node --test tools/tests/test-macos-bundle.cjs`. These metadata/fixture tests run
 on Windows and Linux too; native signatures, `iconutil` and ZIP roundtrip checks
 remain part of the Mac workflow. No downloaded icon or packaging dependency is used.
+
+## CLI/MCP composed workflows and GitLab search
+
+The affected CLI cases are `cargo test --release --offline --locked -p rocket-cli
+--test cli composed -- --test-threads=1`. Let them use the temporary-directory
+default: New Repository deliberately refuses nested repositories. On Windows,
+run with a normal user token so directory-pinning protections can open ancestors.
+
+After building matching UI/MCP executables, run these separately:
+
+```powershell
+node tools/tests/features/commit-switch-0.77/native.cjs commit
+node tools/tests/features/commit-switch-0.77/native.cjs switch
+node tools/tests/test-mcp-gitlab-search.cjs
+```
+
+They check reviewed writes, Unicode/local-change preservation, conflicts,
+cancellation and recovery, plus GitLab search/pagination/auth failures against a
+loopback API. Fixtures and synthetic tokens never use existing accounts. The
+GitLab runner includes wide/compact, loading, empty and error captures. Backend
+search checks select `rocket-git --test forge search`; GitHub search is included
+as the affected neighboring provider.
+
+`rocket_state.activities[].workflow` is additive structured evidence:
+
+- `commit-push`: `phase`, retained `commit`, `reviewed_commit_confirmed`,
+  `remote_outcome` (`not_attempted`, `confirmed_success`, `rejected`, `unknown`),
+  and `cancelled`.
+- `saved-work`: `phase`, retained `stash`, recovery `journal` display path, and
+  `cancelled`. Use existing stash/status controls to inspect and recover.
+
+It is null for unrelated activities and failures before a composed report exists.
+Keep checking the activity's `command_succeeded` and `recovery_pending`; an input
+receipt is not completion. The existing fixture scope and review/confirmation
+requirements still apply. No arbitrary shell, credential or global-setting access
+is added to MCP. CLI hosting commands and non-GitHub inline reviews are covered
+by the focused runners below.
+
+Bitbucket Cloud/Server and Azure Services/Server inline reviews:
+
+```powershell
+node tools/tests/test-cli-hosting-other-inline.cjs
+node tools/tests/test-mcp-hosting-inline.cjs bitbucket
+node tools/tests/test-mcp-hosting-inline.cjs bitbucket-server
+node tools/tests/test-mcp-hosting-inline.cjs azure
+node tools/tests/test-mcp-hosting-inline.cjs azure-server
+```
+
+Use matching release binaries, the coordinated build/MCP slot and a normal
+Windows token. Run native cases one at a time. All hosts are loopback mocks;
+dirty Unicode repositories and credentials are disposable. Each runner records
+captures, cancellation timing, diagnostic privacy and unchanged local state.
+No live account or private-server compatibility is claimed.
 
 ## Direct SSH keys
 

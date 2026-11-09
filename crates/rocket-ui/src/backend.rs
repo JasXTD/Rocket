@@ -237,6 +237,9 @@ pub struct Outcome {
     pub paused: bool,
     /// Clear only the submitted draft when a composed push fails after commit.
     pub local_commit_created: bool,
+    /// Machine-readable recovery observations for composed workflows. Keep raw
+    /// command output, credentials and configuration out of this contract.
+    pub workflow: Option<WorkflowOutcome>,
     pub recovery_pending: bool,
     pub summary: String,
     pub details: Vec<String>,
@@ -249,6 +252,22 @@ pub struct Outcome {
     pub pull_fetched: Option<Arc<PullFetched>>,
     /// Nothing happened worth a line: no notice, Activity entry or refresh.
     pub quiet: bool,
+}
+#[derive(Debug)]
+pub enum WorkflowOutcome {
+    CommitPush {
+        phase: &'static str,
+        commit: Option<ObjectId>,
+        reviewed_commit_confirmed: bool,
+        remote_outcome: &'static str,
+        cancelled: bool,
+    },
+    Saved {
+        phase: &'static str,
+        stash: Option<ObjectId>,
+        journal: PathBuf,
+        cancelled: bool,
+    },
 }
 #[derive(Debug)]
 pub struct ConflictOutcome {

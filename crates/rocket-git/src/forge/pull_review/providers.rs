@@ -2,6 +2,9 @@
 //! returned links are never followed. Each collection is an explicit first-page
 //! preview. Remote permission/merge rules remain authoritative at submission.
 use super::*;
+mod inline_reviews;
+mod other_inline;
+mod azure_diff;
 
 pub(super) fn supports_review(p: ForgeProvider, a: ForgeReviewAction) -> bool {
     !(p == ForgeProvider::GitLab && a == ForgeReviewAction::RequestChanges)
@@ -47,8 +50,9 @@ pub(super) fn validate_review(
             "This provider's approval/vote endpoint does not accept a message. Publish a separate comment first; Rocket never silently drops review text or chains two writes.",
         ));
     }
-    if !p.is_github() && !comments.is_empty() {
-        return fail(ForgeFailure::Unsupported);
+    if !p.is_github() && p != ForgeProvider::Gitea && !comments.is_empty()
+        && (comments.len() != 1 || a != ForgeReviewAction::Comment || !body.is_empty()) {
+        return Err(invalid("This provider sends one inline discussion per review. Select Comment, leave the separate review message empty, and send other comments or votes separately. Rocket never chains partial writes."));
     }
     Ok(())
 }
@@ -143,7 +147,7 @@ fn file(j: &Json, p: ForgeProvider) -> Option<ForgePullFile> {
             j.str("filename")?,
             j.str("previous_filename"),
             j.str("status").unwrap_or("modified"),
-            j.str("patch"),
+            None, // Gitea's file-list contract contains metadata, not diff hunks.
             j.u64("additions").unwrap_or(0),
             j.u64("deletions").unwrap_or(0),
         ),
@@ -157,19 +161,19 @@ fn file(j: &Json, p: ForgeProvider) -> Option<ForgePullFile> {
                 && j.bool("collapsed") != Some(true)
                 && j.bool("too_large") != Some(true)
         })
-        .map(|s| multiline(s, 16384));
+        ;
+    let lines = patch.and_then(inline::parse_lines).unwrap_or_default();
     Some(ForgePullFile {
         path: bounded(path, 8192),
         previous: previous.map(|s| bounded(s, 8192)),
         status: bounded(status, 64),
         additions: add,
         deletions: del,
-        lines: patch
-            .as_deref()
-            .and_then(inline::parse_lines)
-            .unwrap_or_default(),
-        patch,
-        raw_path: None,
+        lines,
+        patch: patch.map(|s| multiline(s,16384)),
+        raw_path: other_inline::safe_provider_path(p, path).then(||path.to_owned()),
+        raw_previous: previous.filter(|s| other_inline::safe_provider_path(p, s)).map(str::to_owned),
+        anchor: None,
     })
 }
 fn commit(j: &Json, p: ForgeProvider) -> Option<ForgePullCommit> {
@@ -429,6 +433,11 @@ impl ForgeSession {
             ),
             author: author(who, p),
             author_identity: identity(who, p),
+            diff_refs: if p == ForgeProvider::GitLab {
+                j.get("diff_refs").and_then(|r| Some(DiffRefs {
+                    base: oid(r.str("base_sha")?)?, head: oid(r.str("head_sha")?)?, start: oid(r.str("start_sha")?)?,
+                }))
+            } else { None },
             state: if matches!(raw_state, "opened" | "open" | "OPEN" | "active") {
                 "open"
             } else {
@@ -483,6 +492,8 @@ impl ForgeSession {
             let limited = rows.len() >= 50
                 || j.str("next").is_some()
                 || j.bool("isLastPage") == Some(false)
+                || j.u64("nextSkip").is_some_and(|n| n > 0)
+                || j.u64("nextTop").is_some_and(|n| n > 0)
                 || headers.iter().any(|(k, v)| {
                     (k.eq_ignore_ascii_case("link") && v.contains("rel=\"next\""))
                         || k.eq_ignore_ascii_case("x-ms-continuationtoken")
@@ -533,36 +544,16 @@ impl ForgeSession {
             c,
             |j| commit(j, p),
         )?;
-        let files = if p.is_azure() {
-            let iterations = self.first_page(
-                &format!("{path}/iterations"),
-                Some("value"),
-                "read_pull_files",
-                c,
-                |j| j.u64("id"),
-            )?;
-            if iterations.error.is_some() || iterations.limited {
-                ForgePullCollection {
-                    error: iterations.error,
-                    limited: true,
-                    items: vec![],
-                }
-            } else if let Some(id) = iterations.items.iter().max() {
-                self.first_page(
-                    &format!("{path}/iterations/{id}/changes?$top=50&$compareTo=0"),
-                    Some("changeEntries"),
-                    "read_pull_files",
-                    c,
-                    |j| file(j, p),
-                )?
-            } else {
-                unavailable()
+        let mut files = if p.is_azure() {
+            match self.azure_files(repo, &path, &first.head, c) {
+                Err(Error::Forge(e)) if e != ForgeFailure::Unauthorized && e != ForgeFailure::PullChanged => ForgePullCollection { error:Some(e), ..Default::default() },
+                result => result?,
             }
         } else {
             let endpoint = match p {
                 ForgeProvider::GitLab => format!("{path}/diffs{suffix}"),
                 ForgeProvider::Bitbucket => format!(
-                    "{}/diffstat/{}..{}?pagelen=50",
+                    "{}/diffstat/{}..{}?pagelen=50&topic=true",
                     self.prefix(repo),
                     first.head,
                     first.base
@@ -572,51 +563,29 @@ impl ForgeSession {
             };
             self.first_page(&endpoint, key, "read_pull_files", c, |j| file(j, p))?
         };
-        let discussion = if p.is_azure() {
-            let threads = self.first_page(
-                &format!("{path}/threads"),
-                Some("value"),
-                "read_pull_discussion",
-                c,
-                |j| Some(j.clone()),
-            )?;
-            let mut result = ForgePullCollection {
-                items: vec![],
-                limited: threads.limited,
-                error: threads.error,
-            };
-            for t in threads.items {
-                let rows = need(t.get("comments").and_then(Json::array))?;
-                for row in rows {
-                    if result.items.len() >= 200 {
-                        result.limited = true;
-                        break;
-                    }
-                    if row.bool("isDeleted") != Some(true) {
-                        result.items.push(need(note(row, p))?);
-                    }
-                }
+        if p == ForgeProvider::Gitea && files.error.is_none() && !files.items.is_empty() {
+            match self.request_diff(&format!("{path}.diff?binary=false"), c).and_then(|diff| inline_reviews::attach_gitea_diff(&mut files.items, &diff, c)) {
+                Ok(()) => (),
+                Err(Error::Forge(e)) if e != ForgeFailure::Unauthorized => { files.error = Some(e); }
+                Err(e) => return Err(e),
             }
-            result
-        } else if p == ForgeProvider::BitbucketServer {
-            let activity = self.first_page(
-                &format!("{path}/activities{suffix}"),
-                key,
-                "read_pull_discussion",
-                c,
-                |j| Some(j.clone()),
-            )?;
-            let mut result = ForgePullCollection {
-                items: vec![],
-                limited: activity.limited,
-                error: activity.error,
+        }
+        if files.error.is_none() && !files.items.is_empty() && matches!(p, ForgeProvider::Bitbucket | ForgeProvider::BitbucketServer) {
+            let result = if p == ForgeProvider::Bitbucket {
+                self.request_diff(&format!("{}/diff/{}..{}?topic=true&context=3",self.prefix(repo),first.head,first.base), c)
+                    .and_then(|diff|inline_reviews::attach_gitea_diff(&mut files.items,&diff,c)).map(|_|false)
+            } else {
+                self.request(READ,"read_pull_diff","GET",&format!("{path}/diff?contextLines=3&withComments=false"),None,false,c)
+                    .and_then(|(j,_)|other_inline::attach_server_diff(&mut files.items,&j,&first.head,c))
             };
-            for a in activity.items {
-                if let Some(j) = a.get("comment") {
-                    result.items.push(need(note(j, p))?);
-                }
-            }
-            result
+            match result { Ok(limited)=>files.limited |= limited,
+                Err(Error::Forge(e)) if e!=ForgeFailure::Unauthorized && e!=ForgeFailure::PullChanged => files.error=Some(e), Err(e)=>return Err(e) }
+        }
+        let mut other_inline_comments = None;
+        let discussion = if p.is_azure() || matches!(p,ForgeProvider::Bitbucket|ForgeProvider::BitbucketServer) {
+            let (general, inline) = self.other_discussions(&path,c)?;
+            other_inline_comments=Some(inline);
+            general
         } else {
             let endpoint = if p == ForgeProvider::GitLab {
                 format!("{path}/notes{suffix}")
@@ -665,6 +634,7 @@ impl ForgeSession {
                 }
             }
         };
+        let inline_comments = match other_inline_comments { Some(rows)=>rows, None=>self.provider_inline_comments(&path, &reviews, c)? };
         let endpoint = match p {
             ForgeProvider::GitLab => format!("{path}/pipelines{suffix}"),
             ForgeProvider::Gitea => format!(
@@ -702,7 +672,7 @@ impl ForgeSession {
             commits,
             files,
             discussion,
-            inline_comments: unavailable(),
+            inline_comments,
             reviews,
             checks,
             statuses: unavailable(),
@@ -717,6 +687,12 @@ impl ForgeSession {
         let p = self.config.provider();
         validate_review(p, pv.action, &pv.body, &pv.comments)?;
         let path = self.provider_path(&pv.repository, current.number)?;
+        if p == ForgeProvider::GitLab && !pv.comments.is_empty() {
+            return self.submit_gitlab_inline(&path, pv, c);
+        }
+        if !pv.comments.is_empty() && p != ForgeProvider::Gitea {
+            return self.submit_other_inline(&path, pv, c);
+        }
         let (method, endpoint, payload) = match (p, pv.action) {
             (ForgeProvider::GitLab, ForgeReviewAction::Comment) => (
                 "POST",
@@ -824,14 +800,14 @@ impl ForgeSession {
                 "POST",
                 format!("{path}/reviews"),
                 format!(
-                    "{{\"commit_id\":{},\"event\":{},\"body\":{}}}",
+                    "{{\"commit_id\":{},\"event\":{},\"body\":{}{}}}",
                     quote(&current.head),
                     quote(match a {
                         ForgeReviewAction::Approve => "APPROVED",
                         ForgeReviewAction::Comment => "COMMENT",
                         ForgeReviewAction::RequestChanges => "REQUEST_CHANGES",
                     }),
-                    quote(&pv.body)
+                    quote(&pv.body), inline::gitea_payload(&pv.comments)
                 ),
             ),
             _ => return fail(ForgeFailure::Unsupported),
@@ -846,13 +822,20 @@ impl ForgeSession {
                 true,
                 c,
             )
-            .map_err(review_error)?
+            .map_err(|e| {
+                // Gitea creates pending comments before submitting the review;
+                // even an HTTP rejection can leave a partially saved draft.
+                if p == ForgeProvider::Gitea && !pv.comments.is_empty() {
+                    Error::Forge(ForgeFailure::PullReviewUnknown)
+                } else { review_error(e) }
+            })?
             .0;
         let review = if p == ForgeProvider::Gitea {
             provider_review(&j, p).filter(|r| {
-                r.author.eq_ignore_ascii_case(&self.login)
+                r.id > 0 && r.author.eq_ignore_ascii_case(&self.login)
                     && r.state == pv.action.state()
                     && r.commit.as_deref() == Some(&current.head)
+                    && (pv.comments.is_empty() || j.u64("comments_count") == Some(pv.comments.len() as u64))
             })
         } else if pv.action == ForgeReviewAction::Comment {
             let raw = if p.is_azure() {
@@ -1126,6 +1109,7 @@ fn provider_review(j: &Json, p: ForgeProvider) -> Option<ForgePullReview> {
             "REQUEST_CHANGES" | "CHANGES_REQUESTED" => "CHANGES_REQUESTED",
             "COMMENT" | "COMMENTED" => "COMMENTED",
             "PENDING" => "PENDING",
+            "REQUEST_REVIEW" => "REQUESTED",
             _ => return None,
         },
     };

@@ -3,6 +3,12 @@ use serde_json::{Value, json};
 use std::{io, path::Path};
 
 const PREFIXED_CODES: &[&str] = &[
+    "workflow_review_stale", "commit_push_remote", "commit_push_branch", "commit_push_conflicts",
+    "commit_push_empty", "commit_push_limit", "commit_push_stale", "commit_push_unconfirmed",
+    "commit_push_commit_changed", "commit_push_destination_changed", "commit_push_incomplete",
+    "saved_work_branch", "saved_work_conflicts", "saved_work_index", "saved_work_limit",
+    "saved_work_same_branch", "saved_work_stale", "saved_work_unknown", "saved_work_changed",
+    "saved_work_switch_changed", "saved_work_paused",
     "stash_control_stale", "stash_selection_stale", "branch_fast_forward",
     "remote_cleanup_stale", "remote_cleanup_mapping", "remote_cleanup_response",
     "remote_branch_changed", "remote_branch_default", "remote_branch_diagnostics",
@@ -70,6 +76,7 @@ impl Problem {
             Error::Signing(f) => Self::new(f.code(), "Signing or verification could not complete.", f.guidance(), 1),
             Error::Lfs(f) => Self::new(f.code(), "Git LFS could not complete the operation.", f.guidance(), 1),
             Error::Ssh(f) => Self::new(f.code(), "The SSH key operation could not complete.", f.guidance(), 1),
+            Error::Forge(f) => Self::new(f.code(), "The hosting operation could not complete.", f.guidance(), 1),
             Error::SecretProtection(failure) => {
                 let mut problem = Self::new(failure.code(), failure.to_string(), failure.guidance(), 1);
                 problem.value["operation_started"] = json!(false);

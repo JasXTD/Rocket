@@ -2,6 +2,8 @@ mod args;
 mod advanced;
 mod bisect;
 mod commits;
+mod composed;
+mod hosting;
 mod conflicts;
 mod interrupt;
 mod lfs;
@@ -76,6 +78,10 @@ fn main() -> ExitCode {
         };
         return deliver(Outcome::success(data), command, Value::Null, options.json);
     }
+    let hosting_token = match hosting::take_credential(&options) {
+        Ok(token) => token,
+        Err(error) => return deliver(Outcome::failure(Problem::backend(&error)), command, Value::Null, options.json),
+    };
     if let Err(error) = rocket_git::ensure_unprivileged_process() {
         return deliver(Outcome::failure(Problem::backend(&error)), command, Value::Null, options.json);
     }
@@ -100,9 +106,9 @@ fn main() -> ExitCode {
         Ok(guard) => {
             let result = match &log {
                 Some(log) => log.request(command, |context| {
-                    run::execute(&options, Some(context), &cancel)
+                    run::execute(&options, Some(context), &cancel, hosting_token.as_deref())
                 }),
-                None => run::execute(&options, None, &cancel),
+                None => run::execute(&options, None, &cancel, hosting_token.as_deref()),
             };
             // The backend has reaped its child/helper processes and delivered all
             // write observations. Join the watcher before printing one final result.

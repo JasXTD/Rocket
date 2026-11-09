@@ -106,7 +106,10 @@ impl ForgeSession {
     ) -> Result<ForgePage> {
         self.check_repository(repo)?;
         cancel.check()?;
-        if !filter.search.is_empty() {
+        let gitlab_search = self.config.provider() == ForgeProvider::GitLab && !filter.search.is_empty();
+        if gitlab_search {
+            filter.search.validate_for(ForgeProvider::GitLab)?;
+        } else if !filter.search.is_empty() {
             return self.search(repo, filter, cursor, cancel);
         }
         let page = cursor.page.max(1);
@@ -131,7 +134,8 @@ impl ForgeSession {
             ForgeState::Closed => "closed",
             ForgeState::All => "all",
         };
-        let path = if let Some(next) = self.continuation_path(repo, filter, &cursor)? {
+        let continuation = self.continuation_path(repo, filter, &cursor)?;
+        let mut path = if let Some(next) = continuation.filter(|_| !gitlab_search) {
             next.to_owned()
         } else {
             match self.config.provider() {
@@ -167,9 +171,17 @@ impl ForgeSession {
                 ForgeProvider::BitbucketServer => unreachable!("separate server adapter"),
             }
         };
+        if gitlab_search {
+            // Rebuild all filters for every page rather than trusting a server's
+            // continuation query to preserve the user's search or repository scope.
+            for (key, value) in [("search", &filter.search.text), ("author_username", &filter.search.author), ("assignee_username[]", &filter.search.assignee)] {
+                if !value.is_empty() { path.push_str(&format!("&{key}={}", urls::encode(value))); }
+            }
+            if !filter.search.text.is_empty() { path.push_str("&in=title,description"); }
+        }
         let (v, headers) = self.request(
-            "hosting-list",
-            "read_hosting_page",
+            if gitlab_search { "hosting-search" } else { "hosting-list" },
+            if gitlab_search { "search_repository" } else { "read_hosting_page" },
             "GET",
             &path,
             None,
@@ -223,6 +235,9 @@ impl ForgeSession {
             }
             None => (array.len() == PAGE).then(numbered_next),
         }};
+        let next = if gitlab_search {
+            next.map(|_| self.query_cursor(repo, filter, page + 1, 0))
+        } else { next };
         let mut items = Vec::new();
         for value in array {
             if !pulls

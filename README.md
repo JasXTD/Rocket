@@ -38,10 +38,16 @@ open **Help → Setup Guide** in the app. **Ctrl+K** opens the command palette a
 guide.
 
 > [!NOTE]
-> [Download Rocket 0.92.1](https://github.com/JasXTD/Rocket/releases/tag/v0.92.1):
+> [Download Rocket 0.92.2](https://github.com/JasXTD/Rocket/releases/tag/v0.92.2):
 > Windows x64, Linux x64 (glibc 2.43+) and the Apple Silicon macOS 15+ preview.
 > The Mac preview is not Developer-ID-signed or notarized.
 > [Build from source](#build-and-run) is also available.
+
+**New in 0.92.2:** choose a preview language in Preferences; your saved theme
+appears from the first frame. Hosting adds inline comments for GitLab, Gitea,
+Bitbucket and Azure DevOps, including supported private-server variants. The CLI
+now includes hosting commands, reviewed Commit & Push and Save, switch & restore.
+See the [release notes](docs/releases/0.92.2.md) for scope and limitations.
 
 ## Features
 
@@ -97,6 +103,8 @@ guide.
 - **Publish to GitHub** from a local repository.
 - Pull requests, issues and reviews on GitHub, GitHub Enterprise Server, GitLab, Bitbucket,
   Azure DevOps and Gitea ([what each supports](HOSTING.md)).
+- Inline review drafts with revision checks before submission; GitLab server-side
+  search for merge requests and issues. Non-GitHub adapters are tested with mock APIs.
 - CI marks on commits and branches, an **Actions** page and **Re-run failed jobs**.
 - **SSH keys**: find, create, unlock and assign per repository, plus Direct key mode without
   ssh-agent.
@@ -142,6 +150,8 @@ guide.
 **Everything else**
 
 - Themes: Clay (the default), Ocean, Dark, Light, System and Custom.
+- **Preferences → General → Languages**: detected system language or your saved
+  choice, with ten preview translations and English fallback for unfinished screens.
 - **Command palette**, task-grouped menus, custom commands, and shortcuts and mouse gestures
   with two bindings each.
 - An integrated terminal with your choice of shell.
@@ -152,8 +162,8 @@ guide.
   repository.
 - In-app updates from [GitHub Releases](https://github.com/JasXTD/Rocket/releases), with the
   previous version kept.
-- A JSON [CLI](CLI.md) and a localhost [MCP service](tools/README.md#localhost-mcp) for
-  automation.
+- A JSON [CLI](CLI.md) for Git, hosting and reviewed composed workflows, plus a
+  localhost [MCP service](tools/README.md#localhost-mcp) for UI automation.
 
 ## Platforms
 
@@ -251,8 +261,8 @@ compares documented features, not speed or maturity, and features change.
 
 ## Current limits
 
-- **macOS:** not yet signed with a Developer ID or notarized, so it isn't ready to
-  distribute and in-app updates won't install a release. Tested on GitHub's Apple Silicon
+- **macOS:** the downloadable preview is ad-hoc signed, without a Developer ID or
+  notarization; in-app updates refuse to install it. Tested on GitHub's Apple Silicon
   runners, not yet on a physical Mac. Intel Macs aren't supported.
 - **Linux:** Lua needs x86_64 with Landlock. Steps that must never overwrite a file need a
   local filesystem such as ext4, XFS or Btrfs (NFS, some FUSE mounts and WSL's `/mnt` are
@@ -262,7 +272,9 @@ compares documented features, not speed or maturity, and features change.
   ([why](SECURITY.md#windows-git-http-runtime-gate-2026-10-29)).
 - **Hosting:** only GitHub's account sign-in has been checked against the real service.
   GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps and Gitea are tested against
-  local fixtures. See [Hosting](HOSTING.md).
+  local fixtures. Inline capabilities and limits differ by host; see [Hosting](HOSTING.md).
+- **Languages:** all ten translations are previews. General, Git, Terminal and AI draft
+  settings are localized; some advanced screens still display English.
 - **Stand-ins:** Jira was tested against mock services, and AI resolve against a stand-in
   program, not real Claude Code or Codex replies.
 - **Partial actions** (single lines, hunks) cover specific text cases; other files need a

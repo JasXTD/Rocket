@@ -1,0 +1,17 @@
+{
+  "Claude Code was not found. Install it or choose its executable in Preferences.": "Claude Code를 찾지 못했습니다. 설치하거나 환경설정에서 실행 파일을 선택하세요.",
+  "Codex was not found. Install the Codex CLI or app, or choose its executable in Preferences.": "Codex를 찾지 못했습니다. Codex CLI나 앱을 설치하거나 환경설정에서 실행 파일을 선택하세요.",
+  "Conventional Commits": "Conventional Commits",
+  "Draft with": "초안 작성 도구",
+  "Drafts are never committed for you.": "초안은 자동으로 커밋되지 않습니다.",
+  "Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first.": "초안을 만들 때마다 스테이징한 변경 사항을 Claude Code를 통해 Anthropic에 보냅니다. 첫 초안을 만들기 전에 전송 내용을 설명하고 동의를 구합니다.",
+  "Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first.": "초안을 만들 때마다 스테이징한 변경 사항을 Codex를 통해 OpenAI에 보냅니다. 첫 초안을 만들기 전에 전송 내용을 설명하고 동의를 구합니다.",
+  "Enter a language name using letters, spaces and hyphens, up to 64 characters.": "문자, 공백, 하이픈을 사용해 언어 이름을 64자 이내로 입력하세요.",
+  "Found automatically when empty": "비워 두면 자동으로 찾습니다",
+  "Found {path}": "찾음: {path}",
+  "Language": "언어",
+  "Message style": "메시지 형식",
+  "Off: nothing is sent anywhere.": "꺼짐: 아무것도 전송하지 않습니다.",
+  "Plain summary and body": "일반 요약과 본문",
+  "Show a Draft button in the commit composer": "커밋 편집기에 초안 버튼 표시"
+}

@@ -28,7 +28,7 @@ fs.writeFileSync(path.join(repo, '資料.rs'), 'fn main() {}\n'); git(['add', '-
 fs.appendFileSync(path.join(repo, '資料.rs'), '// staged fixture\n'); git(['add', '--', '資料.rs']);
 fs.appendFileSync(path.join(repo, '資料.rs'), '// unstaged fixture\n'); fs.writeFileSync(path.join(repo, '未追跡.txt'), 'keep\n');
 fs.writeFileSync(path.join(repo, '.git/rocket-ui-fixture'), branch);
-const fingerprint = () => ({ head: git(['rev-parse', 'HEAD']), index: git(['ls-files', '--stage', '-z']), config: hash(path.join(repo, '.git/config')), tracked: hash(path.join(repo, '資料.rs')), untracked: hash(path.join(repo, '未追跡.txt')) });
+const fingerprint = () => ({ head: git(['rev-parse', 'HEAD']), index: git(['ls-files', '--stage', '-z']), config: hash(path.join(repo, '.git/config')), global_config: hash(path.join(root, 'empty.config')), tracked: hash(path.join(repo, '資料.rs')), untracked: hash(path.join(repo, '未追跡.txt')) });
 const before = fingerprint(), report = { passed: false, root, executable_sha256: hash(exe), cases: [], captures: [] };
 let service, client, state, starts = 0;
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -43,7 +43,7 @@ async function until(predicate, label) {
     await delay(60);
   }
 }
-const settled = () => until(s => !s.busy && !s.input_pending && !(s.tabs || []).some(t => t.loading), 'settled');
+const settled = () => until(s => !s.busy && !s.input_pending && !s.git_settings?.busy && !(s.tabs || []).some(t => t.loading), 'settled');
 async function stable() {
   let previous = '', same = 0;
   await until(s => { const next = JSON.stringify(s.controls); same = next === previous ? same + 1 : 0; previous = next; return same >= 2 && !s.input_pending; }, 'stable controls');
@@ -62,9 +62,38 @@ async function capture(name) {
   const file = path.join(results, name + '.png'); fs.writeFileSync(file, Buffer.from(image.data, 'base64')); report.captures.push(file);
 }
 async function select(tag) {
-  await click('pref-language'); await click('pref-language-' + tag.toLowerCase());
+  await click('pref-language');
+  await until(() => control('pref-language-' + tag.toLowerCase())?.enabled, 'language popup option ' + tag);
+  await click('pref-language-' + tag.toLowerCase());
   await until(s => s.language.choice === tag && s.language.shown === tag, 'language ' + tag);
   await until(s => !s.state_pending, 'saved language'); assert.equal(state.state_error, null);
+}
+async function translatedSettings() {
+  const originalDrafting = structuredClone(state.drafting);
+  const originalTerminal = structuredClone(state.terminal_settings);
+  for (const tag of tags.slice(1)) {
+    await click('pref-page-general'); await select(tag); await resize(1280, 900);
+    await click('pref-page-git'); await until(s => s.git_settings.loaded && !s.git_settings.busy, 'Git settings');
+    assert.equal(state.git_settings.error, null);
+    assert(control('git-custom')?.enabled, 'Custom Git remains accessible');
+    assert(!state.git_settings.dirty, 'No identity changes from language switching');
+    await capture('coverage-' + tag + '-git-wide');
+    await resize(780, 620); await capture('coverage-' + tag + '-git-compact');
+    await click('pref-page-terminal');
+    assert(control('shell-choice'), 'Shell selector remains visible');
+    assert.deepEqual(state.terminal_settings, originalTerminal, 'Shell choice/lock remains unchanged');
+    await capture('coverage-' + tag + '-terminal-compact');
+    await click('pref-page-commit');
+    if (!state.drafting.enabled) await click('pref-ai-enabled');
+    assert(control('pref-ai-provider-claude')?.enabled);
+    assert(control('pref-ai-provider-codex')?.enabled);
+    assert.equal(state.drafting.language, originalDrafting.language, 'UI selection must not change AI output language');
+    await capture('coverage-' + tag + '-commit-compact');
+    if (state.drafting.enabled !== originalDrafting.enabled) await click('pref-ai-enabled');
+    assert.deepEqual(state.drafting, originalDrafting, 'No program/provider/consent change; no AI request');
+  }
+  await click('pref-page-general'); await select('en'); await resize(1440, 960);
+  pass('Git, Terminal and AI draft settings render in all ten Preview languages at desktop/compact sizes without changing identities, shells, AI language or consent');
 }
 async function theme(choice, mode) {
   await click('pref-page-appearance'); await click('theme-' + choice);
@@ -118,6 +147,7 @@ async function main() {
     assert(control('pref-language')?.enabled, 'Language selector must be visible without ROCKET_LANG');
     assert.deepEqual(state.language.offered, tags); assert.equal(state.language.choice, null); assert.equal(state.language.shown, 'en');
     await capture('01-general-english'); await click('pref-language');
+    await until(() => tags.every(tag => control('pref-language-' + tag.toLowerCase())?.enabled), 'all language popup options');
     for (const tag of tags) assert(control('pref-language-' + tag.toLowerCase())?.enabled, 'Offered ' + tag);
     assert(!control('pref-language-pseudo')); assert(!control('pref-language-system'));
     await capture('02-preview-options'); await click('pref-language-en');
@@ -125,6 +155,7 @@ async function main() {
     pass('Languages dropdown shows all eleven choices without a Match Windows entry; detected value can be overridden');
     for (const tag of tags.slice(1)) await select(tag);
     pass('Every Preview language switches immediately and saves without a settings error');
+    await translatedSettings();
     await select('zh-Hans'); await theme('clay', 'dark'); await capture('03-chinese'); await restart('zh-Hans', 'clay-dark');
     pass('Saved Clay Dark and Simplified Chinese are present on the first native frame and survive restart');
     await resize(780, 620); await click('pref-language'); await capture('04-compact-options'); await click('pref-language-ja');
@@ -135,16 +166,17 @@ async function main() {
     await select('en'); await capture('09-compact-english');
     pass('Language list and selected values remain usable at 780x620, including CJK, Arabic and longer German/Russian labels');
     await theme('light'); await restart('en', 'light'); await select('fr'); await theme('ocean'); await restart('fr', 'ocean');
-    await click('pref-page-git'); await capture('10-french-with-untranslated-git-settings'); await click('pref-page-general');
+    await click('pref-page-git'); await capture('10-french-git-settings'); await click('pref-page-general');
     await select('en'); await theme('clay', 'dark'); await restart('en', 'clay-dark');
-    pass('English/French and Light/Ocean/Clay Dark use saved values from the first native frame; untranslated settings stay available');
+    pass('English/French and Light/Ocean/Clay Dark use saved values from the first native frame; translated Git settings stay available');
     await select('de-CH'); await select('ko'); await select('en');
     assert.deepEqual(fingerprint(), before);
-    pass('Switching preserves local HEAD, index, staged/unstaged Unicode files, untracked file and repository config');
+    pass('Switching preserves local HEAD, index, staged/unstaged Unicode files, untracked file and repository/global config');
     await stop(); report.passed = true;
   } catch (error) {
     report.error = error.stack; process.exitCode = 1;
-    if (client && state?.window === 'open') try { await capture('failure'); } catch (captureError) { report.capture_error = captureError.message; }
+    report.failure_state = { window: state?.window, dialog: state?.dialog?.kind, language: state?.language, input_pending: state?.input_pending, viewport: state?.viewport, controls: state?.controls };
+    if (client) try { await capture('failure'); } catch (captureError) { report.capture_error = captureError.message; }
   } finally {
     if (client) try { await stop(); } catch (error) { report.cleanup_error = error.message; process.exitCode = 1; }
     if (service?.exitCode === null) { service.kill(); await delay(300); }

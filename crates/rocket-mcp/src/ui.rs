@@ -662,7 +662,7 @@ impl Ui {
             value
         });
         state["write"] = self.app.write.as_ref().map_or(Value::Null, |w| json!({"operation":w.label,"progress":w.progress,"fraction":w.fraction,"cancelling":w.cancelling,"cancel_enabled":w.can_cancel(),"force_push_phase":w.force_push_phase_code(),"elapsed_ms":w.started.elapsed().as_millis()}));
-        state["activities"] = json!(self.app.activities.iter().map(|a| json!({"operation":a.title,"command_succeeded":a.outcome.command_succeeded,"recovery_pending":a.outcome.recovery_pending,"summary":a.outcome.summary,"details":a.outcome.details,"elapsed_ms":a.elapsed.as_millis(),"conflict":a.outcome.conflict.as_ref().map(|c|json!({"file_save_confirmed":c.saved,"staging_confirmed":c.staged})),"whole_conflict":a.outcome.whole_conflict.as_ref().map(|c|json!({"keep":c.keep.label(),"file_change":c.file_change.map(|f|f.label()),"staging_confirmed":c.staged}))})).collect::<Vec<_>>());
+        state["activities"] = json!(self.app.activities.iter().map(|a| json!({"operation":a.title,"command_succeeded":a.outcome.command_succeeded,"recovery_pending":a.outcome.recovery_pending,"summary":a.outcome.summary,"details":a.outcome.details,"elapsed_ms":a.elapsed.as_millis(),"workflow":a.outcome.workflow.as_ref().map(workflow_outcome),"conflict":a.outcome.conflict.as_ref().map(|c|json!({"file_save_confirmed":c.saved,"staging_confirmed":c.staged})),"whole_conflict":a.outcome.whole_conflict.as_ref().map(|c|json!({"keep":c.keep.label(),"file_change":c.file_change.map(|f|f.label()),"staging_confirmed":c.staged}))})).collect::<Vec<_>>());
         state["log_directory"] = json!(self.app.log_path.to_string_lossy());
         state["dropped_events"] = json!(
             self.app
@@ -3673,6 +3673,11 @@ fn hosting_state(app: &Rocket) -> Value {
                 "discussion":collection(d.discussion.items.len(),d.discussion.limited,d.discussion.error),"inline":collection(d.inline_comments.items.len(),d.inline_comments.limited,d.inline_comments.error),
                 "reviews":collection(d.reviews.items.len(),d.reviews.limited,d.reviews.error),"checks":collection(d.checks.items.len(),d.checks.limited,d.checks.error),"statuses":collection(d.statuses.items.len(),d.statuses.limited,d.statuses.error),
                 "paths":d.files.items.iter().map(|f|json!({"path":f.path,"previous":f.previous,"patch":f.patch.is_some(),"lines":f.lines.iter().map(|l|json!({"old":l.old,"new":l.new})).collect::<Vec<_>>()})).collect::<Vec<_>>() }))});
+        if let Some(d)=&p.details {
+            value["pull"]["details"]["inline_supported"]=json!(d.supports_inline_review());
+            value["pull"]["details"]["inline_ranges"]=json!(d.supports_inline_ranges());
+            value["pull"]["details"]["inline_limit"]=json!(d.inline_comment_limit());
+        }
         value["pull"]["threads"]=json!({"loaded":p.threads.snapshot.is_some(),"count":p.threads.snapshot.as_ref().map(|s|s.threads.len()),"limited":p.threads.snapshot.as_ref().is_some_and(|s|s.limited),"selected":p.threads.selected,"body_bytes":p.threads.body.len(),"reviewing":p.threads.preview.is_some(),"uncertain":p.threads.unknown,"can_acknowledge":p.threads.checked,"resolved":p.threads.snapshot.as_ref().map(|s|s.threads.iter().map(|t|t.resolved).collect::<Vec<_>>())});
         value["repository"]=json!(s.repository); value["filter"]=json!(s.filter);
         value["from_fork"]=json!(s.from_fork); value["source_repository"]=json!(s.source_repository);
@@ -3913,6 +3918,16 @@ fn ignore_state(s: &rocket_ui::ignore::DialogState) -> Value {
         "candidates":s.candidates.iter().take(100).zip(&s.selected).map(|(p,yes)|json!({"path":p.display_lossy(),"selected":yes})).collect::<Vec<_>>(),
         "preview":s.preview.as_ref().map(|p|json!({"before_bytes":p.before().len(),"after_bytes":p.after().len(),"existed":p.existed()}))})
 }
+fn workflow_outcome(o: &rocket_ui::backend::WorkflowOutcome) -> Value {
+    use rocket_ui::backend::WorkflowOutcome;
+    match o {
+        WorkflowOutcome::CommitPush { phase, commit, reviewed_commit_confirmed, remote_outcome, cancelled } =>
+            json!({"kind":"commit-push","phase":phase,"commit":commit.as_ref().map(|v|v.as_str()),
+                "reviewed_commit_confirmed":reviewed_commit_confirmed,"remote_outcome":remote_outcome,"cancelled":cancelled}),
+        WorkflowOutcome::Saved { phase, stash, journal, cancelled } =>
+            json!({"kind":"saved-work","phase":phase,"stash":stash.as_ref().map(|v|v.as_str()),"journal":journal.to_string_lossy(),"cancelled":cancelled}),
+    }
+}
 fn workflow_state(s:&rocket_ui::workflows::DialogState)->Value {
     use rocket_ui::workflows::Review;
     json!({"mode":s.mode,"strategy":s.strategy,"stash":s.stash,"loading":s.task.is_some()||s.stash_apply.as_ref().is_some_and(|a|a.task.is_some()),"applying":s.applying,"stopping":s.stopping,"notice":s.notice,"selected":s.selected.iter().map(|r|String::from_utf8_lossy(r)).collect::<Vec<_>>(),
@@ -3929,7 +3944,7 @@ fn workflow_state(s:&rocket_ui::workflows::DialogState)->Value {
         Review::Prune(p)=>json!({"kind":"prune","obsolete":p.obsolete().iter().map(|r|json!({"reference":String::from_utf8_lossy(&r.reference),"id":r.id.as_str()})).collect::<Vec<_>>(),"local_kept":p.stale_local_branches().iter().map(|r|String::from_utf8_lossy(r)).collect::<Vec<_>>()}),
         Review::Delete(p)=>json!({"kind":"delete","branch":String::from_utf8_lossy(p.branch()),"expected":p.expected().as_str()}),
         Review::Rename(p)=>json!({"kind":"rename","id":p.entry().id.as_str(),"name":p.name()}),
-        Review::Saved(p)=>json!({"kind":if matches!(p.action(),rocket_git::SavedWorkAction::Switch(_)){"saved-switch"}else{"saved"},"target":p.target().as_str(),"changed_files":p.changed_files()}),
+        Review::Saved(p)=>json!({"kind":if matches!(p.action(),rocket_git::SavedWorkAction::Switch(_)){"saved-switch"}else{"saved"},"reference":p.reference(),"target":p.target().as_str(),"changed_files":p.changed_files()}),
         Review::CommitPush(p)=>json!({"kind":"commit-push","remote":String::from_utf8_lossy(p.remote()),"branch":String::from_utf8_lossy(p.branch()),"destination":String::from_utf8_lossy(p.destination()),"staged_files":p.staged_files()}),
         Review::Branch(p)=>json!({"kind":p.kind().label(),"feature":p.feature(),"base":p.base(),"tip":p.tip().as_str(),"base_tip":p.base_tip().as_str(),"commits":p.commits(),"save_changes":p.options().save_changes,"saved_files":p.saved_changes(),"allow_fast_forward":p.options().allow_fast_forward,"can_fast_forward":p.can_fast_forward()}),
         Review::Lfs(p)=>json!({"kind":"lfs","bytes":p.bytes(),"objects":p.objects().iter().map(|o|json!({"oid":o.oid,"size":o.size})).collect::<Vec<_>>()}),

@@ -6,6 +6,7 @@ pub struct Selection {
     pub path: String,
     pub head: String,
     pub base: String,
+    pub diff_revision: Option<String>,
     pub line: u64,
     pub start: u64,
     pub side: ForgeDiffSide,
@@ -17,7 +18,17 @@ pub(super) fn queued(
     widgets: &mut HashMap<String, UiControl>,
     busy: bool,
 ) {
-    ui.colored_label(MUTED(), "Inline comments are saved on this computer until you submit or discard the review. Select a diff line to add a comment or range.");
+    ui.colored_label(MUTED(), "Inline comments are saved on this computer until you submit or discard the review. Select an available diff line to add a comment.");
+    if s.pull.details.as_ref().is_some_and(|d|d.repository().config().provider()==ForgeProvider::GitLab) {
+        ui.colored_label(MUTED(), "GitLab: send one single-line discussion with Comment and an empty review message. Submit other discussions or votes separately.");
+    } else if s.pull.details.as_ref().is_some_and(|d|d.repository().config().provider()==ForgeProvider::Gitea) {
+        ui.colored_label(MUTED(), "Gitea: up to 32 single-line comments in one reviewed submission.");
+    } else if s.pull.details.as_ref().is_some_and(|d|matches!(d.repository().config().provider(),ForgeProvider::Bitbucket|ForgeProvider::BitbucketServer|ForgeProvider::Azure|ForgeProvider::AzureServer)) {
+        ui.colored_label(MUTED(), "Send one single-line comment at a time. Select Comment and leave the separate review message empty. Refresh to see published comments.");
+        if s.pull.details.as_ref().is_some_and(|d|d.repository().config().provider()==ForgeProvider::Bitbucket) {
+            ui.colored_label(MUTED(), "Bitbucket Cloud cannot pin a comment to a commit. Rocket checks for changes before and after sending; inspect any uncertain result before retrying.");
+        }
+    }
     let mut edit = None;
     let mut remove = None;
     for (i, c) in s.pull.comments.iter().enumerate() {
@@ -94,7 +105,7 @@ pub(super) fn files(
         && s.pull.merge.unknown.is_none()
         && details.summary().state == "open"
         && !details.summary().merged
-        && details.repository().config().provider().is_github();
+        && details.supports_inline_review();
     for (i, f) in details.files.items.iter().enumerate() {
         let r = ui.add(
             Button::selectable(
@@ -134,10 +145,10 @@ pub(super) fn files(
                     "The PR changed. Cancel this draft and select a line from the refreshed diff.",
                 );
             }
-            ui.horizontal_wrapped(|ui| {
+            if details.supports_inline_ranges() { ui.horizontal_wrapped(|ui| {
                 ui.label("First line");let r=ui.add_enabled(edit,DragValue::new(&mut selection.start).range(1..=u32::MAX as u64));control(widgets,"hosting-inline-start",&r,ui.clip_rect());
                 ui.label("Last line");let r=ui.add_enabled(edit,DragValue::new(&mut selection.line).range(1..=u32::MAX as u64));control(widgets,"hosting-inline-end",&r,ui.clip_rect());
-            });
+            }); } else { ui.label(format!("{} line {}",selection.side.key(),selection.line)); }
         } else {
             ui.strong("Edit queued comment (keeps its original revision)");
         }
@@ -171,6 +182,7 @@ pub(super) fn files(
                 } else if let Some(selection) = &s.pull.inline_selection {
                     if selection.head != details.summary().head
                         || selection.base != details.summary().base
+                        || selection.diff_revision != details.inline_diff_revision()
                         || details
                             .files
                             .items
@@ -180,9 +192,9 @@ pub(super) fn files(
                         Err(Error::InvalidInput(
                             "The diff changed. Cancel this draft and select a line again.".into(),
                         ))
-                    } else if s.pull.comments.len() >= 32 {
+                    } else if s.pull.comments.len() >= details.inline_comment_limit() {
                         Err(Error::InvalidInput(
-                            "Submit this review before adding more than 32 inline comments.".into(),
+                            "This provider's comment limit is reached. Review and submit the current draft before adding another.".into(),
                         ))
                     } else if s.pull.comments.iter().any(|c| {
                         c.path() == selection.path
@@ -239,9 +251,13 @@ pub(super) fn files(
     if let Some(previous) = &file.previous {
         ui.label(format!("Renamed from {previous}"));
     }
-    ui.colored_label(MUTED(), "Left numbers refer to the old file; right numbers refer to the new file. Click a number to comment. This preview never changes local files.");
+    if details.supports_inline_review() {
+        ui.colored_label(MUTED(), "Left numbers refer to the old file; right numbers refer to the new file. Click a number to comment. This preview never changes local files.");
+    } else {
+        ui.colored_label(AMBER(), "The provider did not supply the revision data needed for inline comments. Refresh the PR or open the complete diff on the provider.");
+    }
     if file.lines.is_empty() {
-        ui.colored_label(AMBER(), "Inline comments are unavailable for a binary, missing, oversized or incomplete patch. Open GitHub for the complete diff.");
+        ui.colored_label(AMBER(), "Inline comments are unavailable for a binary, missing, oversized or incomplete patch. Open the provider for the complete diff.");
         if let Some(patch) = &file.patch {
             ui.add(Label::new(RichText::new(patch).monospace()).wrap());
         }
@@ -270,6 +286,7 @@ pub(super) fn files(
                                 path: file.path.clone(),
                                 head: details.summary().head.clone(),
                                 base: details.summary().base.clone(),
+                                diff_revision: details.inline_diff_revision(),
                                 line: number,
                                 start: number,
                                 side,

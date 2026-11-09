@@ -76,6 +76,11 @@ impl Review {
         let result = match self {
             Self::CommitPush(p) => {
                 let r=repo.apply_commit_push(p,c)?;
+                out.workflow=Some(crate::backend::WorkflowOutcome::CommitPush {
+                    phase:r.phase, commit:r.commit.clone(), reviewed_commit_confirmed:r.reviewed_commit_confirmed,
+                    remote_outcome:r.push.as_ref().map_or("not_attempted",|p|p.remote_outcome.code()),
+                    cancelled:matches!(&r.result,Err(Error::Cancelled)),
+                });
                 out.local_commit_created=r.reviewed_commit_confirmed;
                 out.summary=if let Some(id)=&r.commit {format!("Local commit {id} retained.")} else {"No new local commit confirmed; inspect history before retrying.".into()};
                 out.details.push(format!("Last phase: {}.",r.phase));
@@ -204,6 +209,10 @@ impl Review {
             }
             Self::Saved(p) => {
                 let r = repo.apply_saved_work(p, c)?;
+                out.workflow=Some(crate::backend::WorkflowOutcome::Saved {
+                    phase:r.phase, stash:r.stash.clone(), journal:r.journal.clone(),
+                    cancelled:matches!(&r.result,Err(Error::Cancelled)),
+                });
                 let switching=matches!(p.action(),SavedWorkAction::Switch(_));
                 out.details.push(format!(
                     "Last recovery phase: {}. Journal: {}.",

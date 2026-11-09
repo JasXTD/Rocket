@@ -360,7 +360,7 @@ macro_rules! files {
     };
 }
 const FILES: &[(Language, &str, &str)] =
-    files!["common", "menus", "chrome", "views", "diff", "preferences"];
+    files!["common", "menus", "chrome", "views", "diff", "preferences", "git-settings", "terminal", "commit-draft"];
 
 /// One catalog entry: a text, or a counted phrase's forms by CLDR category.
 #[derive(Clone, Debug)]
@@ -925,8 +925,10 @@ mod tests {
             }
             let missing = code.keys().filter(|key| !found.contains_key(*key)).count();
             eprintln!("{}: {} of {} strings translated", language.tag(), code.len() - missing, code.len());
-            if RELEASED.contains(&language) && missing > 0 {
-                problems.push(format!("{} is released with {missing} strings untranslated", language.tag()));
+            // Preview describes untranslated screens and linguistic review, not permission
+            // to silently lose coverage of messages already wired into localization.
+            if missing > 0 {
+                problems.push(format!("{} has {missing} registered strings untranslated", language.tag()));
             }
         }
         assert!(problems.is_empty(), "{}", problems.join("\n"));
@@ -1131,6 +1133,93 @@ With a second line.
             }
             assert!(problems.is_empty(), "{}", problems.join("
 "));
+        });
+    }
+
+    #[test]
+    fn settings_translate_visible_labels_without_changing_user_data() {
+        crate::test_common::isolated("ROCKET_TRANSLATED_SETTINGS_CASE", "i18n::tests::settings_translate_visible_labels_without_changing_user_data", || {
+            use crate::{app::Rocket, preferences::Page, terminal_settings::Choice};
+            use eframe::egui::{Context, Pos2, RawInput, Rect, Shape, vec2};
+            fn texts(shape: &Shape, out: &mut Vec<String>) {
+                match shape {
+                    Shape::Text(text) => out.push(text.galley.job.text.clone()),
+                    Shape::Vec(shapes) => shapes.iter().for_each(|shape| texts(shape, out)),
+                    _ => {}
+                }
+            }
+            let fixture = crate::test_common::Fixture::new();
+            let ctx = Context::default();
+            let mut app = Rocket::with_storage(&ctx, vec![], fixture.root.join("logs"), fixture.root.join("state"));
+            crate::batch::flow_tests::wait(&ctx, &mut app);
+            // Avoid probing or changing the user's global Git configuration.
+            app.git_settings.loaded = true;
+            app.git_settings.automatic = true;
+            app.git_settings.name = "Automatic 文".into();
+            app.git_settings.email = "fixture@example.invalid".into();
+            app.terminal_shell.editing.choice = Choice::Custom;
+            let program = fixture.root.join("資料").join("custom.exe").to_string_lossy().into_owned();
+            app.terminal_shell.editing.program = program.clone();
+            app.terminal_shell.editing.arguments = "--name\nAutomatic 文".into();
+            app.drafting.enabled = true;
+            app.drafting.executable = program.clone();
+            app.drafting.codex_executable = program.clone();
+            let original_draft_language = app.drafting.language.clone();
+            let mut english_cut = HashMap::new();
+            let mut problems = Vec::new();
+            for language in Language::ALL {
+                scoped(language, || {
+                    ctx.set_fonts(crate::fonts::definitions());
+                    for (page, heading, field) in [
+                        (Page::Git, "Git program", "Automatic"),
+                        (Page::Terminal, "Shell", "Program"),
+                        (Page::Commit, "AI drafts", "Draft with"),
+                    ] {
+                        app.show_preferences(page);
+                        for (width, height) in [(1280.0, 900.0), (780.0, 620.0)] {
+                            for pass in 0..3 {
+                                app.frame_widgets.clear();
+                                let output = ctx.run_ui(RawInput {
+                                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(width, height))),
+                                    ..Default::default()
+                                }, |ui| app.preferences_dialog(ui.ctx()));
+                                if pass == 2 {
+                                    let mut shown = Vec::new();
+                                    for shape in &output.shapes { texts(&shape.shape, &mut shown); }
+                                    for key in [heading, field] {
+                                        // Card captions use uppercase; field labels retain catalog case.
+                                        let caption = page == Page::Commit && key == heading;
+                                        let expected = if caption { tr(key).to_uppercase() } else { tr(key).to_owned() };
+                                        let english = if caption { key.to_uppercase() } else { key.to_owned() };
+                                        assert!(shown.contains(&expected), "{} / {page:?} at {width}: missing translated {key}", language.tag());
+                                        if expected != english { assert!(!shown.contains(&english), "untranslated label {key}"); }
+                                    }
+                                    let cut: BTreeSet<String> = cut_texts(&output).iter().map(|t| {
+                                        catalog(language).iter().find_map(|(key, value)| match value {
+                                            Entry::Text(value) if value == t => Some(key.clone()),
+                                            Entry::Text(value) if value.to_uppercase() == *t => Some(key.to_uppercase()),
+                                            _ => None,
+                                        }).or_else(|| filled_english(language, t)).unwrap_or_else(|| t.clone())
+                                    }).collect();
+                                    let case = (format!("{page:?}"), width as u32);
+                                    if language == Language::English { english_cut.insert(case, cut); }
+                                    else {
+                                        let extra: Vec<_> = cut.difference(&english_cut[&case]).collect();
+                                        if !extra.is_empty() { problems.push(format!("{} / {page:?} at {width}: {extra:?}", language.tag())); }
+                                    }
+                                }
+                                output.drop_without_applying_deltas();
+                            }
+                        }
+                    }
+                });
+            }
+            assert_eq!(app.git_settings.name, "Automatic 文");
+            assert_eq!(app.git_settings.email, "fixture@example.invalid");
+            assert_eq!(app.terminal_shell.editing.program, program);
+            assert_eq!(app.terminal_shell.editing.arguments, "--name\nAutomatic 文");
+            assert_eq!(app.drafting.language, original_draft_language, "UI language must not change AI output settings");
+            assert!(problems.is_empty(), "Translation layout regressions:\n{}", problems.join("\n"));
         });
     }
 

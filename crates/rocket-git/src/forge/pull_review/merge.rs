@@ -41,6 +41,10 @@ pub struct ForgePullMergePreview {
     used: AtomicBool,
 }
 impl ForgePullMergePreview {
+    pub fn review_digest(&self, session: &ForgeSession) -> Result<String> {
+        if self.session != session.id { return fail(ForgeFailure::PullReviewStale); }
+        session.review_digest("merge", &[self.repository.path(), &format!("{:?}",self.summary),self.method.key()])
+    }
     pub fn repository(&self) -> &ForgeRepository {
         &self.repository
     }

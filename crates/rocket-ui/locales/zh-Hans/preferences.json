@@ -150,5 +150,10 @@
   "Fetch remotes automatically": "自动获取远程",
   "Fetching…": "正在获取…",
   "Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.": "将在下一个间隔重试。自动获取从不询问凭据；如需登录，请手动获取。",
-  "{c} min": "{c} 分钟"
+  "{c} min": "{c} 分钟",
+  "Hunspell dictionary · {language}": "Hunspell 词典 · {language}",
+  "Remembered accounts are encrypted with a key in your desktop keyring.": "已记住的账户使用桌面密钥环中的密钥加密。",
+  "Uses the Hunspell dictionaries installed on this system.": "使用此系统上安装的 Hunspell 词典。",
+  "Uses the macOS spell checker. Added words are shared with other apps.": "使用 macOS 拼写检查器。添加的词语会与其他应用共享。",
+  "macOS spell checker · {language}": "macOS 拼写检查器 · {language}"
 }

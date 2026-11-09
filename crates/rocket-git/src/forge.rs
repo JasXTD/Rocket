@@ -96,6 +96,9 @@ impl ForgeProvider {
     pub fn is_azure(self) -> bool {
         matches!(self, Self::Azure | Self::AzureServer)
     }
+    pub fn supports_search(self) -> bool {
+        self.is_github() || self == Self::GitLab
+    }
     pub fn default_server(self) -> &'static str {
         match self {
             Self::GitHub => "https://github.com",
@@ -132,6 +135,8 @@ pub enum ForgeFailure {
     OutcomeUnknown,
     PullChanged,
     PullReviewStale,
+    PendingReview,
+    ReviewStateUnavailable,
     PullReviewRejected,
     PullReviewUnknown,
     PullMergeBlocked,
@@ -162,6 +167,8 @@ impl ForgeFailure {
             Self::OutcomeUnknown => "hosting_outcome_unknown",
             Self::PullChanged => "hosting_pull_changed",
             Self::PullReviewStale => "hosting_pull_review_stale",
+            Self::PendingReview => "hosting_pending_review",
+            Self::ReviewStateUnavailable => "hosting_review_state_unavailable",
             Self::PullReviewRejected => "hosting_pull_review_rejected",
             Self::PullReviewUnknown => "hosting_pull_review_unknown",
             Self::PullMergeBlocked => "hosting_pull_merge_blocked",
@@ -171,13 +178,15 @@ impl ForgeFailure {
     }
     pub fn guidance(self) -> &'static str {
         match self {
-            Self::PullMergeBlocked => "Merging is not ready or could not be confirmed. Refresh the PR; it must be open, not a draft, with GitHub reporting a clean merge and permitting the selected method for this account. Resolve checks, reviews or conflicts on GitHub first.",
-            Self::PullMergeRejected => "GitHub rejected the merge. The head may have changed, or repository rules, checks, approvals or a required merge queue may prevent it. Refresh and review again; Rocket does not retry or delete branches.",
-            Self::PullMergeUnknown => "The merge request was interrupted or its response could not be verified. It may have merged. Refresh this same PR and check GitHub before deciding what to do next. Rocket will not retry automatically.",
+            Self::PullMergeBlocked => "Merging is not ready or could not be confirmed. Refresh the PR; it must be open, not a draft, with the provider permitting the selected method for this account. Resolve required checks, reviews or conflicts on the provider first.",
+            Self::PullMergeRejected => "The provider rejected the merge. The head may have changed, or repository rules, checks, approvals or a required merge queue may prevent it. Refresh and review again; Rocket does not retry or delete branches.",
+            Self::PullMergeUnknown => "The merge request was interrupted or its response could not be verified. It may have merged. Refresh this same PR and check the provider before deciding what to do next. Rocket will not retry automatically.",
             Self::PullChanged => "The pull request changed while it was being read or reviewed. Refresh its details and review the current commits before submitting. Your draft is retained.",
             Self::PullReviewStale => "This preview expired, was already used, or belongs to another account or PR revision. Refresh and review again. Inline drafts are retained; remove and re-select comments from an earlier revision before submitting.",
-            Self::PullReviewRejected => "GitHub rejected this review. Check the PR state, review permissions and any pending review on GitHub. Your draft is retained; Rocket does not retry automatically.",
-            Self::PullReviewUnknown => "The review submission was interrupted or its result could not be verified. It may have succeeded. Refresh this PR's reviews and check GitHub before explicitly deciding to submit again. Rocket will not retry automatically.",
+            Self::PullReviewRejected => "The provider rejected this review. Check the PR state, review permissions and any pending review on the provider. Your draft is retained; Rocket does not retry automatically.",
+            Self::PendingReview => "This account already has a pending review on Gitea. Finish or discard it on the provider, then refresh and review again. Rocket will not submit or replace those saved comments.",
+            Self::ReviewStateUnavailable => "Rocket could not verify that this account has no pending Gitea review within the bounded review scan. Check the provider before continuing; no review was submitted.",
+            Self::PullReviewUnknown => "The review submission was interrupted or its result could not be verified. It may have succeeded or saved only some pending comments. Refresh this PR's reviews and check the provider before explicitly deciding to submit again. Rocket will not retry automatically.",
             Self::Unauthorized => {
                 "The server rejected this account's token. Check its expiry, host and account, then reconnect. For a browser session, sign in again. Existing Git credentials were not changed."
             }
@@ -248,7 +257,7 @@ pub struct ForgeFilter {
     pub state: ForgeState,
     /// Azure work-item states are project-defined. Empty means every state.
     pub work_item_state: String,
-    /// GitHub server-side text/author/assignee search. Other providers reject it.
+    /// GitHub/GitLab server-side text/author/assignee search. Others reject it.
     pub search: ForgeSearch,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -258,6 +267,21 @@ pub struct ForgeSearch {
     pub assignee: String,
 }
 impl ForgeSearch {
+    pub fn validate_for(&self, provider: ForgeProvider) -> Result<()> {
+        if provider.is_github() { return self.validate(); }
+        if provider != ForgeProvider::GitLab { return fail(ForgeFailure::Unsupported); }
+        // GitLab has separate query parameters, not GitHub's query language.
+        // Literal punctuation and Unicode are encoded, never interpreted as filters.
+        if self.text.len() > 256 || self.text.chars().any(char::is_control) {
+            return Err(invalid("Search text must be at most 256 bytes without control characters."));
+        }
+        for login in [&self.author, &self.assignee] {
+            if login.len() > 255 || !login.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b,b'-'|b'_'|b'.')) {
+                return Err(invalid("Author and assignee must be GitLab usernames using letters, numbers, periods, underscores or hyphens (at most 255 bytes)."));
+            }
+        }
+        Ok(())
+    }
     pub fn is_empty(&self) -> bool {
         self.text.is_empty() && self.author.is_empty() && self.assignee.is_empty()
     }
@@ -326,6 +350,16 @@ pub struct ForgePreview {
     submitted: AtomicBool,
 }
 impl ForgePreview {
+    /// Stable across processes, but bound to the verified account, server, both
+    /// remote tips and all submitted text. It never contains credentials.
+    pub fn review_digest(&self, session: &ForgeSession) -> Result<String> {
+        if self.session != session.id { return fail(ForgeFailure::StaleReview); }
+        session.review_digest("create", &[
+            self.draft.repository.path(), self.source_repository().path(),
+            &self.draft.source, &self.draft.target, &self.source_id, &self.target_id,
+            &self.draft.title, &self.draft.body,
+        ])
+    }
     pub fn draft(&self) -> &ForgeDraft {
         &self.draft
     }
@@ -361,6 +395,13 @@ impl fmt::Debug for ForgeSession {
     }
 }
 impl ForgeSession {
+    fn review_digest(&self, operation: &str, parts: &[&str]) -> Result<String> {
+        let port = self.config.fixture_port().map(|p|p.to_string()).unwrap_or_default();
+        let mut values = vec!["hosting-review-v1",operation,self.config.provider().key(),self.config.server(),
+            self.config.azure_api_version(), &port, &self.login, self.account_identity().unwrap_or("")];
+        values.extend_from_slice(parts);
+        crate::saved_work::review_digest(&values.iter().map(|v|v.as_bytes()).collect::<Vec<_>>())
+    }
     pub fn config(&self) -> &ForgeConfig {
         &self.config
     }

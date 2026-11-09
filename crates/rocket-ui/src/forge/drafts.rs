@@ -266,7 +266,18 @@ fn save(
     })
 }
 fn comment_json(c: &ForgeInlineDraft) -> Value {
-    json!({"path":c.path,"start":c.start,"line":c.line,"side":c.side.key(),"head":c.head,"base":c.base,"body":c.body})
+    json!({"path":c.path,"start":c.start,"line":c.line,"side":c.side.key(),"head":c.head,"base":c.base,"body":c.body,"diff_revision":c.diff_revision})
+}
+fn valid_diff_revision(value: &str) -> bool {
+    let sha = |s: &str| s.len()==40 && s.bytes().all(|b|b.is_ascii_hexdigit());
+    let number = |s: &str| !s.is_empty() && s.len()<=10 && s.bytes().all(|b|b.is_ascii_digit()) && s.parse::<u32>().is_ok_and(|n| n<=i32::MAX as u32);
+    let parts: Vec<_> = value.split(':').collect();
+    match parts.as_slice() {
+        [base,head,start] => sha(base) && sha(head) && sha(start),
+        ["bitbucket-server",version] => number(version),
+        ["azure",iteration,base,head,target] => number(iteration) && *iteration!="0" && sha(base) && sha(head) && sha(target),
+        _ => false,
+    }
 }
 fn parse_comment(v: &Value) -> rocket_git::Result<ForgeInlineDraft> {
     let side = match v["side"].as_str() {
@@ -282,6 +293,11 @@ fn parse_comment(v: &Value) -> rocket_git::Result<ForgeInlineDraft> {
         head: field(v, "head", 40)?,
         base: field(v, "base", 40)?,
         body: field(v, "body", 8192)?,
+        diff_revision: match v.get("diff_revision") {
+            None | Some(Value::Null) => None,
+            Some(Value::String(s)) if valid_diff_revision(s) => Some(s.clone()),
+            _ => return Err(refused()),
+        },
     };
     if c.start == 0
         || c.start > c.line
@@ -295,7 +311,7 @@ fn parse_comment(v: &Value) -> rocket_git::Result<ForgeInlineDraft> {
     Ok(c)
 }
 fn selection_json(s: &pull_review::inline::Selection) -> Value {
-    json!({"path":s.path,"head":s.head,"base":s.base,"start":s.start,"line":s.line,"side":s.side.key()})
+    json!({"path":s.path,"head":s.head,"base":s.base,"start":s.start,"line":s.line,"side":s.side.key(),"diff_revision":s.diff_revision})
 }
 pub fn capture(s: &mut super::State) {
     s.drafts.uncaptured = false;
@@ -598,6 +614,7 @@ pub fn rebind(s: &mut super::State) {
     };
     if v["head"].as_str() != Some(&details.summary().head)
         || v["base"].as_str() != Some(&details.summary().base)
+        || v["diff_revision"].as_str() != details.inline_diff_revision().as_deref()
     {
         return;
     }
@@ -628,6 +645,7 @@ pub fn rebind(s: &mut super::State) {
         path: details.files.items[file].path.clone(),
         head: details.summary().head.clone(),
         base: details.summary().base.clone(),
+        diff_revision: details.inline_diff_revision(),
         start,
         line,
         side,
@@ -814,14 +832,17 @@ mod tests {
         ));
         fs::create_dir(&dir).unwrap();
         let scope = Scope {
-            provider: ForgeProvider::GitHub,
-            server: "https://github.com".into(),
+            provider: ForgeProvider::GitLab,
+            server: "https://gitlab.com".into(),
             api: "7.1".into(),
             account: "fixture".into(),
             repository: "team/sample".into(),
             number: 42,
         };
-        let data = json!({"body":"PRIVATE draft 資料","action":"COMMENT","comments":[],"inline_body":"unfinished","review_unknown":true,"merge_unknown":false});
+        let comment = ForgeInlineDraft { path: "資料/新 é 🚀.rs".into(), start: 21, line: 21,
+            side: ForgeDiffSide::Right, head: "a".repeat(40), base: "b".repeat(40), body: "PRIVATE inline".into(),
+            diff_revision: Some(format!("{}:{}:{}", "c".repeat(40), "a".repeat(40), "b".repeat(40))) };
+        let data = json!({"body":"PRIVATE draft 資料","action":"COMMENT","comments":[comment_json(&comment)],"inline_body":"unfinished","review_unknown":true,"merge_unknown":false});
         let record = Record { scope, data };
         let saved = save(&dir, vec![record.clone()], None).unwrap();
         assert!(
@@ -833,6 +854,19 @@ mod tests {
                 .any(|w| w == b"PRIVATE")
         );
         assert_eq!(load(&dir).unwrap().records[0].data, record.data);
+        assert_eq!(parse_comment(&load(&dir).unwrap().records[0].data["comments"][0]).unwrap(), comment);
+        let mut invalid = comment_json(&comment);
+        invalid["diff_revision"] = json!("invalid");
+        assert!(parse_comment(&invalid).is_err());
+        invalid.as_object_mut().unwrap().remove("diff_revision");
+        assert_eq!(parse_comment(&invalid).unwrap().diff_revision, None);
+        for revision in ["bitbucket-server:7".to_owned(),format!("azure:3:{}:{}:{}","c".repeat(40),"a".repeat(40),"b".repeat(40))] {
+            invalid["diff_revision"] = json!(revision);
+            assert_eq!(parse_comment(&invalid).unwrap().diff_revision.as_deref(),Some(revision.as_str()));
+        }
+        for revision in ["azure:0:a:b:c","azure:3:a:b:c","bitbucket-server:-1","bitbucket-server:999999999999","bitbucket-server:7:extra"] {
+            invalid["diff_revision"] = json!(revision); assert!(parse_comment(&invalid).is_err());
+        }
         fs::write(dir.join(FILE), b"external edit").unwrap();
         assert!(save(&dir, vec![], saved.snapshot).is_err());
         assert_eq!(fs::read(dir.join(FILE)).unwrap(), b"external edit");

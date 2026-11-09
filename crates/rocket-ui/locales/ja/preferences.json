@@ -150,5 +150,10 @@
   "Fetch remotes automatically": "リモートを自動でフェッチ",
   "Fetching…": "フェッチ中…",
   "Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.": "次の間隔で再試行します。自動フェッチは資格情報を求めません。サインインするには手動でフェッチしてください。",
-  "{c} min": "{c} 分"
+  "{c} min": "{c} 分",
+  "Hunspell dictionary · {language}": "Hunspell 辞書 · {language}",
+  "Remembered accounts are encrypted with a key in your desktop keyring.": "保存されたアカウントは、デスクトップのキーリング内の鍵で暗号化されます。",
+  "Uses the Hunspell dictionaries installed on this system.": "このシステムにインストールされた Hunspell 辞書を使用します。",
+  "Uses the macOS spell checker. Added words are shared with other apps.": "macOS のスペルチェッカーを使用します。追加した単語は他のアプリと共有されます。",
+  "macOS spell checker · {language}": "macOS スペルチェッカー · {language}"
 }

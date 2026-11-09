@@ -29,6 +29,18 @@ pub struct SavedWorkPreview {
     changed: usize,
 }
 impl SavedWorkPreview {
+    pub fn head(&self) -> &Head {
+        &self.head
+    }
+    /// An opaque review pin, not an executable preview. Callers recreate the
+    /// preview and compare this pin; apply still rechecks under write ownership.
+    pub fn review_digest(&self) -> Result<String> {
+        review_digest(&[
+            b"saved-work-v1", self.repository.as_os_str().as_encoded_bytes(),
+            format!("{:?}", self.action).as_bytes(), format!("{:?}", self.head).as_bytes(),
+            &self.snapshot, &self.config, self.target.as_str().as_bytes(), self.reference.as_bytes(),
+        ])
+    }
     pub fn action(&self) -> &SavedWorkAction {
         &self.action
     }
@@ -41,6 +53,15 @@ impl SavedWorkPreview {
     pub fn changed_files(&self) -> usize {
         self.changed
     }
+}
+/// Hash components separately to avoid copying a bounded-but-large file snapshot.
+/// Fixed-width SHA-256 components also make the field boundaries unambiguous.
+pub(crate) fn review_digest(parts: &[&[u8]]) -> Result<String> {
+    let mut digest = String::from("rocket-workflow-review-v1:");
+    for part in parts {
+        digest.push_str(&crate::sha256_bytes(part)?);
+    }
+    crate::sha256_bytes(digest.as_bytes())
 }
 #[derive(Debug)]
 pub struct SavedWorkReport {

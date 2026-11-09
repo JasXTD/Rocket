@@ -150,5 +150,10 @@
   "Fetch remotes automatically": "جلب المستودعات البعيدة تلقائيًا",
   "Fetching…": "جارٍ الجلب…",
   "Retried at the next interval. Automatic fetch never asks for credentials; fetch manually to sign in.": "ستُعاد المحاولة في الفترة التالية. لا يطلب الجلب التلقائي بيانات الاعتماد أبدًا؛ اجلب يدويًا لتسجيل الدخول.",
-  "{c} min": "{c} د"
+  "{c} min": "{c} د",
+  "Hunspell dictionary · {language}": "قاموس Hunspell · {language}",
+  "Remembered accounts are encrypted with a key in your desktop keyring.": "تُشفّر الحسابات المحفوظة بمفتاح في حلقة مفاتيح سطح المكتب.",
+  "Uses the Hunspell dictionaries installed on this system.": "يستخدم قواميس Hunspell المثبّتة على هذا النظام.",
+  "Uses the macOS spell checker. Added words are shared with other apps.": "يستخدم مدقق الإملاء في macOS. تُشارك الكلمات المضافة مع التطبيقات الأخرى.",
+  "macOS spell checker · {language}": "مدقق إملاء macOS · {language}"
 }

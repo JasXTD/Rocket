@@ -1,0 +1,17 @@
+{
+  "Claude Code was not found. Install it or choose its executable in Preferences.": "Claude Code не знайдено. Установіть його або виберіть виконуваний файл у налаштуваннях.",
+  "Codex was not found. Install the Codex CLI or app, or choose its executable in Preferences.": "Codex не знайдено. Установіть Codex CLI чи застосунок або виберіть виконуваний файл у налаштуваннях.",
+  "Conventional Commits": "Conventional Commits",
+  "Draft with": "Створювати через",
+  "Drafts are never committed for you.": "Чернетки ніколи не комітяться автоматично.",
+  "Each draft sends your staged changes to Anthropic through Claude Code. The first draft explains what is sent and asks first.": "Кожна чернетка надсилає ваші зміни в індексі до Anthropic через Claude Code. Перед першою чернеткою Rocket пояснить, що буде надіслано, і запитає дозволу.",
+  "Each draft sends your staged changes to OpenAI through Codex. The first draft explains what is sent and asks first.": "Кожна чернетка надсилає ваші зміни в індексі до OpenAI через Codex. Перед першою чернеткою Rocket пояснить, що буде надіслано, і запитає дозволу.",
+  "Enter a language name using letters, spaces and hyphens, up to 64 characters.": "Уведіть назву мови: літери, пробіли та дефіси, не більше ніж 64 символи.",
+  "Found automatically when empty": "Якщо порожньо — знайти автоматично",
+  "Found {path}": "Знайдено: {path}",
+  "Language": "Мова",
+  "Message style": "Стиль повідомлення",
+  "Off: nothing is sent anywhere.": "Вимкнено: нічого не надсилається.",
+  "Plain summary and body": "Звичайний заголовок і опис",
+  "Show a Draft button in the commit composer": "Показувати кнопку чернетки в редакторі коміту"
+}

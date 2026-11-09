@@ -8,8 +8,43 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
-## Unreleased — Language preferences and startup appearance
+## 0.92.2 — Language preferences and hosting reviews
 
+Adds selectable preview languages, saved appearance at startup, reviewed CLI
+workflows and inline reviews across the supported hosting adapters. See
+[release notes](docs/releases/0.92.2.md) for platform requirements and test limits.
+
+- Add single-line PR comments for Bitbucket Cloud, Bitbucket Server/Data Center,
+  Azure DevOps Services and Server in the existing UI, CLI and localhost MCP.
+  Validate complete diffs, renamed paths, server revisions and Azure iterations;
+  retain drafts on stale state or uncertain submissions. Fetch Azure previews
+  from bounded commit-pinned content without changing local files. Private
+  payloads stay out of diagnostics; live host acceptance remains unverified.
+- Add CLI hosting account checks, PR/issue lists, PR details, creation, reviews
+  and merges with explicit environment credentials, required write fingerprints
+  and structured confirmed/unknown outcomes. Existing log redaction, fixed-origin
+  HTTPS, cancellation and provider permissions remain active.
+- Add GitLab single-line discussions and Gitea batched single-line reviews in
+  the existing diff/review panel and CLI. Pin GitLab diff versions and renamed
+  paths; load Gitea's bounded raw diff without following response URLs. Preserve
+  drafts on stale revisions, rejection and uncertain cancellation. MCP exposes
+  inline capabilities; GitHub range comments remain supported.
+- Protect existing pending Gitea reviews with bounded preview/submit checks.
+  Treat an unconfirmed inline submission as potentially partially saved and
+  require explicit recovery instead of retrying or consuming a known draft.
+
+- Add reviewed `rocket-cli commit-push` and `branch switch-saved` commands with
+  preview fingerprints, structured partial outcomes and retained recovery data.
+  MCP activity records now expose composed-workflow phases, commit/stash IDs,
+  remote outcomes and cancellation without parsing human-readable messages.
+- GitLab MR/issue lists support server-side title/description, author and assignee
+  search. Keep filters and repository scope across pages; reject changed search
+  cursors and unsafe pagination. GitHub search behavior is unchanged.
+- Extend all ten preview languages to Git program/identity controls, Terminal
+  settings and AI draft settings, including Linux/macOS spelling and keyring text.
+  Preserve program names, paths, arguments, commit identities and AI output-language
+  settings. Require translations for every registered message, even in preview
+  catalogs; Preview remains while other screens still need localization.
 - Preferences → General always shows a Languages dropdown. All built-in translations can be
   selected without a launch flag; unfinished languages carry a Preview label in
   the list and the selected value. A translated note explains the English fallback.

@@ -215,7 +215,7 @@ pub(super) fn validate_hunks(lines: &[&[u8]], cancel: &CancellationToken) -> Res
     Ok(())
 }
 
-pub(super) fn header_path(bytes: &[u8], prefix: &[u8]) -> Result<Option<RepoPath>> {
+pub(crate) fn header_path(bytes: &[u8], prefix: &[u8]) -> Result<Option<RepoPath>> {
     let bytes = bytes.strip_suffix(b"\t").unwrap_or(bytes);
     if bytes == b"/dev/null" {
         return Ok(None);

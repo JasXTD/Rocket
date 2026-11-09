@@ -18,7 +18,8 @@ text to its translation:
 - **One file per part of Rocket**, named for the source it serves: `menus` (menus.rs),
   `chrome` (sidebar, toolbar, status bar, branch switcher), `views` (Changes, Commits,
   Branches, Remotes and the welcome screen), `diff` (the diff view), `preferences`
-  (Preferences, General, Appearance). Text more than one part shows goes in `common`.
+  (Preferences, General, Appearance), `git-settings`, `terminal` and `commit-draft`
+  (the AI draft settings). Text more than one part shows goes in `common`.
   A key appears in one file only. A new file is listed in `FILES` in i18n.rs.
 - **The key is the English exactly**, including its punctuation and any `…`. Reworded
   English in the code makes the old entry stale; the catalog test names it.
@@ -35,12 +36,24 @@ text to its translation:
   ```json
   "{n} files": { "one": "{n} файл", "few": "{n} файла", "many": "{n} файлов" }
   ```
-- **Missing is fine for a preview translation**: the English shows. All built-in
-  catalogs are selectable in Preferences → General → Languages; unfinished choices
-  carry a Preview label. A language becomes complete by joining `RELEASED` in
-  i18n.rs, after which the catalog test requires every string. The dropdown initially
+- **Every registered message needs a translation in every catalog**, including
+  preview languages. The catalog test rejects missing messages, empty values,
+  changed placeholders and missing plural forms. English remains the runtime
+  fallback for messages without a translation. All built-in catalogs are selectable
+  in Preferences → General → Languages; unfinished choices carry a Preview label.
+  Catalog completeness does not prove that every screen uses localization: advanced
+  dialogs, backend diagnostics and embedded guides still contain English. Keep
+  `RELEASED` limited to reviewed, fully localized languages. The dropdown initially
   shows the first supported system language (including previews), or English. An
   explicit choice overrides detection and survives restart.
+
+The screen-by-screen work now includes the Git program/identity controls, Terminal
+settings and AI draft settings, plus Linux/macOS spelling and keyring descriptions.
+Program names, paths, arguments, commit identities and AI output-language values are
+data, and are not translated. Lower-level diagnostic details can remain in English.
+Accounts, SSH keys, external tools, custom commands, Security, extensions and MCP
+settings still need the same full-screen pass; a translated navigation label alone
+does not mean that page is complete. Swiss German inherits the German catalog.
 
 Check with `cargo test -p rocket-ui --lib i18n::`. To list what is untranslated:
 `cargo test -p rocket-ui --lib i18n::tests::untranslated -- --ignored --nocapture`.

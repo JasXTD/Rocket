@@ -592,7 +592,7 @@ impl Rocket {
                         },
                         state: s.state,
                         work_item_state: s.work_state.clone(),
-                        search: if s.provider.is_github() { s.search.clone() } else { ForgeSearch::default() },
+                        search: if s.provider.supports_search() { s.search.clone() } else { ForgeSearch::default() },
                     };
                     let recent = s.provider.is_github().then(|| search::Recent::from_state(s));
                     let append = action == "more";

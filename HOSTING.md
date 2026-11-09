@@ -9,13 +9,26 @@ search, author and assignee usernames. Search stays within the selected reposito
 and state, with 50-result pages and GitHub's 1,000-result cap. Partial responses
 are explicit. Up to twelve recent searches persist as local settings and can be
 cleared. Cancellation closes the request while retaining previously shown results.
-These search controls support GitHub.com and GitHub Enterprise Server; other provider lists are unchanged.
+These search controls support GitHub.com and GitHub Enterprise Server.
+
+GitLab MR and issue lists also support server-side title/description, author and
+assignee search. Literal punctuation and Unicode are encoded as parameter values;
+usernames accept periods, underscores and hyphens. Search uses 50-result pages,
+bounded to 100 pages, with the original filters rebuilt for every request.
+Switching repository, session or filters invalidates an old continuation. Closed
+MR results include merged requests. GitLab does not supply a complete match count
+here; Load more is the continuation indicator. GitLab search fields remain in the
+current view; persisted recent searches are still GitHub-only. Other provider
+lists retain their existing filtering. API contracts: [GitLab merge requests](https://docs.gitlab.com/api/merge_requests/#list-project-merge-requests)
+and [project issues](https://docs.gitlab.com/api/issues/#list-all-project-issues).
+This addition is covered by local mock API and native MCP tests; it is not a
+claim of real-account or self-hosted GitLab acceptance.
 
 | Provider | Server | Repository field | Features |
 | --- | --- | --- | --- |
 | GitHub | https://github.com | owner/repository | PRs, issues, reviewed same-repository/cross-fork creation; PR details, inline reviews and reviewed merge/squash/rebase |
 | GitHub Enterprise Server | your HTTPS server origin, optional port | owner/repository | Token accounts; PRs, issues, search, reviewed creation, PR details/reviews and reviewed merge/squash/rebase |
-| GitLab | https://gitlab.com or your HTTPS GitLab server | namespace/project; nested namespaces allowed | MRs, issues, reviewed creation; details, comments, approval and merge/squash |
+| GitLab | https://gitlab.com or your HTTPS GitLab server | namespace/project; nested namespaces allowed | MRs, issues, server-side search, reviewed creation; details, comments, approval and merge/squash |
 | Bitbucket Cloud | https://bitbucket.org | workspace/repository | PR creation/details, comments, approval/change requests and merge/squash; no native issue adapter |
 | Bitbucket Server / Data Center | your HTTPS server, including context path | PROJECT/repository or ~user/repository | Token accounts, PR creation/details, comments, review votes and version-checked merge/squash; no Jira adapter |
 | Azure DevOps Services | https://dev.azure.com/organization | project/repository | PRs, work items, reviewed PR creation/details, comments, votes and completion |
@@ -36,7 +49,82 @@ GitLab supports comments and approval; its request-changes vote is unavailable i
 this adapter. Bitbucket Cloud/Server and Azure support comments and review votes.
 Their vote endpoints do not accept accompanying text: publish a separate comment
 if needed. Gitea supports comments, approvals and change requests with a message.
-Only GitHub.com/GHES currently publish inline comments and manage review threads.
+GitHub.com/GHES, GitLab, Gitea, Bitbucket Cloud/Server and Azure Services/Server
+publish inline comments. Thread reply/resolve/
+reopen controls remain GitHub.com/GHES-only.
+
+GitLab sends one single-line discussion at a time using its exact base/head/start
+diff refs and both old/new paths for a rename. Select **Comment**, leave the
+separate review message empty, then preview and submit. Gitea sends up to 32
+single-line comments in one review, optionally with a message/vote. Its file
+metadata API has no patches: Rocket reads the fixed same-server PR diff endpoint
+(256 KiB maximum), matches validated old/new headers and parses only complete
+hunks (16 KiB/2,000 rows per file). Missing/binary/oversized/truncated patches are
+not comment targets. Read collections remain bounded: GitLab shows up to 50
+discussions/200 inline notes; Gitea reads up to eight loaded reviews/200 comments
+and explicitly reports partial results. The UI, CLI and saved drafts revalidate
+locations; no patch is executed or response-provided URL followed.
+
+Before previewing and submitting a Gitea review, Rocket checks up to 200 reviews
+for this account's pending review. An existing draft or an incomplete scan blocks
+submission. Gitea saves inline comments before publishing the review, so even a
+rejected request can leave pending comments: Rocket reports an uncertain result,
+retains the local draft and requires inspection/recovery before retrying. A new
+pending review created concurrently after the final check remains a provider-side
+race; Rocket checks the returned comment count but cannot make Gitea's endpoint
+transactional. Finish or discard pending reviews on Gitea itself.
+
+Contracts: [GitLab diff discussions](https://docs.gitlab.com/api/discussions/#create-a-new-thread-in-the-merge-request-diff),
+[Gitea review creation](https://docs.gitea.com/enterprise/api/operations/repo-create-pull-review/),
+[Gitea diff reads](https://docs.gitea.com/enterprise/api/operations/repo-download-pull-diff-or-patch/).
+
+### Bitbucket and Azure inline comments
+
+Choose an available line in **Files**, write the comment, then choose **Comment**
+and preview it with the separate review message empty. These adapters publish
+one single-line comment per submission. Votes, additional comments and thread
+resolution are separate actions; Rocket does not chain partially successful writes.
+
+Bitbucket Cloud reads the commit-pinned repository diff directly, with `topic=true`,
+instead of following the PR diff redirect. Comments use `from` for the old side
+or `to` for the new side. Its comment endpoint has no expected-commit condition:
+Rocket checks both tips before and after the POST, but cannot eliminate a race
+inside that request. An observed race requires inspection of the remote comment.
+
+Bitbucket Server/Data Center uses the effective diff's hashes, old/new paths,
+line type and side. Root, file, hunk, segment or line truncation disables affected
+targets. The PR version and tips are checked before submission. Older responses
+without an anchor require a matching comment/anchor in the scoped activity feed;
+otherwise the result remains uncertain.
+
+Azure reads the latest complete iteration, its common/source commits and the
+change-tracking ID. Up to eight files receive a preview using commit-pinned Items
+requests (`resolveLfs=false`). Each side is bounded to 128 KiB and 1,000 lines;
+the in-memory line comparison uses at most about 2 MiB. Patches are bounded to
+16 KiB and complete hunks. Binary, larger or additional files remain metadata
+only. No content is written into the checkout. Thread positions carry the selected
+side, line, change-tracking ID and iteration comparison (common base to latest).
+Preview and submission recheck the iteration and file mapping. Server requests
+retain the selected 6.0/7.0/7.1 API version and collection scope.
+
+All four adapters preserve local drafts on cancellation, stale versions and
+uncertain writes. They verify the returned author, text and anchor, never retry
+a POST automatically and keep private bodies/paths out of diagnostic logs.
+Readback is a bounded preview of 50 comments/activities/threads and up to 200
+comments. Real credentials, policies and installed server versions still need
+live acceptance; local mock tests do not establish that compatibility.
+If a cross-fork commit is unavailable inside the configured repository, its
+preview cannot authorize an inline comment. Rocket does not follow a returned
+fork URL or send the account credential to another repository/host automatically.
+
+Contracts: [Bitbucket Cloud comments](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-pullrequests/),
+[Cloud commit diffs](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-commits/),
+[Bitbucket Server REST](https://docs.atlassian.com/bitbucket-server/rest/7.21.0/bitbucket-rest.html),
+[Azure iterations](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-iterations/list?view=azure-devops-rest-7.1),
+[Azure file content](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/items/get?view=azure-devops-rest-7.1),
+[Azure thread creation](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/create?view=azure-devops-rest-7.1).
+Loopback tests verify Rocket's implementation, not real-server permissions or
+end-to-end acceptance against every deployed version.
 
 For GitHub, choose a changed line in **Files** and optionally set a first/last
 line on the same diff side and hunk. In **Discussion**, **Load / refresh threads**
@@ -101,7 +189,7 @@ reviewed completion to this adapter. These features use the selected REST contra
 PAT scopes are **Code (Read)** for PR/branch reads, **Work Items (Read)** for work
 items and **Code (Read & write)** for PR creation. Server policies and account
 permissions still apply. Windows integrated authentication, browser SSO/Entra,
-work-item editing, inline reviews and cross-fork creation are outside
+work-item editing and cross-fork creation are outside
 this Server adapter. Git transport credentials remain separate.
 
 Changing the collection or API version disconnects the session and clears old
@@ -368,8 +456,9 @@ no atomic compare-and-create operation; changed or unexpected returned endpoints
 become an uncertain result to inspect, never an automatic retry. See
 [GitHub's create-PR API](https://docs.github.com/en/rest/pulls/pulls#create-a-pull-request).
 
-These new workflows are GitHub desktop features. Other providers keep their
-existing list/create adapters; CLI review commands are not included. Local
+Cross-fork creation remains GitHub/GHES-only. CLI account/list/details/create/
+review/merge commands now reuse the current provider adapters with reviewed write
+fingerprints; see [CLI hosting](CLI.md#hosting-commands-unreleased). Local
 synthetic API/native MCP checks do not establish real GitHub review/merge scopes,
 organization policy or cross-fork acceptance. Existing live Git transport and
 sign-in evidence is separate.

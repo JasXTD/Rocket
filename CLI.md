@@ -1,11 +1,85 @@
 # Rocket CLI
 
-`rocket-cli.exe` is Rocket's standalone Windows command-line client. It calls
+## Hosting commands (unreleased)
+
+`hosting account`, `hosting list`, `hosting pull NUMBER`, `hosting create`,
+`hosting review NUMBER` and `hosting merge NUMBER` reuse Rocket's hosting API
+adapters. They do not change the local checkout, Git credentials, SSH settings
+or saved Rocket accounts. A local repository is not required for normal API use.
+
+Every command needs `--provider` and `--token-env NAME`. Put the access token in
+that process environment variable using your preferred secret manager; do not
+put it in arguments, repository files or shell history. The variable name must
+use uppercase letters/digits/underscores and end in `_TOKEN`. Rocket removes it
+from its own environment before starting helpers; the calling shell is unchanged.
+Credentials are sent over stdin to the existing HTTPS helper, never its argv.
+Choose `--server HTTPS_URL` for enterprise/self-hosted instances, `--username`
+only when your provider's token type requires it, and `--api-version` for Azure
+DevOps Server. No automatic login fallback or token persistence is performed.
+
+Examples, assuming `REVIEW_TOKEN` is already securely set in the invoking shell:
+
+```powershell
+rocket-cli --json hosting account --provider gitlab --token-env REVIEW_TOKEN
+rocket-cli --json hosting list --provider gitlab --token-env REVIEW_TOKEN --repository group/project --kind pulls --state open --pages 2
+rocket-cli --json hosting pull 42 --provider gitlab --token-env REVIEW_TOKEN --repository group/project
+rocket-cli --json hosting review 42 --provider gitlab --token-env REVIEW_TOKEN --repository group/project --action comment --body "Reviewed the change" --preview
+```
+
+Writes require `--preview` first. Inspect `data.preview`, then repeat the same
+command with `--expect-review` set to `data.preview.review_sha256`. Changing the
+account, server, repository, revisions, text, comment locations or merge method
+invalidates that fingerprint. The backend rechecks immediately before the one
+write; a fingerprint is a stale-review guard, not proof that someone read it.
+
+- **Create:** `--source BRANCH --target BRANCH --title TITLE [--body BODY]`;
+  optional `--source-repository OWNER/REPO` is GitHub/GHES cross-fork only.
+- **Review:** `--action comment|approve|request-changes [--body BODY]` and optional
+  `--comments FILE`. Provider capabilities remain authoritative; GitLab approval
+  cannot carry a message, and GitLab has no request-changes vote in this adapter.
+- **Merge:** `--method merge|squash|rebase`. The preview explains provider-specific
+  head conditions and remaining target-race limitations. No branch deletion,
+  force/bypass, merge queue or automatic retry is requested.
+- **List:** `--kind pulls|issues`, `--state open|closed|all`, and `--pages 1..20`.
+  GitHub/GHES/GitLab accept `--search`, `--author`, `--assignee`; Azure issues
+  accept `--work-item-state`. `limited` and per-collection errors identify partial
+  results. A later-page failure keeps earlier rows but returns a failing exit.
+
+The comments file is a bounded JSON array (32 comments and 128 KiB maximum).
+Each item needs `path`, `start`, `line`, `side` (`LEFT`/`RIGHT`), `head`, `base`,
+`body`, and optional `diff_revision`. Copy the exact path and available line
+numbers from `hosting pull`'s `files`, plus its `inline_context`. GitLab requires
+that diff revision and one single-line comment, with an empty separate review
+message. Bitbucket Cloud/Server and Azure Services/Server likewise require one
+single-line comment and an empty separate message. Server PR versions and Azure
+iteration identities are included in `inline_context.diff_revision`; preserve
+that value unchanged. Azure paths retain their leading `/` as API paths.
+Gitea accepts up to 32 single-line comments in one review. GitHub/GHES
+also accept ranges within one complete hunk. Binary, oversized, missing or
+incomplete patches do not authorize comments. Editing or refreshing a draft does
+not submit it. The file is user-managed; Rocket reads it without modifying it.
+
+JSON writes report `remote_outcome`: `not_attempted` for preview/pin refusal,
+`confirmed` for verified success, `not_confirmed` for a definite failure, or
+`unknown` when an interrupted/unverifiable submission might have succeeded or
+saved partial pending comments (Gitea). Gitea submissions also refuse an existing
+pending review for the same account or an incomplete pending-review scan.
+Inspect the same PR before retrying an unknown write. There are no automatic
+retries. Token values and API response bodies are omitted from errors/logs;
+successful JSON intentionally contains the requested private repository content.
+
+For local acceptance only, `--fixture-api-port PORT` uses numeric loopback and
+requires both `.git/rocket-ui-fixture` in `--repo` and the public synthetic token
+`rocket-disposable-fixture`. Other token values are refused before any request.
+This override is not a way to configure production HTTP hosts.
+
+`rocket-cli` (`rocket-cli.exe` on Windows) is Rocket's standalone command-line client. It calls
 `rocket-git` directly; repository commands do not require the desktop app, MCP,
 Node.js or .NET. The explicit `review` launcher requires the desktop executable.
 The CLI prefers its bundled Git when included; otherwise installed Git 2.46+ is
-required. An explicit executable selection still takes priority. This release is
-tested on Windows 10 x64.
+required. An explicit executable selection still takes priority. The focused
+composed-workflow tests described below run on Windows; other platform runtime
+acceptance is separate.
 The original `inspect` example remains available for existing developer scripts.
 
 On Windows, HTTP(S) Git operations require Git for Windows 2.56.0.windows.4 or
@@ -25,11 +99,40 @@ $repo = Read-Host 'Full path to an existing Git repository'
 .\target\release\rocket-cli.exe --repo "$repo" --json status
 ```
 
-The current desktop/CLI bundle is `tools/releases/0.87.2/`.
-The 0.77/0.78 composed workflows and file dragging are desktop additions; no new
-CLI commands are included in those releases. Releases 0.85 through 0.87.2 add no
-CLI commands either. The commands in the next four sections are unreleased: they
-are in the source tree, not in that bundle.
+This document describes the current source tree. Use `rocket-cli --version` and
+`rocket-cli --help` to check an installed portable package's command set; building
+the source does not replace previously published ZIPs. Sections marked unreleased
+describe source additions, not a promise that an older package includes them.
+
+## Commit & Push and save/switch/restore (unreleased)
+
+Both commands require a preview followed by its `review_sha256`. Preview does not
+commit, stash, switch or push. Apply recreates the review and refuses changed
+staging, tracked files (for save/switch), checkout, configuration, message or
+destination before mutation. The backend still revalidates under repository write
+ownership; the digest is an opaque pin, not permission to bypass protection.
+
+```powershell
+$review = rocket-cli --repo "$repo" --json commit-push origin main -m "Describe changes" --preview | ConvertFrom-Json
+rocket-cli --repo "$repo" --json commit-push origin main -m "Describe changes" --expect-review $review.data.preview.review_sha256
+
+$review = rocket-cli --repo "$repo" --json branch switch-saved feature/work --preview | ConvertFrom-Json
+rocket-cli --repo "$repo" --json branch switch-saved feature/work --expect-review $review.data.preview.review_sha256
+```
+
+Commit & Push commits only the reviewed staging, then performs an ordinary guarded
+push to the named destination. Unstaged and untracked files stay local. `data.commit`,
+`reviewed_commit_confirmed`, `phase` and `push` distinguish a retained local commit
+from a confirmed, rejected or unknown remote update. After a partial failure, inspect
+the result and retry **Push separately**, rather than making another commit.
+
+Save/switch/restore saves tracked changes, switches to an existing local branch and
+reapplies staging and working changes. Untracked files stay in place and can block
+the switch. The stash is retained even after success. JSON reports `phase`, the
+recovery stash object and durable journal path. Conflicts or cancellation keep that
+recovery data; inspect status before applying or dropping the stash. Neither command
+automatically retries or rolls back writes. Cancellation retains exit code 130 and
+fresh local observations; local status never proves what happened on a remote.
 
 ## Conflicts, line staging, bisect, remote tags and stash selection (unreleased)
 
@@ -443,7 +546,8 @@ lossless text/hex paths, reason and guidance. The field is null for merge/FF,
 no-op or fast-forward cases. Schema 1 remains additive-compatible. Text output
 shows the prediction too. --preview still fetches but never integrates; without
 --preview a prediction is advisory and existing rebase recovery still applies.
-Interactive-plan prediction and standalone CLI rebase-start are not included.
+Interactive-plan prediction is not included. Standalone `rebase start` is described
+in the commit operations section above.
 Copy the directory where desired; no installer or PATH change is performed.
 Version 0.51.0 adds merge/rebase pull and recovery, verified with temporary local
 repositories. The live HTTPS/SSH acceptance below used 0.48.2; it does not claim
@@ -595,8 +699,8 @@ more commits available. No cross-process history cursor is exposed in schema 1.
 Normal diffs do not include untracked file contents; binary markers are preserved.
 
 The CLI covers the commands above. Rebase plans that run commands, signing setup,
-LFS pruning and forced unlocks, SSH key creation and unlocking, hosting, composed
-Commit & Push/save-switch-restore and other advanced desktop features are not
+LFS pruning and forced unlocks, SSH key creation and unlocking, hosting CI/thread
+management and other advanced desktop features are not
 exposed as CLI commands yet. No backend behavior is replaced.
 
 ## JSON contract (schema 1)
