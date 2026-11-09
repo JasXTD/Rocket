@@ -10,6 +10,10 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased — Apple Silicon macOS preparation
 
+- Expand native Mac repository menus and function/navigation key equivalents;
+  add guarded localhost MCP invocation of real Cocoa menu items. Add complete
+  app-bundle acceptance with bound Lua, updates, spelling and isolated zsh checks.
+  Windows/Linux retain their existing menus and shell behavior.
 - Add Mac in-app update checks, bounded verified update packages, signed-publisher
   and notarization checks, cancellable preparation, retained previous apps and
   rollback on installation/restart failure. Development builds refuse public

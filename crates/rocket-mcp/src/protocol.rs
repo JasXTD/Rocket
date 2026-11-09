@@ -152,6 +152,13 @@ pub fn tools() -> Value {
             false,
         ),
         (
+            "rocket_menu",
+            "Invoke a reviewed native macOS NSMenu item from state.native_menus. Requires the active marked fixture and expected_tab. Only navigation, reviewed dialog opening and terminal interrupt are permitted; direct Git writes, external launches and arbitrary native IDs are refused. A queued receipt is not operation success: inspect the resulting UI state.",
+            json!({"target":target,"expected_tab":tab}),
+            vec!["target", "expected_tab"],
+            false,
+        ),
+        (
             "rocket_drag",
             "Drag visible controls with real pointer input in the active marked fixture. Branch-to-branch and commit-to-commit drops open reviewed choices. A change-staged/unstaged file row dropped on change-drop-staged/unstaged directly stages or unstages the selected whole files using Rocket's guarded backend. Optional cancel sends Escape before releasing the pointer, without applying the drop. Use expected_tab from state.",
             json!({"source":target,"target":target,"expected_tab":tab,"cancel":{"type":"boolean"}}),
@@ -622,6 +629,13 @@ mod tests {
             json!({"probe":"typing","expected_tab":1,"text":"arbitrary"}),
         ] {
             assert!(validate_args("rocket_terminal_probe", &args).is_err());
+        }
+    }
+    #[test]
+    fn native_menu_schema_requires_scoped_named_actions() {
+        assert!(validate_args("rocket_menu",&json!({"target":"preferences","expected_tab":1})).is_ok());
+        for args in [json!({"target":"preferences"}),json!({"target":"preferences","expected_tab":0}),json!({"target":"preferences","expected_tab":1,"native_id":1})] {
+            assert!(validate_args("rocket_menu",&args).is_err());
         }
     }
     #[test]

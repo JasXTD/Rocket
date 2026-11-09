@@ -15,6 +15,16 @@ const SUGGESTIONS: usize = 8;
 /// Recently checked texts kept: the summary, the description and one spare.
 const KEPT: usize = 3;
 
+impl crate::app::Rocket {
+    /// Diagnostic counters only: never expose commit text, words or dictionary contents.
+    pub fn spelling_status(&self) -> serde_json::Value {
+        let s = &self.spelling;
+        serde_json::json!({"enabled":s.enabled,"ready":s.checker.is_some(),"waiting":s.waiting(),
+            "failed":s.problem.is_some(),"checked_texts":s.checks.len(),
+            "misspellings":s.checks.iter().map(|c|c.found.len()).sum::<usize>()})
+    }
+}
+
 struct Check {
     text: String,
     pending: Option<Pending<Vec<Misspelling>>>,

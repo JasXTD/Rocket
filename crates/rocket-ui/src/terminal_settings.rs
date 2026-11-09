@@ -305,6 +305,9 @@ pub struct State {
     pub editing: Settings,
     /// Off in an MCP window: only the user changes the shell.
     pub editable: bool,
+    /// Local acceptance runner selects only /bin/zsh with startup files disabled.
+    #[cfg(target_os = "macos")]
+    pub fixture_zsh: bool,
     located: Located,
     check: Form,
     /// Whether this frame's edit can be saved; the footer draws after the page.
@@ -316,6 +319,8 @@ impl Default for State {
             saved: Default::default(),
             editing: Default::default(),
             editable: true,
+            #[cfg(target_os = "macos")]
+            fixture_zsh: false,
             located: Default::default(),
             check: Default::default(),
             savable: false,
@@ -462,6 +467,8 @@ impl Rocket {
     /// What New Terminal names, before and after a session starts. An MCP window always
     /// runs Rocket's own shell, whatever is saved.
     pub(crate) fn terminal_name(&self) -> String {
+        #[cfg(target_os = "macos")]
+        if self.terminal_history_file.is_some() && self.terminal_shell.fixture_zsh { return "zsh (isolated)".into(); }
         if self.terminal_history_file.is_some() {
             ROCKET_SHELL.to_owned()
         } else {
@@ -471,6 +478,10 @@ impl Rocket {
     /// What New Terminal starts, or why it can't.
     pub(crate) fn terminal_launch(&self) -> Result<Shell, String> {
         if self.terminal_history_file.is_some() {
+            #[cfg(target_os = "macos")]
+            if self.terminal_shell.fixture_zsh {
+                return Ok(Shell::Custom { program: "/bin/zsh".into(), arguments: vec!["-dfi".into()] });
+            }
             return Ok(Shell::WindowsPowerShell);
         }
         launch(&self.terminal_shell.saved, &self.locate_shells())

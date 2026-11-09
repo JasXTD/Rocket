@@ -162,6 +162,8 @@ impl Ui {
         app.background_reviews = true;
         app.secret_protection_editable = false;
         app.terminal_shell.editable = false;
+        #[cfg(target_os = "macos")]
+        { app.terminal_shell.fixture_zsh = policy.isolated_zsh(); }
         app.dependencies.editable = false;
         app.submodule_fixture_root = Some(policy.root.clone());
         // Open and Browse list only fixture folders.
@@ -309,6 +311,7 @@ impl Ui {
         }
         let mut state = base;
         state["integrations"] = self.app.integrations.snapshot();
+        state["spelling"] = self.app.spelling_status();
         if self.policy.private_state_allowed() {
             state["integrations"]["playground"]["text"] = self.app.integrations.playground.private_snapshot();
         }
@@ -445,6 +448,10 @@ impl Ui {
         state["tabs"] = json!(tabs);
         state["active_tab"] = json!(self.app.tab().map(|tab| tab.id));
         state["controls"] = json!(controls);
+        #[cfg(target_os = "macos")]
+        if let Some(ctx) = self.shared.context.lock().unwrap().as_ref() {
+            state["native_menus"] = self.app.native_menu_state(ctx);
+        }
         let repository_visible =
             !self.app.activity_history.open
                 && self.app.page() != Some(rocket_ui::pages::Page::RepositoryManager);
@@ -748,6 +755,12 @@ impl Ui {
         let tab = self.app.tab().ok_or("Open a fixture first")?;
         if request.args["expected_tab"].as_u64() != Some(tab.id) {
             return Err("Active repository changed; read state again".into());
+        }
+        if request.name == "rocket_menu" {
+            if !native_menu_probe_allowed(request.args["target"].as_str().unwrap_or("")) {
+                return Err("Native menu probes allow only reviewed navigation and dialog opening".into());
+            }
+            return Ok(());
         }
         if self.app.blocking_dialog() {
             return Err("Dismiss or complete the active dialog first".into());
@@ -1886,6 +1899,21 @@ impl Ui {
                 ctx.request_repaint_of(viewport);
             }
             "rocket_state" => request.ticket.ok(self.state()),
+            "rocket_menu" => {
+                if self.input.is_some() { request.ticket.fail("Previous UI input is still pending"); return; }
+                if let Err(error) = self.guard(&request) { request.ticket.fail(&error); return; }
+                if request.ticket.inactive() { return; }
+                #[cfg(target_os = "macos")]
+                {
+                    request.ticket.timing.mark(Phase::Input);
+                    if self.app.invoke_native_menu(ctx, request.args["target"].as_str().unwrap()) {
+                        ctx.request_repaint();
+                        request.ticket.ok(json!({"native_action_queued":true}));
+                    } else { request.ticket.fail("Native menu item is disabled, absent or its queue is full"); }
+                }
+                #[cfg(not(target_os = "macos"))]
+                request.ticket.fail("Native menu invocation is available only on macOS");
+            }
             "rocket_cancel_input" => {
                 let cancelled =
                     self.cancel_input("Input validation cancelled; no input was delivered");
@@ -2949,6 +2977,25 @@ const PULL_CHECKS: [&str; 4] = [CHECKS[0], CHECKS[1], CHECKS[2], CHECKS[4]];
 
 /// What the status bar says when an input check drops a click. MCP clients get the full
 /// error text.
+/// Menu automation never forwards raw native IDs or direct mutation commands.
+fn native_menu_probe_allowed(target: &str) -> bool {
+    matches!(target, "preferences" | "file-open" | "help-about" | "help-updates" | "help-changelog"
+        | "shortcut-sidebar" | "shortcut-changes" | "shortcut-history" | "shortcut-terminal"
+        | "goto-summary" | "goto-map" | "goto-compare" | "goto-branches"
+        | "repository-settings" | "repository-merge" | "repository-rebase" | "repository-stash"
+        | "repository-stashes" | "repository-tags" | "repository-worktrees" | "repository-playground" | "terminal-interrupt")
+}
+
+#[cfg(test)]
+mod native_menu_policy_tests {
+    use super::native_menu_probe_allowed;
+    #[test]
+    fn native_menu_probes_reject_direct_writes_external_launches_and_raw_ids() {
+        for id in ["preferences","repository-merge","repository-playground","terminal-interrupt"] { assert!(native_menu_probe_allowed(id)); }
+        for id in ["1","9003","file-exit","help-guide","shortcut-fetch","shortcut-push","gitflow-finish","command-0","repository-delete-branches",""] { assert!(!native_menu_probe_allowed(id)); }
+    }
+}
+
 fn dropped_input_notice(error: &str) -> String {
     if error.contains("New user input") {
         "You used the window, so the MCP click was dropped. Nothing ran.".into()

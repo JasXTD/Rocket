@@ -19,6 +19,8 @@ pub fn allowed(text: &str) -> bool {
 }
 
 pub const KEYBOARD_NAMES: &[&str] = &[
+    #[cfg(target_os = "macos")]
+    "zsh-initialize",
     "status",
     "typing",
     "history-seed",
@@ -85,6 +87,8 @@ fn typed(name: &str) -> Option<Option<&'static str>> {
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn typed(name: &str) -> Option<Option<&'static str>> {
     Some(match name {
+        #[cfg(target_os = "macos")]
+        "zsh-initialize" => Some(r#"HISTSIZE=100; SAVEHIST=100; setopt inc_append_history; bindkey -e; PROMPT=$'%~\n> '; RPROMPT=''; printf 'ROCKET_ZSH_%s\n' "$ZSH_VERSION"; printf 'ROCKET_HISTORY_PATH_%s\n' "$HISTFILE""#),
         "status" => Some(
             r#"printf 'ROCKET_READLINE_%s\n' "$(set -o | grep -c '^emacs *on')"; printf 'ROCKET_HISTORY_PATH_%s\n' "$HISTFILE""#,
         ),
@@ -145,6 +149,8 @@ pub fn keyboard(name: &str) -> Option<Vec<eframe::egui::Event>> {
         events.push(Event::Text(text.into()));
     }
     match name {
+        #[cfg(target_os = "macos")]
+        "zsh-initialize" => key(&mut events, Key::Enter, Modifiers::NONE),
         "resize-draft" => {
             key(&mut events, Key::ArrowLeft, Modifiers::NONE);
         }

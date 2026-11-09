@@ -27,7 +27,7 @@ const samePath=(a,b)=>!!a&&path.toNamespacedPath(fs.realpathSync(a))===path.toNa
 async function until(fn,label='state',timeout=45000){const at=performance.now();for(;;){state=await client.tool('rocket_state');if(fn(state))return;assert(performance.now()-at<timeout,label+' timeout');await delay(45)}}
 async function settled(){await until(s=>!s.busy&&!s.input_pending&&!(s.tabs||[]).some(t=>t.loading),'settled')}
 async function stable(){let last='',n=0;await until(s=>{const now=JSON.stringify(s.controls);n=now===last?n+1:0;last=now;return !s.input_pending&&n>=2},'layout')}
-async function click(id){await stable();assert(control(id)?.enabled,'Missing/disabled '+id);await client.tool('rocket_click',{target:id,expected_tab:state.active_tab});await settled()}
+async function click(id){await stable();const native=mac&&state.native_menus?.find(m=>m.id===id);assert(native?.enabled||control(id)?.enabled,'Missing/disabled '+id);await client.tool(native?'rocket_menu':'rocket_click',{target:id,expected_tab:state.active_tab});await settled()}
 async function type(id,text){await stable();assert(control(id)?.enabled,'Missing input '+id);await client.tool('rocket_type',{target:id,text,expected_tab:state.active_tab});await settled()}
 async function probe(chord,extra={}){await client.tool('rocket_shortcut',{binding:chord,expected_tab:state.active_tab,...extra});await settled()}
 async function resize(width,height){
@@ -37,7 +37,7 @@ async function resize(width,height){
  await client.tool('rocket_resize',{width,height});await until(s=>s.viewport[0]===width&&s.viewport[1]===height&&!s.input_pending,'Requested viewport size');await stable()
 }
 async function capture(name){await stable();const out=await client.request('tools/call',{name:'rocket_capture',arguments:{}});assert(!out.isError);fs.writeFileSync(path.join(root,name+'.png'),Buffer.from(out.content.find(c=>c.type==='image').data,'base64'));fs.writeFileSync(path.join(root,name+'.json'),JSON.stringify(state,null,2))}
-async function preferences(){await click('menu-edit');await click('preferences');await click('pref-page-shortcuts');await type('pref-shortcuts-filter','Sidebar')}
+async function preferences(){if(!mac)await click('menu-edit');await click('preferences');await click('pref-page-shortcuts');await type('pref-shortcuts-filter','Sidebar')}
 async function record(chord){await click('pref-shortcut-sidebar-edit-0');await probe(chord,{recording_id:state.shortcuts.editor.serial})}
 async function done(){await click('dialog-submit');await until(s=>!s.dialog)}
 async function close(){await client.tool('rocket_close');await until(s=>['closed','not_started'].includes(s.window)||s.dialog?.kind==='quit');if(state.dialog?.kind==='quit'){await client.tool('rocket_click',{target:'dialog-submit',expected_tab:state.active_tab});await until(s=>s.window==='closed')}}
@@ -59,12 +59,12 @@ async function run(){try{
  await record(primary+'+C');assert(state.shortcuts.editor.error);await click('pref-shortcut-cancel');
  await record(primary+'+O');assert.match(state.shortcuts.editor.error,/Open repository/);await click('pref-shortcut-cancel');
  pass('Compact capture cancellation, stale input and reserved/duplicate refusal');
- if(mac){await record('Cmd+F8');assert.equal(state.shortcuts.editor,null);await done();await probe('Cmd+F8');assert.equal(state.preferences.sidebar,!initialSidebar);await probe('Cmd+F8');await preferences();}
+ if(mac){await record('Cmd+F8');assert.equal(state.shortcuts.editor,null);await done();await until(s=>s.native_menus?.find(m=>m.id==='shortcut-sidebar')?.key==='\uf70b','Native F8 equivalent');assert.equal(state.native_menus.find(m=>m.id==='shortcut-sidebar').modifiers,8);await click('shortcut-sidebar');await until(s=>s.preferences.sidebar!==initialSidebar);await click('shortcut-sidebar');await until(s=>s.preferences.sidebar===initialSidebar);await probe('Cmd+F8');assert.equal(state.preferences.sidebar,!initialSidebar);await probe('Cmd+F8');await preferences();}
  await record('Ctrl+F8');assert.equal(state.shortcuts.editor,null);await done();await probe('Ctrl+F8');assert.equal(state.preferences.sidebar,!initialSidebar);await probe('Ctrl+F8');
  await preferences();await click('pref-shortcut-sidebar-add');await probe(primary+'+WheelUp',{recording_id:state.shortcuts.editor.serial});await done();await probe(primary+'+WheelUp');assert.equal(state.preferences.sidebar,!initialSidebar);await probe(primary+'+WheelUp');
  pass('Explicit Control key and modified wheel bindings are saved and dispatched');
  await resize(1440,900);await click('view-changes');await type('commit-message','PRIVATE_DESKTOP_DRAFT 中文 日本語 한국어 e\u0301 🦀');await click(state.controls.find(c=>c.id.startsWith('change-staged-')).id);await until(s=>s.tabs.find(t=>t.id===s.active_tab).patch_files?.length===1,'Unicode diff loaded');assert.equal(state.tabs.find(t=>t.id===state.active_tab).patch_files[0].path.normalize('NFC'),path.basename(file).normalize('NFC'));await capture('02-unicode-changes');
- await click('menu-file');await click('file-open');await until(s=>control('open-filter')?.enabled);await type('open-filter','資料 one');await until(s=>control('open-row-0')?.enabled);await click('open-row-0');await until(s=>control('dialog-submit')?.enabled&&samePath(s.dialog.first,repo),'selected repository ready');await resize(780,660);await capture('03-compact-repository-browser');await click('dialog-cancel');assert.equal(state.dialog,null);assert.deepEqual(preserved(),before);
+ if(!mac)await click('menu-file');await click('file-open');await until(s=>control('open-filter')?.enabled);await type('open-filter','資料 one');await until(s=>control('open-row-0')?.enabled);await click('open-row-0');await until(s=>control('dialog-submit')?.enabled&&samePath(s.dialog.first,repo),'selected repository ready');await resize(780,660);await capture('03-compact-repository-browser');await click('dialog-cancel');assert.equal(state.dialog,null);assert.deepEqual(preserved(),before);
  pass('Unicode repository discovery, compact folder selection and cancellation preserve local changes');
  await resize(1440,900);await close();await open();assert.deepEqual(binding('sidebar').inputs,['Ctrl+F8',primary+'+WheelUp']);await click('view-changes');assert(state.tabs.find(t=>t.id===state.active_tab).draft_present);await probe('Ctrl+F8');assert.equal(state.preferences.sidebar,!initialSidebar);await probe('Ctrl+F8');
  pass('Physical Control and mouse bindings and Unicode draft survive reopen');

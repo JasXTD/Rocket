@@ -58,13 +58,40 @@ already in progress completes normally; it is never killed mid-call.
 The Mac system menu contains Rocket, File, Edit, View, Repository, Terminal,
 Window and Help. Common commands reuse Rocket's keyboard-command dispatch and
 recheck availability when selected. User keyboard bindings appear as native
-accelerators for letters, digits, punctuation, Tab, Return and Space. Other
-configured keys continue through Rocket's input handler; mouse-only bindings do
-not become fake keyboard shortcuts.
+accelerators for letters, digits, punctuation, function and navigation keys.
+Mouse-only bindings do not become fake keyboard shortcuts.
 Edit targets the current text field. Quit uses Rocket's normal shutdown handling.
-More Commands opens the Command Palette for the additional repository workflows.
+Repository submenus expose reviewed commit, merge/rebase, stash, patch and recovery
+workflows, with settings, tags, worktrees, submodules, LFS, hosting and Lua playground
+entries. More Commands retains the Command Palette for other actions.
 Rows update in place so a repository refresh does not replace an open menu. If
 native initialization fails, the existing in-window menu remains available.
+
+The development MCP host reports actual installed rows in `native_menus`.
+`rocket_menu` invokes Cocoa's enabled item and queues its normal action; it does
+not invent screen rectangles or bypass dialog/backend validation. The automation
+allowlist permits only reviewed navigation/dialog opening and terminal interruption,
+requires the current marked fixture, and rejects stale tabs and raw native IDs.
+
+## Complete package acceptance
+
+The manual Lua-helper workflow's `complete-package` scope builds the fixed guest,
+signs the isolated helper, binds its exact hash into freshly compiled app/MCP hosts,
+then packages all five native executables. After a ZIP round trip, the tests launch
+that extracted `Rocket.app/Contents/MacOS/rocket-mcp` through authenticated localhost
+MCP. The bundle is verified again after testing. Results and screenshots contain
+synthetic fixture data; profiles, access tokens and repository contents are excluded
+from artifacts. Both jobs retain their existing 5/15-minute caps.
+
+The combined acceptance covers native actions and compact reviews, updates through
+a credential-free loopback API, Cocoa spelling on commit text, the bound Lua consumer,
+and zsh typing/history/completion/resize/Control+C. The local test runner opts into
+`/bin/zsh -dfi` with a fixed marker; MCP cannot choose an executable. Personal startup
+files are disabled and history stays in the fixture. Normal shell settings and user
+history are unchanged. Production update signature requirements remain enforced.
+
+This combined run is pending until its results are recorded below; the prior native
+unit/adapter results do not establish full-package MCP acceptance.
 
 ## Validation
 

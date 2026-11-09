@@ -5,10 +5,10 @@ on:
   workflow_dispatch:
     inputs:
       checks:
-        description: Affected Lua checks
+        description: Affected Lua or complete packaged desktop checks
         type: choice
         default: integration
-        options: [integration, prototype]
+        options: [integration, prototype, complete-package]
 
 permissions:
   contents: read
@@ -84,8 +84,8 @@ jobs:
           set -euo pipefail
           export CARGO_HOME="$RUNNER_TEMP/prototype-deps/cargo-home"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/prototype-target"
-          if [ '${{ inputs.checks }}' = integration ]; then
-            bash tools/macos/test-lua-integration.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results" "$RUNNER_TEMP/root-cargo-home"
+          if [ '${{ inputs.checks }}' = integration ] || [ '${{ inputs.checks }}' = complete-package ]; then
+            bash tools/macos/test-lua-integration.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results" "$RUNNER_TEMP/root-cargo-home" '${{ inputs.checks }}'
           else
             bash tools/prototypes/macos-lua-wasm/run-host-checks.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results"
           fi
@@ -100,5 +100,9 @@ jobs:
             ${{ runner.temp }}/prototype-results/*.json
             ${{ runner.temp }}/prototype-results/compiled/module.json
             ${{ runner.temp }}/prototype-results/containment/containment.json
+            ${{ runner.temp }}/prototype-results/evidence/*.json
+            ${{ runner.temp }}/prototype-results/evidence/*.png
+            ${{ runner.temp }}/prototype-results/Rocket-macos-lua-development.zip
+            ${{ runner.temp }}/prototype-results/Rocket-macos-lua-development.zip.sha256
           retention-days: 1
           compression-level: 0

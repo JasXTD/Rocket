@@ -28,6 +28,12 @@ pub struct Policy {
     pub root: PathBuf,
 }
 impl Policy {
+    /// Local runner opt-in only; no MCP request can select an executable or startup file.
+    #[cfg(target_os = "macos")]
+    pub fn isolated_zsh(&self) -> bool {
+        read_regular(&self.root.join("rocket-terminal-shell"), 64)
+            .is_ok_and(|text| text == "zsh-isolated-v1\n")
+    }
     /// A local operator/test runner may opt in to inspecting synthetic contents.
     /// MCP has no API for granting this consent. No marker means metadata only.
     pub fn private_state_allowed(&self) -> bool {

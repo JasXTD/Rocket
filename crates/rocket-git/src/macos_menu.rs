@@ -8,6 +8,8 @@ use std::{
 pub struct Item {
     pub id: u32,
     pub group: u32,
+    /// Zero for a top-level row; otherwise an earlier row in the same group.
+    pub parent: u32,
     pub title: String,
     pub key: String,
     pub modifiers: u32,
@@ -18,6 +20,7 @@ pub struct Item {
 struct NativeItem {
     id: u32,
     group: u32,
+    parent: u32,
     title: *const c_char,
     key: *const c_char,
     modifiers: u32,
@@ -47,6 +50,15 @@ pub fn synchronize(items: &[Item], wake: impl Fn() + Send + Sync + 'static) -> b
     {
         return false;
     }
+    let mut seen = std::collections::BTreeMap::new();
+    for item in items {
+        if seen.contains_key(&item.id)
+            || (item.parent != 0 && seen.get(&item.parent) != Some(&item.group))
+        {
+            return false;
+        }
+        seen.insert(item.id, item.group);
+    }
     if let Ok(mut w) = WAKE.lock() {
         *w = Some(Arc::new(wake));
     }
@@ -70,6 +82,7 @@ pub fn synchronize(items: &[Item], wake: impl Fn() + Send + Sync + 'static) -> b
             .map(|(i, (title, key))| NativeItem {
                 id: i.id,
                 group: i.group,
+                parent: i.parent,
                 title: title.as_ptr(),
                 key: key.as_ptr(),
                 modifiers: i.modifiers,
@@ -94,4 +107,8 @@ pub fn next_action() -> Option<u32> {
 /// Uses the actual NSMenu item's enabled state; never runs application code itself.
 pub fn invoke(id: u32) -> bool {
     unsafe { rocket_menu_invoke(id) }
+}
+/// The last successfully installed menu, not a second set of synthetic controls.
+pub fn snapshot() -> Vec<Item> {
+    CURRENT.with(|current| current.borrow().clone())
 }

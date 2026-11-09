@@ -443,3 +443,21 @@ See `maintenance/release-archive-cleanup-20261104/REPORT.md` for the local inven
 Do not rerun historical one-time migration, archive or deletion scripts.
 `node tools/maintenance/check-tooling.cjs target/release/rocket-mcp.exe` is the
 small offline localhost/relay smoke check for this layout after a current build.
+# Complete macOS package acceptance
+
+Use the manual `macos-wasm-prototype.yml` workflow with `checks: complete-package`
+after reserving its full 5 + 15 minute job caps plus cleanup within the agreed
+compute budget. It builds and binds Lua before compiling the app, then tests the
+round-tripped complete bundle via localhost MCP. See
+[Mac desktop integration](../docs/MacOS-desktop-integrations.md).
+
+On Mac, `rocket_state.native_menus` describes installed native items without fake
+rectangles. `rocket_menu {target, expected_tab}` invokes an enabled Cocoa item from
+the limited navigation/review allowlist; a receipt means queued, not completed.
+Inspect the resulting state. Numeric IDs, direct Git mutation and external launches
+are not accepted. Non-Mac hosts refuse this tool and retain existing pointer input.
+
+The local Mac runner alone may write `rocket-terminal-shell` containing exactly
+`zsh-isolated-v1\n` under its fixture root. It selects fixed `/bin/zsh -dfi` with
+private history; it never enables arbitrary shell selection through MCP. The fixed
+`zsh-initialize` terminal probe configures only that disposable session.

@@ -225,11 +225,24 @@ fn launch(
                 environment,
             })
         }
-        Shell::Custom { program, arguments } => Ok(Launch {
-            program: program.clone(),
-            arguments: arguments.clone(),
-            environment,
-        }),
+        Shell::Custom { program, arguments } => {
+            // This exact launch is the locally selected Mac acceptance shell. Normal
+            // custom/login shells keep their own profiles, prompt and history.
+            #[cfg(target_os = "macos")]
+            if program == Path::new("/bin/zsh") && arguments == &["-dfi"]
+                && let Some(path) = history {
+                if !path.is_absolute() || path.to_str().is_none_or(|p| p.contains(['\0','\r','\n'])) {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput,"Isolated zsh requires an absolute history path"));
+                }
+                environment.extend([
+                    ("HISTFILE",Some(path.as_os_str().to_owned())),
+                    ("ZDOTDIR",Some(path.parent().ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput,"History needs a parent folder"))?.as_os_str().to_owned())),
+                    ("PS1",Some("%~\n> ".into())), ("RPROMPT",Some("".into())),
+                    ("HISTSIZE",Some("100".into())), ("SAVEHIST",Some("100".into())),
+                ]);
+            }
+            Ok(Launch { program: program.clone(), arguments: arguments.clone(), environment })
+        },
         Shell::PowerShell(_) | Shell::GitBash(_) | Shell::CommandPrompt => Err(io::Error::new(
             io::ErrorKind::Unsupported,
             "This shell is only on Windows. Choose another in Preferences → Terminal.",
@@ -501,6 +514,24 @@ mod tests {
             let chosen = |variable: &str| (variable == name).then(|| OsString::from("C"));
             assert_eq!(utf8_locale(chosen), None, "{name}");
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn isolated_zsh_preserves_normal_shell_configuration() {
+        let shell = Shell::Custom { program: "/bin/zsh".into(), arguments: vec!["-dfi".into()] };
+        let history = Path::new("/tmp/rocket-fixture/history");
+        let isolated = launch(Path::new("/tmp/rocket-fixture"),Some(history),None,&shell).unwrap();
+        assert_eq!(isolated.program,Path::new("/bin/zsh"));
+        assert_eq!(isolated.arguments,["-dfi"]);
+        assert!(isolated.environment.contains(&("HISTFILE",Some(history.into()))));
+        assert!(isolated.environment.contains(&("ZDOTDIR",Some("/tmp/rocket-fixture".into()))));
+        assert!(launch(Path::new("/tmp"),Some(Path::new("relative")),None,&shell).is_err());
+        let normal = launch(Path::new("/tmp"),None,None,&shell).unwrap();
+        assert!(!normal.environment.iter().any(|(key,_)|matches!(*key,"HISTFILE"|"ZDOTDIR"|"PS1"|"SAVEHIST")));
+        let normal = Shell::Custom { program: "/bin/zsh".into(), arguments: vec![] };
+        let normal = launch(Path::new("/tmp"),Some(history),None,&normal).unwrap();
+        assert!(!normal.environment.iter().any(|(key,_)|*key=="HISTFILE"));
     }
 
     #[test]
