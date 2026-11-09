@@ -1,7 +1,7 @@
 # macOS updates, spelling and menus
 
 Implementation is for Apple Silicon/macOS 15+. Native validation results are
-recorded below after the focused batch. Developer ID/notarization acceptance
+recorded below. Developer ID/notarization acceptance
 still requires the owner's future signing identity and a real release package.
 
 ## In-app updates and recovery
@@ -58,7 +58,9 @@ already in progress completes normally; it is never killed mid-call.
 The Mac system menu contains Rocket, File, Edit, View, Repository, Terminal,
 Window and Help. Common commands reuse Rocket's keyboard-command dispatch and
 recheck availability when selected. User keyboard bindings appear as native
-accelerators; mouse-only bindings do not become fake keyboard shortcuts.
+accelerators for letters, digits, punctuation, Tab, Return and Space. Other
+configured keys continue through Rocket's input handler; mouse-only bindings do
+not become fake keyboard shortcuts.
 Edit targets the current text field. Quit uses Rocket's normal shutdown handling.
 More Commands opens the Command Palette for the additional repository workflows.
 Rows update in place so a repository refresh does not replace an open menu. If
@@ -66,8 +68,35 @@ native initialization fails, the existing in-window menu remains available.
 
 ## Validation
 
-Pending the combined focused Windows/Linux/native Mac batch. No Developer ID,
-notarization, physical keyboard/IME or bare-metal acceptance is claimed here.
+The [combined native job](https://github.com/JasXTD/Rocket/actions/runs/42579693442)
+passed on implementation commit `bccf851` on 2026-11-09:
+
+- Six actual ad-hoc signed app transactions: install/restart, cancel while the
+  parent stays open, missing approval, changed prepared files, changed installed
+  files and launch failure with rollback. Inventories and restarted executable
+  versions were checked independently. The test-only signing policy is absent
+  from production builds; production rejects ad-hoc hosts.
+- Four loopback HTTP scenarios: download/extraction, checksum rejection, server
+  rejection and cancellation. The cancellation case stopped in about 21 ms.
+- Real Cocoa spelling: Unicode ranges, suggestions, session Ignore, discarded
+  checks, shutdown/restart and unavailable language. No persistent dictionary
+  changes were made.
+- Real Cocoa menus: eight groups, Unicode, modifiers, checked/disabled rows,
+  single action dispatch and in-place state refresh; six shortcut/input tests.
+- Eleven update/backend tests, seven spelling/queue tests, two UI installer
+  entries (one is the child harness invoked by the six transaction scenarios),
+  and the exact package-inventory test.
+
+Windows passed 29 affected tests plus eight real installer transactions. Linux
+passed 38 affected tests and built the app with its existing WSL cache; the
+separate Node installer driver could not start because Node is absent in WSL.
+One existing Linux package-archive test requires a supplied release archive and
+was not run. No extra software or dependencies were installed on the workstation.
+
+The job took 78 seconds. The conservative cumulative task compute estimate was
+$4.402 against the user's $8 included-allowance cap, not a GitHub invoice.
+No Developer ID/notarized distribution acceptance, visual/physical keyboard/IME
+or bare-metal acceptance is claimed. No release package was published by this run.
 
 Sources: [Apple NSSpellChecker](https://developer.apple.com/documentation/appkit/nsspellchecker),
 [Apple signing requirements](https://developer.apple.com/documentation/technotes/tn3127-inside-code-signing-requirements),
