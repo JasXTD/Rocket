@@ -10,7 +10,7 @@ use std::{
     fmt::{Display, Write},
     sync::{
         Mutex, OnceLock,
-        atomic::{AtomicBool, AtomicU8, Ordering::Relaxed},
+        atomic::{AtomicU8, Ordering::Relaxed},
     },
 };
 
@@ -127,6 +127,11 @@ impl Language {
         }
     }
 
+    /// Unfinished catalogs stay explicitly marked even after the user selects one.
+    pub fn is_preview(self) -> bool {
+        !RELEASED.contains(&self)
+    }
+
     /// The language a system language name stands for, written the Windows way (zh-CN,
     /// de-CH, ar-SA) or the Linux way (zh_CN.UTF-8). Traditional Chinese, Italian and the
     /// rest have none.
@@ -235,27 +240,25 @@ impl Language {
     }
 }
 
-/// Languages whose text is complete, offered without `ROCKET_LANG`. A language joins
-/// once every string has its translation; the catalog test then holds it there.
+/// Complete translations. Other offered catalogs carry a Preview label and use
+/// English for missing strings; the catalog test enforces completeness here.
 const RELEASED: &[Language] = &[Language::English];
 
 static CURRENT: AtomicU8 = AtomicU8::new(0);
 static SYSTEM: AtomicU8 = AtomicU8::new(0);
-static PREVIEW: AtomicBool = AtomicBool::new(false);
 /// The system's first Han language (0 Chinese, 1 Japanese, 2 Korean), for the font order
 /// of an interface that writes no Han characters.
 static SYSTEM_HAN: AtomicU8 = AtomicU8::new(0);
 
 /// Picks the interface language once, before the first window: the first of the
-/// system's display languages that Rocket offers, else English. `ROCKET_LANG` (en, de,
-/// de-CH, fr, sv, ru, uk, ar, zh-Hans, ja, ko or pseudo) stands in for the system's
-/// language and lets Preferences offer the languages that are not complete yet.
+/// system's supported display languages, else English. `ROCKET_LANG` (en, de, de-CH,
+/// fr, sv, ru, uk, ar, zh-Hans, ja, ko or pseudo) overrides that default for testing;
+/// users can choose any built-in catalog in Preferences without an environment flag.
 /// `region` is the Region format's locale; it only decides the Han font order of an
 /// interface that writes no Han characters.
 pub fn start(display: &[String], region: Option<&str>) {
     let forced = std::env::var("ROCKET_LANG").ok().and_then(|tag| Language::from_tag(tag.trim()));
-    PREVIEW.store(forced.is_some(), Relaxed);
-    let system = forced.unwrap_or_else(|| pick(display.iter().map(String::as_str), RELEASED));
+    let system = forced.unwrap_or_else(|| pick(display.iter().map(String::as_str), offered()));
     SYSTEM.store(system.code(), Relaxed);
     CURRENT.store(system.code(), Relaxed);
     let han = display.iter().map(String::as_str).chain(region).find_map(han_of).unwrap_or(Han::Chinese);
@@ -277,12 +280,13 @@ fn han_of(name: &str) -> Option<Han> {
     }
 }
 
-/// Languages Preferences offers: the released ones, or all of them under `ROCKET_LANG`.
+/// All selectable catalogs, including explicitly labelled previews. Pseudo stays
+/// developer-only and cannot be selected or persisted through Preferences.
 pub fn offered() -> &'static [Language] {
-    if PREVIEW.load(Relaxed) { &Language::ALL } else { RELEASED }
+    &Language::ALL
 }
 
-/// The language "Match Windows" shows.
+/// The detected default before the user chooses a language.
 pub fn system() -> Language {
     Language::from_code(SYSTEM.load(Relaxed))
 }
@@ -597,6 +601,20 @@ mod tests {
     }
 
     #[test]
+    fn preview_choices_are_available_and_saved_choices_resolve_without_an_override() {
+        assert_eq!(offered(), &Language::ALL);
+        assert!(!offered().contains(&Language::Pseudo));
+        assert!(!Language::English.is_preview());
+        for language in Language::ALL {
+            assert_eq!(resolve_in(Some(language), offered(), Language::English), language);
+            assert_eq!(language.is_preview(), !RELEASED.contains(&language));
+        }
+        assert!(Language::ChineseSimplified.is_preview());
+        assert_eq!(pick(["zh-CN"].into_iter(), offered()), Language::ChineseSimplified, "automatic selection includes supported previews");
+        assert_eq!(resolve_in(None, offered(), Language::English), Language::English);
+    }
+
+    #[test]
     fn plural_categories_follow_cldr() {
         use Language::*;
         use Plural::*;
@@ -658,11 +676,14 @@ mod tests {
     fn languages_without_text_fall_back_to_english_and_pseudo_stretches() {
         // Built at run time, so the catalog test does not count it as interface text.
         let unknown: &'static str = Box::leak(String::from("Text no catalog has").into_boxed_str());
-        scoped(Language::Japanese, || {
-            assert_eq!(current(), Language::Japanese);
-            assert_eq!(tr(unknown), unknown);
-            assert_eq!(plural(1, unknown, "Other text no catalog has"), unknown, "English's own form while untranslated");
-        });
+        for language in Language::ALL {
+            scoped(language, || {
+                assert_eq!(current(), language);
+                assert_eq!(tr(unknown), unknown, "{language:?}: an untranslated label stays English");
+                assert_eq!(plural(1, unknown, "Other text no catalog has"), unknown, "English's singular form while untranslated");
+                assert_eq!(plural(2, unknown, "Other text no catalog has"), "Other text no catalog has", "English's plural form while untranslated");
+            });
+        }
         assert_eq!(current(), Language::English, "the scope restores this thread's language");
         scoped(Language::Pseudo, || {
             let stretched = tr(unknown);

@@ -22,6 +22,18 @@ Keep the complete app folder when moving a bundled build. **Verify files** check
 its Git runtime with progress and Stop; a failed or stopped check keeps the saved
 choice. It does not install system Git or change PATH, credentials or SSH settings.
 
+## Interface language
+
+In builds with Language preferences, open **Edit → Preferences → General → Languages**.
+Choose a language by its own name. Changes apply immediately and are saved for the
+next launch. **Preview** means the translation is incomplete; untranslated text
+stays English. The dropdown initially shows the detected Windows/system language
+when supported, otherwise English. Select any listed language to override it.
+Repository files and commit messages
+are never translated. The published 0.92.1 package still hides this selector unless
+started with the developer `ROCKET_LANG` override; the visible selector is an
+unreleased change.
+
 ## Open, clone or create?
 
 | What you already have | Choose | What Rocket does |

@@ -1,4 +1,5 @@
-//! Bounded, versioned local state. All I/O is performed by the controller's workers.
+//! Bounded, versioned local state. A bounded settings-only read supplies first-frame
+//! appearance. Draft loading and all writes stay on the controller's workers.
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File, OpenOptions},
@@ -215,6 +216,13 @@ fn invalid() -> io::Error {
     )
 }
 impl Store {
+    /// Read only the bounded settings file for the first visible frame. Do not open
+    /// the possibly large draft archive, acquire ownership or authorize writes:
+    /// `open` still validates the full state under its exclusive lock on the worker.
+    pub(crate) fn startup_preferences(directory: &Path) -> io::Result<Preferences> {
+        read_settings(directory).map(|(_, state)| state.preferences)
+    }
+
     pub fn open(directory: &Path) -> io::Result<(Self, SavedState)> {
         #[cfg(unix)]
         rocket_git::local_storage::create_protected(directory)?;
@@ -242,29 +250,7 @@ impl Store {
             }
             Err(fs::TryLockError::Error(error)) => return Err(error),
         }
-        let mut archive = None;
-        let mut state = match File::open(directory.join("state.bin")) {
-            Ok(file) => {
-                let mut bytes = Vec::new();
-                file.take(MAX_BYTES + 1).read_to_end(&mut bytes)?;
-                if bytes.len() as u64 > MAX_BYTES {
-                    return Err(invalid());
-                }
-                if let Some(inner) = bytes.strip_prefix(DRAFT_STORE_MAGIC) {
-                    let mut r = Reader(inner);
-                    let name = std::str::from_utf8(r.bytes()?).map_err(|_| invalid())?;
-                    if !drafts::archive_name(name) { return Err(invalid()); }
-                    archive = Some(name.to_owned());
-                    let settings = decode(r.0)?;
-                    if !settings.drafts.is_empty() { return Err(invalid()); }
-                    settings
-                } else {
-                    decode(&bytes)?
-                }
-            }
-            Err(e) if e.kind() == io::ErrorKind::NotFound => SavedState::default(),
-            Err(e) => return Err(e),
-        };
+        let (archive, mut state) = read_settings(directory)?;
         if let Some(name) = &archive {
             state.drafts = drafts::read(&directory.join(name))?;
         }
@@ -312,6 +298,34 @@ impl Store {
         }
         result
     }
+}
+
+/// Shared parser for the initial presentation read and the full, owned state load.
+fn read_settings(directory: &Path) -> io::Result<(Option<String>, SavedState)> {
+    let mut archive = None;
+    let state = match File::open(directory.join("state.bin")) {
+        Ok(file) => {
+            let mut bytes = Vec::new();
+            file.take(MAX_BYTES + 1).read_to_end(&mut bytes)?;
+            if bytes.len() as u64 > MAX_BYTES {
+                return Err(invalid());
+            }
+            if let Some(inner) = bytes.strip_prefix(DRAFT_STORE_MAGIC) {
+                let mut r = Reader(inner);
+                let name = std::str::from_utf8(r.bytes()?).map_err(|_| invalid())?;
+                if !drafts::archive_name(name) { return Err(invalid()); }
+                archive = Some(name.to_owned());
+                let settings = decode(r.0)?;
+                if !settings.drafts.is_empty() { return Err(invalid()); }
+                settings
+            } else {
+                decode(&bytes)?
+            }
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => SavedState::default(),
+        Err(e) => return Err(e),
+    };
+    Ok((archive, state))
 }
 
 fn put(bytes: &mut Vec<u8>, value: &[u8]) -> io::Result<()> {
@@ -1006,6 +1020,54 @@ mod scan_budget_tests {
 #[cfg(all(test, windows))]
 mod lifecycle_tests;
 
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+
+    #[test]
+    fn startup_preferences_skip_drafts_without_bypassing_full_load_or_ownership() {
+        let fixture = crate::test_common::Fixture::new();
+        let directory = fixture.root.join("startup-state");
+        assert_eq!(Store::startup_preferences(&directory).unwrap(), Preferences::default());
+        assert!(!directory.exists(), "a presentation read creates nothing");
+        let (store, mut state) = Store::open(&directory).unwrap();
+        state.preferences.theme.clay = crate::theme::ClayMode::Dark;
+        state.preferences.language = Some(crate::i18n::Language::Japanese);
+        state.drafts.insert(fixture.repository.clone(), "保留 this draft".into());
+        store.save(&state).unwrap();
+        let bytes = fs::read(directory.join("state.bin")).unwrap();
+        assert_eq!(Store::startup_preferences(&directory).unwrap(), state.preferences);
+        assert!(Store::open(&directory).is_err(), "early read must not take or release another owner's lock");
+        let archive = store.archive.lock().unwrap().clone().unwrap();
+        drop(store);
+        let draft = directory.join(archive);
+        let preserved = directory.join("preserved-draft.bin");
+        fs::rename(&draft, &preserved).unwrap();
+        assert_eq!(Store::startup_preferences(&directory).unwrap(), state.preferences, "no draft archive is opened for the first frame");
+        assert!(Store::open(&directory).is_err(), "full loading still refuses missing drafts");
+        assert_eq!(fs::read(directory.join("state.bin")).unwrap(), bytes);
+        fs::rename(&preserved, &draft).unwrap();
+        assert_eq!(Store::open(&directory).unwrap().1, state);
+    }
+
+    #[test]
+    fn startup_preferences_reject_invalid_and_oversized_settings_without_writes() {
+        let fixture = crate::test_common::Fixture::new();
+        let directory = fixture.root.join("bad-startup-state");
+        fs::create_dir(&directory).unwrap();
+        let path = directory.join("state.bin");
+        fs::write(&path, b"not Rocket settings").unwrap();
+        assert_eq!(Store::startup_preferences(&directory).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(fs::read(&path).unwrap(), b"not Rocket settings");
+        let file = OpenOptions::new().write(true).open(&path).unwrap();
+        file.set_len(MAX_BYTES + 1).unwrap();
+        drop(file);
+        assert_eq!(Store::startup_preferences(&directory).unwrap_err().kind(), io::ErrorKind::InvalidData);
+        assert_eq!(fs::metadata(&path).unwrap().len(), MAX_BYTES + 1);
+        assert!(!directory.join("state.lock").exists());
+    }
+}
+
 #[cfg(all(test, windows))]
 mod nested_workspace_tests;
 
@@ -1188,7 +1250,7 @@ mod tests {
             assert_eq!(loaded.preferences.language, None);
             assert_eq!(loaded.preferences.commit_height, height);
         }
-        for language in [Language::ChineseSimplified, Language::GermanSwiss, Language::Arabic] {
+        for language in Language::ALL {
             state.preferences.language = Some(language);
             assert_eq!(super::decode(&super::encode(&state).unwrap()).unwrap().preferences.language, Some(language));
         }

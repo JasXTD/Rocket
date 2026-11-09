@@ -79,6 +79,9 @@ pub struct Ui {
     frame: Option<u64>,
     next_capture: u64,
     viewport: [f32; 2],
+    /// Presentation actually used on the first native UI frame, retained for
+    /// startup regression checks even when opening waits for Git to settle.
+    first_presentation: Option<Value>,
 }
 impl Ui {
     fn pump_requests(&mut self, ctx:&Context) {
@@ -217,6 +220,7 @@ impl Ui {
             frame: None,
             next_capture: 0,
             viewport: [0.0, 0.0],
+            first_presentation: None,
         }
     }
     fn scope_ok(&self) -> bool {
@@ -484,6 +488,7 @@ impl Ui {
         state["shortcuts"] = self.app.keybindings.snapshot();
         state["preferences"]["secret_scan_mib"] = json!(self.app.secret_scan_mib);
         state["appearance"] = self.app.appearance_snapshot();
+        state["first_presentation"] = json!(self.first_presentation);
         state["language"] = json!({"shown":rocket_ui::i18n::current().tag(),"choice":self.app.language.map(|l|l.tag()),
             "system":rocket_ui::i18n::system().tag(),"offered":rocket_ui::i18n::offered().iter().map(|l|l.tag()).collect::<Vec<_>>()});
         state["dependencies"] = self.app.dependencies.summary(self.app.tab().map(|t| t.id));
@@ -2869,6 +2874,13 @@ impl App for Ui {
         let size = ctx.content_rect().size();
         self.viewport = [size.x, size.y];
         self.app.ui(ui, frame);
+        if self.first_presentation.is_none() {
+            self.first_presentation = Some(json!({
+                "appearance": self.app.appearance_snapshot(),
+                "language": rocket_ui::i18n::current().tag(),
+                "panel_fill": ui.visuals().panel_fill.to_array(),
+            }));
+        }
 
         if let Some(validation) = self
             .input

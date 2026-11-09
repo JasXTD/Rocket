@@ -1026,9 +1026,25 @@ impl Rocket {
         };
         app.start_backend();
         app.remove_stale_previews();
-        // Font discovery stays complete before the first frame, while Git and
-        // saved-state discovery can run alongside this cold-start disk work.
+        // Git discovery and the full draft load can take seconds. Only the bounded
+        // settings file is needed to paint the user's theme/language immediately.
+        // This read grants no write access: the worker still owns and validates
+        // the full state before state_store becomes available.
+        match Store::startup_preferences(&app.state_directory) {
+            Ok(preferences) => {
+                app.theme = preferences.theme.clone();
+                app.language = preferences.language;
+                ctx.set_zoom_factor(preferences.zoom);
+                app.saved.preferences = preferences;
+            }
+            Err(error) => app.state_error = Some(format!(
+                "Startup settings could not be read: {error}. Existing state is preserved."
+            )),
+        }
+        crate::i18n::set(crate::i18n::resolve(app.language));
+        // Font discovery uses the saved language before the first frame as well.
         style::install(ctx);
+        app.update_theme(ctx);
         app
     }
     /// Previews a crashed Rocket left behind: delete those no running Rocket holds.
@@ -2488,6 +2504,10 @@ impl Rocket {
                 Ok(startup) => {
                     match startup.state {
                         Ok((store, saved)) => {
+                            // Do not overwrite a user's early presentation changes
+                            // when the slower Git/full-state worker finishes.
+                            let theme = (self.theme != self.saved.preferences.theme).then(|| self.theme.clone());
+                            let language = (self.language != self.saved.preferences.language).then_some(self.language);
                             let p = &saved.preferences;
                             self.show_sidebar = p.sidebar;
                             self.show_details = p.details;
@@ -2501,8 +2521,8 @@ impl Rocket {
                             self.previous_auto_refresh = p.auto_refresh;
                             self.row_height = p.row_height;
                             self.commit_height = p.commit_height;
-                            self.language = p.language;
-                            self.theme = p.theme.clone();
+                            self.language = language.unwrap_or(p.language);
+                            self.theme = theme.unwrap_or_else(|| p.theme.clone());
                             self.sidebar_labels = p.sidebar_labels;
                             self.repository_list = p.repository_list;
                             self.spell_check = p.spell_check;
@@ -2522,6 +2542,7 @@ impl Rocket {
                             self.written = saved.clone();
                             self.saved = saved;
                             self.state_store = Some(store);
+                            self.state_error = None;
                         }
                         Err(error) => {
                             self.state_error = Some(format!(
@@ -3449,6 +3470,61 @@ mod tests {
             );
             thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn saved_appearance_is_ready_before_git_and_the_first_frame() {
+        common::isolated(
+            "ROCKET_FIRST_FRAME_APPEARANCE_CASE",
+            "app::tests::saved_appearance_is_ready_before_git_and_the_first_frame",
+            || {
+                let fixture = common::Fixture::new();
+                let directory = fixture.root.join("state");
+                let (store, mut saved) = Store::open(&directory).unwrap();
+                saved.preferences.theme.choice = crate::theme::Choice::Clay;
+                saved.preferences.theme.clay = crate::theme::ClayMode::Dark;
+                saved.preferences.language = Some(crate::i18n::Language::ChineseSimplified);
+                saved.preferences.zoom = 1.25;
+                saved.drafts.insert(fixture.repository.clone(), "Keep this draft 文".into());
+                store.save(&saved).unwrap();
+                drop(store);
+
+                let ctx = Context::default();
+                let mut app = Rocket::with_storage(&ctx, vec![], fixture.root.join("logs"), directory.clone());
+                assert!(app.backend.is_none(), "no Git result has been polled");
+                assert_eq!(app.theme, saved.preferences.theme, "saved theme must precede any frame");
+                assert_eq!(app.language, saved.preferences.language);
+                assert_eq!(crate::i18n::current(), crate::i18n::Language::ChineseSimplified);
+                assert_eq!(ctx.style_of(Theme::Dark).visuals.panel_fill, crate::style::Palette::CLAY_DARK.bg);
+                assert!(app.look.is_some(), "saved palette is already installed");
+                // egui applies a requested zoom when the first UI pass starts.
+                let _ = ctx.run_ui(RawInput::default(), |ui| {
+                    assert_eq!(ui.ctx().zoom_factor(), 1.25);
+                    assert_eq!(ui.visuals().panel_fill, crate::style::Palette::CLAY_DARK.bg);
+                });
+                // Input can arrive while Git is still loading. Finishing startup
+                // must not restore the old appearance over these explicit changes.
+                app.theme.choice = crate::theme::Choice::Ocean;
+                app.language = Some(crate::i18n::Language::French);
+                let deadline = Instant::now() + Duration::from_secs(40);
+                while app.backend.is_none() || app.busy() {
+                    app.poll(&ctx);
+                    assert!(app.startup_error.is_none(), "{:?}", app.startup_error);
+                    assert!(app.state_error.is_none(), "{:?}", app.state_error);
+                    assert!(Instant::now() < deadline);
+                    thread::sleep(Duration::from_millis(10));
+                }
+                assert_eq!(app.theme.choice, crate::theme::Choice::Ocean);
+                assert_eq!(app.language, Some(crate::i18n::Language::French));
+                assert_eq!(ctx.zoom_factor(), 1.25);
+                assert_eq!(app.saved.drafts[&fixture.repository].as_ref(), "Keep this draft 文");
+                drop(app);
+                let (_, restored) = Store::open(&directory).unwrap();
+                assert_eq!(restored.preferences.theme.choice, crate::theme::Choice::Ocean);
+                assert_eq!(restored.preferences.language, Some(crate::i18n::Language::French));
+                assert_eq!(restored.drafts[&fixture.repository].as_ref(), "Keep this draft 文");
+            },
+        );
     }
 
     #[test]

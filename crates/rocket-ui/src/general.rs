@@ -171,32 +171,44 @@ fn field(ui: &mut Ui, label: &str, content: impl FnOnce(&mut Ui)) {
     ui.add_space(4.0);
 }
 
-/// Language: Match Windows, or one of the languages offered, each by its own name so
-/// anyone finds theirs. Preferences shows it once a language besides English is offered.
-/// MCP: `pref-language` opens the list, `pref-language-<tag>` (lower case) or
-/// `pref-language-system` picks.
+fn language_label(language: Language) -> String {
+    match language {
+        language if language.is_preview() => format!("{} ({})", language.name(), tr("Preview")),
+        language => language.name().to_owned(),
+    }
+}
+
+/// Show the detected language until the user picks one. All options use their own
+/// names, with unfinished translations marked in the list and selected value.
+/// MCP: `pref-language` opens the list; `pref-language-<tag>` (lower case) picks.
 pub(crate) fn language_row(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, choice: &mut Option<Language>) {
-    let system = if cfg!(windows) { tr("Match Windows") } else { tr("Match system") };
-    let label = |option: Option<Language>| option.map_or(system, Language::name);
-    field(ui, tr("Language"), |ui| {
-        ui.spacing_mut().item_spacing.x = 14.0;
-        let button = ui.button(label(*choice));
-        widgets.insert("pref-language".into(), (&button).into());
-        Popup::menu(&button).show(|ui| {
-            let options = std::iter::once(None).chain(crate::i18n::offered().iter().copied().map(Some));
-            for option in options {
-                let row = ui.selectable_label(*choice == option, label(option));
-                let id = option.map_or_else(|| "system".to_owned(), |l| l.tag().to_ascii_lowercase());
-                widgets.insert(format!("pref-language-{id}"), (&row).into());
-                if row.clicked() {
-                    *choice = option;
-                    ui.close();
+    field(ui, tr("Languages"), |ui| {
+        let selected = crate::i18n::resolve(*choice);
+        let dialog_layer = ui.layer_id();
+        let combo = ComboBox::from_id_salt("pref-language")
+            .selected_text(language_label(selected))
+            .width(ui.available_width().min(300.0))
+            .height(360.0)
+            .show_ui(ui, |ui| {
+                // Preferences is a modal. Keep the popup above it for real pointer
+                // input as well as synthetic input, as the Shell selector does.
+                ui.ctx().set_sublayer(dialog_layer, ui.layer_id());
+                ui.spacing_mut().item_spacing.y = 0.0;
+                for &language in crate::i18n::offered() {
+                    let row = ui.selectable_label(selected == language, language_label(language));
+                    widgets.insert(format!("pref-language-{}", language.tag().to_ascii_lowercase()), (&row).into());
+                    if row.clicked() {
+                        // Even picking the detected language is an explicit override.
+                        *choice = Some(language);
+                        ui.close();
+                    }
                 }
-            }
-        });
-        if choice.is_none() {
-            ui.label(RichText::new(format!("→ {}", crate::i18n::system().name())).size(12.0).color(HINT()));
-        }
+            });
+        widgets.insert("pref-language".into(), (&combo.response).into());
+    });
+    Frame::new().inner_margin(Margin::symmetric(14, 6)).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.add(Label::new(RichText::new(tr("Preview translations are incomplete. Untranslated text uses English.")).size(12.0).color(HINT())).wrap());
     });
 }
 
@@ -810,6 +822,16 @@ mod flow_tests {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn language_labels_keep_native_names_and_preview_status() {
+        assert_eq!(language_label(Language::English), "English");
+        assert_eq!(language_label(Language::GermanSwiss), "Deutsch (Schweiz) (Preview)");
+        crate::i18n::scoped(Language::ChineseSimplified, || {
+            assert_eq!(language_label(Language::Japanese), "日本語 (预览)");
+            assert_eq!(language_label(Language::English), "English");
+        });
+    }
 
     #[test]
     fn spaces_become_the_chosen_character_as_a_name_is_typed() {

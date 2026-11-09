@@ -1141,10 +1141,8 @@ impl Rocket {
         let widgets = &mut self.frame_widgets;
         card_frame(ui, |ui| {
             card_header(ui, tr("Window"), |_| {});
-            if crate::i18n::offered().len() > 1 {
-                crate::general::language_row(ui, widgets, &mut self.language);
-                divider(ui);
-            }
+            crate::general::language_row(ui, widgets, &mut self.language);
+            divider(ui);
             bar_switch_row(ui, widgets, "pref-sidebar", &mut self.show_sidebar, tr("Show sidebar"), "", "Ctrl+B");
             divider(ui);
             bar_switch_row(
@@ -1301,6 +1299,52 @@ mod tests {
         };
         frame(ctx, app, vec![Event::PointerMoved(at), button(true)]);
         frame(ctx, app, vec![button(false)]);
+    }
+
+    #[test]
+    fn language_popup_accepts_separate_pointer_press_and_release() {
+        common::isolated(
+            "ROCKET_LANGUAGE_POINTER_CASE",
+            "preferences::tests::language_popup_accepts_separate_pointer_press_and_release",
+            || {
+                let fixture = common::Fixture::new();
+                let ctx = Context::default();
+                let mut app = Rocket::with_log_directory(&ctx, vec![], fixture.root.join("logs"));
+                crate::batch::flow_tests::wait(&ctx, &mut app);
+                app.show_preferences(Page::General);
+                frame(&ctx, &mut app, vec![]);
+                frame(&ctx, &mut app, vec![]);
+                click(&ctx, &mut app, "pref-language");
+                frame(&ctx, &mut app, vec![]);
+                assert!(!app.frame_widgets.contains_key("pref-language-system"));
+                let modal_layer = ctx.layer_id_at(app.frame_widgets["pref-language"].rect.center());
+                for language in crate::i18n::offered() {
+                    let control = &app.frame_widgets[&format!("pref-language-{}", language.tag().to_ascii_lowercase())];
+                    assert!(control.enabled);
+                    let top_at_option = ctx.layer_id_at(control.rect.center());
+                    assert!(top_at_option.is_some() && top_at_option != modal_layer, "{} must be above the Preferences modal", language.tag());
+                }
+                click(&ctx, &mut app, "pref-language-zh-hans");
+                assert_eq!(app.language, Some(crate::i18n::Language::ChineseSimplified));
+                assert_eq!(app.preferences_page(), Some(Page::General));
+                click(&ctx, &mut app, "pref-language");
+                frame(&ctx, &mut app, vec![]);
+                click(&ctx, &mut app, "pref-language-en");
+                assert_eq!(app.language, Some(crate::i18n::Language::English));
+                click(&ctx, &mut app, "pref-language");
+                frame(&ctx, &mut app, vec![Event::Key {
+                    key: Key::Escape, physical_key: None, pressed: true,
+                    repeat: false, modifiers: Modifiers::NONE,
+                }]);
+                frame(&ctx, &mut app, vec![Event::Key {
+                    key: Key::Escape, physical_key: None, pressed: false,
+                    repeat: false, modifiers: Modifiers::NONE,
+                }]);
+                assert_eq!(app.preferences_page(), Some(Page::General));
+                assert!(!app.frame_widgets.contains_key("pref-language-ja"));
+                assert_eq!(app.language, Some(crate::i18n::Language::English));
+            },
+        );
     }
 
     #[test]

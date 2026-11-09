@@ -8,6 +8,18 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Language preferences and startup appearance
+
+- Preferences → General always shows a Languages dropdown. All built-in translations can be
+  selected without a launch flag; unfinished languages carry a Preview label in
+  the list and the selected value. A translated note explains the English fallback.
+- The dropdown initially shows the detected Windows/system language when supported,
+  otherwise English, without a separate Match Windows entry. Explicit choices apply
+  immediately and persist across restarts. Unknown saved tags use the detected default.
+- Saved theme, Clay mode, language and zoom are applied before the first visible
+  frame instead of waiting for Git discovery. Draft loading remains asynchronous;
+  early presentation changes are preserved when startup finishes.
+
 ## 0.92.1 — Apple Silicon preview and desktop fixes
 
 Release packages cover Windows x64, Linux x64 and an Apple Silicon macOS 15+
@@ -271,9 +283,9 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   Ukrainian, Arabic, Simplified Chinese, Japanese and Korean. For now that covers the
   menus, sidebar, toolbar, status bar, Changes, Commits, Branches, Remotes, the diff view
   and Preferences → General and Appearance; the rest stays English until it is
-  translated. Until then the languages are a preview: start Rocket with
-  `ROCKET_LANG=<tag>` (de, de-CH, fr, sv, ru, uk, ar, zh-Hans, ja or ko), and Preferences
-  → General gains a Language list, each language by its own name, that switches at once.
+  translated. These languages are now selectable previews in Preferences → General
+  → Language, each by its own name, and switch at once. `ROCKET_LANG=<tag>` remains
+  available as a developer launch override; it is no longer needed for the selector.
 - Once released, Rocket follows the Windows display language. Swiss and Liechtenstein
   German show German written with ss for ß, Swiss French shows French, and Traditional
   Chinese, Italian and every other language show English. On Linux the locale variables

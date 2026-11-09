@@ -35,14 +35,18 @@ text to its translation:
   ```json
   "{n} files": { "one": "{n} файл", "few": "{n} файла", "many": "{n} файлов" }
   ```
-- **Missing is fine while a language is unreleased**: the English shows. A language is
-  released by adding it to `RELEASED` in i18n.rs, after which the catalog test requires
-  every string.
+- **Missing is fine for a preview translation**: the English shows. All built-in
+  catalogs are selectable in Preferences → General → Languages; unfinished choices
+  carry a Preview label. A language becomes complete by joining `RELEASED` in
+  i18n.rs, after which the catalog test requires every string. The dropdown initially
+  shows the first supported system language (including previews), or English. An
+  explicit choice overrides detection and survives restart.
 
 Check with `cargo test -p rocket-ui --lib i18n::`. To list what is untranslated:
 `cargo test -p rocket-ui --lib i18n::tests::untranslated -- --ignored --nocapture`.
-To see a language, start Rocket with `ROCKET_LANG=<tag>` (de, de-CH, fr, sv, ru, uk, ar,
-zh-Hans, ja or ko);
+Choose a language in Preferences for normal use. For development, start Rocket with
+`ROCKET_LANG=<tag>` (de, de-CH, fr, sv, ru, uk, ar, zh-Hans, ja or ko) to override the
+system default; an explicit saved preference still takes precedence.
 `ROCKET_LANG=pseudo` shows every wrapped string accented and stretched, so plain English
 on screen is text that skips `tr`.
 
