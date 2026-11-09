@@ -66,7 +66,7 @@ if [ "$mode" = complete-package ]; then
     node - "$out" <<'JS'
 const fs=require('node:fs'),path=require('node:path');const out=process.argv[2],root=path.join(out,'mcp-fixtures');
 if(fs.existsSync(root))for(const fixture of fs.readdirSync(root)){const dir=path.join(root,fixture);if(!fs.statSync(dir).isDirectory())continue;
- for(const name of fs.readdirSync(dir))if(name==='result.json'||name==='failure-state.json'||name.endsWith('.png'))fs.copyFileSync(path.join(dir,name),path.join(out,'evidence',fixture+'-'+name));}
+ for(const name of fs.readdirSync(dir))if(name==='result.json'||name==='failure-state.json'||name==='failure.json'||name.endsWith('.png'))fs.copyFileSync(path.join(dir,name),path.join(out,'evidence',fixture+'-'+name));}
 JS
   }
   trap collect_evidence EXIT
