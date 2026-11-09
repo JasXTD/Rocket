@@ -5,130 +5,70 @@
 <h1 align="center">Rocket</h1>
 
 <p align="center">
-  <strong>A native Windows Git client built in Rust.</strong><br>
-  An open-source alternative to Fork and GitKraken: review changes, manage branches and
-  work with remotes in one desktop app.
+  <strong>A native Git client built in Rust.</strong><br>
+  An open-source alternative to Fork and GitKraken for Windows, Linux and macOS.
 </p>
 
 <p align="center">
   <a href="#features">Features</a> ·
-  <a href="#extensions">Extensions</a> ·
-  <a href="#comparison">Comparison</a> ·
-  <a href="docs/wiki/Home.md">Wiki / start here</a> ·
+  <a href="#platforms">Platforms</a> ·
   <a href="#build-and-run">Build and run</a> ·
-  <a href="#getting-started">Getting started</a> ·
+  <a href="#comparison">Comparison</a> ·
+  <a href="docs/wiki/Home.md">Wiki</a> ·
   <a href="crates/rocket-ui/src/guide.md">User guide</a> ·
-  <a href="CLI.md">CLI</a> ·
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/media/theme-clay-light.webp">
-    <img src="docs/media/theme-clay-dark.webp" width="960" alt="The Commits page in Clay, Rocket's default theme: a branch graph with merges, the selected commit's details and its diff.">
+    <source media="(prefers-color-scheme: light)" srcset="docs/media/hero-light.webp">
+    <img src="docs/media/hero-dark.webp" width="960" alt="The Changes page in Clay, Rocket's default theme: staged and unstaged files, a commit message, and a diff with a checkbox on each changed line.">
   </picture>
 </p>
 
-## What is Rocket?
+Rocket puts everyday Git work and the advanced history tools in one native desktop app.
+Open repositories in tabs, stage changes down to single lines, manage branches and remotes,
+and resolve conflicts without leaving the window. The desktop app and the [CLI](CLI.md)
+share one Rust backend that runs Git itself, so your repositories, credentials and SSH
+setup stay as they are.
 
-Rocket is an open-source alternative to Fork and GitKraken Desktop for Windows. It
-brings everyday Git work and advanced history tools into a native desktop workspace.
-Open several repositories in tabs, inspect changes, prepare commits, manage branches
-and resolve conflicts without leaving the app, and add your own features with
-[extensions](#extensions). The [comparison](#comparison) shows how they differ.
-
-The desktop UI and standalone CLI share the same Rust backend and use Git's own
-repository formats and operations. New bundled builds include **Git for Windows
-2.56.0.windows.4**: Automatic prefers that copy, while explicit installed/custom
-choices remain available. HTTPS and SSH use your configured credential helpers
-and SSH setup. Rocket itself does not require a .NET runtime.
-
-Current development version: **0.92.0**. See the [changelog](CHANGELOG.md) for
-release history and the [user guide](crates/rocket-ui/src/guide.md) for individual
-workflows.
-
-Rocket checks public [GitHub Releases](https://github.com/JasXTD/Rocket/releases)
-once when it launches. **Help → Check for Updates** checks on demand. Updates are
-downloaded and installed only when you choose; packaged installations retain
-their previous version for recovery. See [App updates](docs/wiki/App-updates.md).
-
-**New to Rocket?** Follow the [first-commit walkthrough](docs/wiki/Getting-started.md)
-or use the [wiki](docs/wiki/Home.md) to find instructions for a specific task.
-Inside the app, **Help → Setup Guide** walks you through a first local commit, and
-**Help → Guide** (`F1`) explains the current workflow.
-
-The Windows ZIP includes bundled Git and the required native runtimes. Extract
-the complete archive and open `rocket.exe` normally; no installer or administrator
-access is needed. The Lua worker keeps its isolated execution and links its
-runtime into the worker executable.
+**New to Rocket?** Follow the [first-commit walkthrough](docs/wiki/Getting-started.md) or
+open **Help → Setup Guide** in the app. **Ctrl+K** opens the command palette and **F1** the
+guide.
 
 ## Features
 
-### Changes and code review
+**Changes and review**
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: light)" srcset="docs/media/split-light.webp">
-    <img src="docs/media/split-dark.webp" width="880" alt="A side-by-side diff with syntax and word highlights, and a checkbox on each changed line for staging it alone.">
-  </picture>
-</p>
+- Stage whole files, hunks or single lines, and drag files between Staged and Unstaged.
+- Unified or side-by-side diffs with syntax and word highlights; image compare with overlay,
+  swipe and pixel differences.
+- Commit details, file history and blame in their own windows, plus external editor, diff
+  and merge tool profiles.
 
-- Stage or unstage whole files, including dragging selections between the Staged
-  and Unstaged groups. Select individual hunks or lines for supported text changes.
-- Read unified or side-by-side diffs with syntax highlighting, word highlights, search
-  and an overview strip for long files. Compare images with overlays, a swipe view and
-  pixel differences.
-- Compare branches, commits, the staging area or tracked working-tree contents.
-  Open commit details, file history and blame in independent review windows.
-- Save several external editor, diff and merge tool profiles. External merge
-  results are reviewed before they are imported into working files.
-- Customize keyboard shortcuts and mouse gestures in **Preferences → Shortcuts**, with
-  two bindings per command, duplicate checks, reset options and a search by keys.
+**History and branches**
 
-### History and branch workflows
+- Commit graph across branches, file renames, and the repository tree at any commit.
+- Find code with `git log -S` / `-G` and **Search in files** (`git grep`) at any commit.
+- Merge, rebase and interactive rebase (reorder, reword, edit, squash, fixup, drop) with a
+  preview first.
+- Cherry-pick, revert, amend, bisect, reflog recovery and **Undo Last Commit**.
+- A [Repository map](docs/wiki/Repository-map.md) of packages, folders, branches and who
+  works where.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/media/history-light.webp">
-    <img src="docs/media/history-dark.webp" width="880" alt="The Commits page with a branch graph across five branches, merges, and branch and remote labels.">
+    <img src="docs/media/history-dark.webp" width="760" alt="The Commits page with a branch graph across five branches, merges, and branch and remote labels.">
   </picture>
 </p>
 
-- See how a repository fits together in the native
-  [Repository map](docs/wiki/Repository-map.md): Cargo packages and the folder tree,
-  branches and merges, and who works where, with a details card and Mermaid export.
-  Local, cancellable reads have explicit limits.
+**Conflicts and recovery**
 
-- Browse the commit graph across branches, search beyond the currently loaded
-  commits, follow file renames and browse the repository tree at a chosen commit.
-- Find code: commits that add, remove or edit text (`git log -S`, or `-G` for a
-  regular expression, optionally under one path), and **Search in files** at the
-  checkout or any commit (`git grep`), grouped by file and opening each match at its
-  line. Both stream on workers with match, line and time limits and stop at once.
-- Create, switch, rename and clean up branches; merge or rebase with a preview.
-  Rebase can preserve merge structure, subject to its documented mode limits.
-- Plan interactive rebases with reorder, reword, edit, squash, fixup and drop,
-  including explicit stops and commands.
-- Amend commits, cherry-pick a series or revert selected commits. Supported
-  operations offer conflict prediction and Continue, Skip or Abort recovery.
-
-### Remotes and collaboration
-
-- See every SSH key in **Preferences → SSH keys**: keys found in your SSH folder and keys
-  Rocket made. Copy a public key, unlock a key in ssh-agent, or make one repository use
-  only one key after a review. Existing keys and SSH config stay in place.
-  **Direct key** mode works without ssh-agent, with opt-in Windows-encrypted
-  passphrase storage, a Forget action and strict server host-key verification.
-- Clone over HTTPS, SSH or from a local repository, with progress and cancellation.
-  Add, edit, rename or remove remotes from the desktop.
-- Fetch remote changes and choose fast-forward only, merge or rebase when pulling.
-  Background fetch is optional and does not merge into your working branch.
-- Review normal pushes and force-with-lease pushes. Publish several branches
-  atomically when the server supports all-or-nothing updates.
-- Inspect, publish and safely delete remote tags; review remote branch deletion
-  and pruning of obsolete tracking references.
-
-### Conflicts, saved work and recovery
+- A three-column conflict editor (Ours, Result, Theirs) with linked scrolling.
+- Stashes with partial apply, patches and commit series, and Continue, Skip or Abort for
+  paused operations.
+- Discards keep recovery copies, and history rewrites keep the original commits reachable.
 
 <p align="center">
   <picture>
@@ -137,42 +77,38 @@ runtime into the worker executable.
   </picture>
 </p>
 
-- Resolve supported text conflicts in a three-column editor with linked scrolling
-  and conflict navigation. Binary and delete/modify conflicts use whole versions.
-- Get an AI proposal for a conflict from Claude Code, Codex or a connected MCP agent.
-  Review the explanation and proposed result before applying it to the editor draft. Each
-  applied conflict keeps its own Undo, and saving and staging retain recovery backups and
-  external-change checks.
-- Save and inspect stashes, apply or drop them, and apply selected files, hunks or
-  lines from supported saved text changes.
-- Discard or restore supported files and selected changes with recovery copies
-  and checks for edits made outside Rocket.
-- Undo the latest ordinary commit made in the current Rocket session with a reviewed
-  **Edit → Undo Last Commit**. Files and staging stay, and a recovery reference keeps the
-  commit. See [recovery](docs/wiki/Recovery-and-troubleshooting.md#undo-the-last-local-commit)
-  for its limits.
-- Inspect reflogs, find lost commits and recover them onto new branches. Use
-  manual or automated bisect to locate a change that introduced a problem.
-- Import and export patches and commit series, with recovery for interrupted
-  or conflicting applications.
+**Remotes and hosting**
 
-### AI assistance
+- Clone, fetch, pull (fast-forward, merge or rebase) and reviewed push, including
+  force-with-lease and atomic multi-branch push.
+- Pull requests, issues, reviews and CI marks for GitHub, GitHub Enterprise Server, GitLab,
+  Bitbucket, Azure DevOps and Gitea ([what each supports](HOSTING.md)).
+- An **Actions** page, and **Re-run failed jobs** on GitHub, GitLab and Gitea.
+- An SSH key manager with per-repository keys; your existing keys and SSH config stay put.
 
-AI tools are optional and run only when you ask. They use Claude Code or Codex on your
-computer, under that program's own account; Rocket stores no AI API key. Repository
-content you send can leave your computer, so each tool shows or explains it first.
+**Many repositories**
 
-- **AI drafts** write a commit message from staged changes, once you turn them on in
-  **Preferences → Commit messages**. Nothing is committed for you.
-- **AI review** sends a previewed branch diff for review. It changes no files.
-- **AI resolve** proposes a resolution for a conflicted file, from either program or a
-  connected MCP agent. You review the proposal and apply it to the editor draft yourself.
+- A Repository manager with folders, nested workspaces and tabs; **Scan folder** finds
+  repositories and worktrees.
+- Every saved repository's status at a glance, with **Fetch all** and **Pull all**
+  (fast-forward only).
+- **Explore** other repositories (search GitHub or paste an address) in a read-only preview
+  before you clone them.
+- Worktrees, submodules, tags, Git LFS, ignore rules and commit signing.
 
-### Extensions
+**AI, only when you ask**
 
-Add your own features to Rocket with extensions: sandboxed Lua packages with their own
-native panels, forms and tables, plus commands in the palette, the Repository menu and
-right-click menus.
+- Draft a commit message, review a branch diff or get a proposed conflict resolution from
+  Claude Code or Codex on your computer, or from a connected MCP agent.
+- Rocket stores no AI API key and shows what will be sent first. Nothing is committed or
+  applied without you.
+
+**Extensions**
+
+- Sandboxed Lua packages with native panels, forms and tables, and commands in menus and the
+  palette. An extension can't run Git or shell commands, read your files or see your tokens.
+- An offline Lua playground and the [extension API](INTEGRATIONS.md). Jira and PlayGround
+  ship with Rocket, switched off.
 
 <p align="center">
   <picture>
@@ -181,355 +117,154 @@ right-click menus.
   </picture>
 </p>
 
-- Install a package from a file after a review of its code and permissions. An extension
-  can't run Git or shell commands, read your files or see your tokens.
-- Write your own with the [extension API](INTEGRATIONS.md), an offline Lua code and preview
-  playground and developer tools that validate Lua. Optional read-only repository context
-  supports dashboards.
-- Jira and PlayGround ship with Rocket and start off. Jira Cloud support includes search,
-  issue edits and transitions, with classic or scoped API tokens, protected credentials and
-  reviewed remote writes.
-- Named connections keep accounts and saved drafts separate, and an invalid package doesn't
-  block healthy extensions.
+**Everything else**
 
-See the [extensions guide](docs/wiki/Integrations.md).
+- Themes: Clay (the default), Ocean, Dark, Light, System, or Custom with your own accent
+  colour and background picture.
+- An integrated terminal, custom commands, configurable shortcuts, Statistics, activity
+  history and local crash reports.
+- Secret guards that stop recognized credentials and AI API keys from being committed or
+  pushed.
+- In-app updates from [GitHub Releases](https://github.com/JasXTD/Rocket/releases),
+  installed only when you choose, with the previous version kept.
+- A JSON [CLI](CLI.md) and an optional localhost [MCP service](tools/README.md#localhost-mcp)
+  for automation and UI testing.
 
-### Repository management
+## Platforms
 
-- Organize saved repositories into folders and nested workspaces in the **Repository
-  manager**, with independent tabs, commit drafts and view preferences. Use **Scan
-  folder** to discover repositories and worktrees together, review duplicates and
-  save selected shortcuts without opening every repository.
-  See the [repository manager guide](docs/wiki/Repository-manager.md).
-- See every saved repository's branch, uncommitted changes and commits to push or
-  pull without opening it, filter to the ones that **Need attention**, and update a
-  folder or workspace with **Fetch all** and **Pull all**. Pull all only fast-forwards
-  a clean branch; anything else is skipped and listed, and neither asks for a password.
-- **Explore** other people's repositories without leaving Rocket (File → Explore
-  Repositories, Ctrl+Shift+E): search GitHub, or paste any repository address, then
-  **Preview** one read-only in a tab where Commits, Files, Map and Statistics work at once.
-  Older file versions download only when a view needs them, nothing from the repository
-  runs, and a preview stops at 1 GB unless you continue without a limit. **Keep** turns it
-  into a normal clone in a folder you choose; **Discard** deletes it. Preview and
-  Keep always limit object enumeration to 100,000 missing objects and 32 MiB of
-  output, even without the disk limit; use **Clone** for larger graphs.
-- Manage linked worktrees, local tags, submodules and nested submodules, including
-  reviewed submodule add, move, remove, sync and update operations.
-- Inspect Git LFS files and objects, manage tracking rules and locks, and review
-  fetch, checkout and local storage cleanup operations.
-- Edit ignore rules, choose templates and configure repository-local identity
-  and signing. Inspect commit and tag signatures.
-
-### Accounts and everyday tools
-
-- Connect GitHub, GitHub Enterprise Server, GitLab, Bitbucket Cloud, Bitbucket Server/Data Center,
-  Azure DevOps Services, Azure DevOps Server or Gitea through provider-specific hosting adapters.
-  Azure DevOps Server uses an HTTPS collection, server-issued PAT and explicit
-  API version for PRs, project work items and reviewed PR creation. See
-  [Server setup and limits](HOSTING.md#azure-devops-server-unreleased).
-- Browse pull requests and supported issue/work-item lists, prepare reviewed
-  PR/MR creation, and inspect PR details, available checks and reviews. The current
-  development build adds protected review drafts and restart recovery, GitHub
-  discussion replies/resolution and multiline reviews, plus provider-supported
-  reviews and merges, with [scope and verification limits](HOSTING.md).
-- See CI results where you already look: a mark beside each pushed commit and
-  branch for GitHub, GitHub Enterprise Server, GitLab, Gitea, Bitbucket Cloud and
-  Azure DevOps, the checks behind it, and a reviewed **Re-run failed jobs** on
-  GitHub, GitLab and Gitea. **Actions** in the sidebar lists the repository's runs
-  with each run's jobs, and says how to connect when no account reads them. Token
-  permissions are in [CI status](HOSTING.md#ci-status-on-commits-and-branches-unreleased).
-- Manage Windows OpenSSH keys and repository-specific profiles for multiple
-  accounts while preserving your existing keys and main SSH configuration.
-- Use the integrated terminal (Windows PowerShell, Git Bash, Command Prompt, PowerShell 7 or your own shell), command palette, configurable shortcuts,
-  scoped custom commands, activity history and diagnostic viewer. **Help → Crash
-  Reports** reviews local crash metadata and exports JSON without automatic uploads.
-- Choose a theme: Clay, the default, in Claude Code's colours (following Windows or kept
-  dark or light), Ocean (Rocket's original navy), Dark, Light, System, or Custom with your
-  own accent colour and a picture behind the window.
-- Set up Rocket in **Preferences → General**: a source code folder for new clones, tags in
-  fetch, spaces in branch names, submodule updates on checkout, Push after commit, diff font
-  and marks, and compact branch labels.
-- See who commits, when and which files change most on the **Statistics** page.
-- Measure local refresh, history and diff-read times with **View → Repository
-  Benchmark**, including cancellation and a summary that omits repository content.
-
-Hosting accounts are separate from Git transport credentials. Connecting an API
-account does not automatically change a remote URL or your Git/SSH login.
-Provider capabilities and live-test coverage differ; see [Hosting](HOSTING.md).
-
-## Comparison
-
-Rocket covers many of the everyday Git workflows found in Fork and GitKraken
-Desktop. Lazygit provides a terminal interface for those workflows. The table
-compares selected features, with different interfaces and scopes called out.
-
-Checked **2026-10-27** against Rocket **0.87.1** and the other projects' official
-documentation. The Extensions row was checked on **2026-10-31** against Rocket
-**0.87.3**. This is a documentation comparison, not a performance benchmark or a
-claim of equal maturity. Features and licensing can change.
-
-| Area | Rocket | [Fork](https://git-fork.com/) | [GitKraken Desktop](https://gitkraken.com/git-client) | [Lazygit](https://github.com/jesseduffield/lazygit) |
-| --- | --- | --- | --- | --- |
-| Interface | Native Rust desktop | Desktop GUI | Desktop GUI and integrated terminal | Terminal UI (TUI) |
-| Platforms | Windows x64 validated | Windows, macOS | Windows, macOS, Linux | Windows, macOS, Linux and others |
-| Stage files, hunks and lines | Supported text changes | Supported | [Supported](https://help.gitkraken.com/gitkraken-desktop/staging/) | Supported |
-| Interactive rebase | Reorder, reword, edit, squash, fixup, drop | Visual interactive rebase | [Visual interactive rebase](https://help.gitkraken.com/gitkraken-desktop/interactive-rebase/) | Interactive rebase and individual history-editing actions |
-| Resolve conflicts | Three-column editor; backups and external-edit checks | Built-in resolver and external tools | Visual merge tool; [plan-dependent capabilities](https://gitkraken.com/pricing) | [Hunk resolution and external editing](https://github.com/jesseduffield/lazygit/blob/master/docs/keybindings/Keybindings_en.md) |
-| Linked worktrees | Create, open, inspect and manage | [Worktree creation and navigation](https://git-fork.com/releasenoteswin) | [Worktree support](https://help.gitkraken.com/gitkraken-desktop/worktrees/) | Create and switch worktrees |
-| Organize repositories | Saved folders, nested workspaces and tabs | Repository manager and [nested workspaces](https://git-fork.com/releasenoteswin) | [Local and shared cloud workspaces](https://help.gitkraken.com/gitkraken-desktop/workspaces/) | [Recent-repository switcher](https://github.com/jesseduffield/lazygit/blob/master/docs/keybindings/Keybindings_en.md) |
-| Hosting and pull requests | GitHub reviews; additional adapters with [verification limits](HOSTING.md) | [Provider integrations, PR creation and filtered lists](https://git-fork.com/releasenoteswin) | [Hosting and issue-tracker integrations](https://help.gitkraken.com/gitkraken-desktop/integrations/); plan dependent | [Open PRs in a browser](https://github.com/jesseduffield/lazygit/blob/master/docs/keybindings/Keybindings_en.md); custom commands |
-| Commands and automation | Scoped commands, tool profiles, JSON CLI and local UI MCP | [Contextual custom commands and external tools](https://git-fork.com/releasenoteswin) | [Companion CLI and MCP](https://help.gitkraken.com/cli/cli-home/); scope differs from desktop controls | [Configurable commands and keybindings](https://github.com/jesseduffield/lazygit/blob/master/docs/Custom_Command_Keybindings.md) |
-| Extensions | Add your own features with sandboxed Lua packages: native panels, commands and reviewed permissions | [Custom commands](https://git-fork.com/releasenotes); no extension API found in its documentation | [Browser extension](https://help.gitkraken.com/browser-extension/browser-extension-home/) and [agent status plugins](https://help.gitkraken.com/gitkraken-desktop/agents/); no third-party extension API found in its documentation | [Custom commands](https://github.com/jesseduffield/lazygit/blob/master/docs/Custom_Command_Keybindings.md); no plugin API found in its documentation |
-| Licensing | [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE) | Commercial license; free evaluation | [Free Community and paid plans](https://gitkraken.com/pricing); private remotes require a paid plan | MIT; free and open source |
-
-Rocket remains in development. Its Windows workflows have focused test coverage;
-live acceptance for GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps and Gitea remains unverified.
-The [current limits](#current-limits) and [wiki](docs/wiki/Home.md) explain the
-supported cases. A shared feature name does not imply identical behavior or
-recovery guarantees across these applications.
-
-## Requirements
-
-| Component | When it is needed |
+| Platform | Status |
 | --- | --- |
-| Windows x64 | Current validated desktop platform; testing has focused on Windows 10. |
-| Git runtime | Included in new bundled builds. Source-only builds need installed Git 2.46+ on PATH or a configured executable. |
-| Rust MSVC toolchain and Microsoft C++ build tools | Required to build Rocket from source. |
-| Windows PowerShell | The integrated terminal's default shell. Git Bash comes with the bundled Git. |
-| Git Credential Manager | Included in new bundled builds; required for the supported browser sign-in flows. |
-| Windows OpenSSH | Used by Rocket's SSH key/profile manager. SSH remotes need a working SSH configuration. |
-| Git LFS 3.8.1+ | Included in new bundled builds; required only for Git LFS operations. |
-| Claude Code or Codex | Optional. Used by AI drafts, AI review and AI resolve. |
+| Windows x64 | Main platform, tested mostly on Windows 10. A portable ZIP with Git for Windows 2.56.0.windows.4, Git Credential Manager and Git LFS bundled; no installer or administrator access. |
+| Linux x86_64 | Supported under X11 or Wayland. Uses your system Git. Everyday Git work, the terminal, SSH, hosting, Lua extensions and app updates work. |
+| macOS 15+ on Apple Silicon | Supported, not yet notarized. Native menus, Keychain, system spelling, automatic refresh, a zsh terminal and Lua extensions. Uses your installed Git. |
 
-Windows HTTP(S) Git operations additionally require Git for Windows
-**2.56.0.windows.4 or newer**. Older or unrecognized Windows builds are restricted
-to local/SSH transport; see [the runtime security policy](SECURITY.md#windows-git-http-runtime-gate-2026-10-29).
-
-Node.js is used by some development and MCP test scripts. The desktop app, CLI
-and Rust MCP server do not require Node.js to run. Rocket does not download or
-update these tools automatically, or replace their system installations.
+See [Current limits](#current-limits) for what still differs between platforms.
 
 ## Build and run
 
-From the Rocket source directory, build the workspace and start the desktop app:
+The build scripts bind Rocket to its Lua worker by hash, so extensions work. Plain
+`cargo build` also compiles, but turns Lua off.
+
+**Windows** needs the Rust MSVC toolchain and the Microsoft C++ build tools:
 
 ```powershell
 .\tools\Build-Local.ps1
 .\target\release\rocket.exe
 ```
 
-Add `-Offline` if the locked dependencies are already cached, or `-Profile debug`
-for a debug bundle. The build compiles the Lua worker first and embeds its SHA-256
-in Rocket and MCP, then produces the desktop, CLI and helpers under `target/release/`.
-Unsigned builds and releases are supported; no certificate is required. Plain
-`cargo build` without this binding compiles but disables Lua execution.
+Add `-Offline` when the locked dependencies are cached, or `-Profile debug` for a debug
+build. When moving a build, keep everything beside `rocket.exe` together: the CLI, the
+terminal, rebase and Lua helpers, `conpty/` and the bundled `git/`.
 
-When moving a build, keep its supporting files together:
-
-| File or folder | Purpose |
-| --- | --- |
-| `rocket.exe` | Desktop application. |
-| `rocket-cli.exe` | Standalone command-line interface. |
-| `rocket-mcp.exe` | Optional localhost service for native UI automation. |
-| `rocket-terminal-host.exe` | Starts the integrated terminal with command interruption support. |
-| `rocket-rebase-editor.exe` | Applies Rocket's reviewed interactive-rebase plans. |
-| `rocket-lua-host.exe` | Matching hash-verified worker, isolated by Windows for every Lua invocation. |
-| `conpty/` | Bundled Microsoft terminal runtime and its license. |
-| `git/` | Included Git for Windows runtime with Git Credential Manager and Git LFS, in new bundled builds. |
-
-Copying only `rocket.exe` omits the included Git and the terminal, rebase and Lua helpers. The bundled native
-runtime's origin and hashes are recorded in [ConPTY provenance](runtime/conpty/1.25.260930003/README.md).
-
-### Linux (preview)
-
-Rocket builds and opens on Linux under X11 or Wayland; this has been checked under WSL2
-Ubuntu 26.04 with WSLg. Install Rust 1.95 or later, a C compiler and Git 2.46 or later
-from your distribution, then:
+**Linux** needs Rust 1.95+, a C compiler and Git 2.46+:
 
 ```bash
-cargo build --workspace --locked
-./target/debug/rocket
+tools/build-local.sh
+./target/release/rocket
 ```
 
-Add `--features rocket-integrations/runtime` for the release feature set. Lua extensions
-also need the Lua worker's SHA-256 built into Rocket: `tools/build-local.sh` builds the
-worker first and then Rocket with its hash, as `tools/Build-Local.ps1` does on Windows
-(`tools/build-local.sh debug` for a debug bundle). `tools/package-release.sh` makes a
-release from it: the folder `Rocket-<version>-linux-x64` and its update archive
-`Rocket-<version>-linux-x64.tar.gz`, which you unpack anywhere in your own folders. Rocket
-uses the first `git` on `PATH`; Linux has no bundled Git. Settings, logs and crash reports live in
-`$XDG_STATE_HOME/rocket`, by default `~/.local/state/rocket`. As it refuses Run as
-administrator on Windows, Rocket refuses to run as root, for example under `sudo`.
+`tools/package-release.sh` turns that build into a portable folder and its update archive.
 
-On Linux, Rocket's state root must be a real folder owned by your user with private
-permissions (0700). Rocket creates missing folders privately and refuses unsafe
-existing folders, links, or parents another user could replace. It reports the
-offending path and preserves its files and permissions; it never switches to a
-shared temporary profile. Older 0755 subfolders inside a private state root remain
-usable. Review and correct an unsafe path's ownership/permissions before restarting,
-or choose an absolute `XDG_STATE_HOME` under your own protected home folder.
+<details>
+<summary>Optional Linux system pieces</summary>
 
-Some features use what the system provides, and nothing else is needed to build:
+- Remembered tokens and passphrases: libsecret and an unlocked keyring such as GNOME Keyring.
+- Hosting and extension web requests: the system's root-owned `/usr/bin/curl`.
+- Spell checking: a Hunspell dictionary such as `hunspell-en-us`.
+- Git LFS: version 3.8.1 or later beside Git.
+- Dependency checks: OSV-Scanner 2.7.0.
+- Lua extensions: Landlock (Linux 5.13+, switched on as in Ubuntu).
 
-- the terminal runs your login shell, or bash, zsh or fish as `/etc/shells` lists them;
-- SSH keys use OpenSSH from `/usr/bin` (Ubuntu's `openssh-client`) and the ssh-agent that
-  `SSH_AUTH_SOCK` names;
-- remembered tokens and passphrases need libsecret (`libsecret-1-0`) and an unlocked
-  desktop keyring such as GNOME Keyring;
-- GitHub, the other hosting services and extensions' web requests use the system's
-  `/usr/bin/curl` (Ubuntu's `curl`). It must belong to root and be changeable by no one
-  else; a curl on `PATH` or beside Git is never used;
-- spell checking needs a Hunspell dictionary, such as `hunspell-en-us`;
-- dependency checks need OSV-Scanner 2.7.0 for Linux x64, chosen in Edit → Preferences →
-  Security → Scanner & data;
-- Git LFS features need Git LFS 3.8.1 or later beside Git. Ubuntu 26.04 ships 3.7.1, so
-  install it from the Git LFS release;
-- Lua extensions need an x86_64 system with Landlock, which Linux 5.13 and later provide
-  when it is switched on, as Ubuntu does;
-- app updates install a release unpacked from the archive above, using the system's
-  `/usr/bin/curl` and `/usr/bin/gzip`. A build from `cargo build` can check for updates
-  but not install one, as on Windows.
+Settings and logs live in `$XDG_STATE_HOME/rocket` (`~/.local/state/rocket`), which must be a
+private folder you own. Rocket refuses to run as root.
 
-See [Current limits](#current-limits) for what still needs Windows.
+</details>
 
-## Getting started
+**macOS** needs Rust 1.99.1, the Xcode command-line tools, Node.js and Git:
 
-1. **Open, create or clone a repository.** Use Open for an existing Git checkout,
-   New Repository for a project that is not yet under Git, or Clone for a remote.
-   Clone requires a destination that does not already exist.
-2. **Check your commit identity.** Repository Settings can set a local name/email
-   override. Preferences also provides Git selection and global identity settings.
-3. **Review changes.** Select a file in Changes to inspect its diff. Stage whole
-   files or supported selections, then write a commit message. Staging and
-   committing are local operations.
-4. **Synchronize when ready.** Fetch to inspect remote updates, choose a pull
-   strategy if needed, then review the branches and destination before pushing.
-5. **Use recovery when an operation pauses.** Resolve conflicts in Changes and
-   follow the operation's Continue, Skip or Abort review. Check the reported state
-   after cancellation before trying again.
-
-Press **Ctrl+K** for the command palette or **F1** for the built-in guide. The
-[user guide](crates/rocket-ui/src/guide.md) covers the individual dialogs, keyboard
-behavior and recovery limits in more detail.
-
-## Command-line interface
-
-`rocket-cli.exe` calls the same backend as the desktop and supports structured
-JSON output. Repository commands can run without the desktop app. For example,
-from the source directory after building:
-
-```powershell
-.\target\release\rocket-cli.exe --help
-$repo = Read-Host 'Full path to an existing Git repository'
-.\target\release\rocket-cli.exe --repo "$repo" status
-.\target\release\rocket-cli.exe --repo "$repo" --json status
+```bash
+bash tools/build-macos.sh
 ```
 
-Use a real repository path when prompted. Preview-capable writes expose the
-reviewed state before applying; JSON includes operation errors and recovery
-information. Desktop and CLI writes share repository write coordination.
-The CLI does not yet expose every desktop workflow; see the [CLI reference](CLI.md).
+This makes `Rocket.app` and a ZIP under `target/macos-stage1`. For Lua extensions, build the
+helper with `tools/macos/build-lua-helper.sh` first and pass it as `ROCKET_MACOS_LUA_APP`
+(see [Mac Lua](docs/MacOS-lua-wasm.md)). The [macOS port notes](docs/MacOS-port.md) cover
+the rest.
 
-## Localhost MCP
+## Comparison
 
-The optional MCP service exposes the real desktop controls, state, progress,
-screenshots and diagnostics over a local HTTP endpoint. This supports repeatable
-native UI testing and compatible local automation clients.
+| | **Rocket** | [**Fork**](https://git-fork.com/) | [**GitKraken Desktop**](https://www.gitkraken.com/git-client) | [**Lazygit**](https://github.com/jesseduffield/lazygit) |
+| :-- | :-: | :-: | :-: | :-: |
+| **Platforms** | | | | |
+| Windows | ✅ | ✅ | ✅ | ✅ |
+| macOS | ✅ Apple Silicon | ✅ | ✅ | ✅ |
+| Linux | ✅ | — | ✅ | ✅ |
+| Interface | Desktop, native Rust | Desktop | Desktop | Terminal |
+| **Everyday Git** | | | | |
+| Stage hunks and single lines | ✅ | ✅ | ✅ | ✅ |
+| Interactive rebase | ✅ visual | ✅ visual | ✅ visual | ✅ keyboard |
+| Built-in conflict editor | ✅ three columns | ✅ | ✅ | ✅ hunk picker |
+| Linked worktrees | ✅ | ✅ | ✅ | ✅ |
+| Many repositories | ✅ workspaces, Fetch all, Pull all | ✅ workspaces | ✅ workspaces | Recent-repo switcher |
+| **AI** | | | | |
+| Commit messages | ✅ Claude Code, Codex | ✅ Claude Code, Codex, Cursor | 💲 GitKraken AI | — |
+| Code review | ✅ | ✅ | In the browser | — |
+| Conflict resolution | ✅ | — | 💲 preview | — |
+| **Hosting** | | | | |
+| Pull requests | ✅ list, create, review | ✅ list, create | ✅ list, create, merge | ✅ create, open |
+| CI status | ✅ commits and branches, re-run failed jobs | — | ✅ on pull requests | — |
+| **Extras** | | | | |
+| Extensions | ✅ sandboxed Lua with native panels | Custom commands | — | Custom commands |
+| Price | Free | $59.99 once, free evaluation | Free for local and public repos, paid plans | Free |
+| License | [MIT](LICENSE-MIT) / [Apache-2.0](LICENSE-APACHE) | Commercial | Commercial | MIT |
 
-Use **Edit → Preferences → MCP server** to configure the loopback port, access token and fixture
-folder, and explicitly start or stop the service. Keep the token private and use
-temporary repositories for write tests. Some actions are limited by the service's
-test scope; it is not an unrestricted remote shell.
+✅ built in · 💲 paid plan · — not in the app's documentation
 
-Connected agents can also read conflict snapshots you explicitly share from
-**AI resolve** and submit proposals for review, without opening a test window.
-These tools cannot apply, save, stage or commit the result.
-
-See the [tools guide](tools/README.md#localhost-mcp) for the launcher, connection
-checks and focused test runners. Live hosting tests require separate account
-setup and authorization.
-
-## Safety and recovery
-
-- **Review and recheck:** supported write previews pin the selected commits,
-  paths and settings. External changes can invalidate a review before execution.
-- **Recovery data:** supported destructive file operations keep recovery copies;
-  history-rewriting workflows retain original tips through recovery references.
-- **Cancellation:** stopping an operation does not undo work already completed.
-  Rocket refreshes or checks the result and reports uncertainty when necessary.
-- **Secret protection:** local checks can block recognized credentials in commits
-  and pushes. Pattern detection has limits and does not replace credential
-  revocation or a repository security review.
-- **Guard AI API keys:** a separate, default-on Security setting checks supported
-  OpenAI, Anthropic, DeepSeek, GLM/Z.ai and other provider key formats locally.
-  Both guards also check outgoing history; neither sends keys to a provider.
-- **Scan budget:** Preferences → Security lets you change the total scan budget,
-  starting at 256 MiB of uncompressed Git objects, including reachable history.
-  The separate 128 MiB per-object limit and cancellation/time limits remain active.
-- **Diagnostics:** operation history and structured logs help trace failures and
-  cancellation. Review any exported diagnostic information before sharing it.
-
-Each operation has its own supported cases and recovery limits. See the
-[security boundaries](SECURITY.md) and [user guide](crates/rocket-ui/src/guide.md).
-
-## Project structure
-
-| Component | Responsibility |
-| --- | --- |
-| `crates/rocket-ui` | Native Rust desktop UI built with egui/eframe. |
-| `crates/rocket-git` | Git process execution, parsing, previews, write coordination and recovery; no third-party Rust dependencies. |
-| `crates/rocket-integrations` | Extension packages, native panel descriptions and the Lua worker. Package discovery never runs code, and credentials stay in the host. |
-| `crates/rocket-cli` | Command-line parsing and text/JSON output over the shared backend. |
-| `crates/rocket-mcp` and `crates/rocket-mcp-control` | Local UI automation service and its control integration. |
-| `crates/rocket-terminal` and `crates/rocket-spell` | Terminal support and commit-message spelling assistance. |
-| `runtime/` | Reviewed native runtime files and provenance records. |
-| `tools/` | Reusable development scripts, mockups and focused tests. |
-
-Build output and generated test fixtures stay in ignored `target/` and `work/`
-folders. Start validation with the checks for the feature being changed; the
-[development tools guide](tools/README.md) describes their setup and scope.
+Checked on 2026-11-09 against Fork 2.24 (Windows) and 2.71 (macOS), GitKraken Desktop 12.6.1
+and Lazygit 0.66.3, using their official documentation, release notes and pricing pages. This
+compares documented features, not speed or maturity, and features change.
 
 ## Current limits
 
-- Windows is the validated platform. On Linux, everyday Git work runs with the system
-  Git: opening, creating and cloning repositories, history, diffs, staging, committing,
-  fetching, automatic refresh, worktrees, the conflict editor, whole-file replacements,
-  ignore rules, patch files and submodules. The integrated terminal, SSH keys, GitHub and
-  the other hosting services, remembered hosting tokens, MCP control, spell check,
-  dependency checks, automatic bisect, LFS cache cleanup and, on x86_64 with Landlock, Lua
-  extensions and their web requests work too. The GitHub hosting tests and the extension
-  request tests run on Linux, against local test servers; the other hosting services'
-  tests still need Windows. On x86_64, app
-  updates install into a release made with `tools/package-release.sh`. Steps that must never replace a file need a local filesystem such
-  as ext4, XFS or Btrfs; NFS, some FUSE mounts and WSL's `/mnt` drives are refused. Automatic refresh uses at most half of `fs.inotify.max_user_watches` and is
-  not told about changes made through a network share. LFS tracking-rule edits are
-  unverified on Linux. The MCP terminal runners run on Linux with bash probes. Most other
-  MCP acceptance runners still expect Windows program names and tools. macOS is unverified.
-- Hosting adapters have different capabilities. Live acceptance for GitHub Enterprise Server, GitLab,
-  Bitbucket, Azure DevOps and Gitea remains unverified; local fixtures do not prove
-  a real organization's permissions, SSO or server policy. See [Hosting](HOSTING.md).
-- Partial diff/stash actions support specific text and file cases. Unsupported
-  filters, encodings, file types or patch formats may need a whole-file action or
-  a Git workflow outside Rocket.
-- Jira has been tested against mock services, not a live server. The AI conflict page has
-  been tested with a stand-in program, not a real Claude Code or Codex reply.
-- The CLI and localhost MCP expose subsets of the desktop workflows. Available
-  commands and test scope are documented in their respective guides.
+- **macOS:** not yet signed with a Developer ID or notarized, so it isn't ready to
+  distribute and in-app updates won't install a release. Tested on GitHub's Apple Silicon
+  runners, not yet on a physical Mac. Intel Macs aren't supported.
+- **Linux:** Lua needs x86_64 with Landlock. Steps that must never overwrite a file need a
+  local filesystem such as ext4, XFS or Btrfs (NFS, some FUSE mounts and WSL's `/mnt` are
+  refused). Most MCP acceptance runners and the non-GitHub hosting tests still run on Windows.
+- **Windows:** HTTPS remotes need Git for Windows 2.56.0.windows.4 or newer. An older Git
+  you pick yourself is limited to local and SSH remotes
+  ([why](SECURITY.md#windows-git-http-runtime-gate-2026-10-29)).
+- **Hosting:** only GitHub's account sign-in has been checked against the real service.
+  GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps and Gitea are tested against
+  local fixtures. See [Hosting](HOSTING.md).
+- **Stand-ins:** Jira was tested against mock services, and AI resolve against a stand-in
+  program, not real Claude Code or Codex replies.
+- **Partial actions** (single lines, hunks) cover specific text cases; other files need a
+  whole-file action. The CLI and MCP service cover a subset of the desktop.
+
+## Project structure
+
+| Folder | What it holds |
+| --- | --- |
+| `crates/rocket-ui` | The desktop app (egui/eframe). |
+| `crates/rocket-git` | Git execution, previews, write coordination and recovery. |
+| `crates/rocket-integrations` | Extension packages and the Lua worker. |
+| `crates/rocket-cli` | The command-line interface. |
+| `crates/rocket-mcp`, `crates/rocket-mcp-control` | The localhost UI automation service. |
+| `crates/rocket-terminal`, `crates/rocket-spell` | The terminal and commit-message spelling. |
+| `runtime/` | Reviewed bundled runtimes and their provenance. |
+| `tools/` | Build scripts, mockups and focused tests ([guide](tools/README.md)). |
 
 ## Documentation
 
-- [Beginner wiki](docs/wiki/Home.md) — first commit, everyday work, remotes and recovery.
-- [User guide](crates/rocket-ui/src/guide.md) — desktop workflows and recovery.
-- [CLI reference](CLI.md) — commands, JSON output and cancellation.
-- [Hosting](HOSTING.md) — accounts, providers and verification limits.
-- [Extensions](docs/wiki/Integrations.md) — install, enable and update extensions.
-- [Extension API](INTEGRATIONS.md) — write your own extension package.
-- [Security](SECURITY.md) — safeguards and known boundaries.
-- [Dependencies](DEPENDENCIES.md) — dependency and runtime review records.
-- [Development tools](tools/README.md) — focused tests and localhost MCP.
-- [Changelog](CHANGELOG.md) — version history.
+- [Wiki](docs/wiki/Home.md): first commit, everyday work, remotes and recovery.
+- [User guide](crates/rocket-ui/src/guide.md): every desktop workflow in detail.
+- [CLI](CLI.md), [Hosting](HOSTING.md), [Extensions](docs/wiki/Integrations.md) and the
+  [extension API](INTEGRATIONS.md).
+- [Security](SECURITY.md), [Dependencies](DEPENDENCIES.md) and the [Changelog](CHANGELOG.md).
 
 ## License
 
-Licensed under either [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your
-option. See [third-party notices](THIRD-PARTY-NOTICES.txt) for bundled components.
+Licensed under either [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your option.
+See [third-party notices](THIRD-PARTY-NOTICES.txt) for bundled components.
