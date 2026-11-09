@@ -187,15 +187,36 @@ async function video(phone, bitrate, name) {
   await post('/save/' + name, mux(samples, avcC, W, H));
 }
 async function social() {
-  size(1200, 630);
-  g.fillStyle = '#0A1621'; g.fillRect(0, 0, 1200, 630);
-  const screen = images['commits-clay-dark'];
-  g.drawImage(screen, 230, 110, 1000, 690, 560, 96, 880, 607);
-  g.strokeStyle = '#243E56'; g.lineWidth = 2; g.strokeRect(560, 96, 880, 607);
-  g.drawImage(LOGO, 72, 96, 96, 96);
-  g.textBaseline = 'alphabetic'; g.fillStyle = '#E7EEF8'; g.font = '700 76px "Segoe UI", system-ui, sans-serif'; g.fillText('Review first.', 72, 300);
-  g.fillStyle = '#22C3EE'; g.fillText('Then launch.', 72, 384);
-  g.fillStyle = '#C3D1DF'; g.font = '400 30px "Segoe UI", system-ui, sans-serif'; g.fillText('A native Git client for Windows', 72, 450);
+  // GitHub's recommended 2:1 card. Only reviewed demo pixels and the project logo.
+  const screen = await load('/social-source.webp');
+  if (!LOGO || !screen) throw Error('Missing reviewed social-preview source');
+  size(1280, 640);
+  g.fillStyle = '#0A1621'; g.fillRect(0, 0, 1280, 640);
+  g.fillStyle = '#102536'; g.fillRect(620, 0, 660, 640);
+  g.drawImage(LOGO, 62, 52, 72, 72);
+  g.textBaseline = 'alphabetic'; g.fillStyle = '#E7EEF8';
+  g.font = '650 45px "Segoe UI", system-ui, sans-serif'; g.fillText('Rocket', 151, 105);
+  g.font = '700 65px "Segoe UI", system-ui, sans-serif'; g.fillText('Review first.', 64, 244);
+  g.fillStyle = '#22C3EE'; g.fillText('Then launch.', 64, 319);
+  g.fillStyle = '#C3D1DF'; g.font = '400 27px "Segoe UI", system-ui, sans-serif';
+  g.fillText('A native Git client built in Rust.', 66, 378);
+  g.font = '500 21px "Segoe UI", system-ui, sans-serif';
+  g.fillText('Windows · Linux · macOS preview', 66, 469);
+  g.fillStyle = '#91AFC4'; g.font = '400 18px "Segoe UI", system-ui, sans-serif';
+  g.fillText('Free & open source · MIT / Apache-2.0', 66, 503);
+  g.fillStyle = '#B6CBDC'; g.font = '500 20px "Segoe UI", system-ui, sans-serif';
+  g.fillText('github.com/JasXTD/Rocket', 66, 584);
+  g.fillStyle = '#74A7C4'; g.font = '600 15px "Segoe UI", system-ui, sans-serif';
+  g.fillText('FILES · HUNKS · LINES', 658, 109);
+  // Crop out the navigation sidebar; keep the real staging and diff controls.
+  const sx = Math.round(screen.width * 236 / 1920);
+  const sy = Math.round(screen.height * 116 / 990);
+  const sh = Math.round(screen.height * 784 / 990);
+  const dw = 990, dh = sh * dw / (screen.width - sx);
+  g.save(); g.shadowColor = '#0009'; g.shadowBlur = 28;
+  g.fillStyle = '#202020'; g.fillRect(650, 137, dw, dh);
+  g.restore(); g.drawImage(screen, sx, sy, screen.width - sx, sh, 650, 137, dw, dh);
+  g.strokeStyle = '#365062'; g.lineWidth = 2; g.strokeRect(650, 137, dw, dh);
   await post('/save/social-preview.jpg', await blob('image/jpeg', JPEG));
 }
 
@@ -203,6 +224,9 @@ async function social() {
   try {
     LOGO = await load('/logo.png');
     await document.fonts.load('700 88px "Segoe UI"'); await document.fonts.ready;
+    if (new URLSearchParams(location.search).get('social') === '1') {
+      await social(); await post('/done', ''); return;
+    }
     for (const [name, from, x, y, w, h, outW] of PICTURES) {
       const image = await shot(from);
       if (!image) { await log(`skipped ${name}: no ${from}.png`); continue; }
@@ -217,7 +241,7 @@ async function social() {
       await video(false, 3000000, 'demo-wide.mp4');
       await video(true, 1200000, 'demo-phone.mp4');
     }
-    if (images['commits-clay-dark']) await social();
+    await social();
     await post('/done', '');
   } catch (e) { await post('/fail', String(e && e.stack || e)); }
 })();

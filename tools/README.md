@@ -288,6 +288,7 @@ the hosted site. Edit the pages directly; the download page links to verified re
 ```powershell
 node tools/website/serve.cjs   # Preview at http://127.0.0.1:8792/Rocket/, the way Pages serves it
 node tools/website/check.cjs   # Links, anchors, alt text, nothing personal or external
+node tools/website/media.cjs --social   # Only the 1280x640 GitHub card; keep other media
 ```
 
 To refresh the pictures and video after the screens change, build `target/release`, reserve the
