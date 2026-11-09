@@ -8,7 +8,16 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
-## Unreleased — Apple Silicon macOS preparation
+## 0.92.1 — Apple Silicon preview and desktop fixes
+
+Release packages cover Windows x64, Linux x64 and an Apple Silicon macOS 15+
+preview. The Mac app includes its isolated Lua helper, native menus, spelling,
+terminal and repository notifications. Its ad-hoc signatures are not Developer
+ID signatures; notarization and physical Mac acceptance remain pending. The Mac
+preview is installed manually and does not bypass in-app update trust checks.
+See [release notes](docs/releases/0.92.1.md) for requirements and verification.
+
+### macOS and shared platform fixes
 
 - Refuse symlinked MCP fixture markers when opening them on macOS/Linux. Keep
   exact opt-in contents and bounded regular-file reads. Use canonical native Unix
@@ -43,8 +52,8 @@ keep detailed test evidence in `VALIDATION.md`.
   license and provenance. Preserve Windows font selection and normal ASCII/CJK
   layout. Extend focused native checks for emoji, notifications and cancellation.
 - Prepare Developer ID signing/notarization guidance for a future distribution.
-  Lua remains disabled on macOS pending a separately tested sandbox. Limit each
-  manual Mac job to 15 minutes and offer a focused follow-up test scope.
+  Keep public update installation disabled in development-signed builds. Manual
+  qualification jobs are capped; the optimized package job has a 20-minute cap.
 - Prepare `Rocket.app` with Rocket's existing icon, five sibling executables,
   version metadata and license resources. Add strict bundle inventory, Mach-O,
   hash and permission checks, native ad-hoc signing and ZIP roundtrip validation.
@@ -54,7 +63,7 @@ keep detailed test evidence in `VALIDATION.md`.
   system language/Region discovery, installed font roots with the audited CJK
   fallback, Unix executable selection, and bounded background Finder/browser
   handoffs. Preserve saved Control bindings and terminal Ctrl+C. Native desktop/
-  SDK checks pass; physical IME/Retina, Finder acceptance and native menus remain pending.
+  SDK checks pass; physical IME/Retina and Finder acceptance remain pending.
 - Add macOS credential protection through the default Keychain and the existing
   authenticated cipher, plus system OpenSSH discovery and inherited agent support.
   Refuse locked/denied Keychain access without prompts or plaintext fallback;
@@ -66,7 +75,7 @@ keep detailed test evidence in `VALIDATION.md`.
   resize/interrupt and bounded cleanup; zsh default; secure OS-generated tokens,
   private-file/ACL checks and Mac test probes. Preserve Windows/Linux behavior.
   Apple SDK ABI and isolated native terminal/HTTP checks pass; real-user shell
-  profiles remain an acceptance gate, and Lua stays disabled.
+  profiles remain an acceptance gate. The bound Pulley helper supplies Mac Lua.
 - Port core macOS services: private Application Support storage, bounded SHA-256,
   exclusive/atomic publication with retained recovery files, Unix executable modes,
   opened-file checks and installed-Git discovery that avoids Apple's installation
@@ -76,11 +85,11 @@ keep detailed test evidence in `VALIDATION.md`.
 - Add a manual-only macOS build workflow with pinned actions/toolchain, short
   artifact retention and focused native refusal/CLI checks. Development artifacts
   are not Developer-ID-signed/notarized releases; bare-metal acceptance is pending.
-- Report the unavailable macOS Lua sandbox before checking the worker binding,
-  without offering an unrestricted fallback. Windows/Linux binding checks and
-  cancellation remain enforced. Document the isolation design and required proof.
+- Refuse Mac Lua calls if the required sandbox helper is unavailable, without
+  offering an unrestricted fallback. Windows/Linux binding checks and cancellation
+  remain enforced. Document the isolation design and its validation.
 
-## 0.92.1 — Search alignment and bundled Git startup
+### Search alignment and bundled Git startup
 
 - Center search text and placeholders vertically with their icons in Preferences,
   the branch filter and history search, including the adjacent code-search path field.

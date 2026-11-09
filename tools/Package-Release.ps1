@@ -20,6 +20,9 @@ $documents = @('CHANGELOG.md','CLI.md','DEPENDENCIES.md','HOSTING.md','INTEGRATI
 # User-facing wiki pages ship with the app. Developer/test notes stay local,
 # matching their source-publication exclusions in .gitignore.
 $documents += @(Get-ChildItem -LiteralPath (Join-Path $packageRoot 'docs/wiki') -File -Filter '*.md' | ForEach-Object { 'docs/wiki/' + $_.Name })
+if (Test-Path -LiteralPath (Join-Path $packageRoot "docs/releases/$version.md") -PathType Leaf) {
+    $documents += "docs/releases/$version.md"
+}
 foreach ($name in $binaries) {
     if (-not (Test-Path -LiteralPath (Join-Path $source $name) -PathType Leaf)) { throw "Missing build output: $name" }
 }

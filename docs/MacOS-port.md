@@ -1,8 +1,33 @@
-# Apple Silicon macOS preparation
+# Apple Silicon macOS preview
 
-Status: steps 1–5 and the native watcher/emoji follow-up passed, including the
-development app bundle. Bare-metal acceptance remains pending; no supported
-macOS release is published by this workflow.
+Rocket 0.92.1 targets Apple Silicon and macOS 15 or later. Its preview includes
+native menus, system spell checking, zsh, repository notifications and the bound
+Lua/Pulley sandbox. Git must already be installed. Windows and Linux retain their
+existing native Lua sandboxes.
+
+The Mac preview has ad-hoc signatures, **not Developer ID signing or
+notarization**. It is a manual-install preview; in-app installation keeps its
+signed-publisher and notarization requirements. Physical Mac, IME/Retina and
+normal-account profile acceptance remain pending. See the
+[0.92.1 release notes](https://github.com/JasXTD/Rocket/releases/tag/v0.92.1)
+for package requirements.
+
+## Complete package acceptance
+
+[Run 42605847910](https://github.com/JasXTD/Rocket/actions/runs/42605847910)
+passed on implementation `4243694`: the complete app and helper bindings,
+23 affected Rust tests, package inventory/signatures/ZIP roundtrip, and 14
+localhost MCP scenario groups. These covered native menus, compact updates and
+cancellation, spelling, protected Lua saving/reloading, and actual zsh typing,
+history, completion, Unicode resizing and Ctrl+C with the same shell preserved.
+Temporary-repository contents and personal credentials were protected.
+
+The manual Lua qualification workflow now also accepts `release-package`. It
+builds both hosts and the bound helper with `--release`, verifies the extracted
+archive and packaged CLI version, runs real-worker checks and both packaged MCP
+suites, and retains the ZIP, checksum and evidence. It never publishes a release.
+The existing smaller development modes remain available. The historical results
+below describe earlier packages, not the final 0.92.1 archive.
 
 ## Native result (2026-11-08)
 

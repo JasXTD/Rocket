@@ -48,6 +48,9 @@ LICENSE-MIT README.md SECURITY.md THIRD-PARTY-NOTICES.txt docs/images/rocket-log
 crates/rocket-ui/src/guide.md tools/README.md"
 # User-facing wiki pages ship with the app, as on Windows.
 documents="$documents $(cd "$root" && ls docs/wiki/*.md)"
+if [ -f "$root/docs/releases/$version.md" ]; then
+    documents="$documents docs/releases/$version.md"
+fi
 for file in $binaries; do
     [ -f "$source/$file" ] || fail "Missing build output: $file"
 done

@@ -1,6 +1,6 @@
 name: macOS Lua helper qualification
 
-# Manual, capped development check; never publishes release assets.
+# Manual, capped qualification/package build; never publishes release assets.
 on:
   workflow_dispatch:
     inputs:
@@ -8,7 +8,7 @@ on:
         description: Affected Lua or complete packaged desktop checks
         type: choice
         default: integration
-        options: [integration, prototype, complete-package]
+        options: [integration, prototype, complete-package, release-package]
 
 permissions:
   contents: read
@@ -21,7 +21,7 @@ concurrency:
 jobs:
   guest:
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.checks == 'complete-package' && 3 || 5 }}
+    timeout-minutes: ${{ (inputs.checks == 'complete-package' || inputs.checks == 'release-package') && 3 || 5 }}
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
       guest_sha: ${{ steps.guest.outputs.guest_sha }}
@@ -47,7 +47,7 @@ jobs:
   mac:
     needs: guest
     runs-on: macos-15
-    timeout-minutes: ${{ inputs.checks == 'complete-package' && 8 || 15 }}
+    timeout-minutes: ${{ inputs.checks == 'release-package' && 20 || inputs.checks == 'complete-package' && 8 || 15 }}
     env:
       CARGO_BUILD_JOBS: '3'
       CARGO_TERM_COLOR: never
@@ -84,7 +84,7 @@ jobs:
           set -euo pipefail
           export CARGO_HOME="$RUNNER_TEMP/prototype-deps/cargo-home"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/prototype-target"
-          if [ '${{ inputs.checks }}' = integration ] || [ '${{ inputs.checks }}' = complete-package ]; then
+          if [ '${{ inputs.checks }}' = integration ] || [ '${{ inputs.checks }}' = complete-package ] || [ '${{ inputs.checks }}' = release-package ]; then
             bash tools/macos/test-lua-integration.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results" "$RUNNER_TEMP/root-cargo-home" '${{ inputs.checks }}'
           else
             bash tools/prototypes/macos-lua-wasm/run-host-checks.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results"
@@ -104,5 +104,7 @@ jobs:
             ${{ runner.temp }}/prototype-results/evidence/*.png
             ${{ runner.temp }}/prototype-results/Rocket-macos-lua-development.zip
             ${{ runner.temp }}/prototype-results/Rocket-macos-lua-development.zip.sha256
+            ${{ runner.temp }}/prototype-results/Rocket-*-macos-arm64-preview.zip
+            ${{ runner.temp }}/prototype-results/Rocket-*-macos-arm64-preview.zip.sha256
           retention-days: 1
           compression-level: 0
