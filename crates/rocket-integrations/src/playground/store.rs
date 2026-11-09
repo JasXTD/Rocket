@@ -10,6 +10,24 @@ use std::{
     path::Path,
 };
 const FILE: &str = "playground.dpapi";
+fn protection_failure(error: rocket_git::Error) -> rocket_git::Error {
+    // This API's Mac errors contain static recovery guidance and an OSStatus,
+    // never the protected bytes. Preserve helper-trust vs vault-access failures.
+    #[cfg(target_os = "macos")]
+    if let rocket_git::Error::InvalidInput(detail) = &error
+        && detail.starts_with("macos_keychain_")
+    {
+        return invalid(&format!("playground_store: {detail} Your code is retained."));
+    }
+    let _ = error;
+    invalid(if cfg!(windows) {
+        "playground_store: Cannot protect scratch source for this Windows user. Your code is retained."
+    } else if cfg!(target_os = "macos") {
+        "playground_store: Cannot protect scratch source. Unlock the default macOS Keychain and review Rocket's access, then retry. Your code is retained."
+    } else {
+        "playground_store: Cannot protect scratch source with the key in your desktop keyring. Your code is retained."
+    })
+}
 fn inspect(path: &Path, dir: bool) -> Result<()> {
     let m = fs::symlink_metadata(path)
         .map_err(|_| invalid("playground_store: Cannot inspect the scratch file."))?;
@@ -103,7 +121,7 @@ pub fn save(
                 "playground_changed: Scratch source changed outside this window. Your code is retained; reload before saving.",
             ));
         }
-        let raw = protect_hosting_secret(source.as_bytes(), true).map_err(|_|invalid(if cfg!(windows) {"playground_store: Cannot protect scratch source for this Windows user. Your code is retained."} else if cfg!(target_os="macos") {"playground_store: Cannot protect scratch source. Unlock the default macOS Keychain and review Rocket's access, then retry. Your code is retained."} else {"playground_store: Cannot protect scratch source with the key in your desktop keyring. Your code is retained."}))?;
+        let raw = protect_hosting_secret(source.as_bytes(), true).map_err(protection_failure)?;
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(|_| invalid("playground_store: Invalid clock."))?
@@ -141,6 +159,20 @@ pub fn save(
         let _ = fs::remove_file(lock);
     }
     result
+}
+#[cfg(all(test, target_os = "macos"))]
+mod mac_error_tests {
+    use super::*;
+    #[test]
+    fn protected_save_keeps_actionable_mac_guidance_without_arbitrary_details() {
+        let error = protection_failure(invalid("macos_keychain_helper_untrusted: Use a complete Rocket bundle in a private folder."));
+        let message = error.to_string();
+        assert!(message.contains("private folder") && message.contains("code is retained"));
+        let denied = protection_failure(invalid("macos_keychain_denied: Unlock your default Keychain. (OSStatus -25308)"));
+        assert!(denied.to_string().contains("OSStatus -25308"));
+        let unknown = protection_failure(invalid("PRIVATE_ARBITRARY_DETAIL"));
+        assert!(!unknown.to_string().contains("PRIVATE_ARBITRARY_DETAIL"));
+    }
 }
 #[cfg(all(test, windows))]
 mod tests {

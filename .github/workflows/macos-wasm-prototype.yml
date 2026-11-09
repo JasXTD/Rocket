@@ -47,7 +47,7 @@ jobs:
   mac:
     needs: guest
     runs-on: macos-15
-    timeout-minutes: 15
+    timeout-minutes: ${{ inputs.checks == 'complete-package' && 10 || 15 }}
     env:
       CARGO_BUILD_JOBS: '3'
       CARGO_TERM_COLOR: never

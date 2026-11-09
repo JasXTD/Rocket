@@ -13,6 +13,8 @@ keep detailed test evidence in `VALIDATION.md`.
 - Refuse symlinked MCP fixture markers when opening them on macOS/Linux. Keep
   exact opt-in contents and bounded regular-file reads. Use canonical native Unix
   test roots so private-storage regressions run without an environment override.
+- Preserve actionable macOS Keychain guidance when protected Lua source saving
+  is refused, including helper-trust failures; keep the unsaved code intact.
 - Expand native Mac repository menus and function/navigation key equivalents;
   add guarded localhost MCP invocation of real Cocoa menu items. Add complete
   app-bundle acceptance with bound Lua, updates, spelling and isolated zsh checks.

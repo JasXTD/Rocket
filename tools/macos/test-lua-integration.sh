@@ -44,6 +44,7 @@ else
   cargo test --locked -p rocket-git --test fixture_storage -- --test-threads=1
   cargo test --locked -p rocket-git --lib the_time_limit_ends_a_search_without_an_error -- --test-threads=1
   cargo test --locked -p rocket-git --lib tiny_command_limits_preserve_readable_blob_pairs -- --test-threads=1
+  cargo test --locked -p rocket-integrations --lib protected_save_keeps_actionable_mac_guidance -- --test-threads=1
   cargo test --locked -p rocket-ui --lib menus::native::tests -- --test-threads=1
   cargo test --locked -p rocket-mcp --lib native_menu -- --test-threads=1
   cargo test --locked -p rocket-mcp --lib terminal_probes -- --test-threads=1

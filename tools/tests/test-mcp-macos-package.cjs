@@ -18,7 +18,7 @@ const file=path.join(repo,'資料.rs');fs.writeFileSync(file,'// initial\n');git
 fs.appendFileSync(file,'// PRIVATE_MAC_STAGED\n');git(['add','.']);fs.appendFileSync(file,'// PRIVATE_MAC_UNSTAGED\n');fs.writeFileSync(path.join(repo,'rocket-completion-fixture'),'PRIVATE_MAC_UNTRACKED');
 const fingerprint=()=>({head:git(['rev-parse','HEAD']),index:sha(path.join(repo,'.git/index')),config:sha(path.join(repo,'.git/config')),file:sha(file),untracked:sha(path.join(repo,'rocket-completion-fixture'))}),before=fingerprint();
 let client,service,state,mode='unavailable',metadata=0,closed=0;const sockets=new Set();
-const report={passed:false,cases:[],timings:{},binary_sha256:sha(exe),root};
+const report={passed:false,cases:[],failures:[],timings:{},binary_sha256:sha(exe),root};
 // The production app still uses Security.framework and its normal ACL checks.
 // A hosted, disposable CI user gets a separate default vault for this test only.
 let keychain;
@@ -43,6 +43,9 @@ function prepareKeychain(){
  security(['unlock-keychain','-p',password,file]);
  assert.deepEqual(keychainPaths(security(['default-keychain','-d','user'])),[file]);
  assert.deepEqual(keychainPaths(security(['list-keychains','-d','user'])),[file]);
+ // Security.framework's preferences belong to the disposable OS user. Keep its
+ // HOME consistent with the security tool; app/Git/zsh storage remains explicit.
+ assert(path.isAbsolute(process.env.HOME||''));env.HOME=process.env.HOME;
  report.keychain={isolated:true,restored:false};
 }
 function restoreKeychain(){
@@ -105,10 +108,20 @@ async function run(){try{
  await native('repository-playground');await until(()=>play()?.loaded&&control('int-play-run')?.enabled,'Lua scratch editor');await click('int-play-run');await until(()=>!play().busy&&play().has_preview,'bound Lua preview');assert.equal(play().error,null);assert(play().widget_ids.includes('increment'));await click('int-play-ui-increment');await until(()=>!play().busy&&play().text?.labels?.some(t=>t.includes('updated 1 times')),'Lua interaction');await capture('bound-lua-preview');
  await type('int-play-source','return function(ctx) return { view = ui.text("資料 Mac helper") } end');await click('int-play-run');await until(()=>!play().busy&&play().has_preview&&play().preview_current,'Unicode Lua preview');assert.equal(play().error,null);
  await type('int-play-source','return function( -- invalid');await click('int-play-run');await until(()=>!play().busy&&play().error,'Lua diagnostic');await capture('lua-error');
- await type('int-play-source','return function(ctx) return { view = ui.text("Recovered") } end');await click('int-play-run');await until(()=>!play().busy&&play().preview_current&&!play().error,'Lua recovers');await click('int-play-save');await until(()=>!play().busy,'save completed');assert.equal(play().save_error,null);assert(!play().dirty);
- const saved=fs.readFileSync(path.join(root,'rocket-ui-state','playground.dpapi'));assert(saved.length>63&&!saved.includes(Buffer.from('Recovered')),'Saved code must be protected');
- await click('int-play-reload');await until(()=>play().loaded&&!play().busy&&!play().dirty,'encrypted source reloaded');assert(play().text.source.includes('Recovered'));await native('shortcut-changes');
+ await type('int-play-source','return function(ctx) return { view = ui.text("Recovered") } end');await click('int-play-run');await until(()=>!play().busy&&play().preview_current&&!play().error,'Lua recovers');
  pass('Packaged, hash-bound Lua helper renders and updates real UI, handles Unicode and syntax errors, and recovers');
+ try{
+  await click('int-play-save');await until(()=>!play().busy,'save completed');assert.equal(play().save_error,null);assert(!play().dirty);
+  const saved=fs.readFileSync(path.join(root,'rocket-ui-state','playground.dpapi'));assert(saved.length>63&&!saved.includes(Buffer.from('Recovered')),'Saved code must be protected');
+  await click('int-play-reload');await until(()=>play().loaded&&!play().busy&&!play().dirty,'encrypted source reloaded');assert(play().text.source.includes('Recovered'));
+  pass('Lua source saves encrypted and reloads through the disposable Keychain');
+ }catch(e){
+  report.failures.push({case:'encrypted Lua save/reload',error:e.message});await capture('lua-save-error');
+  // Preserve evidence, then discard only this owned synthetic draft so independent
+  // terminal checks and normal shutdown still run. The batch remains a failure.
+  if(play().dirty){await click('int-play-reload');await click('int-play-reload-confirm');await until(()=>!play().busy&&!play().dirty,'fixture draft reset')}
+ }
+ await native('shortcut-changes');
  await native('shortcut-terminal');await until(s=>s.terminal?.running,'zsh starts');await probe('zsh-initialize');await until(s=>s.terminal.tail.includes('ROCKET_ZSH_')&&prompt(),'isolated zsh initialized');assert(state.terminal.tail.includes(path.join(root,'rocket-ui-state','terminal-history.log')));
  await probe('typing');await until(()=>line('ROCKET_TYPING_OK')>0&&prompt(),'zsh typing');await probe('history-seed');await until(()=>line('ROCKET_HISTORY_SECOND')>0&&prompt());const count=line('ROCKET_HISTORY_SECOND');await probe('history-previous');await probe('submit');await until(()=>line('ROCKET_HISTORY_SECOND')>count&&prompt(),'zsh history');
  await probe('completion-command');await probe('completion-argument');await until(()=>line('ROCKET_COMPLETION_OK')>0&&prompt(),'zsh command completion');await probe('completion-path');await until(()=>state.terminal.tail.trimEnd().endsWith('rocket-completion-fixture'),'zsh expanded the typed path');await probe('submit');await until(()=>line('./rocket-completion-fixture')+line('rocket-completion-fixture')>0&&prompt(),'zsh path completion');
@@ -116,7 +129,7 @@ async function run(){try{
  await probe('interrupt-start');await until(()=>line('ROCKET_INTERRUPT_READY')>0);const interrupt=performance.now();await probe('cancel-line');await until(prompt,'zsh interrupt prompt',4000);report.timings.interrupt_ms=Math.round(performance.now()-interrupt);assert.equal(line('ROCKET_INTERRUPT_UNEXPECTED'),0);await probe('interrupt-status');await until(()=>line('ROCKET_SHELL_True')>0&&line('ROCKET_STATE_42')>0&&prompt(),'same zsh after interrupt');
  const typedBefore=line('ROCKET_TYPING_OK');await probe('typing');await until(()=>line('ROCKET_TYPING_OK')>typedBefore&&prompt());const history=fs.readFileSync(path.join(root,'rocket-ui-state','terminal-history.log'),'utf8');assert(history.includes('ROCKET_HISTORY_SECOND'));assert(!fs.existsSync(path.join(home,'.zsh_history')));
  pass('zsh editing, history, command/path completion, Unicode resize and Ctrl+C work in the same shell with isolated persisted history');
- assert.deepEqual(fingerprint(),before);await capture('final');report.passed=true;
+ assert.deepEqual(fingerprint(),before);await capture('final');report.passed=report.failures.length===0;if(!report.passed)throw Error('Affected checks failed: '+report.failures.map(x=>x.case).join(', '));
 }catch(e){report.error=e.stack;try{await capture('failure');fs.writeFileSync(path.join(root,'failure-state.json'),JSON.stringify(state,null,2))}catch{}throw e}finally{
  try{if(client&&service&&service.exitCode===null){if(state?.window==='running'){await client.tool('rocket_close');await until(s=>s.window==='closed'||s.dialog?.kind==='quit');if(state.dialog?.kind==='quit'){await click('dialog-submit');await until(s=>s.window==='closed')}}await client.raw('POST','/shutdown');const at=performance.now();while(service.exitCode===null&&service.signalCode===null){if(performance.now()-at>15000)throw Error('Owned MCP service did not stop');await delay(50)}}}catch(e){report.passed=false;report.cleanup_error=e.stack;if(service?.exitCode===null)service.kill();process.exitCode=1}
  if(client)await client.finish();for(const s of sockets)s.destroy();await new Promise(r=>server.close(r));
