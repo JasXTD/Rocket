@@ -14,6 +14,11 @@
 /tools/releases/
 /tools/maintenance/*/
 
+# Release, update and notarization files written outside tools/releases/.
+/*.dmg
+/*.zip
+/*.tar.gz
+
 # Optional, separately downloaded advisory scanner (see DEPENDENCIES.md).
 # The bundled ConPTY runtime under runtime/conpty/ must remain versioned.
 /runtime/osv-scanner/
@@ -28,6 +33,9 @@
 /.aws/
 /.ssh/
 /AGENTS.md
+/.claude/
+/CLAUDE.md
+/CLAUDE.local.md
 /.vs/
 /.idea/
 /.vscode/
@@ -48,6 +56,10 @@ id_ed25519
 *.pfx
 *.p12
 *.dpapi
+# Apple notarization API keys and exported keychains.
+*.p8
+*.keychain
+*.keychain-db
 
 # Generated logs, databases, debug symbols and temporary files.
 *.log
@@ -74,6 +86,8 @@ __pycache__/
 *.py[cod]
 .venv/
 .DS_Store
+._*
+.AppleDouble/
 Thumbs.db
 Desktop.ini
 
