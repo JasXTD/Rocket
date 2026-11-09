@@ -543,17 +543,17 @@ impl Rocket {
         let wake = Arc::new(move || context.request_repaint());
         let network = launch.as_ref().is_ok_and(|shell| !shell.runs_in(&tab.path));
         let result = match (&self.terminal_history_file, launch) {
-            (Some(history), _) => {
+            (Some(history), Ok(shell)) => {
                 // Mac test sessions snapshot Bash 3.2 history. Each tab has at
                 // most one live terminal, so give it its own file to prevent
                 // concurrent snapshots in different tabs overwriting each other.
                 #[cfg(target_os = "macos")]
                 let history = history.with_extension(format!("tab-{}.log", tab.id));
-                Session::start_with_history(&tab.path, 100, 12, wake, history.as_path())
+                Session::start_shell_with_history(&tab.path, 100, 12, wake, &shell, history.as_path())
             }
             (None, Ok(_)) if network => Ok(Session::refused(crate::views::display_path(&tab.path))),
             (None, Ok(shell)) => Session::start_shell(&tab.path, 100, 12, wake, &shell),
-            (None, Err(reason)) => Ok(Session::refused(reason)),
+            (_, Err(reason)) => Ok(Session::refused(reason)),
         };
         match result {
             Ok(session) => {

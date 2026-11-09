@@ -49,6 +49,7 @@ else
   cargo test --locked -p rocket-mcp --lib native_menu -- --test-threads=1
   cargo test --locked -p rocket-mcp --lib terminal_probes -- --test-threads=1
   cargo test --locked -p rocket-terminal --lib isolated_zsh -- --test-threads=1
+  cargo test --locked -p rocket-terminal --test unix_session owned_history_keeps_the_selected_program -- --test-threads=1
   xcrun clang -arch arm64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-menu-probe.m -o "$out/menu-probe"
   "$out/menu-probe"
 fi

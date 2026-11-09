@@ -21,7 +21,7 @@ concurrency:
 jobs:
   guest:
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: ${{ inputs.checks == 'complete-package' && 3 || 5 }}
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
       guest_sha: ${{ steps.guest.outputs.guest_sha }}
@@ -47,7 +47,7 @@ jobs:
   mac:
     needs: guest
     runs-on: macos-15
-    timeout-minutes: ${{ inputs.checks == 'complete-package' && 10 || 15 }}
+    timeout-minutes: ${{ inputs.checks == 'complete-package' && 8 || 15 }}
     env:
       CARGO_BUILD_JOBS: '3'
       CARGO_TERM_COLOR: never

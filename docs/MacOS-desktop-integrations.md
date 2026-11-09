@@ -81,7 +81,7 @@ then packages all five native executables. After a ZIP round trip, the tests lau
 that extracted `Rocket.app/Contents/MacOS/rocket-mcp` through authenticated localhost
 MCP. The bundle is verified again after testing. Results and screenshots contain
 synthetic fixture data; profiles, access tokens and repository contents are excluded
-from artifacts. The complete-package jobs are capped at 5/10 minutes; other Mac
+from artifacts. The complete-package jobs are capped at 3/8 minutes; other Mac
 Lua test scopes retain their 15-minute Mac cap.
 
 The combined acceptance covers native actions and compact reviews, updates through
@@ -95,6 +95,8 @@ The hosted disposable Mac user uses an isolated temporary Keychain for encrypted
 Lua source save/reload, then restores its original default and search list. This
 setup refuses to run in a personal desktop account. App state, Git configuration,
 zsh startup files and history are separately scoped to the synthetic fixture.
+Owned terminal history preserves the selected isolated shell, uses a file per
+tab, and acceptance requires an actual zsh version before its keyboard checks.
 
 This combined run is pending until its results are recorded below; the prior native
 unit/adapter results do not establish full-package MCP acceptance.

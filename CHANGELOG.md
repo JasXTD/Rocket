@@ -15,6 +15,8 @@ keep detailed test evidence in `VALIDATION.md`.
   test roots so private-storage regressions run without an environment override.
 - Preserve actionable macOS Keychain guidance when protected Lua source saving
   is refused, including helper-trust failures; keep the unsaved code intact.
+- Preserve the selected shell when starting a terminal with owned test history;
+  verify actual zsh execution and its per-tab history in Mac package acceptance.
 - Expand native Mac repository menus and function/navigation key equivalents;
   add guarded localhost MCP invocation of real Cocoa menu items. Add complete
   app-bundle acceptance with bound Lua, updates, spelling and isolated zsh checks.

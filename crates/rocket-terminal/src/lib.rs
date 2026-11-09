@@ -142,6 +142,28 @@ impl Session {
         wake: Arc<dyn Fn() + Send + Sync>,
         shell: &Shell,
     ) -> io::Result<Self> {
+        Self::start_selected_shell(directory, columns, rows, wake, shell, None)
+    }
+    /// Runs the selected shell with an owned history path. The platform launcher
+    /// applies it only to Rocket's isolated shell modes, never normal user profiles.
+    pub fn start_shell_with_history(
+        directory: &Path,
+        columns: u16,
+        rows: u16,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        shell: &Shell,
+        history: &Path,
+    ) -> io::Result<Self> {
+        Self::start_selected_shell(directory, columns, rows, wake, shell, Some(history))
+    }
+    fn start_selected_shell(
+        directory: &Path,
+        columns: u16,
+        rows: u16,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        shell: &Shell,
+        history: Option<&Path>,
+    ) -> io::Result<Self> {
         if let Shell::Custom { arguments, .. } = shell
             && arguments.iter().any(|v| v.contains(['\0', '\r', '\n']))
         {
@@ -150,7 +172,7 @@ impl Session {
                 "Invalid shell arguments",
             ));
         }
-        Self::start_owned(directory, columns, rows, wake, None, None, shell.clone())
+        Self::start_owned(directory, columns, rows, wake, history, None, shell.clone())
     }
     /// A session that never started, for a view that says why.
     pub fn refused(message: String) -> Self {

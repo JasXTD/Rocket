@@ -102,6 +102,26 @@ fn job(screen: &Screen) -> u32 {
 }
 
 #[test]
+fn owned_history_keeps_the_selected_program_and_arguments() {
+    let root = folder("selected-history").canonicalize().unwrap();
+    let session = Session::start_shell_with_history(
+        &root, 100, 18, Arc::new(|| {}),
+        &Shell::Custom {
+            program: "/bin/sh".into(),
+            arguments: vec!["-c".into(), "printf 'ROCKET_SELECTED_%s\\n' shell; exit 17".into()],
+        },
+        &root.join("history"),
+    ).unwrap();
+    closed(&session, "selected shell with owned history");
+    assert_eq!(session.status().error, None);
+    assert_eq!(session.status().exit_code, Some(17));
+    assert!(session.snapshot(0).unwrap().text().lines().any(|line| line == "ROCKET_SELECTED_shell"));
+    assert!(!root.join("history").exists(), "normal custom shells keep their own history configuration");
+    drop(session);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn rocket_bash_has_its_own_session_job_control_resize_interrupt_unicode_and_history() {
     let root = folder("bash");
     let history = root.join("history");
