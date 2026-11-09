@@ -39,6 +39,11 @@ export ROCKET_TEST_MAC_HOST="$out/package/Rocket.app/Contents/MacOS/rocket"
 if [ "$mode" = integration ]; then
   cargo test --locked -p rocket-integrations --test macos_worker -- --test-threads=1
 else
+  # Security regressions must run without an environment workaround for roots.
+  cargo test --locked -p rocket-mcp --lib policy::tests -- --test-threads=1
+  cargo test --locked -p rocket-git --test fixture_storage -- --test-threads=1
+  cargo test --locked -p rocket-git --lib the_time_limit_ends_a_search_without_an_error -- --test-threads=1
+  cargo test --locked -p rocket-git --lib tiny_command_limits_preserve_readable_blob_pairs -- --test-threads=1
   cargo test --locked -p rocket-ui --lib menus::native::tests -- --test-threads=1
   cargo test --locked -p rocket-mcp --lib native_menu -- --test-threads=1
   cargo test --locked -p rocket-mcp --lib terminal_probes -- --test-threads=1

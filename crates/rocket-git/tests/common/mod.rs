@@ -7,16 +7,9 @@ use std::{
 };
 static NEXT: AtomicU64 = AtomicU64::new(0);
 
-// WSL checks of Windows-hosted source need native ext4 fixtures for Unix modes,
-// links and atomic renames. This changes only tests, never repository defaults.
-fn fixture_base() -> PathBuf {
-    if let Some(path) = std::env::var_os("ROCKET_TEST_REPOSITORIES").map(PathBuf::from) {
-        assert!(path.is_absolute(), "test repository root must be absolute");
-        path
-    } else {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/test-repositories")
-    }
-}
+#[path = "../support/fixture_root.rs"]
+mod fixture_root;
+use fixture_root::base as fixture_base;
 
 // Re-exec mutation tests with child-only settings and file-only transports.
 // Other test binaries include this module without needing the isolation helper.

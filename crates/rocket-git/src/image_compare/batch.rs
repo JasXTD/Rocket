@@ -160,10 +160,7 @@ mod tests {
     use super::*;
     #[test]
     fn tiny_command_limits_preserve_readable_blob_pairs() {
-        let base =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/test-repositories");
-        fs::create_dir_all(&base).unwrap();
-        let base = base.canonicalize().unwrap();
+        let base = crate::test_fixture_root::base();
         let root = base.join(format!(
             "image-batch-{}-{}",
             std::process::id(),
@@ -199,7 +196,7 @@ mod tests {
             read(&repo, &ids, &cancel)
         })();
         // This unique directory is owned by the test, never a user repository.
-        assert!(root.canonicalize().unwrap().starts_with(&base));
+        assert_eq!(root.canonicalize().unwrap().parent(), Some(base.canonicalize().unwrap().as_path()));
         fs::remove_dir_all(&root).unwrap();
         let bodies = outcome.unwrap();
         assert_eq!(bodies[0].1, b"a\0b");

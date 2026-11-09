@@ -4,6 +4,10 @@
 //! or a UI worker. Never run Git operations on the UI thread.
 //! Paths and commit messages retain Git's bytes; lossy conversion is for display only.
 
+#[cfg(test)]
+#[path = "../tests/support/fixture_root.rs"]
+mod test_fixture_root;
+
 mod auto_fetch;
 mod process_privilege;
 /// Refuse elevated/high-integrity Windows hosts, including an unverifiable token.

@@ -692,6 +692,18 @@ fn read_regular(path: &Path, limit: u64) -> Result<String, String> {
         use std::os::windows::fs::OpenOptionsExt;
         options.custom_flags(0x00200000);
     }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Refuse a redirected leaf at open time, not by a racy path check.
+        // NONBLOCK lets the handle's regular-file check reject FIFOs promptly.
+        #[cfg(target_os = "linux")]
+        options.custom_flags(0x20000 | 0x800); // O_NOFOLLOW | O_NONBLOCK
+        #[cfg(target_os = "macos")]
+        options.custom_flags(0x100 | 0x4); // O_NOFOLLOW | O_NONBLOCK
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        return Err("Fixture metadata is unsupported on this Unix platform".into());
+    }
     let file = options
         .open(path)
         .map_err(|_| "Missing worktree fixture metadata")?;
@@ -736,6 +748,53 @@ fn prune_marker_object(text: &str, branch: &str, source: &str) -> Option<rocket_
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn redirected_fixture_markers_never_grant_opt_in() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir().join(format!(
+            "rocket-marker-policy-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        std::fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let fixture = root.join("fixture");
+        std::fs::create_dir(&fixture).unwrap();
+        let p = Policy::new(&fixture).unwrap();
+        let actual = root.join("outside-marker");
+        std::fs::write(&actual, "synthetic-content-only-v1\n").unwrap();
+        let marker = fixture.join("rocket-private-state");
+        symlink(&actual, &marker).unwrap();
+        let refused = !p.private_state_allowed();
+        std::fs::remove_file(&marker).unwrap();
+        assert!(refused, "a symlink to exact opt-in contents must not grant consent");
+        std::fs::write(&marker, "synthetic-content-only-v1\n").unwrap();
+        assert!(p.private_state_allowed());
+        std::fs::remove_file(&marker).unwrap();
+        symlink("missing", &marker).unwrap();
+        assert!(!p.private_state_allowed());
+        std::fs::remove_file(&marker).unwrap();
+        std::fs::create_dir(&marker).unwrap();
+        assert!(!p.private_state_allowed());
+        std::fs::remove_dir(&marker).unwrap();
+        std::fs::write(&marker, "x".repeat(65)).unwrap();
+        assert!(!p.private_state_allowed());
+        std::fs::remove_file(&marker).unwrap();
+
+        let repository = fixture.join("repo");
+        std::fs::create_dir(&repository).unwrap();
+        std::fs::create_dir(repository.join(".git")).unwrap();
+        std::fs::write(&actual, "rocket-ui-test/owned").unwrap();
+        let repo_marker = repository.join(".git/rocket-ui-fixture");
+        symlink(&actual, &repo_marker).unwrap();
+        assert!(p.repository(&repository).is_err());
+        std::fs::remove_file(&repo_marker).unwrap();
+        std::fs::write(&repo_marker, "rocket-ui-test/owned").unwrap();
+        assert!(p.repository(&repository).is_ok());
+        assert_eq!(root.parent(), std::env::temp_dir().canonicalize().ok().as_deref());
+        std::fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn previews_must_sit_in_the_preview_folder_and_limits_stay_bounded() {
         let root=std::env::temp_dir().join(format!("rocket-preview-policy-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));

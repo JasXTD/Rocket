@@ -93,6 +93,15 @@ history are unchanged. Production update signature requirements remain enforced.
 This combined run is pending until its results are recorded below; the prior native
 unit/adapter results do not establish full-package MCP acceptance.
 
+The security follow-up runs before that acceptance: Unix MCP marker reads refuse
+symlinked leaf files at open time and validate the opened regular file and size.
+Private-state opt-in and fixture ownership still require exact marker contents.
+Git tests use canonical native Unix temporary roots by default, including when
+WSL builds Windows-hosted source; `ROCKET_TEST_REPOSITORIES` remains an explicit
+test override. Production private-directory checks are unchanged. The two new
+regressions failed before these fixes and passed in WSL afterward, together with
+the affected policy, code-search and image-read cases.
+
 ## Validation
 
 The [combined native job](https://github.com/JasXTD/Rocket/actions/runs/42579693442)

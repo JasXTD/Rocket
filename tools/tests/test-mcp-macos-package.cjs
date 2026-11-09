@@ -79,7 +79,7 @@ async function run(){try{
  if(client)await client.finish();for(const s of sockets)s.destroy();await new Promise(r=>server.close(r));
  const logs=fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).map(n=>path.join(root,n)).concat(path.join(profile,'logs')).filter(p=>fs.existsSync(p));
  const events=logs.flatMap(p=>fs.readdirSync(p).filter(n=>/^rocket(?:\.\d+)?\.jsonl$/.test(n)).flatMap(n=>fs.readFileSync(path.join(p,n),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));
- report.events=events.length;if(!events.length||events.some(e=>e.dropped>0)||JSON.stringify(events).includes('PRIVATE_MAC_')){report.passed=false;report.log_error='Missing, dropped or private diagnostic events';process.exitCode=1}
+ report.events=events.length;if(!events.length||events.some(e=>e.dropped_before!==0)||JSON.stringify(events).includes('PRIVATE_MAC_')){report.passed=false;report.log_error='Missing, dropped or private diagnostic events';process.exitCode=1}
  fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));console.log('RESULT '+path.join(root,'result.json'));
 }}
 run().catch(e=>{console.error(e);process.exitCode=1});

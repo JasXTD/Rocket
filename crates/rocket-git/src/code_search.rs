@@ -1290,7 +1290,7 @@ mod tests {
 
     #[test]
     fn the_time_limit_ends_a_search_without_an_error() {
-        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/test-repositories");
+        let base = crate::test_fixture_root::base();
         let root = base.join(format!(
             "rocket-time-limit-{}-{}",
             std::process::id(),
