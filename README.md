@@ -277,7 +277,7 @@ compares documented features, not speed or maturity, and features change.
 | `crates/rocket-mcp`, `crates/rocket-mcp-control` | The localhost UI automation service. |
 | `crates/rocket-terminal`, `crates/rocket-spell` | The terminal and commit-message spelling. |
 | `runtime/` | Reviewed bundled runtimes and their provenance. |
-| `tools/` | Build scripts, mockups and focused tests ([guide](tools/README.md)). |
+| `tools/` | Build scripts and focused tests ([guide](tools/README.md)). |
 
 ## Documentation
 

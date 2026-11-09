@@ -6,6 +6,7 @@
 /UI.md
 /COORDINATION.md
 /VALIDATION.md
+/tools/mockups/
 
 # Local archives, packaged releases and historical validation snapshots.
 # Keep the reusable scripts directly inside tools/maintenance/.

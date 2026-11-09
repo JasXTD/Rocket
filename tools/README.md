@@ -221,13 +221,13 @@ profiles under `work/mcp-fixtures/`, use loopback mocks and preserve normal logi
 
 ## Source control and local files
 
-The source repository keeps reusable scripts, tests, mockups, test-helper Rust
+The source repository keeps reusable scripts, tests, test-helper Rust
 sources, and the signed ConPTY runtime with its manifest and licenses. `Cargo.lock`
 is part of the source. `.gitattributes` preserves the pinned runtime bytes.
 
 Build output (`target/`, `tools/helpers/bin/`), generated test data (`work/`), local release bundles
-(`tools/releases/`), archived history (`tools/archive/`) and dated maintenance
-subfolders are excluded by `.gitignore`. The two reusable maintenance checks
+(`tools/releases/`), archived history (`tools/archive/`), design mockups (`tools/mockups/`)
+and dated maintenance subfolders are excluded by `.gitignore`. The two reusable maintenance checks
 directly in `tools/maintenance/` remain included. Existing local copies are kept;
 these folders are not restored by a fresh Git checkout.
 
