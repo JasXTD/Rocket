@@ -98,8 +98,8 @@ zsh startup files and history are separately scoped to the synthetic fixture.
 Owned terminal history preserves the selected isolated shell, uses a file per
 tab, and acceptance requires an actual zsh version before its keyboard checks.
 
-This combined run is pending until its results are recorded below; the prior native
-unit/adapter results do not establish full-package MCP acceptance.
+The complete packaged consumer run passed; its results are recorded below. This
+development qualification does not replace Developer ID or physical Mac acceptance.
 
 The security follow-up runs before that acceptance: Unix MCP marker reads refuse
 symlinked leaf files at open time and validate the opened regular file and size.
@@ -111,6 +111,29 @@ regressions failed before these fixes and passed in WSL afterward, together with
 the affected policy, code-search and image-read cases.
 
 ## Validation
+
+The [complete package run](https://github.com/JasXTD/Rocket/actions/runs/42605847910)
+passed on implementation commit `4243694` on 2026-11-09. All 23 selected Rust
+tests passed, including the security regressions and selected-shell process check.
+Bundle tests had 12 passes and one expected other-OS skip. Native Cocoa probes,
+bundle signatures/inventory, ZIP roundtrip and post-MCP verification passed.
+
+Both real localhost MCP suites passed: eight desktop groups and six package
+groups. Coverage includes native menu guards, cancelled reviews, compact updates
+and errors, spelling, bound Lua rendering/events/Unicode/error recovery, encrypted
+source save/reload, and actual zsh typing/history/completion/resize/Control+C.
+Update cancellation measured 596 ms; zsh Control+C-to-prompt measured 695 ms
+through MCP and preserved the same shell and its variables. Dirty repository
+fingerprints were unchanged. The two suites recorded 288/340 diagnostic events
+with no drops or private fixture payloads; owned processes stopped and the
+disposable Keychain default/search list was restored. CI screenshots were reviewed
+for compact update/error dialogs, Lua preview and terminal layouts.
+
+Affected Windows and WSL regressions passed locally. The guest/Mac jobs took
+74/284 seconds; cumulative conservative compute estimate is $7.44 of the $8 cap,
+not an invoice. The development ZIP is 103,575,224 bytes with SHA-256
+`b607a63acef0050ca522910b90be683d6f49ed636c9606e6129704de61e688ce`.
+No release was published and production update trust checks remain unchanged.
 
 The [combined native job](https://github.com/JasXTD/Rocket/actions/runs/42579693442)
 passed on implementation commit `bccf851` on 2026-11-09:
