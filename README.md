@@ -40,21 +40,26 @@ guide.
 
 **Changes and review**
 
-- Stage whole files, hunks or single lines, and drag files between Staged and Unstaged.
-- Unified or side-by-side diffs with syntax and word highlights; image compare with overlay,
-  swipe and pixel differences.
-- Commit details, file history and blame in their own windows, plus external editor, diff
-  and merge tool profiles.
+- Stage files, hunks or single lines; drag between Staged and Unstaged.
+- Unified or side-by-side diffs with syntax and word highlights, search and an overview strip.
+- Image compare with overlay, swipe and pixel differences.
+- **Compare** branches, tags, commits, the staging area or the working tree.
+- **Commit & Push**, commit-message spell check, and a **Summary** page with the next step.
+- Restore or discard files and selected lines, with recovery copies.
+- Commit details, **File history** and blame in their own windows.
+- External editor, diff and merge tool profiles.
 
 **History and branches**
 
-- Commit graph across branches, file renames, and the repository tree at any commit.
-- Find code with `git log -S` / `-G` and **Search in files** (`git grep`) at any commit.
-- Merge, rebase and interactive rebase (reorder, reword, edit, squash, fixup, drop) with a
-  preview first.
-- Cherry-pick, revert, amend, bisect, reflog recovery and **Undo Last Commit**.
-- A [Repository map](docs/wiki/Repository-map.md) of packages, folders, branches and who
-  works where.
+- Commit graph across branches, file renames, and **Files** at any commit.
+- Find code with `git log -S` / `-G` and **Search in files** (`git grep`).
+- Create, switch, rename and clean up branches; **Save, switch & restore** keeps uncommitted work.
+- Merge, rebase and interactive rebase (reorder, reword, edit, squash, fixup, drop), previewed first.
+- Cherry-pick, revert, amend and **conflict prediction**.
+- Reflog recovery, **Undo Last Commit**, and manual or automatic **bisect**.
+- **Git Flow** feature, release and hotfix branches.
+- Tags, commit signing and signature checks, and **issue links** to Jira, Redmine or any tracker.
+- [**Repository map**](docs/wiki/Repository-map.md) and **Statistics**.
 
 <p align="center">
   <picture>
@@ -66,9 +71,8 @@ guide.
 **Conflicts and recovery**
 
 - A three-column conflict editor (Ours, Result, Theirs) with linked scrolling.
-- Stashes with partial apply, patches and commit series, and Continue, Skip or Abort for
-  paused operations.
-- Discards keep recovery copies, and history rewrites keep the original commits reachable.
+- Stashes with partial apply; import and export patches and commit series.
+- Continue, Skip or Abort for paused operations, and recovery data before anything is replaced.
 
 <p align="center">
   <picture>
@@ -79,36 +83,40 @@ guide.
 
 **Remotes and hosting**
 
-- Clone, fetch, pull (fast-forward, merge or rebase) and reviewed push, including
-  force-with-lease and atomic multi-branch push.
-- Pull requests, issues, reviews and CI marks for GitHub, GitHub Enterprise Server, GitLab,
-  Bitbucket, Azure DevOps and Gitea ([what each supports](HOSTING.md)).
-- An **Actions** page, and **Re-run failed jobs** on GitHub, GitLab and Gitea.
-- An SSH key manager with per-repository keys; your existing keys and SSH config stay put.
+- Clone (HTTPS, SSH or local), manage remotes, and fetch in the background.
+- Pull (fast-forward, merge or rebase) and reviewed push, force-with-lease and atomic
+  multi-branch push.
+- Remote tags, remote branch deletion and prune.
+- **Publish to GitHub** from a local repository.
+- Pull requests, issues and reviews on GitHub, GitHub Enterprise Server, GitLab, Bitbucket,
+  Azure DevOps and Gitea ([what each supports](HOSTING.md)).
+- CI marks on commits and branches, an **Actions** page and **Re-run failed jobs**.
+- **SSH keys**: find, create, unlock and assign per repository, plus Direct key mode without
+  ssh-agent.
 
 **Many repositories**
 
-- A Repository manager with folders, nested workspaces and tabs; **Scan folder** finds
-  repositories and worktrees.
-- Every saved repository's status at a glance, with **Fetch all** and **Pull all**
-  (fast-forward only).
-- **Explore** other repositories (search GitHub or paste an address) in a read-only preview
-  before you clone them.
-- Worktrees, submodules, tags, Git LFS, ignore rules and commit signing.
+- Tabs, automatic refresh, and a **Repository manager** with folders and nested workspaces.
+- **Scan folder**, every repository's status at a glance, **Fetch all** and **Pull all**.
+- **Explore**: search GitHub or paste an address, preview read-only, then Keep or Discard.
+- Worktrees (move, repair, prune), submodules, Git LFS (objects, tracking rules, locks) and
+  ignore rules.
 
 **AI, only when you ask**
 
-- Draft a commit message, review a branch diff or get a proposed conflict resolution from
-  Claude Code or Codex on your computer, or from a connected MCP agent.
-- Rocket stores no AI API key and shows what will be sent first. Nothing is committed or
-  applied without you.
+- **AI drafts** for commit messages, **AI review** of a branch diff and **AI resolve** for
+  conflicts.
+- Runs Claude Code or Codex on your computer, or a connected MCP agent. No AI API key is
+  stored, and you see what's sent first.
 
 **Extensions**
 
-- Sandboxed Lua packages with native panels, forms and tables, and commands in menus and the
-  palette. An extension can't run Git or shell commands, read your files or see your tokens.
-- An offline Lua playground and the [extension API](INTEGRATIONS.md). Jira and PlayGround
-  ship with Rocket, switched off.
+- Sandboxed Lua packages with native panels, forms, tables, and commands in menus and the
+  palette.
+- Reviewed install; an extension can't run Git or shell commands, read your files or see your
+  tokens.
+- An offline **Lua playground**, developer tools and the [extension API](INTEGRATIONS.md).
+- **Jira** and **PlayGround** ship with Rocket, switched off.
 
 <p align="center">
   <picture>
@@ -117,18 +125,28 @@ guide.
   </picture>
 </p>
 
+**Safety**
+
+- **Secret protection** and **Guard AI API keys** block recognized secrets in commits and
+  pushes.
+- **Dependency advisories**: offline OSV scans, with an optional check before push.
+- Reviews before writes, Stop on running operations, and recovery data for destructive steps.
+
 **Everything else**
 
-- Themes: Clay (the default), Ocean, Dark, Light, System, or Custom with your own accent
-  colour and background picture.
-- An integrated terminal, custom commands, configurable shortcuts, Statistics, activity
-  history and local crash reports.
-- Secret guards that stop recognized credentials and AI API keys from being committed or
-  pushed.
-- In-app updates from [GitHub Releases](https://github.com/JasXTD/Rocket/releases),
-  installed only when you choose, with the previous version kept.
-- A JSON [CLI](CLI.md) and an optional localhost [MCP service](tools/README.md#localhost-mcp)
-  for automation and UI testing.
+- Themes: Clay (the default), Ocean, Dark, Light, System and Custom.
+- **Command palette**, task-grouped menus, custom commands, and shortcuts and mouse gestures
+  with two bindings each.
+- An integrated terminal with your choice of shell.
+- **Setup Guide** and a built-in guide (F1).
+- Activity history, a diagnostics viewer, **Repository benchmark**, local crash reports and
+  storage locations.
+- Choice of Git program (bundled, installed or custom), and commit identity globally or per
+  repository.
+- In-app updates from [GitHub Releases](https://github.com/JasXTD/Rocket/releases), with the
+  previous version kept.
+- A JSON [CLI](CLI.md) and a localhost [MCP service](tools/README.md#localhost-mcp) for
+  automation.
 
 ## Platforms
 
