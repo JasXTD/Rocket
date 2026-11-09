@@ -1193,12 +1193,14 @@ impl Rocket {
                 if cfg!(windows) {
                     tr("Uses the Windows spell checker.").to_owned()
                 } else {
-                    tr("Uses the Hunspell dictionaries installed on this system.").to_owned()
+                    if cfg!(target_os = "macos") { "Uses the macOS spell checker. Added words are shared with other apps.".to_owned() }
+                    else { tr("Uses the Hunspell dictionaries installed on this system.").to_owned() }
                 }
             } else {
                 match (&self.spelling.problem, self.spelling.language()) {
                     (Some(problem), _) => trf!("Off: {problem}", problem),
                     (None, Some(language)) if cfg!(windows) => trf!("Windows spell checker · {language}", language),
+                    (None, Some(language)) if cfg!(target_os = "macos") => format!("macOS spell checker · {language}"),
                     (None, Some(language)) => trf!("Hunspell dictionary · {language}", language),
                     (None, None) => tr("Starting the spell checker…").to_owned(),
                 }

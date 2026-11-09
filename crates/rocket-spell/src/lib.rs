@@ -1,11 +1,13 @@
 //! Spell checking for Rocket's commit message editor: the operating system's spell
-//! checker on Windows, and on Linux the system's Hunspell dictionaries read by spellbook.
+//! checker on Windows/macOS, and on Linux the system's Hunspell dictionaries read by spellbook.
 //! Elsewhere [`SpellChecker::start`] reports [`Error::Unavailable`] and callers hide the
 //! feature.
 //!
 //! The Windows checker is a COM object. One worker thread owns it and initializes
 //! COM for itself, so the UI thread (which Windows may have set up for drag and
-//! drop) never touches COM. The Linux checker has its worker too. Requests are answered
+//! drop) never touches COM. Linux has its worker too; macOS marshals its Cocoa
+//! calls to the main queue from the worker (the app must service its run loop).
+//! Requests are answered
 //! asynchronously through [`Pending`].
 use std::{
     ops::Range,
@@ -14,6 +16,10 @@ use std::{
 };
 
 mod queue;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+use macos as platform;
 
 #[cfg(target_os = "linux")]
 mod linux;
@@ -119,7 +125,7 @@ fn response<T>() -> (Reply<T>, Pending<T>) {
 const MAX_TEXT_BYTES: usize = 128 * 1024;
 
 #[cfg_attr(
-    not(any(windows, target_os = "linux", test)),
+    not(any(windows, target_os = "linux", target_os = "macos", test)),
     expect(dead_code, reason = "only the Windows and Linux workers read the text")
 )]
 enum Request {
@@ -160,11 +166,11 @@ impl SpellChecker {
     /// user's Windows language when None (falling back to `en-US`). This waits
     /// until the checker is ready, so call it off the UI thread.
     pub fn start(language: Option<&str>) -> Result<Self, Error> {
-        #[cfg(any(windows, target_os = "linux"))]
+        #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
         {
             Self::spawn(language.map(str::to_owned))
         }
-        #[cfg(not(any(windows, target_os = "linux")))]
+        #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
         {
             let _ = language;
             Err(Error::Unavailable)
@@ -184,7 +190,7 @@ impl SpellChecker {
         answer
     }
 
-    #[cfg(any(windows, target_os = "linux"))]
+    #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
     fn spawn(language: Option<String>) -> Result<Self, Error> {
         let (requests, received) = queue::channel();
         let (ready, started) = mpsc::channel();

@@ -1,7 +1,7 @@
 // Focused installer transaction failures, using only owned stub programs/directories.
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto'),assert=require('node:assert/strict');const f=require('./app-update-fixtures.cjs'),platform=require('./platform.cjs');
-const root=(folder=>(fs.mkdirSync(folder,{recursive:true}),fs.realpathSync(folder)))(path.resolve('work/mcp-fixtures/update-installer-'+crypto.randomUUID())),exe=path.resolve(platform.exe('target/release/rocket'));fs.mkdirSync(root,{recursive:true});const oldExe=f.probe(root,'0.88.0'),newExe=f.probe(root,'9.0.0');const report={passed:false,root,exe_hash:f.sha(fs.readFileSync(exe)),cases:[]},children=new Set();const delay=ms=>new Promise(r=>setTimeout(r,ms));
+const root=(folder=>(fs.mkdirSync(folder,{recursive:true}),fs.realpathSync(folder)))(path.resolve('work/mcp-fixtures/update-installer-'+crypto.randomUUID())),exe=path.resolve(process.env.ROCKET_UPDATE_INSTALLER_EXE||platform.exe('target/release/rocket'));fs.mkdirSync(root,{recursive:true});const oldExe=f.probe(root,'0.88.0'),newExe=f.probe(root,'9.0.0');const report={passed:false,root,exe_hash:f.sha(fs.readFileSync(exe)),cases:[]},children=new Set();const delay=ms=>new Promise(r=>setTimeout(r,ms));
 async function until(fn,label){const end=performance.now()+15000;while(!fn()){assert(performance.now()<end,label+' timeout');await delay(50)}}
 function child(program,args){const p=cp.spawn(program,args,{windowsHide:true,stdio:['pipe','pipe','pipe']});children.add(p);p.stdout.resume();p.stderr.resume();return p}
 async function end(p){if(p.exitCode===null){p.stdin.end('done\n');await until(()=>p.exitCode!==null,'owned child exit')}children.delete(p)}

@@ -21,10 +21,10 @@ struct Queue {
 }
 pub(super) struct Sender(Arc<Queue>);
 // The receiving end belongs to the Windows and Linux workers, and to the tests here.
-#[cfg(any(windows, target_os = "linux", test))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos", test))]
 pub(super) struct Receiver(Arc<Queue>);
 
-#[cfg(any(windows, target_os = "linux", test))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos", test))]
 pub(super) fn channel() -> (Sender, Receiver) {
     let queue = Arc::new(Queue::default());
     (Sender(Arc::clone(&queue)), Receiver(queue))
@@ -53,7 +53,7 @@ impl Drop for Sender {
         self.0.ready.notify_one();
     }
 }
-#[cfg(any(windows, target_os = "linux", test))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos", test))]
 impl Receiver {
     pub(super) fn next(&self) -> Option<Request> {
         let mut state = self.0.state.lock().expect("spell queue lock poisoned");
@@ -70,7 +70,7 @@ impl Receiver {
         }
     }
 }
-#[cfg(any(windows, target_os = "linux", test))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos", test))]
 impl Drop for Receiver {
     fn drop(&mut self) {
         let mut state = self.0.state.lock().expect("spell queue lock poisoned");

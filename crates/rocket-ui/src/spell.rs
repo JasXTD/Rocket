@@ -1,4 +1,4 @@
-//! Spell checking for the commit message: Windows and Linux, off by default. The
+//! Spell checking for the commit message: Windows, Linux and macOS, off by default. The
 //! rocket-spell worker checks text off the UI thread. Results are kept per exact
 //! text, so an edited field never shows underlines computed for older text.
 use crate::{
@@ -49,7 +49,7 @@ pub struct Spelling {
 impl Spelling {
     /// Whether this platform has a spell checker Rocket can use.
     pub fn supported() -> bool {
-        cfg!(any(windows, target_os = "linux"))
+        cfg!(any(windows, target_os = "linux", target_os = "macos"))
     }
 
     /// Start or stop the checker to match the preference.

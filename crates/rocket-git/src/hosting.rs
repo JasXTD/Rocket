@@ -298,7 +298,7 @@ pub(crate) fn find_curl(_git: &Path) -> Option<PathBuf> {
 /// a folder root owns, and writable by no one else, as Windows runs only its System32
 /// curl. A copy on PATH, beside Git or in the user's folders is never used. Hosting,
 /// extension requests and app updates all take their programs from here.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) fn system_program(name: &str) -> Option<PathBuf> {
     use std::os::unix::fs::MetadataExt;
     let folder = Path::new("/usr/bin");

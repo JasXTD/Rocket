@@ -13,6 +13,8 @@ pub fn ensure_unprivileged_process() -> Result<()> {
     process_privilege::check().map_err(|error| Error::InvalidInput(error.to_string()))
 }
 pub mod app_update;
+#[cfg(target_os = "macos")]
+pub mod macos_menu;
 pub mod crash_reports;
 #[cfg(target_os = "macos")]
 mod darwin_acl;

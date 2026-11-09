@@ -12,6 +12,7 @@ on:
           - followups
           - platform
           - sandbox
+          - desktop-integration
 
 permissions:
   contents: read
@@ -56,6 +57,8 @@ jobs:
             # GitHub-hosted disposable OS user only. Never a normal account's container.
             export ROCKET_MACOS_SANDBOX_DISPOSABLE_USER=1
             bash tools/test-macos-sandbox.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"
+          elif [ "$ROCKET_MACOS_CHECK_SCOPE" = desktop-integration ]; then
+            bash tools/macos/test-desktop-integration.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"
           else
             node --test tools/tests/test-macos-preflight.cjs 2>&1 | tee "$RUNNER_TEMP/rocket-macos-preflight.log"
             bash tools/build-macos.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"

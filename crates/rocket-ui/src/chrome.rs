@@ -204,7 +204,11 @@ impl Rocket {
         {
             last.seen = true;
         }
-        Panel::top("menubar")
+        #[cfg(target_os = "macos")]
+        let native_menu = self.native_menubar(ui.ctx(), intents);
+        #[cfg(not(target_os = "macos"))]
+        let native_menu = false;
+        if !native_menu { Panel::top("menubar")
             .exact_size(30.0)
             .frame(Frame::new().fill(PANE_DEEP()).inner_margin(Margin {
                 left: 6,
@@ -212,7 +216,7 @@ impl Rocket {
                 top: 0,
                 bottom: 0,
             }))
-            .show(ui, |ui| self.menubar(ui, intents));
+            .show(ui, |ui| self.menubar(ui, intents)); }
         let repository = !self.tabs.is_empty();
         // The Repositories list replaces the tab strip only while the full sidebar
         // shows; otherwise the tabs stay reachable above the toolbar.

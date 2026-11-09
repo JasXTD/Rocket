@@ -150,10 +150,10 @@ impl Unpacker {
             None => {
                 let version = top
                     .strip_prefix("Rocket-")
-                    .and_then(|t| t.strip_suffix("-linux-x64"))
-                    .ok_or_else(|| refuse("the archive's top folder is not a Linux release"))?;
+                    .and_then(|t| t.strip_suffix(if cfg!(target_os = "macos") { "-macos-arm64" } else { "-linux-x64" }))
+                    .ok_or_else(|| refuse("the archive's top folder does not match this platform"))?;
                 if super::UpdateVersion::parse(version).is_none() || version.starts_with('v') {
-                    return Err(refuse("the archive's top folder is not a Linux release"));
+                    return Err(refuse("the archive's top folder has an invalid release version"));
                 }
                 self.top = Some(top.to_owned());
             }
@@ -307,7 +307,10 @@ mod tests {
         }
         unpacker.finish()
     }
+    #[cfg(not(target_os = "macos"))]
     const TOP: &str = "Rocket-9.0.0-linux-x64";
+    #[cfg(target_os = "macos")]
+    const TOP: &str = "Rocket-9.0.0-macos-arm64";
 
     #[test]
     fn a_release_folder_unpacks_with_its_files_and_folders() {

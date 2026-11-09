@@ -64,6 +64,12 @@ fn command(program: &Path) -> Command {
     }
     command
 }
+fn move_directory(from: &Path, to: &Path) -> Result<()> {
+    #[cfg(target_os = "macos")]
+    { rocket_git::app_update::macos::move_directory(from, to) }
+    #[cfg(not(target_os = "macos"))]
+    { fs::rename(from, to).map_err(io) }
+}
 fn same_parent(path: &Path, target: &Path, prefix: &str) -> Result<()> {
     if path.parent() != target.parent()
         || !path
@@ -110,7 +116,7 @@ pub fn handoff(
 ) -> Result<Handoff> {
     cancel.check()?;
     rocket_git::ensure_unprivileged_process()?;
-    if !target.join("SHA256SUMS.txt").is_file() {
+    if !is_packaged(target) {
         return Err(error(
             "This is a development build. In-place updates require a packaged Rocket installation; the verified download is kept.",
         ));
@@ -132,8 +138,9 @@ pub fn handoff(
         .file_name()
         .ok_or_else(|| error("Invalid update job directory."))?
         .to_string_lossy();
-    let stage = parent.join(format!(".rocket-next-{suffix}"));
-    let backup = parent.join(format!(".rocket-previous-{suffix}"));
+    let extension = if cfg!(target_os = "macos") { ".app" } else { "" };
+    let stage = parent.join(format!(".rocket-next-{suffix}{extension}"));
+    let backup = parent.join(format!(".rocket-previous-{suffix}{extension}"));
     let lock = parent.join(format!(
         ".{}.rocket-update-lock",
         target
@@ -156,17 +163,23 @@ pub fn handoff(
     drop(lock_file);
     let result = (|| {
         copy_tree(
-            &prepared.job.join("bundle"),
+            &prepared_root(&prepared.job),
             &stage,
             &prepared.files,
             cancel,
         )?;
+        #[cfg(target_os = "macos")]
+        rocket_git::app_update::macos::verify_app(&stage, Some(prepared.version), cancel)?;
         let worker = prepared.job.join(if cfg!(windows) {
             "update-worker.exe"
         } else {
             "update-worker"
         });
         let helper_hash = digest(helper, cancel)?;
+        #[cfg(target_os = "macos")]
+        if old.get(ENTRYPOINT) != Some(&helper_hash) {
+            return Err(error("The installed update helper changed. Nothing was replaced."));
+        }
         fs::OpenOptions::new()
             .write(true)
             .create_new(true)
@@ -223,6 +236,17 @@ pub fn cancel(handoff: &Handoff) {
 
 /// Invoked only by Rocket's explicit installer mode. Receipts are local data.
 pub fn apply(path: &Path) -> Result<()> {
+    apply_verified(path, |app, version, cancel| {
+        #[cfg(target_os = "macos")]
+        {
+            rocket_git::app_update::macos::verify_app(app, version, cancel)?;
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = (app, version, cancel);
+        Ok(())
+    })
+}
+fn apply_verified(path: &Path, verify: impl Fn(&Path, Option<rocket_git::app_update::UpdateVersion>, &CancellationToken) -> Result<()>) -> Result<()> {
     rocket_git::ensure_unprivileged_process()?;
     plain(path)?;
     if path.file_name().is_none_or(|p| p != "install.json") {
@@ -331,19 +355,27 @@ pub fn apply(path: &Path) -> Result<()> {
                 "Installation or prepared files changed. Nothing was replaced.",
             ));
         }
+        let version = plan["version"].as_str().and_then(rocket_git::app_update::UpdateVersion::parse)
+            .ok_or_else(|| error("Invalid update version."))?;
+        verify(&target, None, &token)?;
+        verify(&stage, Some(version), &token)?;
+        // Cancellation is accepted until the first rename. Once replacement starts,
+        // finish replacement or rollback so the app is never left half-installed.
+        if job.join("cancel").exists() { return Err(rocket_git::Error::Cancelled); }
         write_json(
             &job.join("transaction.json"),
             &json!({"phase":"ready_to_swap","target":target,"stage":stage,"backup":backup}),
         )?;
-        fs::rename(&target, &backup).map_err(io)?;
+        move_directory(&target, &backup)?;
         moved_old = true;
-        fs::rename(&stage, &target).map_err(io)?;
+        move_directory(&stage, &target)?;
         installed_new = true;
         // Keep the complete old directory; never delete user files to recover.
         let executable = target.join(ENTRYPOINT);
         if digest(&executable, &token)? != new[ENTRYPOINT] {
             return Err(error("Installed executable changed before restart."));
         }
+        verify(&target, Some(version), &token)?;
         // Publish the receipt before the new process starts reading it.
         write_json(&receipt_path, &success_receipt)?;
         receipt_written = true;
@@ -358,10 +390,10 @@ pub fn apply(path: &Path) -> Result<()> {
     if result.is_err() && moved_old {
         // If restart failed, move the failed new directory aside and put the old
         // one back. Both sets of files survive; no recursive deletion is used.
-        if installed_new && fs::rename(&target, &stage).is_err() {
+        if installed_new && move_directory(&target, &stage).is_err() {
             rollback_ok = false;
         }
-        if rollback_ok && fs::rename(&backup, &target).is_err() {
+        if rollback_ok && move_directory(&backup, &target).is_err() {
             rollback_ok = false;
         }
     }
@@ -398,6 +430,7 @@ pub fn apply(path: &Path) -> Result<()> {
         && parent_exited
         && rollback_ok
         && digest(&target.join(ENTRYPOINT), &token).is_ok_and(|sha| sha == old[ENTRYPOINT])
+        && (!cfg!(target_os = "macos") || (inventory(&target, &token).is_ok_and(|files| files == old) && verify(&target, None, &token).is_ok()))
     {
         let _ = command(&target.join(ENTRYPOINT))
             .args(&repos)
@@ -412,7 +445,24 @@ pub fn apply(path: &Path) -> Result<()> {
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
+    // Only linked into the Rust test executable. Production apply() always uses
+    // Developer ID + notarization; no environment/CLI switch can disable that.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn mac_transaction_child() {
+        let Some(plan) = std::env::var_os("ROCKET_MAC_UPDATE_TEST_PLAN") else { return };
+        let result = apply_verified(Path::new(&plan), |app, _, cancel| {
+                cancel.check()?;
+                let status = Command::new("/usr/bin/codesign").args(["--verify", "--deep", "--strict", "--test-requirement", "=identifier \"io.github.jasxtd.rocket\""]).arg(app).status().map_err(io)?;
+                if !status.success() { return Err(error("Disposable app signature is invalid")); }
+            Ok(())
+        });
+        // Outcome itself is asserted independently by the external driver from
+        // receipts, file inventories and actual restarted probe executables.
+        println!("test helper outcome: {}", if result.is_ok() { "installed" } else { "refused or recovered" });
+    }
+
+    #[cfg(target_os = "linux")]
     #[test]
     fn unsafe_jobs_and_ancestors_are_refused_before_handoff_or_plan_reads() {
         use std::os::unix::fs::PermissionsExt;

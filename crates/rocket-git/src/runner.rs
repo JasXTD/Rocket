@@ -458,7 +458,7 @@ impl Runner {
     }
 
     /// A tool run whose standard output streams to `sink`, as `read_streamed` does for Git.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn tool_streamed(
         &self,

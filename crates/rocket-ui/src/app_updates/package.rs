@@ -31,7 +31,7 @@ pub const BINARIES: [&str; 7] = [
     "rocket-ssh.exe",
 ];
 /// Linux has no terminal host: the terminal opens a pseudoterminal itself.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "macos")))]
 pub const BINARIES: [&str; 6] = [
     "rocket",
     "rocket-mcp",
@@ -40,7 +40,23 @@ pub const BINARIES: [&str; 6] = [
     "rocket-lua-host",
     "rocket-ssh",
 ];
+#[cfg(target_os = "macos")]
+pub const BINARIES: [&str; 5] = [
+    "Contents/MacOS/rocket", "Contents/MacOS/rocket-mcp", "Contents/MacOS/rocket-cli",
+    "Contents/MacOS/rocket-rebase-editor", "Contents/MacOS/rocket-ssh",
+];
 pub const ENTRYPOINT: &str = BINARIES[0];
+pub fn prepared_root(job: &Path) -> PathBuf {
+    let bundle = job.join("bundle");
+    if cfg!(target_os = "macos") { bundle.join("Rocket.app") } else { bundle }
+}
+pub fn is_packaged(root: &Path) -> bool {
+    root.join(if cfg!(target_os = "macos") { "Contents/Info.plist" } else { "SHA256SUMS.txt" }).is_file()
+}
+#[cfg(unix)]
+pub fn executable_path(name: &str) -> bool {
+    BINARIES.contains(&name) || (cfg!(target_os = "macos") && name == "Contents/Helpers/RocketLua.app/Contents/MacOS/rocket-lua-host")
+}
 /// The platform an update manifest must name, as its file name does.
 fn platform() -> Result<&'static str> {
     rocket_git::app_update::UPDATE_PLATFORM
@@ -184,6 +200,10 @@ pub fn manifest(
     cancel: &CancellationToken,
 ) -> Result<BTreeMap<String, String>> {
     let value = json_file(&bundle.join("rocket-update.json"))?;
+    #[cfg(target_os = "macos")]
+    let app = bundle.join("Rocket.app");
+    #[cfg(target_os = "macos")]
+    let bundle = app.as_path();
     if value["schema"] != 1
         || value["version"] != version.text()
         || value["platform"] != platform()?
@@ -237,6 +257,8 @@ pub fn manifest(
         }
     }
     let actual = installed(bundle, cancel)?;
+    #[cfg(target_os = "macos")]
+    rocket_git::app_update::macos::verify_app(bundle, Some(version), cancel)?;
     let mut payload = actual.clone();
     payload.remove("rocket-update.json");
     payload.remove("SHA256SUMS.txt");
@@ -247,6 +269,17 @@ pub fn manifest(
     }
     Ok(actual)
 }
+#[cfg(target_os = "macos")]
+pub fn installed(root: &Path, cancel: &CancellationToken) -> Result<BTreeMap<String, String>> {
+    plain(root)?;
+    let files = inventory(root, cancel)?;
+    for name in BINARIES {
+        if !files.contains_key(name) { return Err(error("The Mac update is missing a required Rocket executable.")); }
+    }
+    rocket_git::app_update::macos::verify_app(root, None, cancel)?;
+    Ok(files)
+}
+#[cfg(not(target_os = "macos"))]
 pub fn installed(root: &Path, cancel: &CancellationToken) -> Result<BTreeMap<String, String>> {
     let sums = String::from_utf8(read(&root.join("SHA256SUMS.txt"), 4 * 1024 * 1024)?)
         .map_err(|_| error("Installed release manifest is invalid."))?;
@@ -294,6 +327,10 @@ pub struct Prepared {
     pub files: BTreeMap<String, String>,
 }
 pub fn unique(parent: &Path) -> Result<PathBuf> {
+    #[cfg(target_os = "macos")]
+    let resolved = rocket_git::local_storage::resolve_system_alias(parent).map_err(io)?;
+    #[cfg(target_os = "macos")]
+    let parent = resolved.as_path();
     plain(parent)?;
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -338,6 +375,19 @@ pub fn prepare(
     }
     let bundle = job.join("bundle");
     client.extract(&archive, &bundle, cancel)?;
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let names: BTreeSet<_> = fs::read_dir(&bundle).map_err(io)?.map(|e| e.map(|e| e.file_name())).collect::<std::io::Result<_>>().map_err(io)?;
+        if names != [std::ffi::OsString::from("Rocket.app"), std::ffi::OsString::from("rocket-update.json")].into_iter().collect() {
+            return Err(error("Mac update must contain exactly Rocket.app and its update manifest."));
+        }
+        for name in BINARIES.into_iter().chain(std::iter::once("Contents/Helpers/RocketLua.app/Contents/MacOS/rocket-lua-host")) {
+            let path = prepared_root(&job).join(name);
+            plain(&path)?;
+            if path.exists() { fs::set_permissions(path, fs::Permissions::from_mode(0o755)).map_err(io)?; }
+        }
+    }
     phase.store(3, Ordering::Release);
     let files = manifest(&bundle, release.version, cancel)?;
     fs::write(
@@ -385,7 +435,7 @@ pub fn copy_tree(
         #[cfg(unix)]
         {
             use std::os::unix::fs::OpenOptionsExt;
-            options.mode(if BINARIES.contains(&name.as_str()) {
+            options.mode(if executable_path(name) {
                 0o755
             } else {
                 0o644
@@ -414,7 +464,7 @@ pub fn copy_tree(
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "macos")))]
 mod tests {
     use super::*;
     #[cfg(unix)]

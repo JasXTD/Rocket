@@ -15,8 +15,10 @@ use std::{
     time::Duration,
 };
 
-#[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+#[cfg(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64")))]
 mod unpack;
+#[cfg(target_os = "macos")]
+pub mod macos;
 
 pub const UPDATE_REPOSITORY: &str = "JasXTD/Rocket";
 pub const UPDATE_MAX_ARCHIVE: u64 = 512 * 1024 * 1024;
@@ -40,16 +42,22 @@ pub const UPDATE_PLATFORM: Option<UpdatePlatform> = Some(UpdatePlatform {
     extension: "tar.gz",
     label: "Linux x64",
 });
-#[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"))))]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+pub const UPDATE_PLATFORM: Option<UpdatePlatform> = Some(UpdatePlatform {
+    platform: "macos-arm64",
+    extension: "tar.gz",
+    label: "macOS Apple Silicon",
+});
+#[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"), all(target_os = "macos", target_arch = "aarch64"))))]
 pub const UPDATE_PLATFORM: Option<UpdatePlatform> = None;
 
 /// Linux: the system's /usr/bin program, checked as hosting checks its curl
 /// (`hosting::system_program`), as Windows runs only its System32 curl.
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn system_program(name: &str) -> Result<PathBuf> {
     crate::hosting::system_program(name).ok_or_else(|| {
         invalid(&format!(
-            "Updates need the system's /usr/bin/{name}, owned by root and changeable by no one else. Install your distribution's {name} package."
+            "Updates need the system's /usr/bin/{name}, owned by root and changeable by no one else. Restore the operating system's tool before retrying."
         ))
     })
 }
@@ -225,7 +233,9 @@ pub fn wait_for_update_parent(parent: u32, ready: &Path, cancel: &Path) -> Resul
             }
         }
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(target_os = "macos")]
+    { macos::wait_for_parent(parent, ready, cancel) }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
         let _ = (parent, ready, cancel);
         Err(invalid("App update installation needs Windows or Linux."))
@@ -327,11 +337,11 @@ impl UpdateClient {
         if matches!(endpoint, UpdateEndpoint::Loopback(0)) {
             return Err(invalid("Invalid update test endpoint."));
         }
-        #[cfg(not(target_os = "linux"))]
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
         let curl = crate::hosting::find_curl(Path::new("")).ok_or_else(|| {
             invalid("Windows curl is unavailable; Rocket could not check for updates.")
         })?;
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let curl = system_program("curl")?;
         Ok(Self {
             runner: Runner {
@@ -563,14 +573,14 @@ impl UpdateClient {
         directory: &Path,
         cancel: &CancellationToken,
     ) -> Result<()> {
-        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        #[cfg(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64")))]
         {
             self.runner
                 .step("app-update-prepare", "extract_bundle", || {
                     self.unpack(archive, directory, cancel)
                 })
         }
-        #[cfg(not(all(target_os = "linux", target_arch = "x86_64")))]
+        #[cfg(not(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64"))))]
         self.runner.step("app-update-prepare","extract_bundle",||{
             let shell=self.curl.parent().unwrap().join("WindowsPowerShell/v1.0/powershell.exe");
             let mut runner=self.runner.clone();runner.limits.timeout=Duration::from_secs(180);
@@ -584,7 +594,7 @@ impl UpdateClient {
     }
     /// Linux: the system's gzip decompresses the archive, and `unpack` checks and writes
     /// every entry as the data streams in.
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+    #[cfg(any(target_os = "macos", all(target_os = "linux", target_arch = "x86_64")))]
     fn unpack(&self, archive: &Path, directory: &Path, cancel: &CancellationToken) -> Result<()> {
         let failed = |reason: &dyn std::fmt::Display| {
             invalid(&format!(

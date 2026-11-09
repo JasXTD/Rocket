@@ -53,7 +53,7 @@ fn resolve_macos(home: Option<PathBuf>) -> Option<PathBuf> {
 /// Normalize only the two verified root-owned Darwin aliases, without following
 /// arbitrary user links. Repository creation uses the same strict spelling check.
 #[cfg(target_os = "macos")]
-pub(crate) fn resolve_system_alias(path: &Path) -> io::Result<PathBuf> {
+pub fn resolve_system_alias(path: &Path) -> io::Result<PathBuf> {
     unix::darwin_root(path)
 }
 

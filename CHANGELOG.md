@@ -10,6 +10,14 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased — Apple Silicon macOS preparation
 
+- Add Mac in-app update checks, bounded verified update packages, signed-publisher
+  and notarization checks, cancellable preparation, retained previous apps and
+  rollback on installation/restart failure. Development builds refuse public
+  installation; Developer ID distribution acceptance remains a separate gate.
+- Add system spelling for commit messages and native macOS menus for common
+  commands, with existing shortcut/write guards and a Command Palette entry for
+  additional workflows. Windows/Linux retain their existing platform behavior.
+
 - Integrate the fixed Lua/Pulley helper with Mac extension and playground calls.
   Bind UI/MCP hosts to the final signed helper inside Rocket.app; refuse missing,
   changed or unbound helpers, validate sealed resources, and use private per-run

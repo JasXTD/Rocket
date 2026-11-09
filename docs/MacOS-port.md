@@ -177,8 +177,8 @@ Rocket remains private; this preparation does not change its visibility.
 | Filesystem / hashing | Native ACL, storage, locks, atomic file/repository operations and recovery checks passed. Additional volumes and Unicode-normalization edge cases need acceptance. Unsupported atomic operations fail without an overwriting fallback. |
 | Git | Step 2 filesystem-only installed-Git discovery and launcher refusal implemented; Finder environment and installed Git versions still need native acceptance. Windows' bundle is never selected. |
 | Automatic repository refresh | Native FSEvents and focused Mac runtime checks passed, including linked/common directories, repeated edits, root replacement, shutdown and idle behavior. Older development artifacts still require F5. Windows and Linux retain their own watchers. |
-| Desktop | Native Command/Control bindings, CJK, outline emoji, compact dialogs and persistence passed. Real IME, clipboard, Retina and Finder launch remain pending. A native macOS menu bar is not implemented. |
-| Spell checking / updates | macOS adapters and signed `.app` update/rollback remain absent. |
+| Desktop | Native Command/Control bindings, CJK, outline emoji, compact dialogs and persistence passed. Native menu integration now routes common commands through the same UI guards; additional commands remain in the Command Palette. Real IME, clipboard, Retina and Finder launch remain pending. |
+| Spell checking / updates | Cocoa spelling and signed `.app` update/rollback adapters are implemented; see [Mac desktop integrations](MacOS-desktop-integrations.md) for focused verification and remaining distribution gates. |
 
 The next runtime gate is an isolated ordinary-user account on an **Apple Silicon EC2 Mac**
 for bare-metal acceptance: Finder/Gatekeeper, Keychain, SSH agent, terminal,

@@ -44,6 +44,12 @@ For in-place updates, run Rocket from the versioned directory produced by
 `tools/Package-Release.ps1`. Changed or extra files in that directory stop an
 update rather than being overwritten. Keep projects and personal files elsewhere.
 
+On Apple Silicon Macs, in-place installation requires a Developer ID signed,
+notarized `Rocket.app` in a writable folder. The update must have the same publisher
+and app identity. Development/ad-hoc builds cannot install public updates. The old
+app is retained beside the new one; installation or launch failure triggers
+rollback, while later application crashes are not automatically rolled back.
+
 ## If something goes wrong
 
 | Message or situation | What to do |
@@ -74,6 +80,9 @@ manual recovery from the retained directories; this is not an unattended updater
   files and folders inside that folder: no links, devices or `..` paths.
 - Keep `tools/Verify-Release.ps1` tracked. It verifies release contents and the
   reviewed runtimes before packaging; it is not a generated test output.
+- For Apple Silicon, attach `Rocket-<version>-macos-arm64.tar.gz` from
+  `tools/macos/update-package.cjs` after Developer ID signing and notarization.
+  The portable development ZIP is separate. See [Mac distribution requirements](../MacOS-desktop-integrations.md).
 - GitHub's release asset must provide its SHA-256 digest. Rocket also checks the
   contained version, platform, file hashes, paths and size limits. ZIP size is
   limited to 512 MiB; extracted contents to 1 GiB and individual files to 256 MiB.
@@ -88,4 +97,6 @@ manual recovery from the retained directories; this is not an unattended updater
 
 These checks trust the release hosted by the configured GitHub repository. A
 checksum is not a publisher signature; unsigned Rocket builds remain supported.
-The updater never executes a script downloaded in the archive.
+On macOS, the additional Developer ID/notarization gate is mandatory; unsigned
+builds can check releases but cannot install them in place. The updater never
+executes a script downloaded in the archive.

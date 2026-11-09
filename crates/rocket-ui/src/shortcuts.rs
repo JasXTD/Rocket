@@ -326,7 +326,7 @@ impl Rocket {
         // even when the pointer has since moved into the terminal.
         self.keybindings.filter(input, &allowed, !over_terminal);
     }
-    fn shortcut_available(&self, a: Action) -> bool {
+    pub(crate) fn shortcut_available(&self, a: Action) -> bool {
         if self.quitting
             || self.blocking_dialog()
             || self.guide.is_some()
@@ -398,6 +398,11 @@ impl Rocket {
                 }
             }
         }
+        self.invoke_shortcut(a, intents);
+    }
+    pub(crate) fn invoke_shortcut(&mut self, a: Action, intents: &mut Vec<Intent>) {
+        // Native menu state can be stale by one frame. Recheck at dispatch.
+        if !self.shortcut_available(a) { return; }
         match a {
             Action::New => intents.push(Intent::Dialog(DialogKind::NewRepository)),
             Action::Open => intents.push(Intent::Dialog(DialogKind::Open)),

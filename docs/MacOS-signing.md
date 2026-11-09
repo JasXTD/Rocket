@@ -93,6 +93,13 @@ Signing and stapling change bytes: generate the final manifest and SHA-256 sums
 afterward, preserve the original development artifact, and verify an extracted
 copy of the final archive. Do not reuse its earlier hashes.
 
+For Rocket's in-app updater, also create the separate signed tar asset with
+`node tools/macos/update-package.cjs "$ROCKET_APP" /path/to/new-output TEAM_ID`.
+This validates Developer ID, the same publisher identity and notarization again,
+then writes `Rocket-VERSION-macos-arm64.tar.gz` and its SHA-256 sidecar. Its
+inventory stays outside the sealed app. See the [update contract](MacOS-desktop-integrations.md).
+The development bundle ZIP is not an in-app update asset.
+
 ## Release acceptance still required
 
 On a separate ordinary-user Mac, download the final archive through the intended

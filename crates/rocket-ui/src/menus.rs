@@ -1,6 +1,67 @@
 use crate::{app::*, backend::Action, i18n::{tr, trf}, pages, style::*, terminal::TerminalAction};
 use eframe::egui::*;
 use std::path::PathBuf;
+#[cfg(target_os = "macos")]
+impl Rocket {
+    pub(crate) fn native_menubar(&mut self, ctx: &Context, intents: &mut Vec<Intent>) -> bool {
+        use crate::shortcuts::model::{Action as Shortcut, Trigger, COMMANDS};
+        use rocket_git::macos_menu::{self, Item};
+        let text_target = focused_text_field(ctx);
+        let mut items = Vec::new();
+        for (index, command) in COMMANDS.iter().enumerate() {
+            let group = match command.action {
+                Shortcut::Preferences => 0,
+                Shortcut::New | Shortcut::Open | Shortcut::Clone | Shortcut::Explore | Shortcut::Manager | Shortcut::Close | Shortcut::Reopen => 1,
+                Shortcut::Next | Shortcut::Previous => 6,
+                Shortcut::Terminal => 5,
+                Shortcut::Commit | Shortcut::Branch | Shortcut::Refresh | Shortcut::Fetch | Shortcut::Pull | Shortcut::Push => 4,
+                _ => 3,
+            };
+            let accelerator = self.keybindings.bindings.get(command.action).into_iter().find_map(|binding| {
+                if self.keybindings.capturing() || (self.terminal_focused(ctx) && command.action != Shortcut::Terminal) { return None; }
+                let Trigger::Key(key) = binding.trigger else { return None };
+                let key = match key { Key::Tab => "\t".to_owned(), Key::Enter => "\r".to_owned(), Key::Space => " ".to_owned(), _ if key.name().len() == 1 => key.name().to_lowercase(), _ => return None };
+                Some((key, u32::from(binding.modifiers)))
+            }).unwrap_or_default();
+            items.push(Item { id: index as u32 + 1, group, title: tr(command.label).into(), key: accelerator.0, modifiers: accelerator.1,
+                enabled: self.shortcut_available(command.action), checked: command.action == Shortcut::Sidebar && self.show_sidebar });
+        }
+        for (id, group, title, key) in [(9001, 0, "About Rocket", ""), (9002, 7, "Check for Updates", ""), (9003, 0, "Quit Rocket", "q"), (9004, 7, "Guide", ""), (9005, 7, "Release Notes", ""), (9006, 4, "More Commands", "")] {
+            items.push(Item { id, group, title: tr(title).into(), key: if self.keybindings.capturing() { String::new() } else { key.into() }, modifiers: if key.is_empty() { 0 } else { 8 }, enabled: !self.quitting && (id == 9003 || !self.blocking_dialog()), checked: false });
+        }
+        let text_commands = [(TextCommand::Undo, "Undo", "z"), (TextCommand::Redo, "Redo", "z"), (TextCommand::Cut, "Cut", "x"), (TextCommand::Copy, "Copy", "c"), (TextCommand::Paste, "Paste", "v"), (TextCommand::SelectAll, "Select All", "a")];
+        for (index, (command, title, key)) in text_commands.iter().enumerate() {
+            let enabled = text_target.is_some_and(|target| !matches!(command, TextCommand::Cut | TextCommand::Copy) || target.selection.is_some_and(|r| !r.is_empty()));
+            items.push(Item { id: 9100 + index as u32, group: 2, title: tr(title).into(), key: if self.keybindings.capturing() { String::new() } else { (*key).into() }, modifiers: if *command == TextCommand::Redo { 12 } else { 8 }, enabled, checked: false });
+        }
+        let repaint = ctx.clone();
+        if !macos_menu::synchronize(&items, move || repaint.request_repaint()) { return false; }
+        while let Some(id) = macos_menu::next_action() {
+            if let Some(command) = id.checked_sub(1).and_then(|i| COMMANDS.get(i as usize)) {
+                self.invoke_shortcut(command.action, intents);
+            } else if let Some((command, _, _)) = id.checked_sub(9100).and_then(|i| text_commands.get(i as usize)) {
+                if let Some(target) = text_target.or(self.edit_target) {
+                    if *command == TextCommand::Paste { ctx.send_viewport_cmd(ViewportCommand::RequestPaste); }
+                    self.text_command = Some((target, *command));
+                    ctx.request_repaint();
+                }
+            } else {
+                if self.quitting || (id != 9003 && self.blocking_dialog()) { continue; }
+                match id {
+                    9001 => intents.push(Intent::Dialog(DialogKind::About)),
+                    9002 => self.updates.open(),
+                    9003 => intents.push(Intent::Exit),
+                    9004 => crate::guide::request(ctx),
+                    9005 => intents.push(Intent::Dialog(DialogKind::Changelog)),
+                    9006 => self.palette.show(),
+                    _ => {}
+                }
+            }
+        }
+        self.edit_target = text_target;
+        true
+    }
+}
 /// Icon, title and subtitle of a generic dialog's review header.
 fn dialog_header(dialog: &Dialog) -> (Icon, String, String) {
     let (image, title, subtitle): (Icon, &str, String) = match &dialog.kind {

@@ -143,6 +143,14 @@ impl State {
         Ok(())
     }
     fn target(&self) -> Result<PathBuf> {
+        #[cfg(target_os = "macos")]
+        if self.fixture_install.is_none() {
+            let exe = std::env::current_exe().map_err(package::io)?;
+            let app = exe.parent().and_then(std::path::Path::parent).and_then(std::path::Path::parent)
+                .filter(|p| p.extension().is_some_and(|s| s == "app") && p.join("Contents/MacOS").join(exe.file_name().unwrap()) == exe)
+                .ok_or_else(|| package::error("Install Rocket.app in a writable folder before updating. Development executables cannot be replaced in place."))?;
+            return Ok(app.to_path_buf());
+        }
         self.fixture_install.clone().map(Ok).unwrap_or_else(|| {
             std::env::current_exe()
                 .map_err(package::io)?
@@ -235,7 +243,7 @@ impl Rocket {
                 let p = package::prepare(&client, &release, &cache, &phase, &cancel)?;
                 Ok(Outcome::Prepared(
                     p,
-                    target.join("SHA256SUMS.txt").is_file(),
+                    package::is_packaged(&target),
                 ))
             };
             if let Some(log) = log {
@@ -270,7 +278,7 @@ impl Rocket {
             }
         };
         let helper = match std::env::current_exe() {
-            Ok(path) => path.parent().unwrap().join(package::ENTRYPOINT),
+            Ok(path) => path.parent().unwrap().join(if cfg!(target_os = "macos") { "rocket" } else { package::ENTRYPOINT }),
             Err(e) => {
                 self.updates.status = "error";
                 self.updates.error = Some(e.to_string());
