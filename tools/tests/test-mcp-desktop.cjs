@@ -50,6 +50,11 @@ async function run(){try{
  const log=fs.openSync(path.join(root,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env,windowsHide:true,stdio:['ignore','ignore',log]});fs.closeSync(log);client=new RocketHttpClient(profile);
  for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break}catch(e){if(i>=100)throw e;await delay(100)}}
  await client.initialize();await open();const initialSidebar=state.preferences.sidebar;
+ await assert.rejects(client.tool('rocket_menu',{target:'preferences',expected_tab:state.active_tab+999}),/Active repository changed/);
+ for(const target of ['shortcut-push','file-exit','9003'])await assert.rejects(client.tool('rocket_menu',{target,expected_tab:state.active_tab}),/reviewed navigation/);
+ if(!mac)await assert.rejects(client.tool('rocket_menu',{target:'preferences',expected_tab:state.active_tab}),/available only on macOS/);
+ pass('Native menu requests use their scoped guard and reject stale or unsafe actions');
+ if(process.argv.includes('--native-menu-guard-only')){assert.deepEqual(preserved(),before);report.passed=true;return;}
  assert.deepEqual(binding('sidebar').inputs,[primary+'+B']);assert.deepEqual(binding('next').inputs,['Ctrl+Tab']);
  await probe(primary+'+B');assert.equal(state.preferences.sidebar,!initialSidebar);await probe(primary+'+B');assert.equal(state.preferences.sidebar,initialSidebar);
  pass('Native primary shortcut dispatch and Control+Tab defaults');
@@ -77,7 +82,7 @@ async function run(){try{
  await click('terminal-hide');await preferences();await click('pref-shortcut-sidebar-reset');assert.deepEqual(binding('sidebar').inputs,[primary+'+B']);await done();assert.deepEqual(preserved(),before);await close();
  const folders=[...fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).map(n=>path.join(root,n)),path.join(profile,'logs')].filter(p=>fs.existsSync(p));
  const events=folders.flatMap(p=>fs.readdirSync(p).filter(f=>/^rocket(?:\.\d+)?\.jsonl$/.test(f)).flatMap(f=>fs.readFileSync(path.join(p,f),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));
- assert(events.length>0);assert(!JSON.stringify(events).includes('PRIVATE_DESKTOP_'));assert(!events.some(e=>e.dropped>0));assert(events.some(e=>JSON.stringify(e).includes('rocket_shortcut')));report.events=events.length;report.preserved=preserved();report.passed=true;
+ assert(events.length>0);assert(!JSON.stringify(events).includes('PRIVATE_DESKTOP_'));assert(events.every(e=>e.dropped_before===0));assert(events.some(e=>JSON.stringify(e).includes('rocket_shortcut')));report.events=events.length;report.preserved=preserved();report.passed=true;
  pass('Native controls produce diagnostics without private payloads or dropped events; repository hashes unchanged');
 }catch(error){report.error=error.stack;try{await capture('failure')}catch{}throw error}finally{
  try{if(service&&service.exitCode===null&&service.signalCode===null){if(state?.window==='running')await close();await client.raw('POST','/shutdown');const at=performance.now();while(service.exitCode===null&&service.signalCode===null){if(performance.now()-at>15000){service.kill();throw Error('Owned desktop test server did not stop')}await delay(50)}}}catch(error){report.passed=false;report.cleanup_error=error.stack;throw error}finally{if(client)await client.finish();fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));console.log('RESULT '+path.join(root,'result.json'))}

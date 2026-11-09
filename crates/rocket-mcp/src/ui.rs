@@ -756,12 +756,6 @@ impl Ui {
         if request.args["expected_tab"].as_u64() != Some(tab.id) {
             return Err("Active repository changed; read state again".into());
         }
-        if request.name == "rocket_menu" {
-            if !native_menu_probe_allowed(request.args["target"].as_str().unwrap_or("")) {
-                return Err("Native menu probes allow only reviewed navigation and dialog opening".into());
-            }
-            return Ok(());
-        }
         if self.app.blocking_dialog() {
             return Err("Dismiss or complete the active dialog first".into());
         }
@@ -791,6 +785,14 @@ impl Ui {
         let tab = self.app.tab().ok_or("Open a fixture first")?;
         if request.args["expected_tab"].as_u64() != Some(tab.id) {
             return Err("Active repository changed; read state again".into());
+        }
+        if request.name == "rocket_menu" {
+            if !native_menu_probe_allowed(request.args["target"].as_str().unwrap_or("")) {
+                return Err("Native menu probes allow only reviewed navigation and dialog opening".into());
+            }
+            // Cocoa menus have no in-window widget rectangle. Their current
+            // availability is rechecked by invoke_native_menu and the dispatcher.
+            return Ok(());
         }
         if request.name == "rocket_shortcut" {
             let binding = rocket_ui::shortcuts::model::Binding::parse(request.args["binding"].as_str().unwrap_or(""))?;
