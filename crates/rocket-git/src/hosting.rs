@@ -82,6 +82,9 @@ impl HostingFailure {
             Self::Unavailable if cfg!(target_os = "linux") => {
                 "GitHub requests need the system's /usr/bin/curl, owned by root and changeable by no one else. Install your distribution's curl package. GitHub features are unavailable; Git itself is unaffected."
             }
+            Self::Unavailable if cfg!(target_os = "macos") => {
+                "macOS's trusted /usr/bin/curl could not be verified. Check your macOS installation. GitHub features are unavailable; Git itself is unaffected."
+            }
             Self::Unavailable => {
                 "Windows' curl.exe, used for GitHub requests, was not found. GitHub features are unavailable; Git itself is unaffected."
             }
@@ -249,7 +252,7 @@ pub(crate) fn neutral_directory() -> Result<PathBuf> {
         .map_err(|e| Error::io("prepare GitHub request folder", e))?;
     Ok(directory)
 }
-/// On Windows use only the OS-selected System32 curl, and on Linux only the system's
+/// On Windows use only the OS-selected System32 curl, and on Linux/macOS the system's
 /// /usr/bin/curl (see `system_program`). Environment variables, PATH and a helper
 /// beside Git must not redirect credential-bearing hosting requests.
 pub(crate) fn find_curl(_git: &Path) -> Option<PathBuf> {
@@ -273,28 +276,17 @@ pub(crate) fn find_curl(_git: &Path) -> Option<PathBuf> {
             .is_ok_and(|meta| meta.is_file() && meta.file_attributes() & 0x400 == 0)
             .then_some(path)
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
         system_program("curl")
     }
-    #[cfg(not(any(windows, target_os = "linux")))]
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
     {
-        let mut candidates = Vec::new();
-        if let Some(root) = std::env::var_os("SystemRoot") {
-            candidates.push(PathBuf::from(root).join("System32").join("curl.exe"));
-        }
-        if let Some(bin) = _git.parent() {
-            candidates.push(bin.join("curl.exe"));
-            if let Some(root) = bin.parent() {
-                candidates.push(root.join("mingw64").join("bin").join("curl.exe"));
-            }
-        }
-        candidates
-            .into_iter()
-            .find(|p| std::fs::symlink_metadata(p).is_ok_and(|m| m.is_file()))
+        // Unsupported platforms must not guess a credential-bearing helper.
+        None
     }
 }
-/// Linux: a program from /usr/bin only, the file itself and not a link, owned by root in
+/// Linux/macOS: a program from /usr/bin only, not a link, owned by root in
 /// a folder root owns, and writable by no one else, as Windows runs only its System32
 /// curl. A copy on PATH, beside Git or in the user's folders is never used. Hosting,
 /// extension requests and app updates all take their programs from here.

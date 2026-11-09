@@ -14,6 +14,10 @@ Adds selectable preview languages, saved appearance at startup, reviewed CLI
 workflows and inline reviews across the supported hosting adapters. See
 [release notes](docs/releases/0.92.2.md) for platform requirements and test limits.
 
+- Fix macOS hosting helper discovery: use only the protected system
+  `/usr/bin/curl`, ignoring PATH, SystemRoot and executables beside Git. Preserve
+  Windows/Linux selection and refuse guesses on unsupported platforms.
+
 - Add single-line PR comments for Bitbucket Cloud, Bitbucket Server/Data Center,
   Azure DevOps Services and Server in the existing UI, CLI and localhost MCP.
   Validate complete diffs, renamed paths, server revisions and Azure iterations;

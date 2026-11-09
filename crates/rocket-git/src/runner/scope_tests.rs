@@ -250,7 +250,7 @@ fn http_policy_fixture() {
 }
 
 #[test]
-#[cfg(any(windows, target_os = "linux"))]
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn system_curl_ignores_environment_and_git_adjacent_helpers() {
     isolated(
         "runner::scope_tests::system_curl_ignores_environment_and_git_adjacent_helpers",
@@ -260,7 +260,7 @@ fn system_curl_ignores_environment_and_git_adjacent_helpers() {
             fs::write(root.join("System32/curl.exe"), b"inert, never execute").unwrap();
             fs::create_dir(root.join("bin")).unwrap();
             fs::write(root.join("bin/curl.exe"), b"inert, never execute").unwrap();
-            // Linux's name for the same helper, beside Git and first on PATH.
+            // Unix's name for the same helper, beside Git and first on PATH.
             fs::write(root.join("bin/curl"), b"inert, never execute").unwrap();
             // No test thread outside this subprocess sees these overrides.
             unsafe {
@@ -275,7 +275,7 @@ fn system_curl_ignores_environment_and_git_adjacent_helpers() {
                 "untrusted helper selected: {}",
                 curl.display()
             );
-            #[cfg(target_os = "linux")]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             assert_eq!(curl, Path::new("/usr/bin/curl"));
         },
     );

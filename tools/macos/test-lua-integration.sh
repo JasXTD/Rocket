@@ -41,6 +41,9 @@ node tools/macos/bundle.cjs finalize "$out/package"
 export ROCKET_TEST_MAC_HOST="$out/package/Rocket.app/Contents/MacOS/rocket"
 if [ "$mode" = integration ] || [ "$mode" = release-package ]; then
   cargo test --locked "${cargo_profile[@]}" -p rocket-integrations --test macos_worker -- --test-threads=1
+  if [ "$mode" = release-package ]; then
+    cargo test --locked --release -p rocket-git --lib runner::scope_tests::system_curl_ignores_environment_and_git_adjacent_helpers -- --exact --test-threads=1
+  fi
 else
   # Security regressions must run without an environment workaround for roots.
   cargo test --locked -p rocket-mcp --lib policy::tests -- --test-threads=1
