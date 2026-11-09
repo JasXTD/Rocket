@@ -19,6 +19,44 @@ fs.appendFileSync(file,'// PRIVATE_MAC_STAGED\n');git(['add','.']);fs.appendFile
 const fingerprint=()=>({head:git(['rev-parse','HEAD']),index:sha(path.join(repo,'.git/index')),config:sha(path.join(repo,'.git/config')),file:sha(file),untracked:sha(path.join(repo,'rocket-completion-fixture'))}),before=fingerprint();
 let client,service,state,mode='unavailable',metadata=0,closed=0;const sockets=new Set();
 const report={passed:false,cases:[],timings:{},binary_sha256:sha(exe),root};
+// The production app still uses Security.framework and its normal ACL checks.
+// A hosted, disposable CI user gets a separate default vault for this test only.
+let keychain;
+function security(args){
+ const r=cp.spawnSync('/usr/bin/security',args,{encoding:'utf8',timeout:15000,stdio:['ignore','pipe','pipe']});
+ assert(!r.error&&r.status===0,'Disposable Keychain operation failed: '+args[0]);return r.stdout.trim();
+}
+function keychainPaths(text){return text.split(/\r?\n/).filter(Boolean).map(line=>{const p=JSON.parse(line.trim());assert(typeof p==='string'&&path.isAbsolute(p));return p})}
+function prepareKeychain(){
+ assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.RUNNER_OS,'macOS');
+ assert.equal(process.env.ROCKET_MACOS_SANDBOX_DISPOSABLE_USER,'1','Never change a personal default Keychain');
+ const defaults=keychainPaths(security(['default-keychain','-d','user']));assert.equal(defaults.length,1);
+ const search=keychainPaths(security(['list-keychains','-d','user']));
+ const file=path.join(root,'disposable.keychain-db');assert(!fs.existsSync(file));
+ keychain={file,original:defaults[0],search};
+ // Random fixture password stays in this process and is never logged or retained.
+ const password=crypto.randomBytes(32).toString('hex');
+ security(['create-keychain','-p',password,file]);
+ assert.equal(path.dirname(fs.realpathSync(file)),root);
+ security(['list-keychains','-d','user','-s',file]);
+ security(['default-keychain','-d','user','-s',file]);
+ security(['unlock-keychain','-p',password,file]);
+ assert.deepEqual(keychainPaths(security(['default-keychain','-d','user'])),[file]);
+ assert.deepEqual(keychainPaths(security(['list-keychains','-d','user'])),[file]);
+ report.keychain={isolated:true,restored:false};
+}
+function restoreKeychain(){
+ if(!keychain)return;
+ security(['default-keychain','-d','user','-s',keychain.original]);
+ security(['list-keychains','-d','user','-s',...keychain.search]);
+ assert.deepEqual(keychainPaths(security(['default-keychain','-d','user'])),[keychain.original]);
+ assert.deepEqual(keychainPaths(security(['list-keychains','-d','user'])),keychain.search);
+ if(fs.existsSync(keychain.file)){
+  assert.equal(path.dirname(fs.realpathSync(keychain.file)),root);
+  security(['delete-keychain',keychain.file]);
+ }
+ report.keychain={isolated:true,restored:true};keychain=null;
+}
 const delay=ms=>new Promise(r=>setTimeout(r,ms)),pass=s=>{report.cases.push(s);console.log('PASS '+s)};
 const server=http.createServer((req,res)=>{
  assert(!req.headers.authorization&&!req.headers.cookie,'Fixture must not receive login credentials');assert(req.url.endsWith('/releases/latest'),'No asset download expected');metadata++;
@@ -41,6 +79,7 @@ async function dismiss(){await client.tool('rocket_escape');await until(s=>!s.di
 const line=text=>state.terminal?.tail.split(/\r?\n/).filter(l=>l.trim()===text).length||0;
 const prompt=()=>state.terminal?.tail.trimEnd().endsWith('>');
 async function run(){try{
+ prepareKeychain();
  await new Promise(r=>server.listen(0,'127.0.0.1',r));fs.writeFileSync(path.join(root,'rocket-update-api'),'http://127.0.0.1:'+server.address().port);
  cp.execFileSync(exe,['--init-http',profile,root],{env,stdio:'pipe'});const port=net.createServer();await new Promise(r=>port.listen(0,'127.0.0.1',r));const number=port.address().port;await new Promise(r=>port.close(r));fs.writeFileSync(path.join(profile,'settings'),`ROCKET-MCP-1\n${number}\n${root}\n`);
  const fd=fs.openSync(path.join(root,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env,stdio:['ignore','ignore',fd]});fs.closeSync(fd);client=new RocketHttpClient(profile);
@@ -66,19 +105,22 @@ async function run(){try{
  await native('repository-playground');await until(()=>play()?.loaded&&control('int-play-run')?.enabled,'Lua scratch editor');await click('int-play-run');await until(()=>!play().busy&&play().has_preview,'bound Lua preview');assert.equal(play().error,null);assert(play().widget_ids.includes('increment'));await click('int-play-ui-increment');await until(()=>!play().busy&&play().text?.labels?.some(t=>t.includes('updated 1 times')),'Lua interaction');await capture('bound-lua-preview');
  await type('int-play-source','return function(ctx) return { view = ui.text("資料 Mac helper") } end');await click('int-play-run');await until(()=>!play().busy&&play().has_preview&&play().preview_current,'Unicode Lua preview');assert.equal(play().error,null);
  await type('int-play-source','return function( -- invalid');await click('int-play-run');await until(()=>!play().busy&&play().error,'Lua diagnostic');await capture('lua-error');
- await type('int-play-source','return function(ctx) return { view = ui.text("Recovered") } end');await click('int-play-run');await until(()=>!play().busy&&play().preview_current&&!play().error,'Lua recovers');await click('int-play-save');await until(()=>!play().dirty&&!play().busy);await native('shortcut-changes');
+ await type('int-play-source','return function(ctx) return { view = ui.text("Recovered") } end');await click('int-play-run');await until(()=>!play().busy&&play().preview_current&&!play().error,'Lua recovers');await click('int-play-save');await until(()=>!play().busy,'save completed');assert.equal(play().save_error,null);assert(!play().dirty);
+ const saved=fs.readFileSync(path.join(root,'rocket-ui-state','playground.dpapi'));assert(saved.length>63&&!saved.includes(Buffer.from('Recovered')),'Saved code must be protected');
+ await click('int-play-reload');await until(()=>play().loaded&&!play().busy&&!play().dirty,'encrypted source reloaded');assert(play().text.source.includes('Recovered'));await native('shortcut-changes');
  pass('Packaged, hash-bound Lua helper renders and updates real UI, handles Unicode and syntax errors, and recovers');
  await native('shortcut-terminal');await until(s=>s.terminal?.running,'zsh starts');await probe('zsh-initialize');await until(s=>s.terminal.tail.includes('ROCKET_ZSH_')&&prompt(),'isolated zsh initialized');assert(state.terminal.tail.includes(path.join(root,'rocket-ui-state','terminal-history.log')));
  await probe('typing');await until(()=>line('ROCKET_TYPING_OK')>0&&prompt(),'zsh typing');await probe('history-seed');await until(()=>line('ROCKET_HISTORY_SECOND')>0&&prompt());const count=line('ROCKET_HISTORY_SECOND');await probe('history-previous');await probe('submit');await until(()=>line('ROCKET_HISTORY_SECOND')>count&&prompt(),'zsh history');
- await probe('completion-command');await probe('completion-argument');await until(()=>line('ROCKET_COMPLETION_OK')>0&&prompt(),'zsh command completion');await probe('completion-path');await probe('submit');await until(()=>line('rocket-completion-fixture')>0&&prompt(),'zsh path completion');
+ await probe('completion-command');await probe('completion-argument');await until(()=>line('ROCKET_COMPLETION_OK')>0&&prompt(),'zsh command completion');await probe('completion-path');await until(()=>state.terminal.tail.trimEnd().endsWith('rocket-completion-fixture'),'zsh expanded the typed path');await probe('submit');await until(()=>line('./rocket-completion-fixture')+line('rocket-completion-fixture')>0&&prompt(),'zsh path completion');
  await probe('redraw');await probe('resize-draft');await resize(780,620);await probe('resize-edit');await until(()=>line('ROCKET_RESIZE_中文_🚀_é_OK')>0&&prompt(),'Unicode draft survives resize');await capture('compact-zsh');
  await probe('interrupt-start');await until(()=>line('ROCKET_INTERRUPT_READY')>0);const interrupt=performance.now();await probe('cancel-line');await until(prompt,'zsh interrupt prompt',4000);report.timings.interrupt_ms=Math.round(performance.now()-interrupt);assert.equal(line('ROCKET_INTERRUPT_UNEXPECTED'),0);await probe('interrupt-status');await until(()=>line('ROCKET_SHELL_True')>0&&line('ROCKET_STATE_42')>0&&prompt(),'same zsh after interrupt');
- await probe('typing');await until(()=>line('ROCKET_TYPING_OK')>0&&prompt());const history=fs.readFileSync(path.join(root,'rocket-ui-state','terminal-history.log'),'utf8');assert(history.includes('ROCKET_HISTORY_SECOND'));assert(!fs.existsSync(path.join(home,'.zsh_history')));
+ const typedBefore=line('ROCKET_TYPING_OK');await probe('typing');await until(()=>line('ROCKET_TYPING_OK')>typedBefore&&prompt());const history=fs.readFileSync(path.join(root,'rocket-ui-state','terminal-history.log'),'utf8');assert(history.includes('ROCKET_HISTORY_SECOND'));assert(!fs.existsSync(path.join(home,'.zsh_history')));
  pass('zsh editing, history, command/path completion, Unicode resize and Ctrl+C work in the same shell with isolated persisted history');
  assert.deepEqual(fingerprint(),before);await capture('final');report.passed=true;
 }catch(e){report.error=e.stack;try{await capture('failure');fs.writeFileSync(path.join(root,'failure-state.json'),JSON.stringify(state,null,2))}catch{}throw e}finally{
  try{if(client&&service&&service.exitCode===null){if(state?.window==='running'){await client.tool('rocket_close');await until(s=>s.window==='closed'||s.dialog?.kind==='quit');if(state.dialog?.kind==='quit'){await click('dialog-submit');await until(s=>s.window==='closed')}}await client.raw('POST','/shutdown');const at=performance.now();while(service.exitCode===null&&service.signalCode===null){if(performance.now()-at>15000)throw Error('Owned MCP service did not stop');await delay(50)}}}catch(e){report.passed=false;report.cleanup_error=e.stack;if(service?.exitCode===null)service.kill();process.exitCode=1}
  if(client)await client.finish();for(const s of sockets)s.destroy();await new Promise(r=>server.close(r));
+ try{restoreKeychain()}catch(e){report.passed=false;report.keychain_error=e.message;process.exitCode=1}
  const logs=fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).map(n=>path.join(root,n)).concat(path.join(profile,'logs')).filter(p=>fs.existsSync(p));
  const events=logs.flatMap(p=>fs.readdirSync(p).filter(n=>/^rocket(?:\.\d+)?\.jsonl$/.test(n)).flatMap(n=>fs.readFileSync(path.join(p,n),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));
  report.events=events.length;if(!events.length||events.some(e=>e.dropped_before!==0)||JSON.stringify(events).includes('PRIVATE_MAC_')){report.passed=false;report.log_error='Missing, dropped or private diagnostic events';process.exitCode=1}
