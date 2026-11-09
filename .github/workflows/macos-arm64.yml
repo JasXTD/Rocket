@@ -31,6 +31,14 @@ jobs:
       # Ephemeral runner only: a disposable Keychain, never a normal account item.
       ROCKET_MACOS_DISPOSABLE_KEYCHAIN_TEST: '1'
     steps:
+      - name: Validate requested checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$ROCKET_MACOS_CHECK_SCOPE" in
+            followups|platform|sandbox|desktop-integration) ;;
+            *) printf '%s\n' 'Unsupported check selection' >&2; exit 2 ;;
+          esac
       - name: Check out the selected revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

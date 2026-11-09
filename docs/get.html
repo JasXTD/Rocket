@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Get Rocket: build the Git client from source</title>
-<meta name="description" content="Build Rocket, a native Git client, from source on Windows, macOS or Linux. There is no public installer yet.">
+<title>Download Rocket 0.92.1 · Windows, Linux and macOS</title>
+<meta name="description" content="Download Rocket 0.92.1 portable packages for Windows, Linux and Apple Silicon macOS. Review requirements, checksums and Mac preview limits.">
 <meta name="color-scheme" content="dark light">
-<link rel="canonical" href="https://jasxtd.github.io/rocket/get.html">
+<link rel="canonical" href="https://jasxtd.github.io/Rocket/get.html">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Get Rocket">
-<meta property="og:description" content="Build Rocket, a native Git client, from source on Windows, macOS or Linux.">
-<meta property="og:url" content="https://jasxtd.github.io/rocket/get.html">
-<meta property="og:image" content="https://jasxtd.github.io/rocket/media/social-preview.jpg">
+<meta property="og:description" content="Download Rocket 0.92.1 for Windows, Linux and Apple Silicon macOS, with checksums and platform requirements.">
+<meta property="og:url" content="https://jasxtd.github.io/Rocket/get.html">
+<meta property="og:image" content="https://jasxtd.github.io/Rocket/media/social-preview.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/png" href="images/rocket-logo.png">
 <link rel="stylesheet" href="site.css">
@@ -27,24 +27,51 @@
     <a href="./#extensions">Extensions</a>
     <a href="get.html" aria-current="page">Get Rocket</a>
     <a href="./#docs">Docs</a>
-    <a href="https://github.com/JasXTD/rocket">GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a>
+    <a href="https://github.com/JasXTD/Rocket">GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a>
   </nav>
   <button class="theme" type="button" aria-label="Switch between light and dark" hidden>
     <svg class="sun" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="3"></circle><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"></path></svg>
     <svg class="moon" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 9.6A6 6 0 1 1 6.4 2.5a4.8 4.8 0 0 0 7.1 7.1z"></path></svg>
   </button>
   <details class="menu"><summary aria-label="Menu"><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5.5h14M3 10h14M3 14.5h14"></path></svg></summary>
-    <div><a href="./#review">Features</a><a href="./#extensions">Extensions</a><a href="get.html" aria-current="page">Get Rocket</a><a href="./#docs">Docs</a><a href="https://github.com/JasXTD/rocket">GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a></div>
+    <div><a href="./#review">Features</a><a href="./#extensions">Extensions</a><a href="get.html" aria-current="page">Get Rocket</a><a href="./#docs">Docs</a><a href="https://github.com/JasXTD/Rocket">GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a></div>
   </details>
 </div></header>
 
 <main id="main"><div class="wrap">
   <div class="page-head">
     <h1>Get Rocket</h1>
-    <p class="lead">Build Rocket from source on Windows, macOS or Linux.</p>
-    <div class="status"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l6 10.5H2zM8 6.5v3.2M8 11.4v.1"></path></svg><span>Rocket is in development. There is no public installer or download yet.</span></div>
+    <p class="lead">Rocket 0.92.1. Download, extract into a new folder and open your repository.</p>
+    <div class="status"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5l6 10.5H2zM8 6.5v3.2M8 11.4v.1"></path></svg><span>Portable packages are available on GitHub Releases. While the repository is private, sign in with an account that has access. The Mac build is a preview.</span></div>
   </div>
 
+  <section class="downloads" aria-labelledby="h-downloads">
+    <h2 id="h-downloads">Choose your platform</h2>
+    <div class="download-grid">
+      <article class="download-card">
+        <span class="mono download-meta">WINDOWS · X64</span><h3>Windows</h3>
+        <p>Windows 10 or 11. Includes Git and the required app-local runtimes.</p>
+        <a class="btn pri" href="https://github.com/JasXTD/Rocket/releases/download/v0.92.1/Rocket-0.92.1-windows-x64.zip">Download Windows ZIP</a>
+        <span class="download-meta">197 MiB · Extract, then open rocket.exe</span>
+      </article>
+      <article class="download-card">
+        <span class="mono download-meta">LINUX · X64</span><h3>Linux</h3>
+        <p>Requires glibc 2.43+, a desktop session and installed Git. Tested in Ubuntu 26.04 WSL.</p>
+        <a class="btn" href="https://github.com/JasXTD/Rocket/releases/download/v0.92.1/Rocket-0.92.1-linux-x64.tar.gz">Download Linux archive</a>
+        <span class="download-meta">68 MiB · Older distributions need a source build</span>
+      </article>
+      <article class="download-card">
+        <span class="mono download-meta">MACOS · APPLE SILICON</span><h3>macOS preview</h3>
+        <p>macOS 15+ and installed Git. Ad-hoc signed; Developer ID signing, notarization and physical Mac testing are pending.</p>
+        <a class="btn" href="https://github.com/JasXTD/Rocket/releases/download/v0.92.1/Rocket-0.92.1-macos-arm64-preview.zip">Download Mac preview</a>
+        <span class="download-meta">67 MiB · Manual installation · No Intel build</span>
+      </article>
+    </div>
+    <p class="download-links"><a href="https://github.com/JasXTD/Rocket/releases/tag/v0.92.1">Release notes and verification</a><a href="https://github.com/JasXTD/Rocket/releases/download/v0.92.1/SHA256SUMS">SHA-256 checksums</a><a href="https://github.com/JasXTD/Rocket/blob/main/docs/wiki/Getting-started.md">First steps</a></p>
+    <p class="download-note">Compare the downloaded archive with its published checksum before use. Keep the helpers together and your repositories outside the app folder. These are portable archives, not installers.</p>
+  </section>
+
+  <h2 id="build-source">Prefer to build from source?</h2>
   <div class="build">
     <ol class="steps">
       <li><span class="n mono" aria-hidden="true">1</span>
@@ -54,8 +81,8 @@
         <p><strong>macOS 15+ on Apple Silicon:</strong> Rust 1.99.1, the Xcode command-line tools, Node.js and Git.</p></li>
       <li><span class="n mono" aria-hidden="true">2</span>
         <h2>Get the source</h2>
-        <pre class="code mono" tabindex="0" role="region" aria-label="Clone commands">git clone https://github.com/JasXTD/rocket.git
-cd rocket</pre></li>
+        <pre class="code mono" tabindex="0" role="region" aria-label="Clone commands">git clone https://github.com/JasXTD/Rocket.git
+cd Rocket</pre></li>
       <li><span class="n mono" aria-hidden="true">3</span>
         <h2>Build it</h2>
         <pre class="code mono" tabindex="0" role="region" aria-label="Build commands"><span class="cm"># Windows</span>
@@ -80,7 +107,7 @@ open target/macos-stage1/Rocket-macos-arm64-development/Rocket.app</pre>
       <h2 id="h-need">What it uses</h2>
       <table class="tbl" aria-labelledby="h-need"><tbody>
         <tr><th scope="row">Windows x64</th><td>The main platform. Testing has focused on Windows 10.</td></tr>
-        <tr><th scope="row">Linux x86_64</th><td>X11 or Wayland, with your system Git.</td></tr>
+        <tr><th scope="row">Linux x86_64</th><td>X11 or Wayland, with your system Git. The portable 0.92.1 archive needs glibc 2.43+.</td></tr>
         <tr><th scope="row">macOS 15+</th><td>Apple Silicon, with your installed Git. Not yet notarized.</td></tr>
         <tr><th scope="row">Git</th><td>A build from a fresh clone uses the Git you installed. On Windows, HTTPS needs Git for Windows 2.56.0.windows.4 or newer; older builds stay on local and SSH.</td></tr>
         <tr><th scope="row">Git Credential Manager</th><td>For the supported browser sign-in flows.</td></tr>
@@ -110,8 +137,8 @@ open target/macos-stage1/Rocket-macos-arm64-development/Rocket.app</pre>
   <a class="brand" href="./" aria-label="Rocket home"><img src="images/rocket-logo.png" alt="" width="34" height="34"><span>Rocket</span></a>
   <span>Created by Xetro</span>
   <span class="sp"></span>
-  <a href="https://github.com/JasXTD/rocket/blob/main/CHANGELOG.md">Changelog</a>
-  <a href="https://github.com/JasXTD/rocket/blob/main/SECURITY.md">Security</a>
+  <a href="https://github.com/JasXTD/Rocket/blob/main/CHANGELOG.md">Changelog</a>
+  <a href="https://github.com/JasXTD/Rocket/blob/main/SECURITY.md">Security</a>
   <a href="./#license">MIT or Apache-2.0</a>
 </div></footer>
 </body>

@@ -1052,3 +1052,23 @@ unique tips, 64 MiB of combined dependency inputs and 5,000 combined findings.
 Background data updates can overlap a pre-push check; changed archive fingerprints
 invalidate that check rather than approving an outdated review. Opt-in persists
 in profile v24; old profiles default off, and older binaries reject v24.
+
+## GitHub Actions build boundary
+
+The two macOS build workflows run only through `workflow_dispatch`. Opening a
+pull request, submitting an issue or pushing a tag does not start them. Keep
+untrusted contribution builds separate from any future signing or publication job.
+Current jobs use disposable GitHub-hosted runners, read-only token permissions,
+full commit pins for checkout/artifact actions and `persist-credentials: false`.
+They do not consume repository secrets, signing identities or SSH keys, and do
+not publish releases. Test-mode inputs are validated before checkout and passed
+to shell commands as quoted environment variables, never interpolated into code.
+
+The Mac Lua guest is fetched by its artifact ID from the same run and checked
+against the producing job's SHA-256. The approved prototype dependencies have
+pinned checksums; archives are verified before extraction. Artifact uploads use
+explicit result/package paths with short retention, excluding credential stores,
+runner homes and test profiles. Fixtures and screenshots must remain synthetic:
+repository visibility can also expose Actions results. Before introducing PR
+triggers, review fork approval settings and keep write tokens/secrets unavailable
+to untrusted code. Local guard checks: `node --test tools/tests/test-workflow-security.cjs`.

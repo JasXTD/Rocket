@@ -6,9 +6,10 @@ Start here if Rocket's menus feel overwhelming. You can do ordinary Git work
 with just **Changes**, **Commits**, **Fetch**, **Pull** and **Push**. Open the
 advanced tools when you need a particular operation.
 
-These pages describe **Rocket on Windows**. Menu names omit trailing
-ellipses. Press **F1** for the guide inside Rocket, or **Ctrl+K** to find a command
-without remembering its menu location.
+These pages cover **Rocket 0.92.1**. Windows examples use Ctrl and File Explorer;
+on macOS, use the native menus and Command shortcuts where shown. Linux uses
+your installed Git and desktop shell. Press **F1** for the guide inside Rocket,
+or use the toolbar search to find a command without remembering its menu location.
 
 ## What do you want to do?
 
@@ -44,8 +45,8 @@ work to GitHub; **Commit & Push** explicitly combines those two steps.
 
 ## Find your way around
 
-- **Help → Setup Guide:** a walkthrough with buttons for Git, opening/creating/cloning, identity and your first commit (current unreleased source).
-- **Summary:** local change counts, tracking-ref comparison and a suggested next step (current unreleased source).
+- **Help → Setup Guide:** a walkthrough with buttons for Git, opening/creating/cloning, identity and your first commit.
+- **Summary:** local change counts, tracking-ref comparison and a suggested next step.
 - **Changes:** inspect edits, stage files and write a commit message.
 - **Commits:** browse saved history and select a commit to inspect it.
 - **Map:** explore committed code, Git history and contributor connections locally.
@@ -67,5 +68,5 @@ field or another program changes the repository, make a fresh review.
 Follow the [recovery guide](Recovery-and-troubleshooting.md) when an operation
 fails, pauses or reports an unknown result.
 
-These files are the repository's local wiki. Publishing a separate GitHub Wiki
-is a separate step; the links work directly from this source checkout.
+The Wiki source is maintained in `docs/wiki` alongside Rocket. The GitHub Wiki is
+generated from these pages; changes should be made in the repository first.

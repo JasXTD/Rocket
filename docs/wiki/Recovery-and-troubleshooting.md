@@ -31,7 +31,7 @@ before changing repository metadata.
 
 ## Undo the last local commit
 
-In the current unreleased build, an ordinary **Commit** offers **Edit → Undo last
+An ordinary **Commit** offers **Edit → Undo last
 commit** and **Summary → Undo last commit**. Review the commit and choose
 **Undo commit · keep changes**. Its changes become staged again; newer working,
 untracked and ignored files stay intact. A first commit can be undone too.

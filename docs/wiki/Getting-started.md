@@ -7,9 +7,12 @@ account, SSH key or MCP server for this walkthrough.
 
 ## Before opening Rocket
 
-Use the Windows desktop app from your local release, or follow
-[Build and run](../../README.md#build-and-run) to build it. New bundled builds
-include Git: **Automatic** uses that copy when present, otherwise it searches
+Download a portable package from [Rocket Releases](https://github.com/JasXTD/Rocket/releases/tag/v0.92.1),
+verify its checksum, and extract it into a new folder. Windows packages include
+Git; Linux packages need glibc 2.43+ and installed Git. The Apple Silicon macOS
+15+ preview needs installed Git and is not Developer-ID-signed or notarized.
+Follow [Build and run](../../README.md#build-and-run) to build from source instead.
+**Automatic** uses bundled Git when present, otherwise it searches
 installed Git. **Edit → Preferences → Git** also lets you choose an installed or
 custom copy, or explicitly require **Bundled Git**. Choices apply after restarting
 Rocket. See [Requirements](../../README.md#requirements) for supported versions
@@ -36,7 +39,7 @@ For a private clone, follow [Remotes and accounts](Remotes-and-accounts.md).
 
 ## Make your first local commit
 
-In the current unreleased build, **Help → Setup Guide** opens an interactive
+**Help → Setup Guide** opens an interactive
 walkthrough for these steps. Each button opens the existing dialog; it never
 stages or publishes files automatically. **Summary** in the sidebar shows what
 needs attention using the same refreshed state as Changes.

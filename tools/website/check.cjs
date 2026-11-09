@@ -3,7 +3,7 @@
 // Usage: node tools/website/check.cjs
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const project = path.resolve(__dirname, '../..'), docs = path.join(project, 'docs');
-const GITHUB = 'https://github.com/JasXTD/rocket', SITE = 'https://jasxtd.github.io/rocket/';
+const GITHUB = 'https://github.com/JasXTD/Rocket', SITE = 'https://jasxtd.github.io/Rocket/';
 const pages = ['index.html', 'get.html', '404.html'];
 const problems = [], seen = { links: 0, images: 0, github: 0 };
 const fail = (page, text) => problems.push(`${page}: ${text}`);
@@ -22,6 +22,11 @@ for (const page of pages) {
     seen.links++;
     if (/^https?:/.test(value)) {
       if (value === GITHUB || value === GITHUB + '.git') continue;
+      const release = GITHUB + '/releases/';
+      if (value === release + 'tag/v0.92.1' || value === release + 'download/v0.92.1/SHA256SUMS'
+        || /^Rocket-0\.92\.1-(?:windows-x64\.zip|linux-x64\.tar\.gz|macos-arm64-preview\.zip)$/.test(value.startsWith(release+'download/v0.92.1/') ? value.slice((release+'download/v0.92.1/').length) : '')) {
+        seen.github++; continue;
+      }
       if (value.startsWith(GITHUB + '/blob/main/')) {
         seen.github++;
         const target = value.slice((GITHUB + '/blob/main/').length);

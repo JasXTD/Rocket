@@ -280,11 +280,13 @@ redacted logs and unchanged local files. The matching mockup is
 ## Website
 
 The public site is plain HTML and CSS in `docs/`, with no build step: `index.html`, `get.html`,
-`404.html`, `site.css`, `site.js` and `media/`. GitHub Pages publishes `docs/` from `main` as it
-stands, and `.nojekyll` stops it processing the files. Edit the pages directly.
+`404.html`, `site.css`, `site.js` and `media/`. Configure GitHub Pages to publish
+`main` / `docs` when repository visibility and the account plan permit it.
+`.nojekyll` keeps these static files unchanged. Source files alone do not enable
+the hosted site. Edit the pages directly; the download page links to verified releases.
 
 ```powershell
-node tools/website/serve.cjs   # Preview at http://127.0.0.1:8792/rocket/, the way Pages serves it
+node tools/website/serve.cjs   # Preview at http://127.0.0.1:8792/Rocket/, the way Pages serves it
 node tools/website/check.cjs   # Links, anchors, alt text, nothing personal or external
 ```
 
@@ -302,6 +304,23 @@ are. Every new video stays in Git history, so re-record only when the screens ha
 Crops, scenes and the pointer's paths are at the top of `tools/website/media.html`. The GitHub and
 site addresses are in the three pages, `docs/sitemap.xml` and `check.cjs`, the `<base>` in
 `404.html` names the project path, and `get.html` names the current version.
+
+### GitHub Wiki
+
+Keep the authoritative Markdown in `docs/wiki`. Export a new directory before
+publishing; the exporter fixes page links, source references and image URLs and
+adds a sidebar/footer without changing the source pages:
+
+```powershell
+node tools/website/export-wiki.cjs tools/maintenance/wiki-export
+```
+
+Enable Wiki in the repository settings and create its first Home page on GitHub.
+Then clone `https://github.com/JasXTD/Rocket.wiki.git` into a separate directory,
+review the export against existing pages, copy only those reviewed files and
+commit/push that Wiki repository. Never replace unrelated Wiki pages or history.
+Pages and Wiki availability depends on the GitHub plan and repository visibility;
+changing Rocket from private to public requires the owner's explicit approval.
 
 ## Localhost MCP
 

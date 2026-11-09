@@ -1,8 +1,8 @@
-// Previews the website the way GitHub Pages serves it: under /rocket/, with 404.html for anything
+// Previews the website the way GitHub Pages serves it: under /Rocket/, with 404.html for anything
 // missing and byte ranges so video can seek. Loopback only.
 // Usage: node tools/website/serve.cjs [port]
 const http = require('node:http'), fs = require('node:fs'), path = require('node:path');
-const root = path.resolve(__dirname, '../../docs'), port = Number(process.argv[2]) || 8792, prefix = '/rocket/';
+const root = path.resolve(__dirname, '../../docs'), port = Number(process.argv[2]) || 8792, prefix = '/Rocket/';
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.jpg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4', '.xml': 'application/xml', '.md': 'text/markdown' };
 
 function send(response, status, file, range) {
@@ -20,13 +20,15 @@ function send(response, status, file, range) {
 }
 
 http.createServer((request, response) => {
-  const url = decodeURIComponent(request.url.split(/[?#]/)[0]);
-  if (url === '/rocket') { response.writeHead(301, { Location: prefix }); response.end(); return; }
+  let url;
+  try { url = decodeURIComponent(request.url.split(/[?#]/)[0]); }
+  catch { response.writeHead(400); response.end(); return; }
+  if (url === '/Rocket') { response.writeHead(301, { Location: prefix }); response.end(); return; }
   let file = null;
   if (url.startsWith(prefix)) {
-    file = path.join(root, url.slice(prefix.length));
+    file = path.resolve(root, url.slice(prefix.length));
     if (file.endsWith(path.sep) || file === root) file = path.join(file, 'index.html');
   }
-  if (file && file.startsWith(root) && fs.existsSync(file) && fs.statSync(file).isFile()) send(response, 200, file, request.headers.range);
+  if (file && file.startsWith(root + path.sep) && fs.existsSync(file) && fs.statSync(file).isFile()) send(response, 200, file, request.headers.range);
   else send(response, 404, path.join(root, '404.html'));
 }).listen(port, '127.0.0.1', () => console.log(`http://127.0.0.1:${port}${prefix}`));

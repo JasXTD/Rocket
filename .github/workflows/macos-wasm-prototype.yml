@@ -22,10 +22,20 @@ jobs:
   guest:
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ (inputs.checks == 'complete-package' || inputs.checks == 'release-package') && 3 || 5 }}
+    env:
+      ROCKET_MACOS_CHECK_SCOPE: ${{ inputs.checks }}
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
       guest_sha: ${{ steps.guest.outputs.guest_sha }}
     steps:
+      - name: Validate requested checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$ROCKET_MACOS_CHECK_SCOPE" in
+            integration|prototype|complete-package|release-package) ;;
+            *) printf '%s\n' 'Unsupported check selection' >&2; exit 2 ;;
+          esac
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -52,6 +62,7 @@ jobs:
       CARGO_BUILD_JOBS: '3'
       CARGO_TERM_COLOR: never
       RUSTUP_TOOLCHAIN: '1.99.1'
+      ROCKET_MACOS_CHECK_SCOPE: ${{ inputs.checks }}
       # Fresh GitHub runner user only: ad-hoc App Sandbox containers are left to
       # runner teardown, never created/removed in a developer's macOS account.
       ROCKET_MACOS_SANDBOX_DISPOSABLE_USER: '1'
@@ -84,8 +95,8 @@ jobs:
           set -euo pipefail
           export CARGO_HOME="$RUNNER_TEMP/prototype-deps/cargo-home"
           export CARGO_TARGET_DIR="$RUNNER_TEMP/prototype-target"
-          if [ '${{ inputs.checks }}' = integration ] || [ '${{ inputs.checks }}' = complete-package ] || [ '${{ inputs.checks }}' = release-package ]; then
-            bash tools/macos/test-lua-integration.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results" "$RUNNER_TEMP/root-cargo-home" '${{ inputs.checks }}'
+          if [ "$ROCKET_MACOS_CHECK_SCOPE" = integration ] || [ "$ROCKET_MACOS_CHECK_SCOPE" = complete-package ] || [ "$ROCKET_MACOS_CHECK_SCOPE" = release-package ]; then
+            bash tools/macos/test-lua-integration.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results" "$RUNNER_TEMP/root-cargo-home" "$ROCKET_MACOS_CHECK_SCOPE"
           else
             bash tools/prototypes/macos-lua-wasm/run-host-checks.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results"
           fi

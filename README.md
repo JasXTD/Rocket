@@ -38,8 +38,10 @@ open **Help → Setup Guide** in the app. **Ctrl+K** opens the command palette a
 guide.
 
 > [!NOTE]
-> Rocket is in active development and has no public release yet.
-> [Build it from source](#build-and-run) to try it.
+> [Download Rocket 0.92.1](https://github.com/JasXTD/Rocket/releases/tag/v0.92.1):
+> Windows x64, Linux x64 (glibc 2.43+) and the Apple Silicon macOS 15+ preview.
+> The Mac preview is not Developer-ID-signed or notarized. Downloads require repository
+> access while Rocket is private. [Build from source](#build-and-run) is also available.
 
 ## Features
 
