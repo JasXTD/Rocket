@@ -18,16 +18,19 @@ on:
           - platform
           - sandbox
           - desktop-integration
+          - agent-security
 
 permissions:
   contents: read
 
 concurrency:
-  group: rocket-macos-preparation
+  group: rocket-macos-preparation-${{ inputs.architecture }}-${{ inputs.checks }}
   cancel-in-progress: true
 
 jobs:
   build:
+    # This qualification is authorized only on free public-repository runners.
+    if: ${{ inputs.checks != 'agent-security' || github.event.repository.private == false }}
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: 15
     env:
@@ -43,7 +46,7 @@ jobs:
           set -euo pipefail
           case "$ROCKET_REQUESTED_MAC_ARCH" in arm64|x64) ;; *) echo 'Unsupported architecture selection' >&2; exit 2 ;; esac
           case "$ROCKET_MACOS_CHECK_SCOPE" in
-            followups|platform|sandbox|desktop-integration) ;;
+            followups|platform|sandbox|desktop-integration|agent-security) ;;
             *) printf '%s\n' 'Unsupported check selection' >&2; exit 2 ;;
           esac
       - name: Check out the selected revision
@@ -69,7 +72,9 @@ jobs:
           ROCKET_MACOS_OUTPUT: ${{ runner.temp }}/rocket-macos-stage1
         run: |
           set -euo pipefail
-          if [ "$ROCKET_MACOS_CHECK_SCOPE" = sandbox ]; then
+          if [ "$ROCKET_MACOS_CHECK_SCOPE" = agent-security ]; then
+            bash tools/macos/test-agent-executable-security.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"
+          elif [ "$ROCKET_MACOS_CHECK_SCOPE" = sandbox ]; then
             # GitHub-hosted disposable OS user only. Never a normal account's container.
             export ROCKET_MACOS_SANDBOX_DISPOSABLE_USER=1
             bash tools/test-macos-sandbox.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"

@@ -13,6 +13,13 @@ and rendered captures stay under ignored `work/`; no fixtures belong in a packag
 
 ## Apple Silicon macOS preparation
 
+The `agent-security` check option runs only reviewed-executable Agents regressions,
+terminal launch/cleanup checks and synthetic localhost MCP acceptance on either
+Apple Silicon or Intel. It uses `tools/macos/test-agent-executable-security.sh`,
+requires a public repository in Actions, and selects standard `macos-15` or
+`macos-15-intel` runners. Architecture-specific concurrency permits both runs.
+It produces test evidence only: no app bundle, release, AI request or Keychain change.
+
 The manual-only `.github/workflows/macos-arm64.yml` prepares a development `Rocket.app`
 with pinned Rust/actions and bounded runtime/artifact retention. Local native
 builds use `bash tools/build-macos.sh [--offline]`. It runs only the affected core
