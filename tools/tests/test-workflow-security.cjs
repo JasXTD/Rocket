@@ -51,12 +51,18 @@ for (const [name, modes] of workflows) {
     const env = { ...process.env };
     delete env.BASH_ENV; delete env.ENV;
     try {
-      const run = mode => cp.spawnSync(bash, ['--noprofile', '--norc', '-c', guard], {
-        cwd: temp, env: { ...env, ROCKET_MACOS_CHECK_SCOPE: mode }, encoding: 'utf8', windowsHide: true, timeout: 10000,
+      const run = (mode,arch='arm64') => cp.spawnSync(bash, ['--noprofile', '--norc', '-c', guard], {
+        cwd: temp, env: { ...env, ROCKET_MACOS_CHECK_SCOPE: mode, ROCKET_REQUESTED_MAC_ARCH: arch }, encoding: 'utf8', windowsHide: true, timeout: 10000,
       });
-      for (const mode of modes) {
-        const result = run(mode);
+      for (const arch of ['arm64','x64']) for (const mode of modes) {
+        const result = run(mode,arch);
         assert.ifError(result.error); assert.equal(result.status, 0, mode);
+      }
+      for (const arch of ['', 'intel', 'self-hosted', '$(touch must-not-exist)', 'x64\ntouch must-not-exist']) {
+        const result = run(modes[0],arch);
+        assert.ifError(result.error); assert.equal(result.status, 2);
+        assert.match(result.stderr, /Unsupported architecture selection/);
+        assert(!fs.existsSync(marker), 'Architecture input must never execute as shell code');
       }
       for (const mode of ['', 'unknown', "'; touch must-not-exist; #", '$(touch must-not-exist)', 'integration\ntouch must-not-exist']) {
         const result = run(mode);

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 mod linux;
-#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#[cfg(all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")))]
 mod macos;
 #[cfg(windows)]
 mod windows;
@@ -76,7 +76,7 @@ impl IntegrationWorker {
         #[cfg(not(any(
             windows,
             all(target_os = "linux", target_arch = "x86_64"),
-            all(target_os = "macos", target_arch = "aarch64")
+            all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64"))
         )))]
         {
             let _ = (&self.path, &self.sha256, input, limits);
@@ -85,7 +85,7 @@ impl IntegrationWorker {
         #[cfg(any(
             windows,
             all(target_os = "linux", target_arch = "x86_64"),
-            all(target_os = "macos", target_arch = "aarch64")
+            all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64"))
         ))]
         {
             if self.sha256.len() != 64 || !self.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -108,7 +108,7 @@ impl IntegrationWorker {
             {
                 linux::run(self, input, limits, cancel)
             }
-            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+            #[cfg(all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")))]
             {
                 macos::run(self, input, limits, cancel)
             }
@@ -120,7 +120,7 @@ impl IntegrationWorker {
 fn unsupported_platform() -> Error {
     Error::Unsupported(
         if cfg!(target_os = "macos") {
-            "integration_worker_sandbox: macOS Lua requires the bound Apple Silicon Wasm helper. The native Lua entry point cannot run here; no script was run."
+            "integration_worker_sandbox: macOS Lua requires the bound macOS Wasm helper. The native Lua entry point cannot run here; no script was run."
         } else {
             "integration_worker_sandbox: Lua execution needs the worker sandbox of Windows or Linux x86_64; no unrestricted fallback is provided."
         }
@@ -146,7 +146,7 @@ mod preflight_tests {
     #[cfg(any(
         windows,
         all(target_os = "linux", target_arch = "x86_64"),
-        all(target_os = "macos", target_arch = "aarch64")
+        all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64"))
     ))]
     #[test]
     fn supported_platform_still_requires_a_bound_worker() {
@@ -169,7 +169,7 @@ mod preflight_tests {
     #[cfg(not(any(
         windows,
         all(target_os = "linux", target_arch = "x86_64"),
-        all(target_os = "macos", target_arch = "aarch64")
+        all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64"))
     )))]
     #[test]
     fn unsupported_platform_refuses_bound_and_unbound_workers() {

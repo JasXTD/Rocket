@@ -2,7 +2,7 @@
 'use strict';
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto'),net=require('node:net'),http=require('node:http'),assert=require('node:assert/strict');
 const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');
-assert.equal(process.platform,'darwin');assert.equal(process.arch,'arm64');
+assert.equal(process.platform,'darwin');assert(['arm64','x64'].includes(process.arch));
 const exe=fs.realpathSync(process.env.ROCKET_MCP_EXE||''),out=path.resolve(process.env.ROCKET_MCP_RESULTS||'');
 assert(exe.endsWith('/Rocket.app/Contents/MacOS/rocket-mcp'),'Run the helper inside the verified app');
 fs.mkdirSync(out,{recursive:true});
@@ -66,7 +66,7 @@ const server=http.createServer((req,res)=>{
  if(mode==='slow'){res.on('close',()=>closed++);return;}
  if(mode==='unavailable'){res.writeHead(404);res.end('{}');return;}
  if(mode==='error'){res.writeHead(503);res.end('PRIVATE_MAC_SERVER_ERROR');return;}
- const version='99.0.0';res.setHeader('Content-Type','application/json');res.end(JSON.stringify({tag_name:'v'+version,draft:false,prerelease:false,html_url:'https://github.com/JasXTD/Rocket/releases/tag/v'+version,body:'Synthetic Mac release · 中文 日本語 한국어 🦀\n\n'+('Reviewed release notes.\n'.repeat(40)),assets:[{id:7,name:`Rocket-${version}-macos-arm64.tar.gz`,state:'uploaded',size:1234,digest:'sha256:'+'a'.repeat(64)}]}));
+ const version='99.0.0';res.setHeader('Content-Type','application/json');res.end(JSON.stringify({tag_name:'v'+version,draft:false,prerelease:false,html_url:'https://github.com/JasXTD/Rocket/releases/tag/v'+version,body:'Synthetic Mac release · 中文 日本語 한국어 🦀\n\n'+('Reviewed release notes.\n'.repeat(40)),assets:[{id:7,name:`Rocket-${version}-macos-${process.arch}.tar.gz`,state:'uploaded',size:1234,digest:'sha256:'+'a'.repeat(64)}]}));
 });server.on('connection',s=>{sockets.add(s);s.on('close',()=>sockets.delete(s))});
 const control=id=>state.controls?.find(c=>c.id===id),menu=id=>state.native_menus?.find(c=>c.id===id),play=()=>state.integrations?.playground;
 async function until(fn,label='state',ms=45000){const at=performance.now();for(;;){state=await client.tool('rocket_state');if(fn(state))return;assert(performance.now()-at<ms,label+' timeout; '+JSON.stringify({dialog:state.dialog?.kind,updates:state.updates,play:play(),spelling:state.spelling}));await delay(45)}}

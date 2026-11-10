@@ -1,5 +1,5 @@
 #!/bin/bash
-# Apple Silicon development build; optionally includes the qualified signed Lua helper.
+# Native macOS development build; optionally includes the qualified signed Lua helper.
 # No publisher identity,
 # credentials, release publication, system Git installation or system settings needed.
 set -euo pipefail
@@ -15,10 +15,9 @@ if [ "$#" -ne 0 ]; then
     echo 'usage: bash tools/build-macos.sh [--offline]' >&2
     exit 2
 fi
-if [ "$(uname -s)" != Darwin ] || [ "$(uname -m)" != arm64 ]; then
-    echo 'This build requires native Apple Silicon macOS (not WSL or Rosetta).' >&2
-    exit 2
-fi
+root=$(cd "$(dirname "$0")/.." && pwd -P)
+source "$root/tools/macos/architecture.sh"
+rocket_macos_architecture
 if [ "$(id -u)" = 0 ]; then
     echo 'Run this build as your ordinary user, without sudo.' >&2
     exit 2
@@ -34,7 +33,6 @@ if ! xcode-select -p >/dev/null 2>&1; then
     exit 2
 fi
 
-root=$(cd "$(dirname "$0")/.." && pwd -P)
 cd "$root"
 scope=${ROCKET_MACOS_CHECK_SCOPE:-platform}
 case "$scope" in
@@ -42,15 +40,15 @@ case "$scope" in
     *) echo 'ROCKET_MACOS_CHECK_SCOPE must be platform or followups.' >&2; exit 2 ;;
 esac
 toolchain=1.99.1
-target=aarch64-apple-darwin
+target=$ROCKET_MAC_TARGET
 # Consume the full producer before matching. grep -q can close its pipe after
 # the host line, causing rustup to receive SIGPIPE and fail under pipefail.
 if ! rust_identity=$(rustup run "$toolchain" rustc -vV); then
-    echo 'Rust 1.99.1 for aarch64-apple-darwin must already be installed.' >&2
+    echo "Rust 1.99.1 for $target must already be installed." >&2
     exit 2
 fi
 if ! printf '%s\n' "$rust_identity" | grep -Fx "host: $target" >/dev/null; then
-    echo 'Rust 1.99.1 must use the native aarch64-apple-darwin host.' >&2
+    echo "Rust 1.99.1 must use the native $target host." >&2
     exit 2
 fi
 out=${ROCKET_MACOS_OUTPUT:-"$root/target/macos-stage1"}
@@ -84,7 +82,7 @@ l.native(process.argv[2]);process.stdout.write(l.inspect(process.argv[2],b.read,
 JS
 )
 fi
-build_target="$root/target/macos-stage1-cargo"
+build_target="$root/target/macos-$ROCKET_MAC_ARCH-stage1-cargo"
 common=(--locked --target "$target" --target-dir "$build_target")
 # macOS ships Bash 3.2: expanding an empty array with nounset fails there.
 if [ -n "$offline" ]; then common+=("$offline"); fi
@@ -190,7 +188,7 @@ node tools/macos/bundle.cjs iconset "$out/Rocket.iconset"
 /usr/bin/iconutil -c icns "$out/Rocket.iconset" -o "$out/Rocket.icns"
 /usr/bin/iconutil -c iconset "$out/Rocket.icns" -o "$out/roundtrip.iconset"
 node tools/macos/bundle.cjs iconset "$out/roundtrip.iconset"
-stage="$out/Rocket-macos-arm64-development"
+stage="$out/Rocket-macos-$ROCKET_MAC_ARCH-development"
 node tools/macos/bundle.cjs stage "$build_target/$target/debug" "$out/Rocket.icns" "$stage" "$out/build-info.md"
 node tools/macos/bundle.cjs finalize "$stage"
 app_bin="$stage/Rocket.app/Contents/MacOS"
@@ -211,11 +209,11 @@ node tools/macos/bundle.cjs verify "$stage"
     cd "$stage"
     /usr/bin/shasum -a 256 -c SHA256SUMS
 )
-archive=Rocket-macos-arm64-development.zip
+archive="Rocket-macos-$ROCKET_MAC_ARCH-development.zip"
 /usr/bin/ditto -c -k --keepParent "$stage" "$out/$archive"
 mkdir "$out/archive-check"
 /usr/bin/ditto -x -k "$out/$archive" "$out/archive-check"
-node tools/macos/bundle.cjs verify "$out/archive-check/Rocket-macos-arm64-development"
+node tools/macos/bundle.cjs verify "$out/archive-check/Rocket-macos-$ROCKET_MAC_ARCH-development"
 (cd "$out"; /usr/bin/shasum -a 256 "$archive" > "$archive.sha256")
 echo 'PASS macOS compilation, affected native checks, packaged helpers, ad-hoc signatures and archive roundtrip.'
 echo 'Finder/Gatekeeper/EC2 Mac acceptance and distribution signing remain pending. Lua requires a separately qualified bound helper.'

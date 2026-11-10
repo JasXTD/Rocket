@@ -48,8 +48,24 @@ pub const UPDATE_PLATFORM: Option<UpdatePlatform> = Some(UpdatePlatform {
     extension: "tar.gz",
     label: "macOS Apple Silicon",
 });
-#[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"), all(target_os = "macos", target_arch = "aarch64"))))]
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+pub const UPDATE_PLATFORM: Option<UpdatePlatform> = Some(UpdatePlatform {
+    platform: "macos-x64",
+    extension: "tar.gz",
+    label: "macOS Intel",
+});
+#[cfg(not(any(windows, all(target_os = "linux", target_arch = "x86_64"), all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")))))]
 pub const UPDATE_PLATFORM: Option<UpdatePlatform> = None;
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_executable_matches(header: &[u8], arch: &str) -> bool {
+    let cpu = match arch {
+        "aarch64" => 0x0c,
+        "x86_64" => 0x07,
+        _ => return false,
+    };
+    header == [0xcf, 0xfa, 0xed, 0xfe, cpu, 0, 0, 1]
+}
 
 /// Linux: the system's /usr/bin program, checked as hosting checks its curl
 /// (`hosting::system_program`), as Windows runs only its System32 curl.
@@ -649,6 +665,20 @@ impl UpdateClient {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mac_updates_refuse_other_architectures_and_non_macho_headers() {
+        let arm = [0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0, 0, 1];
+        let intel = [0xcf, 0xfa, 0xed, 0xfe, 0x07, 0, 0, 1];
+        assert!(macos_executable_matches(&arm, "aarch64"));
+        assert!(macos_executable_matches(&intel, "x86_64"));
+        assert!(!macos_executable_matches(&arm, "x86_64"));
+        assert!(!macos_executable_matches(&intel, "aarch64"));
+        for header in [arm.as_slice(), intel.as_slice(), b"MZ", b"\x7fELF", &[]] {
+            assert!(!macos_executable_matches(header, "unknown"));
+        }
+        assert!(!macos_executable_matches(&intel[..7], "x86_64"));
+        assert!(!macos_executable_matches(b"\xca\xfe\xba\xbe\0\0\0\x02", "x86_64"));
+    }
     #[test]
     fn downloads_require_chunked_body_size_enforcement() {
         assert!(curl_has_stream_limit(

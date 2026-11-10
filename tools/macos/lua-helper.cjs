@@ -31,7 +31,7 @@ function native(app) {
 }
 function prepare(binary, app) {
   assert.equal(process.platform, 'darwin');
-  const b = require('./bundle.cjs'), bytes = b.read(binary, 64 * 1024 * 1024); b.macho(bytes);
+  const b = require('./bundle.cjs'), bytes = b.read(binary, 64 * 1024 * 1024); b.macho(bytes,process.arch);
   assert(!fs.existsSync(app));
   fs.mkdirSync(path.join(app, 'Contents/MacOS'), { recursive: true, mode: 0o755 });
   fs.writeFileSync(path.join(app, EXE), bytes, { flag: 'wx', mode: 0o755 });

@@ -10,6 +10,10 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Add native Intel Mac build selection alongside Apple Silicon, matching app/Lua
+  helper architecture checks and separate `macos-x64` update packages. Manual
+  workflows keep their existing time caps and default to Apple Silicon. Intel
+  native runtime qualification and package publication remain pending.
 - Prevent credential-helper injection through a pre-created temporary repository.
   Hosting and preview sign-in now use fresh, randomly named request folders;
   Unix creation enforces private permissions, ownership and safe ancestors.

@@ -2,10 +2,10 @@
 # One native batch for Mac updates, spelling and menus. Synthetic data only.
 set -euo pipefail
 umask 077
-test "$(uname -s)" = Darwin
-test "$(uname -m)" = arm64
 test "$(id -u)" != 0
 root=$(cd "$(dirname "$0")/../.." && pwd -P)
+source "$root/tools/macos/architecture.sh"
+rocket_macos_architecture
 cd "$root"
 out=${ROCKET_MACOS_OUTPUT:?ROCKET_MACOS_OUTPUT is required}
 mkdir -p "$out"
@@ -16,7 +16,7 @@ target="$root/target/macos-desktop-cargo"
 args=(--locked --target-dir "$target")
 cargo_run() { rustup run 1.99.1 cargo "$@"; }
 node --test tools/tests/test-macos-update-package.cjs
-xcrun clang -arch arm64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-menu-probe.m -o "$out/menu-probe"
+xcrun clang -arch "$ROCKET_MAC_CLANG_ARCH" -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-menu-probe.m -o "$out/menu-probe"
 "$out/menu-probe"
 cargo_run test "${args[@]}" -p rocket-git --lib app_update:: -- --nocapture
 cargo_run build "${args[@]}" -p rocket-git --example update_transport

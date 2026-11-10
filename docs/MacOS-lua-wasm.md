@@ -25,8 +25,15 @@ The helper workspace remains separate under `tools/prototypes/macos-lua-wasm`
 to preserve the approved lock and keep Wasmtime out of Windows/Linux builds.
 It now also supplies the Mac app helper; its compiler/probe executables are not
 shipped. Build the same-source guest with the approved unwind-enabled toolchain,
-then run `tools/macos/build-lua-helper.sh GUEST_WASM NEW_OUTPUT` on Apple Silicon
+then run `tools/macos/build-lua-helper.sh GUEST_WASM NEW_OUTPUT` on a native Mac
 using that workspace's offline Cargo home and separate target directory.
+
+Intel builds use the same fixed guest and Pulley isolation, compiled into a native
+`x86_64` helper. The UI/MCP hosts must be built for that same architecture and bind
+its final signed hash; packaging rejects an ARM helper in an Intel app and vice
+versa. The manual workflow's `x64` choice prepares the native qualification run.
+The recorded native results in this document are Apple Silicon results; Intel
+containment, lifecycle and complete-package runtime acceptance are still pending.
 
 The output is `RocketLua.app`, its final signed executable digest, and
 `LUA-NOTICES` containing approved dependencies' license texts. Set

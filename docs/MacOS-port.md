@@ -1,9 +1,25 @@
-# Apple Silicon macOS preview
+# macOS preview and native builds
 
 Rocket 0.92.1 targets Apple Silicon and macOS 15 or later. Its preview includes
 native menus, system spell checking, zsh, repository notifications and the bound
 Lua/Pulley sandbox. Git must already be installed. Windows and Linux retain their
 existing native Lua sandboxes.
+
+## Intel build support (pending native qualification)
+
+The build scripts now support native Intel (`x86_64-apple-darwin`, package suffix
+`macos-x64`) as well as Apple Silicon (`aarch64-apple-darwin`, `macos-arm64`). Both
+require macOS 15 or later. Each app, sibling executable and bound Lua helper must
+use the same architecture; the package verifier and updater reject mixed builds.
+The fixed Lua guest and isolation requirements are unchanged. Windows and Linux
+continue to use their existing native sandboxes.
+
+Both manual Mac workflows have an `architecture` selector: `arm64` (default,
+`macos-15`) or `x64` (`macos-15-intel`). A dispatch selects one native runner, not
+a two-job matrix. Use `release-package` in the Lua qualification workflow for a
+complete optimized Intel preview and its affected native/MCP acceptance checks.
+This change has not dispatched Actions or published an Intel package. Cross-checks
+and synthetic package tests do not establish native Intel runtime acceptance.
 
 The Mac preview has ad-hoc signatures, **not Developer ID signing or
 notarization**. It is a manual-install preview; in-app installation keeps its
@@ -95,8 +111,8 @@ not an executed notarization or a release-ready signing pipeline.
 ## Build and evidence
 
 `.github/workflows/macos-arm64.yml` is **manual-only**. It has no push, pull-request,
-schedule, release or deployment trigger. It uses a standard Apple Silicon
-`macos-15` runner, one concurrent job, a 15-minute timeout and three-day artifact
+schedule, release or deployment trigger. It uses the selected standard native
+Mac runner, one concurrent job, a 15-minute timeout and three-day artifact
 retention. A newer manual run cancels the previous run. It requests read-only
 repository access and checkout does not retain credentials. It uses no personal
 tokens, signing keys, repository credentials, third-party setup action, or
@@ -121,15 +137,15 @@ bash tools/build-macos.sh --offline
 ```
 
 Omit `--offline` to allow Cargo to obtain the locked dependencies. The script
-refuses other operating systems, Intel/Rosetta, root and existing output folders.
+refuses other operating systems, unsupported CPUs, Rosetta, root and existing output folders.
 The default output is `target/macos-stage1`; `ROCKET_MACOS_OUTPUT` may select a new
-absolute folder. Its build cache is `target/macos-stage1-cargo`. Windows/Linux
+absolute folder. Its build cache is `target/macos-ARCH-stage1-cargo` (`arm64` or `x64`). Windows/Linux
 build scripts, profiles and release directories are not changed. This first
 development build targets macOS **15.0**, without promising older-OS support.
 
 The build checks all workspace targets, runs only the affected core platform,
 credentials/SSH, desktop, terminal/MCP and Lua preflight/unsupported-worker tests,
-builds five binaries, packages them in `Rocket.app`, verifies their arm64
+builds five binaries, packages them in `Rocket.app`, verifies their matching native
 architecture, and runs a bounded CLI smoke test from the packaged helpers. That smoke uses a new repository
 with a Unicode path; it verifies JSON status, pre-cancellation, missing-repository
 errors, diagnostic JSON and preservation of the fixture. It uses no hosted remote
@@ -152,13 +168,14 @@ platform boundary checks as well. Local builds default to `platform`; set
 `ROCKET_MACOS_CHECK_SCOPE=followups` to select the focused pass. Both scopes keep
 all-target compilation and package/signature/archive verification mandatory.
 
-The artifact is `Rocket-macos-arm64-development.zip`, with per-file hashes and an
+The artifact is `Rocket-macos-ARCH-development.zip` (`ARCH` is `arm64` or `x64`), with per-file hashes and an
 archive SHA-256 sidecar. It contains `Rocket.app`, notices and this document,
-not source snapshots, test repositories, logs with credentials, or a Lua worker.
+plus the bound Lua helper when supplied; no source snapshots, test repositories
+or logs with credentials are included.
 Native link information and smoke results are separate evidence.
 
 The app uses Rocket's existing artwork, rendered at all ten Apple iconset sizes
-and converted with Apple's `iconutil`. `Info.plist` declares Apple Silicon's
+and converted with Apple's `iconutil`. `Info.plist` declares the supported Mac
 minimum macOS version and Rocket's workspace version. All five executables remain
 siblings in `Contents/MacOS`, preserving rebase, SSH and credential-helper lookup.
 Licenses and the icon live in `Contents/Resources`. Packaging refuses existing

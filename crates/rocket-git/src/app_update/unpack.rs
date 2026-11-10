@@ -1,5 +1,5 @@
-//! Linux update archives: gzip-compressed POSIX ustar, with every entry inside one top
-//! folder, `Rocket-<version>-linux-x64`. The system's gzip decompresses the archive; this
+//! Unix update archives: gzip-compressed POSIX ustar, with every entry inside one top
+//! folder, `Rocket-<version>-<platform>`. The system's gzip decompresses the archive; this
 //! reader checks each entry and writes the files itself, so a download can't create a
 //! link, a device, a file outside its folder or one that replaces another. Windows reads
 //! its ZIP with the system's ZIP reader instead.
@@ -148,9 +148,12 @@ impl Unpacker {
             }
             Some(_) => {}
             None => {
+                let platform = super::UPDATE_PLATFORM
+                    .ok_or_else(|| refuse("updates are unsupported on this platform"))?;
+                let suffix = format!("-{}", platform.platform);
                 let version = top
                     .strip_prefix("Rocket-")
-                    .and_then(|t| t.strip_suffix(if cfg!(target_os = "macos") { "-macos-arm64" } else { "-linux-x64" }))
+                    .and_then(|t| t.strip_suffix(suffix.as_str()))
                     .ok_or_else(|| refuse("the archive's top folder does not match this platform"))?;
                 if super::UpdateVersion::parse(version).is_none() || version.starts_with('v') {
                     return Err(refuse("the archive's top folder has an invalid release version"));
@@ -309,8 +312,10 @@ mod tests {
     }
     #[cfg(not(target_os = "macos"))]
     const TOP: &str = "Rocket-9.0.0-linux-x64";
-    #[cfg(target_os = "macos")]
+    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     const TOP: &str = "Rocket-9.0.0-macos-arm64";
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    const TOP: &str = "Rocket-9.0.0-macos-x64";
 
     #[test]
     fn a_release_folder_unpacks_with_its_files_and_folders() {

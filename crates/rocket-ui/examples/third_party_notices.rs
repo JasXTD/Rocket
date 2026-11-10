@@ -19,7 +19,7 @@ use std::{
 const SHIPPED: [&str; 5] = ["rocket-ui", "rocket-mcp", "rocket-cli", "rocket-git", "rocket-integrations"];
 /// The release targets, which decide the platform-specific crates, under the platform
 /// names the entries and the Legal page use.
-const TARGETS: [(&str, &str); 3] = [("Windows", "x86_64-pc-windows-msvc"), ("Linux", "x86_64-unknown-linux-gnu"), ("macOS", "aarch64-apple-darwin")];
+const TARGETS: [(&str, &str); 4] = [("Windows", "x86_64-pc-windows-msvc"), ("Linux", "x86_64-unknown-linux-gnu"), ("macOS", "aarch64-apple-darwin"), ("macOS", "x86_64-apple-darwin")];
 /// Where `cargo metadata` says a crates.io package comes from.
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 /// Opens and closes each entry's header; the Legal page splits the file on it.
@@ -128,7 +128,10 @@ fn main() -> ExitCode {
             crates.insert(("lua-src".into(), "551.1.0".into()));
         }
         for key in crates {
-            compiled.entry(key).or_default().push(platform);
+            let platforms = compiled.entry(key).or_default();
+            if !platforms.contains(&platform) {
+                platforms.push(platform);
+            }
         }
     }
     let metadata: Value =
@@ -225,8 +228,11 @@ fn main() -> ExitCode {
     let crates = entries.iter().filter(|e| e.kind == "crate").count();
     let per_platform: Vec<String> = TARGETS
         .iter()
-        .map(|(platform, _)| {
-            let on = entries.iter().filter(|e| e.kind == "crate" && e.platforms.split(", ").any(|p| p == *platform));
+        .map(|(platform, _)| *platform)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .map(|platform| {
+            let on = entries.iter().filter(|e| e.kind == "crate" && e.platforms.split(", ").any(|p| p == platform));
             format!("{} on {platform}", on.count())
         })
         .collect();

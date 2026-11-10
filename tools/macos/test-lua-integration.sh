@@ -3,6 +3,8 @@
 set -euo pipefail
 umask 077
 root=$(cd "$(dirname "$0")/../.." && pwd)
+source "$root/tools/macos/architecture.sh"
+rocket_macos_architecture
 guest=${1:?Same-run fixed guest required}
 out=${2:?New absolute results directory required}
 root_cargo=${3:?Separate root Cargo home required}
@@ -11,7 +13,7 @@ case "$mode" in integration|complete-package|release-package) ;; *) exit 2 ;; es
 profile=debug
 cargo_profile=()
 if [ "$mode" = release-package ]; then profile=release; cargo_profile=(--release); fi
-test "$(uname -s)" = Darwin && test "$(uname -m)" = arm64 && test "$(id -u)" != 0
+test "$(id -u)" != 0
 test "${ROCKET_MACOS_SANDBOX_DISPOSABLE_USER:-}" = 1
 case "$guest:$out:$root_cargo" in /*:/*:/*) ;; *) exit 2 ;; esac
 test ! -e "$out" && test ! -L "$out"
@@ -35,7 +37,7 @@ export ROCKET_MACOS_ICON_TOOL="$CARGO_TARGET_DIR/$profile/examples/macos_icon"
 node --test tools/tests/test-macos-bundle.cjs
 "$ROCKET_MACOS_ICON_TOOL" "$out/Rocket.iconset"
 /usr/bin/iconutil --convert icns --output "$out/Rocket.icns" "$out/Rocket.iconset"
-printf 'Apple Silicon preview package. Source: %s\nBuild profile: %s\nHelper SHA-256: %s\nIncludes native menus, updates, spelling and bound Lua. Ad-hoc signatures are not Developer ID signatures. Notarization and physical Mac acceptance are pending. Install manually; this archive is not eligible for in-app installation.\n' "$(git rev-parse HEAD)" "$profile" "$ROCKET_LUA_WORKER_SHA256" > "$out/BUILD.md"
+printf 'macOS %s preview package. Source: %s\nBuild profile: %s\nHelper SHA-256: %s\nIncludes native menus, updates, spelling and bound Lua. Ad-hoc signatures are not Developer ID signatures. Notarization and physical Mac acceptance are pending. Install manually; this archive is not eligible for in-app installation.\n' "$ROCKET_MAC_ARCH" "$(git rev-parse HEAD)" "$profile" "$ROCKET_LUA_WORKER_SHA256" > "$out/BUILD.md"
 node tools/macos/bundle.cjs stage "$CARGO_TARGET_DIR/$profile" "$out/Rocket.icns" "$out/package" "$out/BUILD.md"
 node tools/macos/bundle.cjs finalize "$out/package"
 export ROCKET_TEST_MAC_HOST="$out/package/Rocket.app/Contents/MacOS/rocket"
@@ -56,14 +58,14 @@ else
   cargo test --locked -p rocket-mcp --lib terminal_probes -- --test-threads=1
   cargo test --locked -p rocket-terminal --lib isolated_zsh -- --test-threads=1
   cargo test --locked -p rocket-terminal --test unix_session owned_history_keeps_the_selected_program -- --test-threads=1
-  xcrun clang -arch arm64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-menu-probe.m -o "$out/menu-probe"
+  xcrun clang -arch "$ROCKET_MAC_CLANG_ARCH" -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-menu-probe.m -o "$out/menu-probe"
   "$out/menu-probe"
 fi
 node tools/macos/bundle.cjs verify "$out/package"
 archive=Rocket-macos-lua-development.zip
 if [ "$mode" = release-package ]; then
   version=$(node -p "require('./tools/macos/bundle.cjs').version()")
-  archive="Rocket-$version-macos-arm64-preview.zip"
+  archive="Rocket-$version-macos-$ROCKET_MAC_ARCH-preview.zip"
 fi
 export ROCKET_MAC_PACKAGE_ARCHIVE="$archive" ROCKET_MAC_PACKAGE_PROFILE="$profile"
 /usr/bin/ditto -c -k --keepParent "$out/package" "$out/$archive"

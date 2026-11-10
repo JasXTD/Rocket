@@ -1,4 +1,4 @@
-//! Apple Silicon: the fixed import-free Lua guest in a signed Pulley helper.
+//! macOS: the fixed import-free Lua guest in a matching native signed Pulley helper.
 //! A private snapshot avoids executing a mutable installed pathname. This is not
 //! authentication against a malicious native process running as the same user
 //! (which can also replace an unsigned Rocket host). Packages and guest code

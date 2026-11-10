@@ -3,7 +3,7 @@ Third-party notices for Rocket
 Rocket includes the software below. Each entry names its license and the platforms
 whose builds include it, and carries the notice its authors ship with it. Where a
 crate offers MIT among other licenses, Rocket uses it under MIT. Generated from
-Cargo.lock for x86_64-pc-windows-msvc (Windows) and x86_64-unknown-linux-gnu (Linux) and aarch64-apple-darwin (macOS) by
+Cargo.lock for x86_64-pc-windows-msvc (Windows) and x86_64-unknown-linux-gnu (Linux) and aarch64-apple-darwin (macOS) and x86_64-apple-darwin (macOS) by
 `cargo run -p rocket-ui --example third_party_notices`; do not edit by hand.
 
 ########################################################################

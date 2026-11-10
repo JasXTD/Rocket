@@ -14,7 +14,8 @@ artifacts. The account owner should configure them locally; this guide uses
 only a Keychain profile name, never an account address or password.
 
 Use an isolated signing workspace and an already verified, clean source commit.
-Build and test the five arm64 executables and icon before signing. The current
+Build and test the five executables for the same native Mac architecture (arm64
+or Intel x86_64) and the icon before signing. The current
 `tools/macos/bundle.cjs stage` can create a fresh **unfinalized** package directory.
 Do not run its `finalize` command on a distribution candidate: that command
 deliberately applies ad-hoc development signatures.
@@ -96,7 +97,7 @@ copy of the final archive. Do not reuse its earlier hashes.
 For Rocket's in-app updater, also create the separate signed tar asset with
 `node tools/macos/update-package.cjs "$ROCKET_APP" /path/to/new-output TEAM_ID`.
 This validates Developer ID, the same publisher identity and notarization again,
-then writes `Rocket-VERSION-macos-arm64.tar.gz` and its SHA-256 sidecar. Its
+then writes `Rocket-VERSION-macos-ARCH.tar.gz` (`ARCH` is `arm64` or `x64`) and its SHA-256 sidecar. Its
 inventory stays outside the sealed app. See the [update contract](MacOS-desktop-integrations.md).
 The development bundle ZIP is not an in-app update asset.
 

@@ -2,10 +2,10 @@
 # Focused native Mac acceptance. Uses installed tools and locked dependencies only.
 set -euo pipefail
 umask 077
-test "$(uname -s)" = Darwin
-test "$(uname -m)" = arm64
 test "$(id -u)" != 0
 root=$(cd "$(dirname "$0")/../.." && pwd -P)
+source "$root/tools/macos/architecture.sh"
+rocket_macos_architecture
 cd "$root"
 out=${ROCKET_MACOS_OUTPUT:?Set ROCKET_MACOS_OUTPUT to a new absolute result folder}
 case "$out" in /*) ;; *) echo 'Output must be absolute.' >&2; exit 2;; esac

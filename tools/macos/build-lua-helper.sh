@@ -3,6 +3,8 @@
 set -euo pipefail
 umask 077
 root=$(cd "$(dirname "$0")/../.." && pwd)
+source "$root/tools/macos/architecture.sh"
+rocket_macos_architecture
 guest=${1:?Same-source fixed guest.wasm required}
 out=${2:?New absolute helper output required}
 profile=${3:-debug}
@@ -10,7 +12,6 @@ case "$profile" in debug|release) ;; *) echo 'Expected debug or release helper p
 cargo_profile=()
 if [ "$profile" = release ]; then cargo_profile=(--release); fi
 : "${CARGO_TARGET_DIR:?Separate helper target directory required}"
-test "$(uname -s)" = Darwin && test "$(uname -m)" = arm64
 case "$guest:$out" in /*:/*) ;; *) exit 2 ;; esac
 test ! -e "$out" && test ! -L "$out"
 mkdir "$out"

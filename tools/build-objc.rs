@@ -21,7 +21,8 @@ pub fn build_objc(source: &str, name: &str) {
     let archive = out.join(format!("lib{name}.a"));
     let architecture = match std::env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
         "aarch64" => "arm64",
-        _ => panic!("Cocoa adapters currently require Apple Silicon"),
+        "x86_64" => "x86_64",
+        _ => panic!("Cocoa adapters require Apple Silicon or Intel x86_64"),
     };
     let status = std::process::Command::new("/usr/bin/xcrun")
         .args([

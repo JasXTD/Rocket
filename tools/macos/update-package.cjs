@@ -13,19 +13,23 @@ function records(app) {
 }
 function metadata(app,version) {
   assert(/^\d+\.\d+\.\d+$/.test(version),'Invalid release version');
-  return {schema:1,version,platform:'macos-arm64',entrypoint:required[0],files:records(app)};
+  const files=records(app),arch=bundle.macho(bundle.read(path.join(app,required[0])));
+  for(const file of required) bundle.macho(bundle.read(path.join(app,file)),arch);
+  const lua=require('./lua-helper.cjs'),helper=path.join(app,'Contents/Helpers/RocketLua.app');
+  if(fs.existsSync(helper)) lua.inspect(helper,bundle.read,bundle.walk,bytes=>bundle.macho(bytes,arch));
+  return {schema:1,version,platform:'macos-'+arch,entrypoint:required[0],files};
 }
 function run(program,args) { return cp.execFileSync(program,args,{encoding:'utf8',stdio:['ignore','pipe','pipe'],timeout:60000,maxBuffer:1024*1024}); }
 function publish(app,destination,team) {
-  assert(process.platform==='darwin'&&process.arch==='arm64','Use an Apple Silicon Mac');
+  assert(process.platform==='darwin'&&['arm64','x64'].includes(process.arch),'Use a native Apple Silicon or Intel Mac');
   assert(/^[A-Z0-9]{10}$/.test(team),'Expected the reviewed Developer ID Team ID');
   app=fs.realpathSync(app);destination=path.resolve(destination);assert(!fs.existsSync(destination),'Output already exists');
   const rule='=anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] exists and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "'+team+'" and identifier "'+bundle.ID+'" and notarized';
   run('/usr/bin/codesign',['--verify','--deep','--strict','--all-architectures','--test-requirement',rule,app]);
   run('/usr/bin/xcrun',['stapler','validate',app]);
   const version=run('/usr/bin/plutil',['-extract','CFBundleShortVersionString','raw','-o','-',path.join(app,'Contents/Info.plist')]).trim();
-  const data=metadata(app,version),name='Rocket-'+version+'-macos-arm64';
-  for(const file of required) bundle.macho(bundle.read(path.join(app,file)));
+  const data=metadata(app,version),name='Rocket-'+version+'-'+data.platform;
+  assert.equal(data.platform,'macos-'+process.arch,'Use the same Mac architecture as the update');
   fs.mkdirSync(destination,{mode:0o700});const stage=path.join(destination,name);fs.mkdirSync(stage);const target=path.join(stage,'Rocket.app');fs.mkdirSync(target);
   for(const entry of data.files) { const dest=path.join(target,entry.path);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.copyFileSync(path.join(app,entry.path),dest,fs.constants.COPYFILE_EXCL);fs.chmodSync(dest,fs.statSync(path.join(app,entry.path)).mode&0o777); }
   assert.deepEqual(records(target),data.files,'Input changed during packaging');

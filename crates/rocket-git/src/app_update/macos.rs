@@ -218,9 +218,9 @@ pub fn verify_app(
         std::fs::File::open(app.join("Contents/MacOS").join(name))
             .and_then(|mut file| file.read_exact(&mut header))
             .map_err(|e| Error::io("read Mac update architecture", e))?;
-        if header != [0xcf, 0xfa, 0xed, 0xfe, 0x0c, 0, 0, 1] {
+        if !super::macos_executable_matches(&header, std::env::consts::ARCH) {
             return Err(invalid(
-                "Mac update requires Apple Silicon executables. Nothing was replaced.",
+                "Mac update executables must match this Mac architecture. Nothing was replaced.",
             ));
         }
     }

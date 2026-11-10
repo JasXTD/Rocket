@@ -87,7 +87,7 @@ function newOutput(output) {
 
 async function native(output) {
   assert.equal(process.platform, 'darwin', 'Native macOS required');
-  assert.equal(process.arch, 'arm64', 'Apple Silicon required');
+  assert(['arm64', 'x64'].includes(process.arch), 'Native Apple Silicon or Intel Mac required');
   assert.notEqual(process.getuid(), 0, 'Use an ordinary disposable OS user');
   assert.equal(process.env.ROCKET_MACOS_SANDBOX_DISPOSABLE_USER, '1', 'Disposable OS-user opt-in required');
   const root = newOutput(output), tmp = path.join(root, 'tmp'); fs.mkdirSync(tmp);

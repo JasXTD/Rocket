@@ -32,9 +32,12 @@ function read(file, limit = 512 * 1024 * 1024) {
     return bytes;
   } finally { fs.closeSync(fd); }
 }
-function macho(bytes) {
+function macho(bytes, expectedArch) {
   assert(bytes.length >= 32 && bytes.readUInt32LE(0) === 0xfeedfacf, 'Expected thin 64-bit Mach-O');
-  assert.equal(bytes.readUInt32LE(4), 0x0100000c, 'Expected Apple Silicon arm64');
+  const cpu = bytes.readUInt32LE(4);
+  const arch = cpu === 0x0100000c ? 'arm64' : cpu === 0x01000007 ? 'x64' : undefined;
+  assert(arch, 'Expected Apple Silicon arm64 or Intel x86_64');
+  if (expectedArch !== undefined) assert.equal(arch, expectedArch, 'Mixed Mac executable architectures');
   assert.equal(bytes.readUInt32LE(12), 2, 'Expected Mach-O executable');
   const count = bytes.readUInt32LE(16), end = 32 + bytes.readUInt32LE(20);
   assert(count > 0 && count <= 1024 && end <= bytes.length, 'Invalid Mach-O load commands');
@@ -51,6 +54,7 @@ function macho(bytes) {
     at += size;
   }
   assert(at === end && build, 'Missing/inconsistent macOS build-version command');
+  return arch;
 }
 function icns(bytes) {
   assert(bytes.length > 16 && bytes.toString('ascii',0,4) === 'icns' && bytes.readUInt32BE(4) === bytes.length, 'Invalid ICNS container');
@@ -96,36 +100,41 @@ function expected(lua = false) {
     ...(lua ? [...LUA.FILES.map(n=>LUA.PREFIX+n),'Rocket.app/Contents/Resources/LUA-NOTICES'] : []),
     'README.md','BUILD.md'].sort();
 }
-function luaInfo(directory) {
+function luaInfo(directory, arch = architecture(directory)) {
   const app=path.join(directory,LUA.PREFIX);
   if(!fs.existsSync(app)) return 'disabled';
-  const digest=LUA.inspect(app,read,walk,macho);
+  const digest=LUA.inspect(app,read,walk,bytes=>macho(bytes,arch));
   for(const name of ['rocket','rocket-mcp']) assert(read(path.join(directory,'Rocket.app/Contents/MacOS',name)).includes(Buffer.from(digest)), 'Host is not bound to this signed Lua helper: '+name);
   assert(read(path.join(directory,'Rocket.app/Contents/Resources/LUA-NOTICES'),4*1024*1024).length>0,'Missing Lua licenses');
   return {runtime:'pulley',sha256:digest};
 }
+function architecture(directory) {
+  return macho(read(path.join(directory,'Rocket.app/Contents/MacOS/rocket')));
+}
 function structure(directory, v = version()) {
-  const lua=luaInfo(directory);
+  const arch=architecture(directory), lua=luaInfo(directory,arch);
   const actual = walk(directory).filter(n=>!['bundle-manifest.json','SHA256SUMS','Rocket.app/Contents/_CodeSignature/CodeResources'].includes(n));
   assert.deepEqual(actual.sort(), expected(lua!=='disabled'), 'Bundle is incomplete or contains unexpected files');
   assert.equal(read(path.join(directory,'Rocket.app/Contents/Info.plist'),32768).toString(), plist(v), 'Bundle metadata mismatch');
   assert.equal(read(path.join(directory,'Rocket.app/Contents/PkgInfo'),32).toString(),'APPL????');
   icns(read(path.join(directory,'Rocket.app/Contents/Resources/Rocket.icns'),16*1024*1024));
   for (const name of BINARIES) {
-    const file=path.join(directory,'Rocket.app/Contents/MacOS',name); macho(read(file));
+    const file=path.join(directory,'Rocket.app/Contents/MacOS',name); macho(read(file),arch);
     if(process.platform!=='win32') assert((fs.statSync(file).mode&0o111)===0o111,'Helper is not executable: '+name);
   }
   for (const [name,source] of RESOURCES) assert(read(path.join(directory,'Rocket.app/Contents/Resources',name)).equals(read(path.join(ROOT,source))), 'License/notice mismatch: '+name);
+  return arch;
 }
 function stage(binaries, icon, directory, buildInfo, luaApp = process.env.ROCKET_MACOS_LUA_APP) {
   const v=version(), input = new Map();
-  for (const name of BINARIES) { const data=read(path.join(binaries,name));macho(data);input.set('Rocket.app/Contents/MacOS/'+name,data); }
+  const arch=macho(read(path.join(binaries,'rocket')));
+  for (const name of BINARIES) { const data=read(path.join(binaries,name));macho(data,arch);input.set('Rocket.app/Contents/MacOS/'+name,data); }
   const image=read(icon,16*1024*1024);icns(image);input.set('Rocket.app/Contents/Resources/Rocket.icns',image);
   for (const [name,source] of RESOURCES) input.set('Rocket.app/Contents/Resources/'+name,read(path.join(ROOT,source)));
   input.set('Rocket.app/Contents/Info.plist',Buffer.from(plist(v)));input.set('Rocket.app/Contents/PkgInfo',Buffer.from('APPL????'));
   input.set('README.md',read(path.join(ROOT,'docs/MacOS-port.md')));input.set('BUILD.md',read(buildInfo,1024*1024));
   if(luaApp) {
-    const digest=LUA.inspect(luaApp,read,walk,macho);
+    const digest=LUA.inspect(luaApp,read,walk,bytes=>macho(bytes,arch));
     for(const name of ['rocket','rocket-mcp']) assert(input.get('Rocket.app/Contents/MacOS/'+name).includes(Buffer.from(digest)),'Host is not bound to this signed Lua helper: '+name);
     for(const name of LUA.FILES) input.set(LUA.PREFIX+name,read(path.join(luaApp,name)));
     input.set('Rocket.app/Contents/Resources/LUA-NOTICES',read(path.join(path.dirname(luaApp),'LUA-NOTICES'),4*1024*1024));
@@ -144,9 +153,9 @@ function stage(binaries, icon, directory, buildInfo, luaApp = process.env.ROCKET
   structure(directory,v);return directory;
 }
 function manifest(directory) {
-  structure(directory);
+  const arch=structure(directory);
   const files=walk(directory).filter(n=>!['bundle-manifest.json','SHA256SUMS'].includes(n)).map(file=>({path:file,sha256:sha(read(path.join(directory,file)))}));
-  const record={schema:1,version:version(),platform:'macos-arm64',minimum_macos:MINIMUM,identity:ID,lua:luaInfo(directory),files};
+  const record={schema:1,version:version(),platform:'macos-'+arch,minimum_macos:MINIMUM,identity:ID,lua:luaInfo(directory,arch),files};
   fs.writeFileSync(path.join(directory,'bundle-manifest.json'),JSON.stringify(record,null,2)+'\n',{flag:'wx',mode:0o644});
   fs.writeFileSync(path.join(directory,'SHA256SUMS'),[...files,{path:'bundle-manifest.json',sha256:sha(read(path.join(directory,'bundle-manifest.json')))}]
     .map(f=>f.sha256+'  '+f.path+'\n').join(''),{flag:'wx',mode:0o644});
@@ -154,9 +163,9 @@ function manifest(directory) {
 }
 function verify(directory) {
   const data=JSON.parse(read(path.join(directory,'bundle-manifest.json'),1024*1024));
-  assert(data.schema===1&&data.platform==='macos-arm64'&&data.identity===ID&&data.minimum_macos===MINIMUM,'Invalid bundle manifest');
+  assert(data.schema===1&&['macos-arm64','macos-x64'].includes(data.platform)&&data.identity===ID&&data.minimum_macos===MINIMUM,'Invalid bundle manifest');
   assert.deepEqual(data.lua,luaInfo(directory),'Invalid Lua bundle binding');
-  structure(directory,data.version);
+  assert.equal(data.platform,'macos-'+structure(directory,data.version),'Manifest architecture does not match the app');
   const files=walk(directory).filter(n=>!['bundle-manifest.json','SHA256SUMS'].includes(n));
   assert.deepEqual(data.files.map(f=>f.path),files,'Manifest inventory mismatch');
   for(const f of data.files) assert.equal(sha(read(path.join(directory,f.path))),f.sha256,'Hash mismatch: '+f.path);
@@ -168,7 +177,7 @@ function run(program,args) {
   if(result.error)throw result.error;assert.equal(result.status,0,path.basename(program)+': '+result.stderr);return result.stdout;
 }
 function nativeVerify(directory) {
-  assert.equal(process.platform,'darwin','Native bundle validation requires macOS');structure(directory);
+  assert.equal(process.platform,'darwin','Native bundle validation requires macOS');const arch=structure(directory);
   const app=path.join(directory,'Rocket.app');run('/usr/bin/plutil',['-lint',path.join(app,'Contents/Info.plist')]);
   const executables=BINARIES.map(name=>path.join(app,'Contents/MacOS',name));
   if(luaInfo(directory)!=='disabled') {
@@ -176,7 +185,7 @@ function nativeVerify(directory) {
     executables.push(path.join(directory,LUA.PREFIX,LUA.EXE));
   }
   for(const file of executables) {
-    assert.equal(run('/usr/bin/lipo',['-archs',file]).trim(),'arm64','Unexpected architecture');
+    assert.equal(run('/usr/bin/lipo',['-archs',file]).trim(),arch==='arm64'?'arm64':'x86_64','Unexpected architecture');
     const lines=run('/usr/bin/otool',['-L',file]).trimEnd().split('\n').slice(1);
     for(const line of lines) assert(/^\s+(\/System\/Library\/|\/usr\/lib\/)/.test(line),'Non-system dynamic dependency: '+line.trim());
     assert(!/cmd LC_RPATH\b/.test(run('/usr/bin/otool',['-l',file])),'Unexpected dynamic-library search path');
@@ -207,7 +216,7 @@ function signDevelopment(directory) {
   assert.deepEqual(luaInfo(directory),luaBefore,'Signing changed the bound Lua helper');
   nativeVerify(directory);manifest(directory);
 }
-module.exports={BINARIES,ID,version,read,macho,icns,iconset,plist,walk,stage,structure,manifest,verify,nativeVerify,signDevelopment};
+module.exports={BINARIES,ID,version,read,macho,architecture,icns,iconset,plist,walk,stage,structure,manifest,verify,nativeVerify,signDevelopment};
 if(require.main===module) {
   try {
     const [command,...args]=process.argv.slice(2);

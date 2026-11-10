@@ -1,5 +1,5 @@
 //! The actual signed Pulley helper through Rocket's production consumer/protocol.
-#![cfg(all(target_os = "macos", target_arch = "aarch64"))]
+#![cfg(all(target_os = "macos", any(target_arch = "aarch64", target_arch = "x86_64")))]
 use rocket_git::{CancellationToken, GitClient, IntegrationWorker};
 use serde_json::json;
 use std::path::PathBuf;

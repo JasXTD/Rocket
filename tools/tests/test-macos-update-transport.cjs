@@ -1,10 +1,10 @@
 'use strict';
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 const [exe,out]=process.argv.slice(2);assert.equal(process.platform,'darwin');assert(exe&&out);
-const root=fs.mkdtempSync('/private/tmp/rocket-update-http-'),top='Rocket-9.0.0-macos-arm64';fs.mkdirSync(path.join(root,top));fs.writeFileSync(path.join(root,top,'資料.md'),'safe fixture');const archive=path.join(root,'fixture.tar.gz');cp.execFileSync('/usr/bin/tar',['--format=ustar','--no-xattrs','--no-acls','--no-fflags','-czf',archive,'-C',root,top]);
+const root=fs.mkdtempSync('/private/tmp/rocket-update-http-'),top='Rocket-9.0.0-macos-'+process.arch;fs.mkdirSync(path.join(root,top));fs.writeFileSync(path.join(root,top,'資料.md'),'safe fixture');const archive=path.join(root,'fixture.tar.gz');cp.execFileSync('/usr/bin/tar',['--format=ustar','--no-xattrs','--no-acls','--no-fflags','-czf',archive,'-C',root,top]);
 const bytes=fs.readFileSync(archive),digest=crypto.createHash('sha256').update(bytes).digest('hex');let mode,dir,cancelAt;
 const server=http.createServer((req,res)=>{
- if(req.url.endsWith('/releases/latest')){if(mode==='error'){res.writeHead(403).end('{}');return;}res.setHeader('Content-Type','application/json');res.end(JSON.stringify({draft:false,prerelease:false,tag_name:'v9.0.0',html_url:'https://github.com/JasXTD/Rocket/releases/tag/v9.0.0',body:'Synthetic notes',assets:[{id:7,name:'Rocket-9.0.0-macos-arm64.tar.gz',state:'uploaded',size:bytes.length,digest:'sha256:'+(mode==='digest'?'0'.repeat(64):digest)}]}));}
+ if(req.url.endsWith('/releases/latest')){if(mode==='error'){res.writeHead(403).end('{}');return;}res.setHeader('Content-Type','application/json');res.end(JSON.stringify({draft:false,prerelease:false,tag_name:'v9.0.0',html_url:'https://github.com/JasXTD/Rocket/releases/tag/v9.0.0',body:'Synthetic notes',assets:[{id:7,name:'Rocket-9.0.0-macos-'+process.arch+'.tar.gz',state:'uploaded',size:bytes.length,digest:'sha256:'+(mode==='digest'?'0'.repeat(64):digest)}]}));}
  else if(req.url.endsWith('/releases/assets/7')){res.writeHead(200,{'Content-Type':'application/octet-stream','Content-Length':bytes.length});if(mode==='cancel'){res.flushHeaders();cancelAt=performance.now();fs.writeFileSync(path.join(dir,'cancel'),'stop');}else res.end(bytes);}
  else res.writeHead(404).end();
 });

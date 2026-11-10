@@ -100,7 +100,7 @@ async function main() {
   let [worker, probe, output] = process.argv.slice(2);
   for (const p of [worker, probe, output]) assert(path.isAbsolute(p));
   const mac = process.platform === 'darwin'; assert(mac || process.platform === 'linux');
-  if (mac) { assert.equal(process.arch, 'arm64'); assert.notEqual(process.getuid(), 0); assert.equal(process.env.ROCKET_MACOS_SANDBOX_DISPOSABLE_USER, '1'); }
+  if (mac) { assert(['arm64', 'x64'].includes(process.arch)); assert.notEqual(process.getuid(), 0); assert.equal(process.env.ROCKET_MACOS_SANDBOX_DISPOSABLE_USER, '1'); }
   fs.mkdirSync(output, { mode: 0o700 });
   const report = { production_ready: false, platform: process.platform, arch: process.arch, checks: [], native_threshold_bytes: 192 * 1024 * 1024 };
   const save = () => fs.writeFileSync(path.join(output, 'containment.json'), JSON.stringify(report, null, 2) + '\n');

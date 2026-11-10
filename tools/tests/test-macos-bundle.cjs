@@ -4,21 +4,21 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const path=require('node:path'),os=require('node:os'),cp=require('node:child_process');
 const b=require('../macos/bundle.cjs');
 const names=['rocket','rocket-cli','rocket-mcp','rocket-rebase-editor','rocket-ssh'];
-function binary(){
-  const bytes=Buffer.alloc(72);bytes.writeUInt32LE(0xfeedfacf,0);bytes.writeUInt32LE(0x0100000c,4);
+function binary(arch='arm64'){
+  const bytes=Buffer.alloc(72);bytes.writeUInt32LE(0xfeedfacf,0);bytes.writeUInt32LE(arch==='arm64'?0x0100000c:0x01000007,4);
   bytes.writeUInt32LE(2,12);bytes.writeUInt32LE(1,16);bytes.writeUInt32LE(24,20);
   bytes.writeUInt32LE(0x32,32);bytes.writeUInt32LE(24,36);bytes.writeUInt32LE(1,40);
   bytes.writeUInt32LE(0x000f0000,44);bytes.writeUInt32LE(0x000f0000,48);return bytes;
 }
-function fixture(fn){
+function fixture(fn,arch='arm64'){
   const parent=fs.realpathSync(os.tmpdir()),root=fs.realpathSync(fs.mkdtempSync(path.join(parent,'rocket-macos-bundle-')));
   const bins=path.join(root,'build 資料'),icon=path.join(root,'Rocket.icns'),out=path.join(root,'package 中文'),info=path.join(root,'BUILD.md');
-  fs.mkdirSync(bins);for(const name of names)fs.writeFileSync(path.join(bins,name),binary(),{mode:0o755});
+  fs.mkdirSync(bins);for(const name of names)fs.writeFileSync(path.join(bins,name),binary(arch),{mode:0o755});
   const png=fs.readFileSync(path.join(__dirname,'../../docs/images/rocket-logo.png'));
   const bytes=Buffer.alloc(16+png.length);bytes.write('icns',0);bytes.writeUInt32BE(bytes.length,4);bytes.write('ic08',8);bytes.writeUInt32BE(png.length+8,12);png.copy(bytes,16);
   fs.writeFileSync(icon,bytes);fs.writeFileSync(info,'Synthetic bundle metadata fixture; not a runnable application.\n');
   const stage=()=>b.stage(bins,icon,out,info,null),seal=()=>{stage();b.manifest(out);};
-  try{fn({root,bins,icon,out,info,stage,seal});assert.equal(path.dirname(root),parent);assert.equal(fs.realpathSync(root),root);assert(path.basename(root).startsWith('rocket-macos-bundle-'));fs.rmSync(root,{recursive:true});}
+  try{fn({root,bins,icon,out,info,stage,seal,arch});assert.equal(path.dirname(root),parent);assert.equal(fs.realpathSync(root),root);assert(path.basename(root).startsWith('rocket-macos-bundle-'));fs.rmSync(root,{recursive:true});}
   catch(error){console.error('Failed package fixture preserved: '+root);throw error;}
 }
 test('Complete Unicode-path bundle has exact metadata, existing artwork and five sibling helpers',()=>fixture(f=>{
@@ -42,9 +42,9 @@ test('Existing outputs and source bytes are preserved',()=>fixture(f=>{
 test('Missing helper fails before output publication',()=>fixture(f=>{
   fs.unlinkSync(path.join(f.bins,'rocket-ssh'));assert.throws(f.stage,/ENOENT/);assert(!fs.existsSync(f.out));
 }));
-test('Windows/Linux/Intel/wrong-platform/newer-OS/truncated input is refused',()=>fixture(f=>{
+test('Windows/Linux/unsupported-CPU/wrong-platform/newer-OS/truncated input is refused',()=>fixture(f=>{
   const variants=[Buffer.from('MZ Windows'),Buffer.from('\x7fELF Linux')];
-  for(const [offset,value]of [[4,0x01000007],[12,6],[40,2],[44,0x00100000],[36,0xffffffff],[20,0xffffffff]]){const x=binary();x.writeUInt32LE(value,offset);variants.push(x);}
+  for(const [offset,value]of [[4,0x01000012],[12,6],[40,2],[44,0x00100000],[36,0xffffffff],[20,0xffffffff]]){const x=binary();x.writeUInt32LE(value,offset);variants.push(x);}
   variants.push(binary().subarray(0,40));
   for(const bytes of variants){fs.writeFileSync(path.join(f.bins,'rocket'),bytes);assert.throws(f.stage);assert(!fs.existsSync(f.out));}
 }));
@@ -77,11 +77,11 @@ test('Non-executable helpers and writable package content fail on Unix',{skip:pr
 test('Signing/native validation refuses other operating systems',{skip:process.platform==='darwin'},()=>{
   assert.throws(()=>b.signDevelopment('/unused'),/macOS/);assert.throws(()=>b.nativeVerify('/unused'),/macOS/);
 });
-function luaFixture(f) {
+function luaFixture(f,arch=f.arch) {
   const l=require('../macos/lua-helper.cjs'),app=path.join(f.root,'RocketLua.app');
   for(const name of l.FILES) {
     const file=path.join(app,name);fs.mkdirSync(path.dirname(file),{recursive:true,mode:0o755});
-    fs.writeFileSync(file,name===l.EXE?binary():name.endsWith('Info.plist')?l.plist():'synthetic resource seal',{mode:name===l.EXE?0o755:0o644});
+    fs.writeFileSync(file,name===l.EXE?binary(arch):name.endsWith('Info.plist')?l.plist():'synthetic resource seal',{mode:name===l.EXE?0o755:0o644});
   }
   fs.writeFileSync(path.join(f.root,'LUA-NOTICES'),'Synthetic license fixture');
   const digest=l.inspect(app,b.read,b.walk,b.macho);
@@ -101,6 +101,23 @@ test('Missing sealed resources, changed helper metadata and signed-byte changes 
   fs.writeFileSync(path.join(f.out,l.l.PREFIX,l.l.EXE),binary(),{mode:0o755});
   fs.unlinkSync(path.join(f.out,l.l.PREFIX,'Contents/_CodeSignature/CodeResources'));assert.throws(()=>b.verify(f.out),/inventory/);
 }));
+for(const arch of ['arm64','x64']) {
+ test(arch+' package binds the matching Lua helper and refuses relabeled manifests',()=>fixture(f=>{
+  const l=luaFixture(f);l.bind();l.stage();const data=b.manifest(f.out);
+  assert.equal(data.platform,'macos-'+arch);assert.equal(b.structure(f.out),arch);b.verify(f.out);
+  const file=path.join(f.out,'bundle-manifest.json');
+  data.platform='macos-'+(arch==='arm64'?'x64':'arm64');fs.writeFileSync(file,JSON.stringify(data));
+  assert.throws(()=>b.verify(f.out),/architecture does not match/);
+ },arch));
+ test(arch+' package refuses mixed main/helper architectures before creating output',()=>fixture(f=>{
+  fs.writeFileSync(path.join(f.bins,'rocket-cli'),binary(arch==='arm64'?'x64':'arm64'));
+  assert.throws(f.stage,/Mixed Mac executable architectures/);assert(!fs.existsSync(f.out));
+ },arch));
+ test(arch+' package refuses a bound Lua helper built for the other architecture',()=>fixture(f=>{
+  const l=luaFixture(f,arch==='arm64'?'x64':'arm64');l.bind();
+  assert.throws(l.stage,/Mixed Mac executable architectures/);assert(!fs.existsSync(f.out));
+ },arch));
+}
 test('The icon exporter writes ten correctly sized PNGs and never overwrites an existing directory',()=>{
   assert(process.env.ROCKET_MACOS_ICON_TOOL,'Set ROCKET_MACOS_ICON_TOOL to the built macos_icon example');
   fixture(f=>{
