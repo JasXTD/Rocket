@@ -541,6 +541,11 @@ impl Ui {
         state["hosting"] = hosting_state(&self.app);
         state["ci"] = ci_state(&self.app);
         state["actions"] = actions_state(&self.app);
+        state["agents"] = json!({"selected":self.app.agents.selected,"busy":self.app.agents.working(),"notice":self.app.agents.notice,
+            "form":self.app.agents.form.as_ref().map(|f|json!({"mode":format!("{:?}",f.mode),"reading":f.task.is_some(),"reviewed":f.plan.is_some(),"error":f.error})),
+            "sessions":self.app.agents.sessions.iter().map(|s|json!({"id":s.record.id,"phase":s.phase.label(),"active":s.active(),"exit_code":s.exit_code,"error":s.error,
+                "pid":s.terminal.as_ref().and_then(|t|t.status.pid),"closed":s.terminal.as_ref().map(|t|t.status.closed),
+                "tail":if self.policy.private_state_allowed(){s.terminal.as_ref().and_then(|t|t.session.snapshot(0)).map(|screen|bounded_agent_tail(screen.text()))}else{None}})).collect::<Vec<_>>()});
         state["ssh"] = ssh_state(&self.app);
         state["dialog"] = self.app.dialog.as_ref().map_or(Value::Null, |d| {
             let supported = dialog_name(&d.kind) != "other"
@@ -674,9 +679,27 @@ impl Ui {
         crate::state_privacy::protect(state, self.policy.private_state_allowed())
     }
     fn validate_terminal_probe(&self, text: &str) -> Result<(), String> {
+        if self.app.tab().is_some_and(|t|t.view==rocket_ui::app::View::Agents) {
+            let s=self.app.agents.selected().ok_or("Select an agent fixture")?;
+            self.agent_record_allowed(&s.record)?;
+            if self.policy.real_codex_probe(&s.record.command) {return Err("The real Codex probe accepts only its reviewed startup prompt".into());}
+            return if ["status","finish"].contains(&text){Ok(())}else{Err("Agent fixture input is limited to status and finish".into())};
+        }
         let tab = self.app.tab().ok_or("Open a fixture first")?;
         let (root, _) = self.policy.repository(&tab.path)?;
         terminal_probe_allowed(text, &root)
+    }
+    fn agent_record_allowed(&self,r:&rocket_ui::agents::model::Record)->Result<(),String> {
+        self.policy.repository(&r.source)?;
+        self.policy.worktree_destination(&r.destination,&r.branch,&r.source)?;
+        let executable=std::env::current_exe().map_err(|_|"Cannot locate fixture executable")?.canonicalize().map_err(|_|"Cannot resolve fixture executable")?;
+        let check=|c:&rocket_ui::agents::model::Command| self.policy.real_codex_probe(c) || Path::new(&c.program).canonicalize().is_ok_and(|p|p==executable)
+            && ["--agent-session-fixture\nhold","--agent-session-fixture\nsetup","--agent-session-fixture\nfail"].contains(&c.arguments.as_str());
+        if !check(&r.command)||r.setup.as_ref().is_some_and(|c|!check(c)){return Err("MCP runs only the fixed synthetic agent executable and arguments".into());}
+        Ok(())
+    }
+    fn input_terminal(&self)->Option<&rocket_ui::terminal::TerminalPane> {
+        if self.app.tab().is_some_and(|t|t.view==rocket_ui::app::View::Agents){self.app.agents.selected().and_then(|s|s.terminal.as_ref())}else{self.app.tab().and_then(|t|t.terminal.as_ref())}
     }
     /// Git Flow under MCP writes only branches in the fixture's marked namespace.
     fn gitflow_scope(&self, dialog: &rocket_ui::app::Dialog, path: &Path) -> Result<(), String> {
@@ -824,6 +847,24 @@ impl Ui {
             return Ok(());
         }
         let target = request.args["target"].as_str().unwrap();
+        if matches!(target,"agents-review"|"agents-confirm") {
+            let f=self.app.agents.form.as_ref().ok_or("Open an agent session review first")?;
+            self.agent_record_allowed(&f.proposed())?;
+            if let Some(p)=&f.plan {self.agent_record_allowed(&p.record)?;}
+        }
+        if matches!(target,"agents-open"|"agents-remove"|"agents-restart"|"agents-stop"|"agents-forget") {
+            self.agent_record_allowed(&self.app.agents.selected().ok_or("Select an agent fixture")?.record)?;
+        }
+        if target.starts_with("agents-") {
+            if tab.view!=rocket_ui::app::View::Agents || self.app.blocking_dialog() {
+                return Err("Open Agents and dismiss the active dialog before using session controls".into());
+            }
+            let control=self.app.frame_widgets.get(target).ok_or("Agent control is not visible")?;
+            if !control.enabled || control.rect.width()<1.0 || control.rect.height()<1.0 {
+                return Err("Agent control is not visible and enabled; scroll agents-scroll and retry".into());
+            }
+            return Ok(());
+        }
         if request.args.get("button").is_some() && !matches!(request.args["button"].as_str(),Some("left"|"right")) {
             return Err("Click button must be left or right".into());
         }
@@ -1091,22 +1132,16 @@ impl Ui {
         if target == "dialog-preview-refresh" && self.app.dialog.as_ref().is_some_and(|d|matches!(d.kind,DialogKind::MailImport(rocket_git::MailImportAction::Start))) {
             self.policy.patch_file(&Path::new(&self.app.dialog.as_ref().unwrap().first).join("0001-review.patch"))?;
         }
-        if target == "terminal-command" {
+        if target == "terminal-command" && request.name == "rocket_type" {
             self.validate_terminal_probe(request.args["text"].as_str().unwrap_or(""))?;
         }
         if target == "terminal-send" {
-            let input = self
-                .app
-                .tab()
-                .and_then(|t| t.terminal.as_ref())
+            let input = self.input_terminal()
                 .ok_or("Open the fixture terminal first")?;
             self.validate_terminal_probe(&input.command)?;
         }
         if request.name == "rocket_terminal_enter" {
-            let input = self
-                .app
-                .tab()
-                .and_then(|t| t.terminal.as_ref())
+            let input = self.input_terminal()
                 .ok_or("Open the fixture terminal first")?;
             self.validate_terminal_probe(&input.command)?;
         }
@@ -1139,6 +1174,11 @@ impl Ui {
         }
         if !control.enabled {
             return Err("Control is disabled in this UI state".into());
+        }
+        if tab.view==rocket_ui::app::View::Agents
+            && ["terminal-screen","terminal-command","terminal-send"].contains(&target)
+            && (control.rect.width()<1.0 || control.rect.height()<1.0) {
+            return Err("Agent terminal control is offscreen; scroll agents-scroll and retry".into());
         }
         if target.starts_with("ssh-") {
             if self.app.preferences_page() != Some(rocket_ui::preferences::Page::SshKeys)
@@ -2068,6 +2108,7 @@ impl Ui {
                         | "dialog-lfs-scroll"
                         | "page-details-scroll"
                         | "hosting-scroll"
+                        | "agents-scroll"
                         | "int-panel-scroll"
                         | "int-play-code-scroll" | "int-play-preview-scroll" | "conflict-ai-scroll"
                         | "int-review-scroll" | "int-package-scroll" | "int-package-code-scroll"
@@ -2273,6 +2314,8 @@ impl Ui {
                             | "commit-description"
                             | "workflow-message"
                             | "terminal-command"
+                            | "agents-name" | "agents-base" | "agents-branch" | "agents-destination"
+                            | "agents-program" | "agents-arguments" | "agents-setup-program" | "agents-setup-arguments"
                             | "commit-filter"
                             | "dialog-remote-name"
                             | "dialog-remote-url"
@@ -3061,6 +3104,12 @@ fn validation_interruption(input: &mut RawInput, shown: bool) -> Option<&'static
         None
     }
 }
+fn bounded_agent_tail(text: String) -> String {
+    let mut start=text.len().saturating_sub(8192);
+    while !text.is_char_boundary(start) {start+=1;}
+    text[start..].to_owned()
+}
+
 // Bounded recent cell metadata makes column alignment inspectable without
 // turning terminal contents into diagnostic logs. Negative rows are scrollback.
 fn terminal_grid(screen: &rocket_terminal::Screen) -> (Vec<Value>, bool) {
@@ -4133,6 +4182,16 @@ mod terminal_grid_tests {
                 .sum::<usize>()
                 <= 8192
         );
+    }
+    #[test]
+    fn agent_terminal_tail_is_bounded_at_utf8_boundaries() {
+        let text=format!("{}READY", "資料🦀".repeat(1000));
+        let tail=bounded_agent_tail(text.clone());
+        assert!(tail.len()<=8192);
+        assert!(tail.len()>=8189);
+        assert!(text.ends_with(&tail));
+        assert!(tail.ends_with("READY"));
+        assert_eq!(bounded_agent_tail("ready".into()),"ready");
     }
     #[test]
     fn detached_bisect_controls_do_not_allow_unrelated_writes() {

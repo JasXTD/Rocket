@@ -21,7 +21,7 @@ pub(crate) struct EventLog {
 }
 
 impl EventLog {
-    pub(super) fn push(&mut self, name: &'static str, failed: bool) {
+    pub(crate) fn push(&mut self, name: &'static str, failed: bool) {
         let count = self.pending.entry(Event { name, failed }).or_default();
         *count = count.saturating_add(1);
     }

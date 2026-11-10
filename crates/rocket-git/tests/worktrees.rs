@@ -168,6 +168,96 @@ fn existing_paths_destinations_and_checked_out_branches_are_protected() {
         },
     );
 }
+
+#[test]
+fn publication_does_not_replace_an_empty_destination_created_during_checkout() {
+    isolated(
+        "ROCKET_WORKTREE_CASE",
+        "publication_does_not_replace_an_empty_destination_created_during_checkout",
+        || {
+            let f = seed();
+            let p = create(&f, "publication race 文");
+            // Deterministically create an empty destination after the initial
+            // checks but before publication. Ordinary Unix rename would replace
+            // this directory; exclusive publication must refuse and keep both.
+            let target = p.path().to_string_lossy().trim_start_matches(r"\\?\").replace('\\', "/");
+            let target = target.replace('\'', "'\\''");
+            let hook = f.root.join("no-hooks/post-checkout");
+            fs::write(&hook, format!("#!/bin/sh\nmkdir -- '{target}'\n")).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&hook, fs::Permissions::from_mode(0o700)).unwrap();
+            }
+            let before = f.run(&["rev-parse", "HEAD"]);
+            let report = f.repo().apply_worktree(&p, &token()).unwrap();
+            assert!(report.command.is_err(), "{report:?}");
+            assert!(report.verification.is_err(), "{report:?}");
+            assert!(p.path().is_dir());
+            assert_eq!(fs::read_dir(p.path()).unwrap().count(), 0);
+            let retained = report.retained_workspace.as_ref().unwrap();
+            assert_eq!(fs::read(retained.join("checkout/hello.txt")).unwrap(), b"base\n");
+            assert_eq!(f.run(&["rev-parse", "HEAD"]), before);
+            assert!(report.observed.unwrap().iter().any(|e| e.path == retained.join("checkout")));
+        },
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn worktree_destination_refuses_user_symlink_parents() {
+    isolated(
+        "ROCKET_WORKTREE_CASE",
+        "worktree_destination_refuses_user_symlink_parents",
+        || {
+            let f = seed();
+            let real = f.root.join("actual parent 文");
+            let link = f.root.join("redirected parent");
+            fs::create_dir(&real).unwrap();
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            failure(
+                f.repo().preview_create_worktree(
+                    &link.join("checkout"),
+                    WorktreeCheckout::NewBranch("topic/link".into()),
+                    "HEAD", &token(),
+                ),
+                WorktreeFailure::InvalidDestination,
+            );
+            assert_eq!(fs::read_dir(real).unwrap().count(), 0);
+        },
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_worktree_creation_resolves_only_system_root_aliases() {
+    isolated(
+        "ROCKET_WORKTREE_CASE",
+        "macos_worktree_creation_resolves_only_system_root_aliases",
+        || {
+            let f = seed();
+            // A dedicated /tmp parent exercises Darwin's trusted root alias even
+            // if the test caller has chosen a different repository-fixture root.
+            let parent = Path::new("/tmp").join(format!(
+                "{}-system-alias", f.root.file_name().unwrap().to_str().unwrap()
+            ));
+            fs::create_dir(&parent).unwrap();
+            let canonical = parent.canonicalize().unwrap();
+            assert!(canonical.starts_with("/private/tmp"));
+            let p = f.repo().preview_create_worktree(
+                &parent.join("検索 e\u{301} 🚀"),
+                WorktreeCheckout::NewBranch("topic/mac-alias".into()),
+                "HEAD", &token(),
+            ).unwrap();
+            assert_eq!(p.path(), canonical.join("検索 e\u{301} 🚀"));
+            apply(&f, &p);
+            let e = entry(&f, p.path());
+            assert_eq!(f.repo().open_worktree(&e, &token()).unwrap(), p.path());
+            apply(&f, &f.repo().preview_remove_worktree(&e, &token()).unwrap());
+            fs::remove_dir(parent).unwrap();
+        },
+    );
+}
 #[test]
 fn new_targets_are_pinned_existing_branches_must_not_move() {
     isolated(

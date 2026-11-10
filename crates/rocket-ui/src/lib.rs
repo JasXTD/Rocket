@@ -13,6 +13,7 @@ pub mod guided;
 pub mod batch;
 pub mod change_drag;
 pub mod actions;
+pub mod agents;
 pub mod ci_checks;
 pub mod bisect;
 mod branch_picker;

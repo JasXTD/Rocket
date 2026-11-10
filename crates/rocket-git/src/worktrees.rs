@@ -345,9 +345,12 @@ impl Repository {
         }
     }
     fn worktree_destination(&self, path: &Path, cancel: &CancellationToken) -> Result<PathBuf> {
-        if !cfg!(any(windows, target_os = "linux")) {
+        // All three platforms publish through local_files::move_path(..., false):
+        // MoveFileExW, renameat2(NOREPLACE), or Darwin renamex_np(EXCL). Never
+        // fall back to a replacing rename when the filesystem lacks support.
+        if !cfg!(any(windows, target_os = "linux", target_os = "macos")) {
             return Err(Error::Unsupported(
-                "Worktree creation currently requires Windows publication".into(),
+                "Safe worktree creation is unavailable on this platform".into(),
             ));
         }
         let destination = init::destination_path(path)

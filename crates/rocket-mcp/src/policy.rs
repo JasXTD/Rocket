@@ -28,6 +28,14 @@ pub struct Policy {
     pub root: PathBuf,
 }
 impl Policy {
+    /// Local operator opt-in for one real, read-only Codex smoke prompt. MCP
+    /// cannot authorize a program, arbitrary argv, tools or a model change.
+    pub fn real_codex_probe(&self,command:&rocket_ui::agents::model::Command)->bool {
+        read_regular(&self.root.join("rocket-agent-codex"),64).is_ok_and(|s|s=="read-only-codex-smoke-v1\n")
+            && command.arguments==REAL_CODEX_ARGUMENTS
+            && rocket_git::DraftProvider::Codex.default_program().and_then(|p|p.canonicalize().ok())
+                .is_some_and(|expected|Path::new(&command.program).canonicalize().ok().as_ref()==Some(&expected))
+    }
     /// Local runner opt-in only; no MCP request can select an executable or startup file.
     #[cfg(target_os = "macos")]
     pub fn isolated_zsh(&self) -> bool {
@@ -658,6 +666,8 @@ impl Policy {
     }
 }
 
+pub const REAL_CODEX_ARGUMENTS:&str="exec\n--ignore-user-config\n--ephemeral\n--sandbox\nread-only\n--model\ngpt-6-astra\nRespond with exactly ROCKET_AGENT_OK. Do not use tools, inspect files, modify anything, contact websites or delegate tasks.";
+
 fn fixture_git_directory(path: &Path) -> Result<PathBuf, String> {
     if path.join(".git").is_dir() { return Ok(path.join(".git")); }
     // Bare fixtures have their explicit marker beside HEAD, never in an arbitrary
@@ -748,6 +758,29 @@ fn prune_marker_object(text: &str, branch: &str, source: &str) -> Option<rocket_
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn agent_codex_probe_requires_local_consent_exact_program_and_readonly_arguments() {
+        let root=std::env::temp_dir().join(format!("rocket-agent-policy-{}-{}",std::process::id(),std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        std::fs::create_dir(&root).unwrap();
+        let p=Policy::new(&root).unwrap();
+        let program=rocket_git::DraftProvider::Codex.default_program().unwrap_or_else(||root.join("missing-codex"));
+        let mut command=rocket_ui::agents::model::Command{program:program.to_string_lossy().into_owned(),arguments:REAL_CODEX_ARGUMENTS.into()};
+        assert!(!p.real_codex_probe(&command));
+        let marker=root.join("rocket-agent-codex");
+        std::fs::write(&marker,"read-only-codex-smoke-v1\nextra").unwrap();
+        assert!(!p.real_codex_probe(&command));
+        std::fs::write(&marker,"read-only-codex-smoke-v1\n").unwrap();
+        if program.is_file() {assert!(p.real_codex_probe(&command));}
+        for arguments in ["exec",&REAL_CODEX_ARGUMENTS.replace("read-only","workspace-write"),&format!("{REAL_CODEX_ARGUMENTS}\n--dangerously-bypass-approvals-and-sandbox")] {
+            command.arguments=arguments.into();
+            assert!(!p.real_codex_probe(&command));
+        }
+        command.arguments=REAL_CODEX_ARGUMENTS.into();
+        command.program=std::env::current_exe().unwrap().to_string_lossy().into_owned();
+        assert!(!p.real_codex_probe(&command));
+        std::fs::remove_file(marker).unwrap();
+        std::fs::remove_dir(root).unwrap();
+    }
     #[cfg(unix)]
     #[test]
     fn redirected_fixture_markers_never_grant_opt_in() {

@@ -422,6 +422,27 @@ and [OpenSSH Keychain/agent behavior](https://developer.apple.com/library/archiv
 
 ## Focused local checks
 
+Worktree creation and move now use the existing macOS exclusive-publication
+implementation. The removed platform gate previously rejected them before
+reaching `renamex_np(RENAME_EXCL)`. Arbitrary symlink parents and existing
+destinations remain refused; only the verified `/tmp` and `/var` system aliases
+are normalized. Cancellation keeps prepared data for inspection, and removal
+still rechecks local changes and retains committed-history recovery references.
+
+For a focused Apple Silicon worktree/Agents acceptance run with installed Rust
+1.99.1, Node and Git (no downloads, accounts or remote repositories):
+
+```sh
+ROCKET_MACOS_OUTPUT="$PWD/target/worktree-agents-result" \
+  bash tools/macos/test-worktree-agents.sh
+```
+
+Choose a new output directory for each run. It runs backend worktree and exclusive
+publication tests, the UI/MCP agent tests, then the actual native MCP workflow
+with synthetic processes and disposable repositories. A graphical Mac session
+is required for that last step. No signing/notarization or GitHub Actions run is
+started by this script. Cross-target checks on Windows do not replace this run.
+
 With the already installed Apple Silicon target, this checks Rust source and
 metadata on Windows without installing an SDK or trying to run a Mach-O binary:
 

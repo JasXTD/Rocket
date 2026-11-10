@@ -21,6 +21,11 @@ fn run() -> Result<(), String> {
     let mode = args
         .next()
         .ok_or("Usage: rocket-mcp --test-root DIRECTORY | --http-profile DIRECTORY")?;
+    if mode == "--agent-session-fixture" {
+        let fixture=args.next().ok_or("Missing fixture mode")?;
+        if args.next().is_some(){return Err("Unexpected fixture argument".into());}
+        return rocket_mcp::agent_fixture::run(&fixture.to_string_lossy());
+    }
     let directory = PathBuf::from(args.next().ok_or("Missing directory")?);
     if mode == "--init-http" {
         let root = PathBuf::from(args.next().ok_or("Provide the fixture root")?);

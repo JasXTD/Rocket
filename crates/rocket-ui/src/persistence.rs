@@ -43,6 +43,8 @@ const LANGUAGE_MAGIC: &[u8] = b"ROCKET-STATE\0\x1b";
 // v28 appends a custom total secret-scan budget. Earlier profiles use 256 MiB;
 // older binaries refuse a custom policy instead of silently discarding it.
 const SCAN_BUDGET_MAGIC: &[u8] = b"ROCKET-STATE\0\x1c";
+// v29 appends reviewed agent session definitions. Loading never starts a process.
+const AGENTS_MAGIC: &[u8] = b"ROCKET-STATE\0\x1d";
 /// Heights the commit message area can be dragged to and saved at.
 pub const COMMIT_HEIGHTS: std::ops::RangeInclusive<f32> = 120.0..=2000.0;
 // v15 uses the v14 layout and version-2 definitions for context-specific commands.
@@ -140,6 +142,7 @@ impl Default for Preferences {
 }
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SavedState {
+    pub agents: Vec<crate::agents::model::Record>,
     pub hosting_searches: Vec<crate::forge::search::Recent>,
     pub worktree_views: BTreeMap<PathBuf, crate::worktree_view::Settings>,
     pub library: crate::repository_library::Library,
@@ -368,7 +371,8 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
         return Err(invalid());
     }
     rocket_git::validate_secret_scan_mib(p.secret_scan_mib).map_err(|_| invalid())?;
-    let scan_budget = p.secret_scan_mib != rocket_git::DEFAULT_SECRET_SCAN_MIB;
+    let agents = !state.agents.is_empty();
+    let scan_budget = agents || p.secret_scan_mib != rocket_git::DEFAULT_SECRET_SCAN_MIB;
     let language = scan_budget || p.language.is_some();
     let commit_height = language || p.commit_height.is_some();
     let ai_keys = commit_height || !p.guard_ai_api_keys;
@@ -531,6 +535,7 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     if let Some(height) = p.commit_height { bytes.extend(height.to_le_bytes()); }
     if language { put(&mut bytes, p.language.map_or("", |chosen| chosen.tag()).as_bytes())?; }
     if scan_budget { bytes.extend(p.secret_scan_mib.to_le_bytes()); }
+    if agents { bytes[..AGENTS_MAGIC.len()].copy_from_slice(AGENTS_MAGIC);put(&mut bytes,&crate::agents::model::encode(&state.agents)?)?; }
     if bytes.len() as u64 > MAX_BYTES {
         return Err(invalid());
     }
@@ -671,7 +676,8 @@ impl<'a> Reader<'a> {
 fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     let mut r = Reader(bytes);
     let magic = r.take(MAGIC.len())?;
-    let scan_budget = magic == SCAN_BUDGET_MAGIC;
+    let agents = magic == AGENTS_MAGIC;
+    let scan_budget = agents || magic == SCAN_BUDGET_MAGIC;
     let language = scan_budget || magic == LANGUAGE_MAGIC;
     let commit_height = language || magic == COMMIT_HEIGHT_MAGIC;
     let ai_keys = commit_height || magic == AI_KEYS_MAGIC;
@@ -971,6 +977,7 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     if scan_budget {
         state.preferences.secret_scan_mib = u64::from_le_bytes(r.take(8)?.try_into().unwrap());
     }
+    if agents { state.agents=crate::agents::model::decode(r.bytes()?)?; }
     if !r.0.is_empty() {
         return Err(invalid());
     }
@@ -981,6 +988,19 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
 #[cfg(test)]
 mod scan_budget_tests {
     use super::*;
+
+    #[test]
+    fn agent_sessions_survive_profile_roundtrip_without_process_state() {
+        use crate::agents::model::{Record,Provider,Command};
+        let mut saved=SavedState::default();
+        let root=std::env::temp_dir();
+        saved.agents.push(Record{id:7,name:"資料 session".into(),source:root.join("source"),destination:root.join("agent"),branch:"agents/task".into(),base:"HEAD".into(),provider:Provider::Custom,command:Command{program:std::env::current_exe().unwrap().to_string_lossy().into_owned(),arguments:"--version".into()},setup:None});
+        let encoded=encode(&saved).unwrap();
+        assert_eq!(&encoded[..MAGIC.len()],AGENTS_MAGIC);
+        assert_eq!(decode(&encoded).unwrap(),saved);
+        let mut corrupt=encoded.clone();corrupt.push(0);assert!(decode(&corrupt).is_err());
+        saved.agents.clear();assert_ne!(&encode(&saved).unwrap()[..MAGIC.len()],AGENTS_MAGIC);
+    }
 
     #[test]
     fn custom_budget_roundtrips_and_legacy_profiles_keep_256_mib() {

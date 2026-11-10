@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 pub mod capture;
+pub mod agent_fixture;
 mod diagnostics;
 pub mod http;
 mod input;

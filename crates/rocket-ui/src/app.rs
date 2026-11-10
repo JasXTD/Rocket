@@ -30,6 +30,7 @@ pub enum View {
     BranchReview,
     /// The repository's CI runs from its host.
     Actions,
+    Agents,
     FileHistory,
     Tree,
     Conflict,
@@ -809,6 +810,7 @@ pub struct Rocket {
     pub(crate) desktop_tasks: Vec<ReadTask<()>>,
     pub(crate) closing_terminals: Vec<crate::terminal::TerminalPane>,
     pub(crate) terminal_log: crate::terminal::EventLog,
+    pub agents: crate::agents::State,
     /// Repositories closed this session, most recent last, for Ctrl+Shift+T.
     pub closed_tabs: Vec<PathBuf>,
     pub keybindings: crate::shortcuts::State,
@@ -966,6 +968,7 @@ impl Rocket {
             desktop_tasks: Vec::new(),
             closing_terminals: Vec::new(),
             terminal_log: Default::default(),
+            agents: Default::default(),
             closed_tabs: Vec::new(),
             keybindings: Default::default(),
             show_sidebar: true,
@@ -1160,6 +1163,7 @@ impl Rocket {
                         .as_ref()
                         .is_some_and(|p| !p.session.status().closed)
                 }) || !self.closing_terminals.is_empty()))
+            || self.agents.working() || (self.quitting && self.agents.active())
             || self.manager.running()
             || self.startup.is_some()
             || self.recent_heads.running()
@@ -1367,7 +1371,7 @@ impl Rocket {
         tab.diff_tools.cancel();
         tab.patch = None;
         tab.patch_error = None;
-        if matches!(tab.view, View::Summary | View::FileHistory | View::Conflict | View::Tree | View::Map | View::Actions) {
+        if matches!(tab.view, View::Summary | View::FileHistory | View::Conflict | View::Tree | View::Map | View::Actions | View::Agents) {
             return;
         }
         if tab.view == View::Changes {
@@ -2402,6 +2406,7 @@ impl Rocket {
         if let Some(startup) = &self.startup {
             startup.cancel();
         }
+        self.agents.stop_all();
         self.recent_heads.clear();
     }
 
@@ -2498,6 +2503,10 @@ impl Rocket {
             }
         }
         self.poll_terminals();
+        if let Some(backend)=&self.backend {
+            let visible=self.tab().is_some_and(|t|t.view==View::Agents)&&!self.quitting;
+            self.agents.poll(backend,ctx,&self.written.agents,visible,&mut self.terminal_log);
+        }
         if let Some(result) = self.startup.as_mut().and_then(ReadTask::try_finish) {
             self.startup = None;
             match result {
@@ -2532,6 +2541,7 @@ impl Rocket {
                             self.keybindings.bindings = p.shortcuts.clone();
                             self.auto_fetch.minutes = p.auto_fetch_minutes;
                             self.commands = saved.commands.clone();
+                            self.agents.load(saved.agents.clone());
                             self.library = saved.library.clone();
                             ctx.set_zoom_factor(p.zoom);
                             self.recent = saved.recent.clone();
@@ -3123,13 +3133,15 @@ impl Rocket {
             commit_height: self.commit_height,
             language: self.language,
         };
-        let mut changed = self.saved.preferences != preferences
+        let agents=self.agents.records();
+        let mut changed = self.saved.agents != agents || self.saved.preferences != preferences
             || self.saved.recent != self.recent
             || self.saved.tool_profiles.as_ref() != Some(&self.external.profiles)
             || self.saved.commands != self.commands
             || self.saved.library != self.library
             || self.saved.hosting_searches != self.forge.searches;
         self.saved.hosting_searches = self.forge.searches.clone();
+        self.saved.agents=agents;
         if self.saved.library != self.library { self.saved.library = self.library.clone(); }
         if self.saved.commands != self.commands {
             self.saved.commands = self.commands.clone();

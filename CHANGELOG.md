@@ -8,6 +8,20 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased
+
+- Enable macOS worktree creation for the Agents view and Worktrees manager using
+  the existing exclusive-publication path. Preserve destination/race checks,
+  cancelled preparation folders, safe removal and Unicode path handling. Add
+  focused publication-race tests and a portable native Agents acceptance runner.
+- Add an Agents view for parallel local Claude Code, Codex and custom executable
+  sessions in separate worktrees. Review the pinned base, executable and literal
+  arguments before starting, optionally run an explicit setup command, and keep
+  interactive terminals with observed process states. Stop owns the process tree;
+  saved sessions never restart automatically. Worktree removal checks for local
+  changes and keeps the branch and recovery reference. No agent installation or
+  automatic merge/push. Agent commands retain their normal account permissions.
+
 ## 0.92.2 — Language preferences and hosting reviews
 
 Adds selectable preview languages, saved appearance at startup, reviewed CLI

@@ -966,6 +966,10 @@ fn operation_label(value: &str) -> &'static str {
         "terminal_clear_scrollback",
         "terminal_stop",
         "terminal_exit",
+        "agent-session-preview", "agent-session-start", "agent-session-remove",
+        "agent_start_requested", "agent_setup_started", "agent_setup_succeeded",
+        "agent_started", "agent_start_failed", "agent_stop_requested",
+        "agent_stopped", "agent_exited", "agent_worktree_removed",
         "file-preview",
         "conflict-preview",
         "conflict-show",
@@ -1493,6 +1497,23 @@ mod tests {
         collections::HashSet,
         process::{Command, Stdio},
     };
+    #[test]
+    fn agent_operations_keep_lifecycle_labels_but_never_payloads() {
+        let directory=Directory::new();
+        let log=directory.log();
+        let operations=["agent-session-preview","agent-session-start","agent-session-remove","agent_start_requested","agent_setup_started","agent_setup_succeeded","agent_started","agent_start_failed","agent_stop_requested","agent_stopped","agent_exited","agent_worktree_removed"];
+        for operation in operations {
+            let result:Result<()>=log.request(operation,|_|Err(Error::InvalidInput("PRIVATE_PROGRAM PRIVATE_ARGUMENT PRIVATE_OUTPUT".into())));
+            assert!(result.is_err());
+        }
+        let _:Result<()>=log.request("agent_PRIVATE_TASK",|_|Err(Error::Cancelled));
+        let text=directory.current();
+        for operation in operations {assert_eq!(text.matches(&format!("\"operation\":\"{operation}\"")).count(),2);}
+        assert!(!text.contains("PRIVATE_"));
+        assert!(text.contains("\"operation\":\"other\""));
+        assert!(text.contains("\"outcome\":\"cancelled\""));
+        assert_records(&text);
+    }
     #[test]
     fn health_read_does_not_wait_for_the_writer_io_lock() {
         let directory = Directory::new();

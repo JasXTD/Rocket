@@ -906,6 +906,7 @@ impl Rocket {
                 (To::View(View::Map), tr("Repository map"), "goto-map"),
                 (To::View(View::BranchReview), tr("AI review"), "goto-review"),
                 (To::View(View::Actions), tr("Actions"), "goto-actions"),
+                (To::View(View::Agents), tr("Agents"), "goto-agents"),
                 (To::View(View::Tree), tr("Files"), "goto-files"),
                 (To::Line, "", ""),
                 (To::View(View::Branches), tr("Branches"), "goto-branches"),

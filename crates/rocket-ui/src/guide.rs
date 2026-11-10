@@ -410,6 +410,7 @@ impl Rocket {
                 Some(View::Remotes) => Topic::Remotes,
                 Some(View::Stashes) => Topic::Stashes,
                 Some(View::Actions) => Topic::CiChecks,
+                Some(View::Agents) => Topic::Worktrees,
                 Some(View::Summary | View::Commits | View::Tree | View::Compare | View::BranchReview | View::Map) | None => Topic::GettingStarted,
             });
         };

@@ -119,6 +119,10 @@ See the [release notes](docs/releases/0.92.2.md) for scope and limitations.
 
 **AI, only when you ask**
 
+- **Agents** (pending release): run parallel Claude Code, Codex or custom executable
+  sessions in separate worktrees, with reviewed setup, interactive terminals,
+  Stop/restart and safe cleanup. Uses your installed tools and existing logins;
+  worktrees separate files, not permissions. [Session guide](docs/Agents.md).
 - **AI drafts** for commit messages, **AI review** of a branch diff and **AI resolve** for
   conflicts.
 - Runs Claude Code or Codex on your computer, or a connected MCP agent. No AI API key is

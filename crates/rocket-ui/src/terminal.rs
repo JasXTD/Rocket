@@ -48,10 +48,10 @@ pub struct TerminalPane {
     lasted: Option<Duration>,
     /// Bash can take seconds to print its prompt, and an empty drawer looks broken.
     printed: bool,
-    events: Vec<&'static str>,
+    pub(crate) events: Vec<&'static str>,
 }
 impl TerminalPane {
-    fn new(session: Session, name: String, network: bool) -> Self {
+    pub(crate) fn new(session: Session, name: String, network: bool) -> Self {
         Self {
             session,
             screen: Screen::new(100, 12),
@@ -66,7 +66,7 @@ impl TerminalPane {
             events: vec!["terminal_start"],
         }
     }
-    fn poll(&mut self, visible: bool) {
+    pub(crate) fn poll(&mut self, visible: bool) {
         let status = self.session.status();
         if status != self.status {
             self.events.push(if status.closed { "terminal_exit" } else { "terminal_ready" });
@@ -120,7 +120,7 @@ impl TerminalPane {
     }
     /// The screen with the command line under it. The session's state and actions are in
     /// the drawer header (`Rocket::terminal_actions`).
-    fn show(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, closing: bool) -> Option<PaneAction> {
+    pub(crate) fn show(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, closing: bool) -> Option<PaneAction> {
         let running = self.status.running && !closing;
         let failure = self.failure();
         // A session that never ran says why below, in place of its screen.
@@ -236,6 +236,11 @@ impl TerminalPane {
         // the command line.
         ui.add_space((ui.available_height() - fit * cell_size.y).max(0.0));
         let scrollback = self.screen.scrollback.len();
+        // A process can exit before its first viewport resize. Its trailing
+        // empty rows must not scroll a short startup error out of sight.
+        let screen_rows = if self.status.closed {
+            self.screen.cells.iter().rposition(|row|row.iter().any(|cell|cell.ch!=' ' || !cell.suffix.is_empty())).map_or(1,|last|last+1)
+        } else {self.screen.cells.len()};
         let output = ui
             .scope(|ui| {
                 // Virtual row offsets and painted rows must use the same spacing.
@@ -250,7 +255,7 @@ impl TerminalPane {
                     .show_rows(
                         ui,
                         cell_size.y,
-                        scrollback + self.screen.cells.len(),
+                        scrollback + screen_rows,
                         |ui, range| {
                             ui.set_min_width(self.screen.columns as f32 * cell_size.x);
                             for y in range {
@@ -568,6 +573,9 @@ impl Rocket {
     }
     /// A collapsed drawer does not draw the screen, so it cannot hold the keyboard.
     pub(crate) fn terminal_focused(&self, ctx: &Context) -> bool {
+        if self.tab().is_some_and(|t|t.view==crate::app::View::Agents) && let Some(s)=self.agents.selected() {
+            return ctx.memory(|m|m.has_focus(screen_id(s.terminal_id()))||m.has_focus(command_id(s.terminal_id())));
+        }
         self.show_terminal
             && !self.drawer_collapsed
             && self.tab().is_some_and(|tab| {
@@ -575,6 +583,9 @@ impl Rocket {
             })
     }
     pub fn terminal_screen_focused(&self) -> bool {
+        if self.tab().is_some_and(|t|t.view==crate::app::View::Agents) && let Some(s)=self.agents.selected() {
+            return self.context.memory(|m|m.has_focus(screen_id(s.terminal_id())));
+        }
         self.show_terminal
             && !self.drawer_collapsed
             && self

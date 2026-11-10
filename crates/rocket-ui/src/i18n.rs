@@ -360,7 +360,7 @@ macro_rules! files {
     };
 }
 const FILES: &[(Language, &str, &str)] =
-    files!["common", "menus", "chrome", "views", "diff", "preferences", "git-settings", "terminal", "commit-draft"];
+    files!["common", "menus", "chrome", "views", "diff", "preferences", "git-settings", "terminal", "commit-draft", "agents"];
 
 /// One catalog entry: a text, or a counted phrase's forms by CLDR category.
 #[derive(Clone, Debug)]

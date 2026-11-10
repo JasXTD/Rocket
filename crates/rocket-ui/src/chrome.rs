@@ -349,6 +349,7 @@ impl Rocket {
                                     | View::Map
                                     | View::BranchReview
                                     | View::Actions
+                                    | View::Agents
                                     | View::Branches
                                     | View::Remotes
                                     | View::Stashes
@@ -371,6 +372,7 @@ impl Rocket {
             if self.setup.open { self.setup_view(ui, intents); return; }
             if self.tabs.is_empty() { self.welcome(ui, intents); return; }
             if self.preview_body(ui) { return; }
+            if self.tab().is_some_and(|t|t.view==View::Agents) {self.agents_view(ui);return;}
             let enabled = self.write.is_none() && !self.quitting;
             let tab = &mut self.tabs[self.active];
             if let Some(error) = &tab.error { banner(ui, RED(), error); }
@@ -402,6 +404,7 @@ impl Rocket {
                 View::Compare => crate::compare::view(ui, tab, intents, &mut self.frame_widgets),
                 View::BranchReview => crate::branch_review::view(ui, tab, &self.drafting, intents, &mut self.frame_widgets),
                 View::Actions => crate::actions::view(ui, tab, intents, &mut self.frame_widgets),
+                View::Agents => unreachable!("Agents is a global session view"),
                 View::Commits => views::commits(ui, tab, self.show_details, self.row_height, intents, &mut self.frame_widgets, &self.commands),
                 View::Changes => views::changes(ui, tab, writable, &mut self.spelling, &mut self.commit_height, intents, &mut self.frame_widgets, &self.commands),
                 View::Branches => views::branches(ui, tab, writable, intents, &mut self.frame_widgets, &self.commands),
@@ -1437,9 +1440,10 @@ impl Rocket {
                         (View::Map, tr("Map"), Icon::Map, "view-map"),
                         (View::BranchReview, tr("AI review"), Icon::Sparkle, "view-review"),
                         (View::Actions, tr("Actions"), Icon::Actions, "view-actions"),
+                        (View::Agents, tr("Agents"), Icon::Prompt, "view-agents"),
                         (View::Tree, tr("Files"), Icon::Folder, "view-tree"),
                     ] {
-                        if preview && matches!(view, View::Summary | View::Changes | View::BranchReview | View::Actions) {
+                        if preview && matches!(view, View::Summary | View::Changes | View::BranchReview | View::Actions | View::Agents) {
                             continue;
                         }
                         let marked = dot.as_ref().filter(|_| view == View::Actions);
