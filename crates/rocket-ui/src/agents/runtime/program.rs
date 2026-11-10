@@ -294,13 +294,16 @@ mod tests {
         let snapshot = program.launch_path().to_owned();
         let shell = rocket_terminal::Shell::Custom {
             program: executable.clone(),
-            // Fixed synthetic command; the final argument must never be parsed as
-            // shell syntax. sh -c consumes a separate $0 before the tested $1.
+            // Fixed synthetic command; $1 must remain literal, not shell syntax.
+            // sh -c consumes a separate $0; $2 is the expected full directory.
             arguments: vec![
                 "-c".into(),
-                "printf 'cwd=%s\\narg=%s\\n' \"$PWD\" \"$1\"; IFS= read -r line".into(),
+                // Compare the complete directory in the child, not a rendered
+                // path that can wrap across terminal rows on macOS.
+                "if [ \"$PWD\" = \"$2\" ]; then printf 'cwd-ok\\n'; else printf 'wrong-cwd\\n'; fi; printf 'arg=%s\\n' \"$1\"; IFS= read -r line".into(),
                 "literal-argv0".into(),
                 "$(touch should-not-exist); 文".into(),
+                worktree.to_str().unwrap().to_owned(),
             ],
         };
         let session = rocket_terminal::Session::start_shell_held(
@@ -322,10 +325,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         let text = session.snapshot(0).unwrap().text();
-        assert!(
-            text.contains(&format!("cwd={}", worktree.display())),
-            "{text}"
-        );
+        assert!(text.lines().any(|line| line == "cwd-ok"), "{text}");
         assert!(text.contains("arg=$(touch should-not-exist); 文"), "{text}");
         assert!(snapshot.exists());
         assert!(!worktree.join("should-not-exist").exists());

@@ -32,7 +32,7 @@ test('Agent security qualification uses public standard native runners and separ
   assert.match(source,/if: \$\{\{ inputs\.checks != 'agent-security' \|\| github\.event\.repository\.private == false \}\}/);
   assert.match(source,/runs-on: \$\{\{ inputs\.architecture == 'x64' && 'macos-15-intel' \|\| 'macos-15' \}\}/);
   assert.match(source,/group: rocket-macos-preparation-\$\{\{ inputs\.architecture \}\}-\$\{\{ inputs\.checks \}\}/);
-  assert.match(source,/timeout-minutes: 15/);
+  assert.match(source,/timeout-minutes: \$\{\{ inputs\.checks == 'agent-security' && 30 \|\| 15 \}\}/);
   const runner=runBlocks(source).find(b=>b.includes('test-agent-executable-security.sh'));
   assert(runner&&runner.includes('if [ "$ROCKET_MACOS_CHECK_SCOPE" = agent-security ]; then'));
   assert(runner.includes('tee "$RUNNER_TEMP/rocket-macos-invocation.log"'),'Keep an allowed log artifact for early failures');

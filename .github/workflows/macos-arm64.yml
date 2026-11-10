@@ -32,7 +32,8 @@ jobs:
     # This qualification is authorized only on free public-repository runners.
     if: ${{ inputs.checks != 'agent-security' || github.event.repository.private == false }}
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-15' }}
-    timeout-minutes: 15
+    # Native Intel cold compilation needs room for both tests and the MCP binary.
+    timeout-minutes: ${{ inputs.checks == 'agent-security' && 30 || 15 }}
     env:
       CARGO_TERM_COLOR: never
       ROCKET_MACOS_CHECK_SCOPE: ${{ inputs.checks }}
