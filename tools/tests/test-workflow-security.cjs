@@ -10,7 +10,7 @@ const root = path.resolve(__dirname, '../..');
 const bash = process.env.ROCKET_TEST_BASH || (process.platform === 'win32'
   ? path.join(process.env.ProgramFiles, 'Git/bin/bash.exe') : 'bash');
 const workflows = [
-  ['macos-arm64.yml', ['followups', 'platform', 'sandbox', 'desktop-integration', 'agent-security', 'agent-mcp']],
+  ['macos-arm64.yml', ['followups', 'platform', 'sandbox', 'desktop-integration', 'agent-security', 'agent-mcp', 'package-spelling']],
   ['macos-wasm-prototype.yml', ['integration', 'prototype', 'complete-package', 'release-package']],
 ];
 
@@ -29,13 +29,13 @@ function runBlocks(text) {
 
 test('Agent security qualification uses public standard native runners and separates concurrent architectures', () => {
   const source=fs.readFileSync(path.join(root,'.github/workflows/macos-arm64.yml'),'utf8');
-  assert.match(source,/if: \$\{\{ \(inputs\.checks != 'agent-security' && inputs\.checks != 'agent-mcp'\) \|\| github\.event\.repository\.private == false \}\}/);
+  assert.match(source,/if: \$\{\{ \(inputs\.checks != 'agent-security' && inputs\.checks != 'agent-mcp' && inputs\.checks != 'package-spelling'\) \|\| github\.event\.repository\.private == false \}\}/);
   assert.match(source,/runs-on: \$\{\{ inputs\.architecture == 'x64' && 'macos-15-intel' \|\| 'macos-15' \}\}/);
   assert.match(source,/group: rocket-macos-preparation-\$\{\{ inputs\.architecture \}\}-\$\{\{ inputs\.checks \}\}/);
-  assert.match(source,/timeout-minutes: \$\{\{ inputs\.checks == 'agent-mcp' && 40 \|\| inputs\.checks == 'agent-security' && 30 \|\| 15 \}\}/);
-  assert.match(source,/timeout-minutes: \$\{\{ inputs\.checks == 'agent-mcp' && 35 \|\| inputs\.checks == 'agent-security' && 25 \|\| 15 \}\}/);
-  assert.match(source,/if: \$\{\{ always\(\) && \(inputs\.checks == 'agent-security' \|\| inputs\.checks == 'agent-mcp' \|\| !cancelled\(\)\) \}\}/);
-  assert.match(source,/timeout-minutes: \$\{\{ \(inputs\.checks == 'agent-security' \|\| inputs\.checks == 'agent-mcp'\) && 2 \|\| 15 \}\}/);
+  assert.match(source,/timeout-minutes: \$\{\{ inputs\.checks == 'package-spelling' && 12 \|\| inputs\.checks == 'agent-mcp' && 40 \|\| inputs\.checks == 'agent-security' && 30 \|\| 15 \}\}/);
+  assert.match(source,/timeout-minutes: \$\{\{ inputs\.checks == 'package-spelling' && 10 \|\| inputs\.checks == 'agent-mcp' && 35 \|\| inputs\.checks == 'agent-security' && 25 \|\| 15 \}\}/);
+  assert.match(source,/if: \$\{\{ always\(\) && \(inputs\.checks == 'agent-security' \|\| inputs\.checks == 'agent-mcp' \|\| inputs\.checks == 'package-spelling' \|\| !cancelled\(\)\) \}\}/);
+  assert.match(source,/timeout-minutes: \$\{\{ \(inputs\.checks == 'agent-security' \|\| inputs\.checks == 'agent-mcp' \|\| inputs\.checks == 'package-spelling'\) && 2 \|\| 15 \}\}/);
   const runner=runBlocks(source).find(b=>b.includes('test-agent-executable-security.sh'));
   assert(runner&&runner.includes('if [ "$ROCKET_MACOS_CHECK_SCOPE" = agent-security ] || [ "$ROCKET_MACOS_CHECK_SCOPE" = agent-mcp ]; then'));
   assert(runner.includes('tee "$RUNNER_TEMP/rocket-macos-invocation.log"'),'Keep an allowed log artifact for early failures');
