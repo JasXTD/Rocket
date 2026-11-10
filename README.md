@@ -306,6 +306,11 @@ compares documented features, not speed or maturity, and features change.
 Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md)
 first, and report security problems privately as [SECURITY.md](SECURITY.md) describes.
 
+## Development credits
+
+Created and maintained by [JasXTD](https://github.com/JasXTD), with development
+assistance from OpenAI Codex and Anthropic Claude Code.
+
 ## License
 
 Licensed under either [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your option.
