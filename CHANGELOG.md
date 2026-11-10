@@ -10,6 +10,13 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Prevent credential-helper injection through a pre-created temporary repository.
+  Hosting and preview sign-in now use fresh, randomly named request folders;
+  Unix creation enforces private permissions, ownership and safe ancestors.
+  Credential lookup also stops before the request folder's parent, preventing
+  enclosing repositories from supplying helpers; ambiguous path lists are refused.
+  Cloned sessions share their folder until the last owner finishes, and cleanup
+  removes only empty folders. Existing Git credentials/configuration are unchanged.
 - Enable macOS worktree creation for the Agents view and Worktrees manager using
   the existing exclusive-publication path. Preserve destination/race checks,
   cancelled preparation folders, safe removal and Unicode path handling. Add

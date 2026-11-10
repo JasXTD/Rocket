@@ -284,6 +284,126 @@ fn sign_in_reads_the_helper_and_lists_repositories_notifications_and_pulls() {
 }
 
 #[test]
+fn credential_lookup_ignores_preplanted_neutral_repository() {
+    const NAME: &str = "credential_lookup_ignores_preplanted_neutral_repository";
+    if std::env::var(CASE).as_deref() != Ok(NAME) {
+        // A child-only temp root reproduces the shared-temp attack without
+        // touching the real temp directory or any personal credential helper.
+        let f = Fixture::new();
+        let temp = f.root.join("credential temp 文");
+        fs::create_dir(&temp).unwrap();
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap());
+        child.args(["--exact", NAME, "--nocapture"]);
+        for (key, _) in std::env::vars_os() {
+            let name = key.to_string_lossy().to_ascii_uppercase();
+            if name.starts_with("GIT_") || name.starts_with("SSH_") || name.ends_with("_PROXY") {
+                child.env_remove(key);
+            }
+        }
+        child
+            .env(CASE, NAME)
+            .env("TMP", &temp)
+            .env("TEMP", &temp)
+            .env("TMPDIR", &temp)
+            .env("GIT_CONFIG_GLOBAL", f.root.join("empty.config"))
+            .env("GIT_CONFIG_SYSTEM", f.root.join("empty.config"))
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_TEMPLATE_DIR", f.root.join("no-hooks"))
+            .env("GIT_TERMINAL_PROMPT", "0");
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            child.creation_flags(0x0800_0000);
+        }
+        let output = child.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return;
+    }
+    let f = Fixture::new();
+    let temp = std::env::temp_dir();
+    let planted = temp.join(format!("rocket-github-{}", std::process::id()));
+    fs::create_dir(&planted).unwrap();
+    f.run_at(&planted, &["init", "--initial-branch=main", "."]);
+    let marker = planted.join("injected-helper-ran");
+    f.run_at(&planted, &["config", "credential.helper", ""]);
+    f.run_at(&planted, &["config", "--add", "credential.helper",
+        "!f() { cat >/dev/null; echo ran > injected-helper-ran; echo username=fixture; echo password=synthetic-planted-credential; }; f"]);
+    let planted_config = fs::read(planted.join(".git/config")).unwrap();
+    // Also isolate from an enclosing repository, including on Windows where the
+    // fixture temp root is nested under the actual source checkout.
+    f.run_at(&temp, &["init", "--initial-branch=main", "."]);
+    f.run_at(&temp, &["config", "credential.helper", ""]);
+    f.run_at(&temp, &["config", "--add", "credential.helper",
+        "!f() { cat >/dev/null; echo ran > ancestor-helper-ran; echo username=fixture; echo password=synthetic-ancestor-credential; }; f"]);
+    let ancestor_marker = temp.join("ancestor-helper-ran");
+    let ancestor_config = fs::read(temp.join(".git/config")).unwrap();
+    let trusted_marker = helper(&f, Some(TOKEN));
+    let fake = serve(Box::new(|_| ok(USER)));
+    let cancel = CancellationToken::new();
+    let session = f.git.github_session(fake.endpoint, false, &cancel).unwrap();
+    assert!(
+        !marker.exists(),
+        "A planted repository credential helper executed"
+    );
+    assert!(!ancestor_marker.exists(), "An ancestor repository credential helper executed");
+    assert!(
+        trusted_marker.exists(),
+        "The configured global helper must still work"
+    );
+
+    // Clones keep their request folder alive; the final owner removes it.
+    let folders = || {
+        fs::read_dir(&temp)
+            .unwrap()
+            .map(|e| e.unwrap().path())
+            .filter(|p| p != &planted && p != &temp.join(".git"))
+            .collect::<Vec<_>>()
+    };
+    let private = folders();
+    assert_eq!(private.len(), 1);
+    let clone = session.clone();
+    drop(session);
+    assert!(private[0].is_dir());
+    drop(clone);
+    assert!(
+        folders().is_empty(),
+        "The last session leaked its temporary folder"
+    );
+
+    f.git.preview_sign_in("fixture.invalid", &cancel).unwrap();
+    assert!(!marker.exists());
+    assert!(folders().is_empty());
+    let cancelled = CancellationToken::new();
+    cancelled.cancel();
+    assert!(matches!(
+        f.git.github_session(fake.endpoint, false, &cancelled),
+        Err(Error::Cancelled)
+    ));
+    assert!(
+        folders().is_empty(),
+        "Cancellation leaked the credential workspace"
+    );
+    helper(&f, None);
+    assert_eq!(failure(f.git.github_session(fake.endpoint, false, &cancel)), HostingFailure::SignInRequired);
+    assert!(
+        folders().is_empty(),
+        "Failed sign-in leaked the credential workspace"
+    );
+    assert_eq!(
+        fs::read(planted.join(".git/config")).unwrap(),
+        planted_config
+    );
+    assert!(!marker.exists());
+    assert!(!ancestor_marker.exists());
+    assert_eq!(fs::read(temp.join(".git/config")).unwrap(), ancestor_config);
+}
+
+#[test]
 fn failures_are_typed_and_never_expose_the_token() {
     isolated(
         CASE,

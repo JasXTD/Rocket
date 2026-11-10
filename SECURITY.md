@@ -29,6 +29,30 @@ hosting service belong with those projects, unless Rocket makes them worse.
 The rest of this file records how Rocket's safeguards work and where they stop, feature by
 feature. The [README](README.md) gives an overview.
 
+## Credential request directories (unreleased, 2026-11-10)
+
+Hosting requests, browser credential lookup and repository-preview sign-in use
+a fresh directory named with 128 bits from the OS random generator. Creation is
+exclusive: a pre-existing directory, file or link is never reused. Git's ceiling
+names the parent of the working directory, preventing ancestor discovery; naming
+the working directory itself does not provide that boundary. Paths with a Git
+path-list separator in that parent are refused before helper startup. A ceiling
+cannot prevent reading `.git/config` in the current directory, which must start
+empty. See [Git's documented discovery rules](https://git-scm.com/docs/git#Documentation/git.txt-GITCEILINGDIRECTORIES).
+
+Linux/macOS creation uses 0700 and validates ownership, ancestors and symlinks;
+macOS also checks ACL grants and permits only the verified system temp aliases.
+Windows uses its user temp location and exclusive creation. Configured global and
+system credential helpers still run with the user's normal permissions. Root,
+administrator and other processes with the same identity are outside this boundary.
+No credential value is written to the request directory by Rocket.
+
+Sessions share ownership across clones; the last owner attempts to remove only
+the empty directory. Unexpected helper files are preserved, and abrupt process
+exit can leave an unused directory. Old predictable request folders are neither
+reused nor automatically removed. No personal Git configuration or credential
+store is changed by this fix.
+
 ## macOS credential preparation (unreleased)
 
 The macOS port seals local credentials with XChaCha20-Poly1305 and a wrapping key

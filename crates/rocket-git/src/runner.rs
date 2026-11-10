@@ -636,6 +636,13 @@ impl Runner {
             browser,
         } = kind
         {
+            // Callers supply the neutral cwd. Git ignores that exact directory
+            // when matching ceilings; stop before its parent instead, so an
+            // ancestor repository cannot contribute a credential helper. Refuse
+            // delimiters that Git would interpret as multiple ceiling paths.
+            let ceiling = ceiling.parent().filter(|parent| parent.is_absolute())
+                .filter(|parent| !parent.to_string_lossy().contains(if cfg!(windows) { ';' } else { ':' }))
+                .ok_or_else(|| crate::Error::InvalidInput("Credential requests require an absolute temporary folder whose parent contains no Git path-list separator.".into()))?;
             // A browser connection never reads/writes the user's Git credential
             // store. Environment settings otherwise override our invocation config.
             if browser {

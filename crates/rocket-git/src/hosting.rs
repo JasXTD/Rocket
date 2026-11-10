@@ -16,8 +16,10 @@ use std::{
     time::Duration,
 };
 pub(crate) mod json;
+mod neutral;
 mod urls;
 use json::Json;
+pub(crate) use neutral::{NeutralDirectory, neutral_directory};
 pub use urls::{GitHubRemote, github_web_url};
 
 /// Repositories per page (GitHub's maximum).
@@ -230,7 +232,7 @@ pub struct GitHubList<T> {
 pub struct GitHubSession {
     runner: Runner,
     curl: PathBuf,
-    cwd: PathBuf,
+    cwd: NeutralDirectory,
     endpoint: GitHubEndpoint,
     /// None for a session without sign-in: public data only, at GitHub's lower limits.
     token: Option<Arc<str>>,
@@ -244,14 +246,6 @@ impl fmt::Debug for GitHubSession {
     }
 }
 
-/// A neutral, empty working directory: credential lookup must not read a
-/// repository's local configuration, and curl must not find a `.curlrc` there.
-pub(crate) fn neutral_directory() -> Result<PathBuf> {
-    let directory = std::env::temp_dir().join(format!("rocket-github-{}", std::process::id()));
-    std::fs::create_dir_all(&directory)
-        .map_err(|e| Error::io("prepare GitHub request folder", e))?;
-    Ok(directory)
-}
 /// On Windows use only the OS-selected System32 curl, and on Linux/macOS the system's
 /// /usr/bin/curl (see `system_program`). Environment variables, PATH and a helper
 /// beside Git must not redirect credential-bearing hosting requests.

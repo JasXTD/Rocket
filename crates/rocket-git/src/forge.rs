@@ -377,7 +377,7 @@ impl ForgePreview {
 pub struct ForgeSession {
     runner: Runner,
     curl: PathBuf,
-    cwd: PathBuf,
+    cwd: crate::hosting::NeutralDirectory,
     config: ForgeConfig,
     authorization: Arc<str>,
     login: String,
