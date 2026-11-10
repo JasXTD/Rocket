@@ -10,7 +10,11 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
-## Unreleased
+## 0.92.3 — Agents, Intel Mac preview and security hardening
+
+Parallel local agent workspaces, expanded translations and hosting discussions,
+with security fixes for executable launches and credential-helper discovery. See
+[release notes](docs/releases/0.92.3.md) for package requirements and test limits.
 
 - Bind Agents and setup launches to the executable bytes reviewed by the user.
   Unix launches use private verified snapshots; Windows retains its executable
@@ -18,8 +22,8 @@ keep detailed test evidence in `VALIDATION.md`.
   require another review. Cancelled preparation removes partial snapshots.
 - Add native Intel Mac build selection alongside Apple Silicon, matching app/Lua
   helper architecture checks and separate `macos-x64` update packages. Manual
-  workflows keep their existing time caps and default to Apple Silicon. Intel
-  native runtime qualification and package publication remain pending.
+  workflows default to Apple Silicon and use bounded standard runners. Both
+  architectures passed native Agents/terminal and localhost MCP qualification.
 - Prevent credential-helper injection through a pre-created temporary repository.
   Hosting and preview sign-in now use fresh, randomly named request folders;
   Unix creation enforces private permissions, ownership and safe ancestors.

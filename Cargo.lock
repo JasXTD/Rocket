@@ -1976,7 +1976,7 @@ dependencies = [
 
 [[package]]
 name = "rocket-cli"
-version = "0.92.2"
+version = "0.92.3"
 dependencies = [
  "rocket-git",
  "serde_json",
@@ -1984,7 +1984,7 @@ dependencies = [
 
 [[package]]
 name = "rocket-git"
-version = "0.92.2"
+version = "0.92.3"
 dependencies = [
  "chacha20poly1305",
  "sha2",
@@ -1992,7 +1992,7 @@ dependencies = [
 
 [[package]]
 name = "rocket-integrations"
-version = "0.92.2"
+version = "0.92.3"
 dependencies = [
  "lua-src",
  "mlua",
@@ -2003,7 +2003,7 @@ dependencies = [
 
 [[package]]
 name = "rocket-mcp"
-version = "0.92.2"
+version = "0.92.3"
 dependencies = [
  "eframe",
  "png",
@@ -2016,18 +2016,18 @@ dependencies = [
 
 [[package]]
 name = "rocket-mcp-control"
-version = "0.92.2"
+version = "0.92.3"
 
 [[package]]
 name = "rocket-spell"
-version = "0.92.2"
+version = "0.92.3"
 dependencies = [
  "spellbook",
 ]
 
 [[package]]
 name = "rocket-terminal"
-version = "0.92.2"
+version = "0.92.3"
 dependencies = [
  "unicode-segmentation",
  "unicode-width",
@@ -2035,7 +2035,7 @@ dependencies = [
 
 [[package]]
 name = "rocket-ui"
-version = "0.92.2"
+version = "0.92.3"
 dependencies = [
  "eframe",
  "egui-winit",

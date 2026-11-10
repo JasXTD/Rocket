@@ -41,6 +41,19 @@ test('Agent security qualification uses public standard native runners and separ
   assert(runner.includes('tee "$RUNNER_TEMP/rocket-macos-invocation.log"'),'Keep an allowed log artifact for early failures');
 });
 
+test('Release packages use public standard runners, independent architectures and reserved artifact time', () => {
+  const source=fs.readFileSync(path.join(root,'.github/workflows/macos-wasm-prototype.yml'),'utf8');
+  assert.equal((source.match(/if: \$\{\{ inputs\.checks != 'release-package' \|\| github\.event\.repository\.private == false \}\}/g)||[]).length,2);
+  assert.match(source,/runs-on: ubuntu-24\.04/);
+  assert.match(source,/runs-on: \$\{\{ inputs\.architecture == 'x64' && 'macos-15-intel' \|\| 'macos-15' \}\}/);
+  assert.match(source,/group: rocket-macos-wasm-\$\{\{ inputs\.architecture \}\}-\$\{\{ inputs\.checks \}\}/);
+  assert.match(source,/cancel-in-progress: false/);
+  assert.match(source,/inputs\.checks == 'release-package' && \(inputs\.architecture == 'x64' && 50 \|\| 30\)/);
+  assert.match(source,/inputs\.checks == 'release-package' && \(inputs\.architecture == 'x64' && 45 \|\| 25\)/);
+  assert.match(source,/if: \$\{\{ always\(\) && \(inputs\.checks == 'release-package' \|\| !cancelled\(\)\) \}\}\n        timeout-minutes: 2/);
+  assert.equal((source.match(/retention-days: 1/g)||[]).length,2);
+});
+
 for (const [name, modes] of workflows) {
   const source = fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8');
   test(name + ': manual, read-only, pinned actions and no shell interpolation', () => {

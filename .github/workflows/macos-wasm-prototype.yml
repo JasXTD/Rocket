@@ -20,11 +20,12 @@ permissions:
   actions: read
 
 concurrency:
-  group: rocket-macos-wasm-prototype
-  cancel-in-progress: true
+  group: rocket-macos-wasm-${{ inputs.architecture }}-${{ inputs.checks }}
+  cancel-in-progress: false
 
 jobs:
   guest:
+    if: ${{ inputs.checks != 'release-package' || github.event.repository.private == false }}
     runs-on: ubuntu-24.04
     timeout-minutes: ${{ (inputs.checks == 'complete-package' || inputs.checks == 'release-package') && 3 || 5 }}
     env:
@@ -63,8 +64,9 @@ jobs:
 
   mac:
     needs: guest
+    if: ${{ inputs.checks != 'release-package' || github.event.repository.private == false }}
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-15' }}
-    timeout-minutes: ${{ inputs.checks == 'release-package' && 20 || inputs.checks == 'complete-package' && 8 || 15 }}
+    timeout-minutes: ${{ inputs.checks == 'release-package' && (inputs.architecture == 'x64' && 50 || 30) || inputs.checks == 'complete-package' && 8 || 15 }}
     env:
       CARGO_BUILD_JOBS: '3'
       CARGO_TERM_COLOR: never
@@ -100,6 +102,7 @@ jobs:
           unzip -p "$RUNNER_TEMP/guest.zip" guest.wasm > "$RUNNER_TEMP/guest.wasm"
           test "$(shasum -a 256 "$RUNNER_TEMP/guest.wasm" | cut -d ' ' -f1)" = "$EXPECTED_GUEST_SHA"
       - name: Run only the selected Lua checks
+        timeout-minutes: ${{ inputs.checks == 'release-package' && (inputs.architecture == 'x64' && 45 || 25) || 15 }}
         shell: bash
         run: |
           set -euo pipefail
@@ -111,7 +114,8 @@ jobs:
             bash tools/prototypes/macos-lua-wasm/run-host-checks.sh "$RUNNER_TEMP/guest.wasm" "$RUNNER_TEMP/prototype-results"
           fi
       - name: Retain native results
-        if: ${{ always() && !cancelled() }}
+        if: ${{ always() && (inputs.checks == 'release-package' || !cancelled()) }}
+        timeout-minutes: 2
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lua-mac-${{ inputs.architecture }}-${{ github.run_id }}-${{ github.run_attempt }}

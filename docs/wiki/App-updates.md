@@ -7,7 +7,7 @@ Rocket checks public releases from
 starts. The request runs in the background. There is no periodic check or silent
 installation. Use **Help → Check for Updates** for another check.
 
-The 0.92.2 packages are also available for manual download from GitHub Releases.
+The 0.92.3 packages are also available for manual download from GitHub Releases.
 The Mac preview ZIP cannot be installed through the updater because Developer ID
 signing and notarization are still pending.
 
@@ -48,7 +48,7 @@ For in-place updates, run Rocket from the versioned directory produced by
 `tools/Package-Release.ps1`. Changed or extra files in that directory stop an
 update rather than being overwritten. Keep projects and personal files elsewhere.
 
-On Apple Silicon Macs, in-place installation requires a Developer ID signed,
+On Apple Silicon and Intel Macs, in-place installation requires a Developer ID signed,
 notarized `Rocket.app` in a writable folder. The update must have the same publisher
 and app identity. Development/ad-hoc builds cannot install public updates. The old
 app is retained beside the new one; installation or launch failure triggers
@@ -84,7 +84,8 @@ manual recovery from the retained directories; this is not an unattended updater
   files and folders inside that folder: no links, devices or `..` paths.
 - Keep `tools/Verify-Release.ps1` tracked. It verifies release contents and the
   reviewed runtimes before packaging; it is not a generated test output.
-- For Apple Silicon, attach `Rocket-<version>-macos-arm64.tar.gz` from
+- For Apple Silicon or Intel, attach `Rocket-<version>-macos-arm64.tar.gz` or
+  `Rocket-<version>-macos-x64.tar.gz`, respectively, from
   `tools/macos/update-package.cjs` after Developer ID signing and notarization.
   The portable development ZIP is separate. See [Mac distribution requirements](../MacOS-desktop-integrations.md).
 - GitHub's release asset must provide its SHA-256 digest. Rocket also checks the

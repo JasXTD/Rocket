@@ -96,6 +96,10 @@ JS
   node tools/tests/test-mcp-desktop.cjs
   node tools/tests/test-mcp-macos-package.cjs
   if [ "$mode" = release-package ]; then
+    # Qualify the changed Agents lifecycle against the actual extracted release.
+    export ROCKET_AGENTS_EXE="$ROCKET_MCP_EXE"
+    export ROCKET_AGENTS_REPORT_ROOT="$out/mcp-fixtures"
+    node tools/tests/test-mcp-agents.cjs
     # Exercise changed hosting adapters through the actual extracted CLI. All
     # requests use loopback fixtures and synthetic credentials, never accounts.
     export ROCKET_CLI_EXE="$out/roundtrip/package/Rocket.app/Contents/MacOS/rocket-cli"

@@ -39,16 +39,16 @@ open **Help → Setup Guide** in the app. **Ctrl+K** opens the command palette a
 guide.
 
 > [!NOTE]
-> [Download Rocket 0.92.2](https://github.com/JasXTD/Rocket/releases/tag/v0.92.2):
-> Windows x64, Linux x64 (glibc 2.43+) and the Apple Silicon macOS 15+ preview.
+> [Download Rocket 0.92.3](https://github.com/JasXTD/Rocket/releases/tag/v0.92.3):
+> Windows x64, Linux x64 (glibc 2.43+) and macOS 15+ previews for Apple Silicon and Intel.
 > The Mac preview is not Developer-ID-signed or notarized.
 > [Build from source](#build-and-run) is also available.
 
-**New in 0.92.2:** choose a preview language in Preferences; your saved theme
-appears from the first frame. Hosting adds inline comments for GitLab, Gitea,
-Bitbucket and Azure DevOps, including supported private-server variants. The CLI
-now includes hosting commands, reviewed Commit & Push and Save, switch & restore.
-See the [release notes](docs/releases/0.92.2.md) for scope and limitations.
+**New in 0.92.3:** run parallel Claude Code, Codex or custom commands in the
+Agents workspace, with reviewed worktrees and separate terminals. This release
+also adds an Intel Mac preview, extends the ten preview translations and hosting
+discussions, and fixes executable-launch and credential-helper security issues.
+See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
 
 ## Features
 
@@ -120,7 +120,7 @@ See the [release notes](docs/releases/0.92.2.md) for scope and limitations.
 
 **AI, only when you ask**
 
-- **Agents** (pending release): run parallel Claude Code, Codex or custom executable
+- **Agents**: run parallel Claude Code, Codex or custom executable
   sessions in separate worktrees, with reviewed setup, interactive terminals,
   Stop/restart and safe cleanup. Uses your installed tools and existing logins;
   worktrees separate files, not permissions. [Session guide](docs/Agents.md).
@@ -188,7 +188,7 @@ translate or modify your repository.
 | --- | --- |
 | Windows x64 | Main platform, tested mostly on Windows 10. A portable ZIP with Git for Windows 2.56.0.windows.4, Git Credential Manager and Git LFS bundled; no installer or administrator access. |
 | Linux x86_64 | Supported under X11 or Wayland; the portable package requires glibc 2.43+. Uses your system Git. Everyday Git work, the terminal, SSH, hosting, Lua extensions and app updates work. |
-| macOS 15+ on Apple Silicon | Preview, not yet notarized. Native menus, Keychain, system spelling, automatic refresh, a zsh terminal and Lua extensions. Uses your installed Git. |
+| macOS 15+ on Apple Silicon or Intel | Preview, not yet notarized. Native menus, Keychain, system spelling, automatic refresh, a zsh terminal and Lua extensions. Uses your installed Git. |
 
 See [Current limits](#current-limits) for what still differs between platforms.
 
@@ -261,7 +261,7 @@ the rest.
 | :-- | :-: | :-: | :-: | :-: |
 | **Platforms** | | | | |
 | Windows | ✅ x64 | ✅ | ✅ | ✅ |
-| macOS | Preview, Apple Silicon | ✅ | ✅ | ✅ |
+| macOS | Preview, Apple Silicon and Intel | ✅ | ✅ | ✅ |
 | Linux | ✅ x86_64 | — | ✅ | ✅ |
 | Interface | Native Rust desktop + CLI | Desktop | Desktop + companion CLI | Terminal UI |
 | **Everyday Git** | | | | |
@@ -286,7 +286,7 @@ the rest.
 
 ✅ supported as described · 💲 paid plan · — not documented in the sources checked
 
-Updated for **Rocket 0.92.2 on 2026-11-10**. This compares documented capabilities,
+Updated for **Rocket 0.92.3 on 2026-11-11**. This compares documented capabilities,
 not speed, maturity or identical coverage. Features vary by platform, host and plan;
 AI providers may require a separate subscription. See [Platforms](#platforms) for
 Rocket's package requirements and preview status.
@@ -312,8 +312,8 @@ Official comparison sources:
 ## Current limits
 
 - **macOS:** the downloadable preview is ad-hoc signed, without a Developer ID or
-  notarization; in-app updates refuse to install it. Tested on GitHub's Apple Silicon
-  runners, not yet on a physical Mac. Intel Macs aren't supported.
+  notarization; in-app updates refuse to install it. Apple Silicon and Intel builds
+  are tested on native GitHub runners; physical Mac acceptance remains pending.
 - **Linux:** Lua needs x86_64 with Landlock. Steps that must never overwrite a file need a
   local filesystem such as ext4, XFS or Btrfs (NFS, some FUSE mounts and WSL's `/mnt` are
   refused). Most MCP acceptance runners and the non-GitHub hosting tests still run on Windows.
