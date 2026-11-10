@@ -19,6 +19,7 @@ on:
           - sandbox
           - desktop-integration
           - agent-security
+          - agent-mcp
 
 permissions:
   contents: read
@@ -30,10 +31,10 @@ concurrency:
 jobs:
   build:
     # This qualification is authorized only on free public-repository runners.
-    if: ${{ inputs.checks != 'agent-security' || github.event.repository.private == false }}
+    if: ${{ (inputs.checks != 'agent-security' && inputs.checks != 'agent-mcp') || github.event.repository.private == false }}
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-15' }}
     # Native Intel cold compilation needs room for both tests and the MCP binary.
-    timeout-minutes: ${{ inputs.checks == 'agent-security' && 30 || 15 }}
+    timeout-minutes: ${{ inputs.checks == 'agent-mcp' && 40 || inputs.checks == 'agent-security' && 30 || 15 }}
     env:
       CARGO_TERM_COLOR: never
       ROCKET_MACOS_CHECK_SCOPE: ${{ inputs.checks }}
@@ -47,7 +48,7 @@ jobs:
           set -euo pipefail
           case "$ROCKET_REQUESTED_MAC_ARCH" in arm64|x64) ;; *) echo 'Unsupported architecture selection' >&2; exit 2 ;; esac
           case "$ROCKET_MACOS_CHECK_SCOPE" in
-            followups|platform|sandbox|desktop-integration|agent-security) ;;
+            followups|platform|sandbox|desktop-integration|agent-security|agent-mcp) ;;
             *) printf '%s\n' 'Unsupported check selection' >&2; exit 2 ;;
           esac
       - name: Check out the selected revision
@@ -68,12 +69,14 @@ jobs:
           rustup run 1.99.1 rustc -vV
 
       - name: Build and run the affected native checks
+        # Leave time to retain diagnostics if compilation or acceptance times out.
+        timeout-minutes: ${{ inputs.checks == 'agent-mcp' && 35 || inputs.checks == 'agent-security' && 25 || 15 }}
         shell: bash
         env:
           ROCKET_MACOS_OUTPUT: ${{ runner.temp }}/rocket-macos-stage1
         run: |
           set -euo pipefail
-          if [ "$ROCKET_MACOS_CHECK_SCOPE" = agent-security ]; then
+          if [ "$ROCKET_MACOS_CHECK_SCOPE" = agent-security ] || [ "$ROCKET_MACOS_CHECK_SCOPE" = agent-mcp ]; then
             bash tools/macos/test-agent-executable-security.sh 2>&1 | tee "$RUNNER_TEMP/rocket-macos-invocation.log"
           elif [ "$ROCKET_MACOS_CHECK_SCOPE" = sandbox ]; then
             # GitHub-hosted disposable OS user only. Never a normal account's container.
@@ -87,7 +90,8 @@ jobs:
           fi
 
       - name: Retain development app and check results
-        if: ${{ always() && !cancelled() }}
+        if: ${{ always() && (inputs.checks == 'agent-security' || inputs.checks == 'agent-mcp' || !cancelled()) }}
+        timeout-minutes: ${{ (inputs.checks == 'agent-security' || inputs.checks == 'agent-mcp') && 2 || 15 }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: rocket-macos-${{ inputs.architecture }}-stage1-${{ github.run_id }}-${{ github.run_attempt }}

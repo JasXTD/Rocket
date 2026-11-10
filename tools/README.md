@@ -18,6 +18,11 @@ terminal launch/cleanup checks and synthetic localhost MCP acceptance on either
 Apple Silicon or Intel. It uses `tools/macos/test-agent-executable-security.sh`,
 requires a public repository in Actions, and selects standard `macos-15` or
 `macos-15-intel` runners. Architecture-specific concurrency permits both runs.
+Use `agent-mcp` when only native Agents UI acceptance needs repeating: it builds
+the MCP executable and runs the same 18 synthetic scenarios without recompiling
+the separate library test binary. Its report leaves the native regression counts
+empty; retain the earlier regression evidence for the same production source.
+Both scopes reserve time for diagnostic upload after a build-step timeout.
 It produces test evidence only: no app bundle, release, AI request or Keychain change.
 
 The manual-only `.github/workflows/macos-arm64.yml` prepares a development `Rocket.app`
