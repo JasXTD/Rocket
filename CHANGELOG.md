@@ -12,6 +12,10 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Bind Agents and setup launches to the executable bytes reviewed by the user.
+  Unix launches use private verified snapshots; Windows retains its executable
+  lock through asynchronous startup and process cleanup. Changes during setup
+  require another review. Cancelled preparation removes partial snapshots.
 - Add native Intel Mac build selection alongside Apple Silicon, matching app/Lua
   helper architecture checks and separate `macos-x64` update packages. Manual
   workflows keep their existing time caps and default to Apple Silicon. Intel

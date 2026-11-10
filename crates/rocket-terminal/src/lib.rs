@@ -1,11 +1,11 @@
 //! A bounded terminal model and an owned, asynchronous terminal session: a Windows
 //! ConPTY, or a Linux/macOS pseudoterminal. No shell input or output is persisted or sent to
 //! application diagnostics.
-#[path = "../../rocket-git/src/process_privilege.rs"]
-mod process_privilege;
 #[cfg(target_os = "macos")]
 #[path = "../../rocket-git/src/darwin_wait.rs"]
 mod darwin_wait;
+#[path = "../../rocket-git/src/process_privilege.rs"]
+mod process_privilege;
 #[cfg(all(test, windows))]
 mod resize_tests;
 mod screen;
@@ -109,6 +109,13 @@ pub struct Session {
     shared: Arc<Shared>,
     input: SyncSender<Vec<u8>>,
 }
+struct HeldLaunch {
+    #[cfg(unix)]
+    path: PathBuf,
+    // A file lock or private executable snapshot must outlive asynchronous
+    // creation AND execution, even if the caller drops its review/session.
+    _lifetime: Arc<dyn Send + Sync>,
+}
 impl Session {
     /// Rocket's own shell: Windows PowerShell with Rocket's startup line, or on Linux bash
     /// without the user's startup files. Returns immediately; process creation, I/O and
@@ -144,6 +151,47 @@ impl Session {
     ) -> io::Result<Self> {
         Self::start_selected_shell(directory, columns, rows, wake, shell, None)
     }
+    /// Execute a caller-verified file while retaining its lifetime guard on the
+    /// terminal worker. Unix may use a private snapshot but keeps native argv[0]
+    /// from the reviewed shell. This does not sandbox the launched program.
+    pub fn start_shell_held(
+        directory: &Path,
+        columns: u16,
+        rows: u16,
+        wake: Arc<dyn Fn() + Send + Sync>,
+        shell: &Shell,
+        launch_path: &Path,
+        lifetime: Arc<dyn Send + Sync>,
+    ) -> io::Result<Self> {
+        Self::validate_shell(shell)?;
+        if !matches!(shell, Shell::Custom { .. }) || !launch_path.is_absolute() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "A held launch requires a custom program and an absolute executable path",
+            ));
+        }
+        #[cfg(windows)]
+        if launch_path != shell.program()? {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Windows held launches must retain the original executable path",
+            ));
+        }
+        Self::start_owned(
+            directory,
+            columns,
+            rows,
+            wake,
+            None,
+            None,
+            shell.clone(),
+            Some(HeldLaunch {
+                #[cfg(unix)]
+                path: launch_path.into(),
+                _lifetime: lifetime,
+            }),
+        )
+    }
     /// Runs the selected shell with an owned history path. The platform launcher
     /// applies it only to Rocket's isolated shell modes, never normal user profiles.
     pub fn start_shell_with_history(
@@ -164,6 +212,19 @@ impl Session {
         shell: &Shell,
         history: Option<&Path>,
     ) -> io::Result<Self> {
+        Self::validate_shell(shell)?;
+        Self::start_owned(
+            directory,
+            columns,
+            rows,
+            wake,
+            history,
+            None,
+            shell.clone(),
+            None,
+        )
+    }
+    fn validate_shell(shell: &Shell) -> io::Result<()> {
         if let Shell::Custom { arguments, .. } = shell
             && arguments.iter().any(|v| v.contains(['\0', '\r', '\n']))
         {
@@ -172,7 +233,7 @@ impl Session {
                 "Invalid shell arguments",
             ));
         }
-        Self::start_owned(directory, columns, rows, wake, history, None, shell.clone())
+        Ok(())
     }
     /// A session that never started, for a view that says why.
     pub fn refused(message: String) -> Self {
@@ -216,6 +277,7 @@ impl Session {
             None,
             Some((tool.to_owned(), arguments)),
             Shell::WindowsPowerShell,
+            None,
         )
     }
     fn start_session(
@@ -233,8 +295,10 @@ impl Session {
             history,
             None,
             Shell::WindowsPowerShell,
+            None,
         )
     }
+    #[allow(clippy::too_many_arguments)]
     fn start_owned(
         directory: &Path,
         columns: u16,
@@ -243,6 +307,7 @@ impl Session {
         history: Option<&Path>,
         openssh: Option<(String, Vec<String>)>,
         shell: Shell,
+        held: Option<HeldLaunch>,
     ) -> io::Result<Self> {
         process_privilege::check()?;
         let columns = columns.clamp(20, 240);
@@ -268,9 +333,14 @@ impl Session {
                         history.as_deref(),
                         openssh.as_ref(),
                         &shell,
+                        #[cfg(any(target_os = "linux", target_os = "macos"))]
+                        held.as_ref().map(|h| h.path.as_path()),
                         receive,
                         &worker,
                     );
+                    // Deliberately after run: dropping the caller's Plan or
+                    // Session must not release the executable during spawn.
+                    drop(held);
                     let mut status = worker.status.lock().unwrap();
                     status.running = false;
                     status.closed = true;
@@ -283,7 +353,9 @@ impl Session {
         }
         #[cfg(not(any(windows, any(target_os = "linux", target_os = "macos"))))]
         {
-            let _ = (directory, receive, history, openssh, shell, shared, input);
+            let _ = (
+                directory, receive, history, openssh, shell, held, shared, input,
+            );
             return Err(io::Error::new(
                 io::ErrorKind::Unsupported,
                 "Interactive terminal currently requires Windows 10 1809 or later, or Linux/macOS.",

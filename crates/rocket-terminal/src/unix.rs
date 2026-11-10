@@ -300,19 +300,21 @@ pub(super) fn run(
     history: Option<&Path>,
     openssh: Option<&(String, Vec<String>)>,
     shell: &Shell,
+    held_path: Option<&Path>,
     input: Receiver<Vec<u8>>,
     shared: &Arc<Shared>,
 ) -> io::Result<()> {
     crate::process_privilege::check()?;
     let launch = launch(directory, history, openssh, shell)?;
+    let executable = held_path.unwrap_or(&launch.program);
     // Command would look a bare name up on PATH; the shell is always named in full.
-    if !launch.program.is_absolute() {
+    if !executable.is_absolute() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "The shell needs a full path",
         ));
     }
-    if let Err(error) = std::fs::symlink_metadata(&launch.program)
+    if let Err(error) = std::fs::symlink_metadata(executable)
         && error.kind() == io::ErrorKind::NotFound
     {
         return Err(io::Error::new(
@@ -323,7 +325,10 @@ pub(super) fn run(
     let size = shared.size.load(Ordering::Acquire);
     let (master, peer) = open_terminal((size & 0xffff) as u16, (size >> 16) as u16)?;
     shared.screen.lock().unwrap().answer_device_attributes();
-    let mut command = Command::new(&launch.program);
+    let mut command = Command::new(executable);
+    if held_path.is_some() {
+        command.arg0(&launch.program);
+    }
     command
         .args(&launch.arguments)
         .current_dir(directory)

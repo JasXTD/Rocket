@@ -1077,6 +1077,28 @@ Background data updates can overlap a pre-push check; changed archive fingerprin
 invalidate that check rather than approving an outdated review. Opt-in persists
 in profile v24; old profiles default off, and older binaries reject v24.
 
+## Reviewed agent executable boundary
+
+Agents and optional setup commands bind the reviewed SHA-256 to the executable
+used by the terminal worker. Windows retains an opened deny-write/delete handle
+until that worker finishes. Linux/macOS copy from an opened, regular executable
+into a fresh owner-private directory, hash the copy, and launch only that copy.
+Copying and hashing are cancellable and bounded to 512 MiB per executable. The
+directory has mode 0700 and the copied file mode 0500; setuid/setgid bits and
+source ACLs are not inherited. Unsafe storage ancestors and linked source files
+are refused. Original executable paths are still rechecked before starting,
+including the transition from setup to the agent, so updates require new review.
+
+The terminal worker holds the snapshot/lock across asynchronous creation and
+process cleanup, even when the review is closed. Partial and released snapshots
+are removed using only their owned file and empty directory; no recursive delete
+or source-file mutation is used. A forced crash can leave a private copy behind.
+This closes the original-path replacement/overwrite race, not a same-user process
+that can alter Rocket itself or its private memory/storage. It does not sandbox
+agents or verify interpreters' scripts, dynamic dependencies, configuration or
+other loaded resources. Unix resource lookup relative to the actual executable
+can change; see [Agents](docs/Agents.md) for that compatibility boundary.
+
 ## GitHub Actions build boundary
 
 The two macOS build workflows run only through `workflow_dispatch`. Opening a

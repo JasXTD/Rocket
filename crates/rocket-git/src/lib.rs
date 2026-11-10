@@ -31,7 +31,7 @@ pub use system_languages::{SystemLanguages, system_languages};
 mod advisory_tool;
 mod managed_git;
 pub use managed_git::{MANAGED_GIT_VERSION, MANAGED_GIT_MANIFEST_SHA256, ManagedGitProgress, ManagedGitRuntime, managed_git_path, verify_managed_git};
-pub use advisory_tool::{OSV_VERSION, OsvOutput, osv_file_digest, osv_platform, run_offline_osv, sha256_bytes, verify_osv_scanner};
+pub use advisory_tool::{OSV_VERSION, OsvOutput, osv_file_digest, osv_platform, run_offline_osv, sha256_bytes, sha256_reader, verify_osv_scanner};
 mod bisect;
 mod branch;
 mod branch_merge;

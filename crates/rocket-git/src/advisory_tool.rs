@@ -251,6 +251,12 @@ pub fn osv_file_digest(path: &Path, max: u64, cancel: &CancellationToken) -> Res
     digest(&mut file, max, cancel)
 }
 
+/// Hash the caller's opened stream, without resolving a pathname again. Reads are
+/// bounded and cancellable; callers own its position and any file identity checks.
+pub fn sha256_reader(reader: &mut dyn Read, max: u64, cancel: &CancellationToken) -> Result<String> {
+    digest(reader, max, cancel)
+}
+
 #[cfg(windows)]
 pub(crate) fn digest(file: &mut dyn Read, max: u64, cancel: &CancellationToken) -> Result<String> {
     use std::{ffi::c_void, ptr};

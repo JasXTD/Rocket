@@ -14,7 +14,8 @@ CLI separately; Rocket does not install it or store an AI API key.
    agent from starting and keeps the worktree for inspection.
 4. Review the exact base commit, folder, program SHA-256 and arguments, then start.
    Rocket saves the session record before creating the worktree. It rechecks the
-   executable and Git state before applying the reviewed operation.
+   executable and Git state before applying the reviewed operation. A changed
+   executable, including an update performed by setup, requires a fresh review.
 5. Enter your task in the agent's terminal. Existing provider permission prompts
    stay in that terminal. Session status reports process lifecycle, not guessed
    intent or task completion. An exit code of zero does not prove the work is correct.
@@ -25,6 +26,23 @@ ignored files, credentials or environment files into the new worktree. External
 programs inherit the user's environment and may use existing credentials. They
 run with the user's access: worktrees are not a security sandbox. Rocket does
 not add options that bypass agent permissions, nor auto-commit, merge or push.
+
+On Linux and macOS, Rocket copies each selected executable into a private temporary
+directory and hashes those copied bytes for review. It launches that copy, so
+replacing or overwriting the original after the last check cannot substitute a
+different executable. The copy remains available until both the review and its
+terminal worker release it. Windows instead holds a file handle that denies
+writes and deletion through the same lifetime. Cancelled preparation removes
+partial copies; normal completion, Stop and closing the review release owned copies.
+A forced application/OS crash can leave a private temporary copy behind.
+
+Arguments and the worktree working directory are unchanged. Native Unix programs
+retain the original `argv[0]`, but programs locating resources through their actual
+executable location, and scripts using their own filename, see the private copy.
+Choose a standalone native executable when possible. For an interpreter, specify
+the script and resource paths explicitly; the executable review does **not** bind
+scripts, shared libraries, configuration or other files it loads. Rocket never
+falls back to launching an unverified original if preparation fails.
 
 **Stop** immediately shows Stopping and requests termination of the owned process
 tree. Rocket retains the worktree and any changes. Select **Review changes** to
