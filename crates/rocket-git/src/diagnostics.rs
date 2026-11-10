@@ -967,6 +967,7 @@ fn operation_label(value: &str) -> &'static str {
         "terminal_stop",
         "terminal_exit",
         "agent-session-preview", "agent-session-start", "agent-session-remove",
+        "agent-session-changes", "agent-session-diff",
         "agent_start_requested", "agent_setup_started", "agent_setup_succeeded",
         "agent_started", "agent_start_failed", "agent_stop_requested",
         "agent_stopped", "agent_exited", "agent_worktree_removed",
@@ -1501,7 +1502,7 @@ mod tests {
     fn agent_operations_keep_lifecycle_labels_but_never_payloads() {
         let directory=Directory::new();
         let log=directory.log();
-        let operations=["agent-session-preview","agent-session-start","agent-session-remove","agent_start_requested","agent_setup_started","agent_setup_succeeded","agent_started","agent_start_failed","agent_stop_requested","agent_stopped","agent_exited","agent_worktree_removed"];
+        let operations=["agent-session-changes","agent-session-diff","agent-session-preview","agent-session-start","agent-session-remove","agent_start_requested","agent_setup_started","agent_setup_succeeded","agent_started","agent_start_failed","agent_stop_requested","agent_stopped","agent_exited","agent_worktree_removed"];
         for operation in operations {
             let result:Result<()>=log.request(operation,|_|Err(Error::InvalidInput("PRIVATE_PROGRAM PRIVATE_ARGUMENT PRIVATE_OUTPUT".into())));
             assert!(result.is_err());

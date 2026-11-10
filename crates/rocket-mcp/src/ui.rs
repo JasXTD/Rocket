@@ -542,8 +542,14 @@ impl Ui {
         state["ci"] = ci_state(&self.app);
         state["actions"] = actions_state(&self.app);
         state["agents"] = json!({"selected":self.app.agents.selected,"busy":self.app.agents.working(),"notice":self.app.agents.notice,
+            "pane":format!("{:?}",self.app.agents.pane),"filter":format!("{:?}",self.app.agents.filter),
+            "changes":{"owner":self.app.agents.changes.owner.as_ref().map(|r|r.id),"busy":self.app.agents.changes.busy(),"loading":self.app.agents.changes.loading(),"stopping":self.app.agents.changes.stopping,
+                "selected":self.app.agents.changes.selected,"loaded":self.app.agents.changes.loaded.is_some(),"error":self.app.agents.changes.error,"notice":self.app.agents.changes.notice,
+                "files":self.app.agents.changes.loaded.as_ref().map(|s|s.files.iter().enumerate().map(|(i,f)|json!({"index":i,"area":f.area.label(),"path":self.policy.private_state_allowed().then(||String::from_utf8_lossy(f.path.as_bytes()))})).collect::<Vec<_>>()),
+                "patch":if self.policy.private_state_allowed(){self.app.agents.changes.patch.as_ref().map(|p|bounded_agent_tail(p.files.iter().flat_map(|f|f.lines.iter()).take(200).map(|l|l.text.clone()).collect::<Vec<_>>().join("\n")))}else{None}},
             "form":self.app.agents.form.as_ref().map(|f|json!({"mode":format!("{:?}",f.mode),"reading":f.task.is_some(),"reviewed":f.plan.is_some(),"error":f.error})),
             "sessions":self.app.agents.sessions.iter().map(|s|json!({"id":s.record.id,"phase":s.phase.label(),"active":s.active(),"exit_code":s.exit_code,"error":s.error,
+                "activity":s.activity.iter().map(|e|e.phase.label()).collect::<Vec<_>>(),
                 "pid":s.terminal.as_ref().and_then(|t|t.status.pid),"closed":s.terminal.as_ref().map(|t|t.status.closed),
                 "tail":if self.policy.private_state_allowed(){s.terminal.as_ref().and_then(|t|t.session.snapshot(0)).map(|screen|bounded_agent_tail(screen.text()))}else{None}})).collect::<Vec<_>>()});
         state["ssh"] = ssh_state(&self.app);
@@ -699,7 +705,9 @@ impl Ui {
         Ok(())
     }
     fn input_terminal(&self)->Option<&rocket_ui::terminal::TerminalPane> {
-        if self.app.tab().is_some_and(|t|t.view==rocket_ui::app::View::Agents){self.app.agents.selected().and_then(|s|s.terminal.as_ref())}else{self.app.tab().and_then(|t|t.terminal.as_ref())}
+        if self.app.tab().is_some_and(|t|t.view==rocket_ui::app::View::Agents){
+            (self.app.agents.pane==rocket_ui::agents::Pane::Terminal && self.app.agents.form.is_none()).then(||self.app.agents.selected().and_then(|s|s.terminal.as_ref())).flatten()
+        }else{self.app.tab().and_then(|t|t.terminal.as_ref())}
     }
     /// Git Flow under MCP writes only branches in the fixture's marked namespace.
     fn gitflow_scope(&self, dialog: &rocket_ui::app::Dialog, path: &Path) -> Result<(), String> {
@@ -852,11 +860,15 @@ impl Ui {
             self.agent_record_allowed(&f.proposed())?;
             if let Some(p)=&f.plan {self.agent_record_allowed(&p.record)?;}
         }
-        if matches!(target,"agents-open"|"agents-remove"|"agents-restart"|"agents-stop"|"agents-forget") {
+        if matches!(target,"agents-open"|"agents-remove"|"agents-restart"|"agents-stop"|"agents-forget"|"agents-tab-changes"|"agents-refresh"|"agents-read-stop") || target.starts_with("agents-change-") {
             self.agent_record_allowed(&self.app.agents.selected().ok_or("Select an agent fixture")?.record)?;
         }
         if target.starts_with("agents-") {
-            if tab.view!=rocket_ui::app::View::Agents || self.app.blocking_dialog() {
+            if self.app.agents.pane==rocket_ui::agents::Pane::Changes
+                && let Some(id)=target.strip_prefix("agents-session-").and_then(|id|id.parse::<u64>().ok()) {
+                self.agent_record_allowed(&self.app.agents.sessions.iter().find(|s|s.record.id==id).ok_or("Select an agent fixture")?.record)?;
+            }
+            if tab.view!=rocket_ui::app::View::Agents || self.app.blocking_dialog_except_agents() {
                 return Err("Open Agents and dismiss the active dialog before using session controls".into());
             }
             let control=self.app.frame_widgets.get(target).ok_or("Agent control is not visible")?;
@@ -2109,6 +2121,7 @@ impl Ui {
                         | "page-details-scroll"
                         | "hosting-scroll"
                         | "agents-scroll"
+                        | "agents-list-scroll" | "agents-changes-scroll" | "agents-diff-scroll" | "agents-details-scroll"
                         | "int-panel-scroll"
                         | "int-play-code-scroll" | "int-play-preview-scroll" | "conflict-ai-scroll"
                         | "int-review-scroll" | "int-package-scroll" | "int-package-code-scroll"
@@ -2315,6 +2328,7 @@ impl Ui {
                             | "workflow-message"
                             | "terminal-command"
                             | "agents-name" | "agents-base" | "agents-branch" | "agents-destination"
+                            | "agents-search"
                             | "agents-program" | "agents-arguments" | "agents-setup-program" | "agents-setup-arguments"
                             | "commit-filter"
                             | "dialog-remote-name"

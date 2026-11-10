@@ -1,5 +1,6 @@
 //! Managed local processes in separate Git worktrees. No agent installation,
 //! permission bypass, automatic merge or background relaunch.
+pub mod changes;
 mod localization;
 pub mod model;
 pub mod runtime;
@@ -14,7 +15,31 @@ use eframe::egui::Context;
 use model::*;
 use rocket_git::{ReadTask, Result, WriteTask};
 use runtime::*;
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    collections::VecDeque,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Pane {
+    #[default]
+    Terminal,
+    Changes,
+    Details,
+}
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Filter {
+    #[default]
+    All,
+    Active,
+    Finished,
+}
+pub struct Activity {
+    pub phase: Phase,
+    pub at: Instant,
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Phase {
@@ -55,6 +80,9 @@ pub struct Session {
     observing: bool,
     setup_process: bool,
     pub exit_code: Option<u32>,
+    pub activity: VecDeque<Activity>,
+    started: Option<Instant>,
+    elapsed: Option<Duration>,
 }
 impl Session {
     fn restored(record: Record) -> Self {
@@ -70,6 +98,12 @@ impl Session {
             observing: false,
             setup_process: false,
             exit_code: None,
+            activity: VecDeque::from([Activity {
+                phase: Phase::Restored,
+                at: Instant::now(),
+            }]),
+            started: None,
+            elapsed: None,
         }
     }
     pub fn active(&self) -> bool {
@@ -92,9 +126,29 @@ impl Session {
             t.stop();
         }
         self.phase = Phase::Stopping;
+        self.observe_phase();
     }
     pub fn terminal_id(&self) -> u64 {
         self.record.id | (1 << 63)
+    }
+    pub fn elapsed(&self) -> Option<Duration> {
+        self.elapsed.or_else(|| self.started.map(|at| at.elapsed()))
+    }
+    fn observe_phase(&mut self) {
+        if self.activity.back().is_none_or(|a| a.phase != self.phase) {
+            if self.activity.len() == 32 {
+                self.activity.pop_front();
+            }
+            self.activity.push_back(Activity {
+                phase: self.phase,
+                at: Instant::now(),
+            });
+        }
+        if matches!(self.phase, Phase::Stopped | Phase::Exited | Phase::Failed)
+            && self.elapsed.is_none()
+        {
+            self.elapsed = self.started.map(|at| at.elapsed());
+        }
     }
 }
 pub struct Form {
@@ -122,9 +176,16 @@ pub struct State {
     pub selected: Option<u64>,
     pub form: Option<Form>,
     pub notice: Option<String>,
+    pub pane: Pane,
+    pub filter: Filter,
+    pub search: String,
+    pub changes: changes::State,
 }
 impl State {
     pub fn load(&mut self, records: Vec<Record>) {
+        self.changes = changes::State::default();
+        self.pane = Pane::Terminal;
+        self.form = None;
         self.sessions = records.into_iter().map(Session::restored).collect();
         self.selected = self.sessions.first().map(|s| s.record.id);
     }
@@ -142,8 +203,10 @@ impl State {
     pub fn working(&self) -> bool {
         self.form.as_ref().is_some_and(|f| f.task.is_some())
             || self.sessions.iter().any(|s| s.job.is_some() || s.pending)
+            || self.changes.busy()
     }
     pub fn stop_all(&mut self) {
+        self.changes.suspend();
         if let Some(f) = &self.form
             && let Some(t) = &f.task
         {
@@ -259,7 +322,11 @@ impl State {
                     "Remove a saved session before creating another.",
                 ));
             }
-            self.sessions.push(Session::restored(plan.record.clone()));
+            let mut session = Session::restored(plan.record.clone());
+            // A new record was never restored from disk. Its first observed
+            // event is Saving below; restored sessions keep their real event.
+            session.activity.clear();
+            self.sessions.push(session);
         }
         let s = self
             .sessions
@@ -273,7 +340,13 @@ impl State {
         s.error = None;
         s.exit_code = None;
         s.phase = Phase::Saving;
+        s.started = Some(Instant::now());
+        s.elapsed = None;
+        s.observe_phase();
         self.selected = Some(s.record.id);
+        self.pane = Pane::Terminal;
+        self.filter = Filter::All;
+        self.search.clear();
         self.form = None;
         Ok(())
     }
@@ -344,7 +417,12 @@ impl State {
                 }
             }
             if let Some(t) = &mut s.terminal {
-                t.poll(visible && Some(s.record.id) == self.selected);
+                t.poll(
+                    visible
+                        && self.pane == Pane::Terminal
+                        && self.form.is_none()
+                        && Some(s.record.id) == self.selected,
+                );
                 t.events.clear(); // Agent diagnostics intentionally exclude input and output.
                 if s.observing && s.phase == Phase::Starting && t.status.running {
                     s.phase = if s.setup_process {
@@ -429,9 +507,22 @@ impl State {
                 }
             }
         }
+        for s in &mut self.sessions {
+            s.observe_phase();
+        }
         self.sessions.retain(|s| !removed.contains(&s.record.id));
         if self.selected.is_some_and(|id| removed.contains(&id)) {
             self.selected = self.sessions.first().map(|s| s.record.id);
+        }
+        if visible && self.form.is_none() && self.pane == Pane::Changes {
+            if let Some(record) = self.selected().map(|s| s.record.clone()) {
+                self.changes.select_owner(&record);
+                self.changes.poll(backend, ctx);
+            } else {
+                self.changes = changes::State::default();
+            }
+        } else {
+            self.changes.suspend();
         }
         if self.working() || self.active() {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));

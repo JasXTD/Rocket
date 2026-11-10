@@ -3,6 +3,8 @@
 use crate::i18n::mark;
 
 const _: &[&str] = &[
+    mark("Saved session. No process was restarted. Review the worktree and executable before running again."),
+    mark("Saving session before starting any command."),
     mark("New session"),
     mark("Review changes"),
     mark("Stop"),
@@ -38,4 +40,24 @@ const _: &[&str] = &[
     mark("Failed"),
     mark("Setup"),
     mark("Worktree removed. The branch and recovery reference are kept."),
+    mark("Type in this session…"),
+    mark("Find sessions"),
+    mark("Active sessions"),
+    mark("Inactive sessions"),
+    mark("No matching sessions"),
+    mark("No terminal output yet"),
+    mark("Session activity"),
+    mark("Time since each event; current app session only."),
+    mark("Read cancelled. Refresh to check for newer changes."),
+    mark("Loading changes"),
+    mark("Refresh to load changes"),
+    mark("Showing the first 2,000 changes. Open the worktree to review more."),
+    mark("Worktree is clean"),
+    mark("Loading diff"),
+    mark("Select a file to view its diff"),
+    mark("Diff preview is limited. Open the worktree to review more."),
+    mark("No text diff. Open the worktree for full review."),
+    mark("Elapsed"),
+    mark("Exit code"),
+    mark("Conflicted"),
 ];

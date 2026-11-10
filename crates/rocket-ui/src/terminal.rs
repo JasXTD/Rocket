@@ -121,6 +121,12 @@ impl TerminalPane {
     /// The screen with the command line under it. The session's state and actions are in
     /// the drawer header (`Rocket::terminal_actions`).
     pub(crate) fn show(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, closing: bool) -> Option<PaneAction> {
+        self.show_with_input(ui, id, widgets, closing, false)
+    }
+    pub(crate) fn show_agent(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, closing: bool) -> Option<PaneAction> {
+        self.show_with_input(ui, id, widgets, closing, true)
+    }
+    fn show_with_input(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, closing: bool, agent: bool) -> Option<PaneAction> {
         let running = self.status.running && !closing;
         let failure = self.failure();
         // A session that never ran says why below, in place of its screen.
@@ -142,12 +148,12 @@ impl TerminalPane {
                 }
             })
             .inner;
-        self.command_line(ui, id, widgets, running);
+        self.command_line(ui, id, widgets, running, agent);
         action
     }
 
     /// A line for the shell, sent with Enter or Send.
-    fn command_line(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, running: bool) {
+    fn command_line(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, running: bool, agent: bool) {
         const SEND: f32 = 64.0;
         // A single-line TextEdit consumes Enter as it surrenders focus.
         // Capture ownership before drawing it: lost_focus() can still be
@@ -173,8 +179,10 @@ impl TerminalPane {
                     // outline, so the box is exactly as tall as Send.
                     ui.spacing_mut().interact_size.y = CONTROL - 2.0;
                     ui.horizontal(|ui| {
-                        let (mark, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
-                        icon(ui.painter(), mark, Icon::Prompt, if running { MUTED() } else { FAINT() });
+                        if !agent {
+                            let (mark, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+                            icon(ui.painter(), mark, Icon::Prompt, if running { MUTED() } else { FAINT() });
+                        }
                         ui.add_enabled(
                             running,
                             TextEdit::singleline(&mut self.command)
@@ -184,7 +192,7 @@ impl TerminalPane {
                                 .vertical_align(Align::Center)
                                 .min_size(vec2(0.0, CONTROL - 2.0))
                                 .desired_width(ui.available_width())
-                                .hint_text("Command or input · Enter to send"),
+                                .hint_text(if agent { crate::i18n::tr("Type in this session…") } else { crate::i18n::tr("Command or input · Enter to send") }),
                         )
                     })
                     .inner
@@ -573,7 +581,7 @@ impl Rocket {
     }
     /// A collapsed drawer does not draw the screen, so it cannot hold the keyboard.
     pub(crate) fn terminal_focused(&self, ctx: &Context) -> bool {
-        if self.tab().is_some_and(|t|t.view==crate::app::View::Agents) && let Some(s)=self.agents.selected() {
+        if self.tab().is_some_and(|t|t.view==crate::app::View::Agents) && self.agents.pane==crate::agents::Pane::Terminal && self.agents.form.is_none() && let Some(s)=self.agents.selected() {
             return ctx.memory(|m|m.has_focus(screen_id(s.terminal_id()))||m.has_focus(command_id(s.terminal_id())));
         }
         self.show_terminal
@@ -583,7 +591,7 @@ impl Rocket {
             })
     }
     pub fn terminal_screen_focused(&self) -> bool {
-        if self.tab().is_some_and(|t|t.view==crate::app::View::Agents) && let Some(s)=self.agents.selected() {
+        if self.tab().is_some_and(|t|t.view==crate::app::View::Agents) && self.agents.pane==crate::agents::Pane::Terminal && self.agents.form.is_none() && let Some(s)=self.agents.selected() {
             return self.context.memory(|m|m.has_focus(screen_id(s.terminal_id())));
         }
         self.show_terminal

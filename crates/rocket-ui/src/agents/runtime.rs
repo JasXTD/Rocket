@@ -80,7 +80,11 @@ pub struct Plan {
     pub program: Option<Program>,
     pub setup: Option<Program>,
 }
-fn entry(repo: &Repository, record: &Record, cancel: &CancellationToken) -> Result<WorktreeEntry> {
+pub(super) fn entry(
+    repo: &Repository,
+    record: &Record,
+    cancel: &CancellationToken,
+) -> Result<WorktreeEntry> {
     let destination = record
         .destination
         .canonicalize()
