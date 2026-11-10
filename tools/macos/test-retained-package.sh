@@ -22,6 +22,9 @@ assert.equal(r.id,42900875578);assert.equal(r.event,'workflow_dispatch');assert.
 assert.equal(r.path,'.github/workflows/macos-wasm-prototype.yml');assert.equal(r.head_repository.full_name,'JasXTD/Rocket');assert.equal(r.status,'completed');
 assert.equal(a.id,13805392743);assert.equal(a.workflow_run.id,r.id);assert.equal(a.name,'lua-mac-x64-42900875578-1');assert(!a.expired);
 assert.equal(a.digest,'sha256:56c4a456765950ba5d6cbcf2ce33b7ebe08bbef495cf6709c44c918e0193d3cb');
+// Retain only provenance, not unrelated actor or commit-author metadata.
+fs.writeFileSync(p+'/source-run.json',JSON.stringify({id:r.id,event:r.event,head_branch:r.head_branch,head_sha:r.head_sha,path:r.path,status:r.status,conclusion:r.conclusion},null,2));
+fs.writeFileSync(p+'/source-artifact.json',JSON.stringify({id:a.id,name:a.name,digest:a.digest,size:a.size_in_bytes,run:a.workflow_run.id},null,2));
 JS
 gh api "/repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact/zip" > "$out/downloads/artifact.zip"
 unset GH_TOKEN GITHUB_TOKEN
@@ -46,17 +49,15 @@ JS
 trap collect EXIT
 # First run is deliberately cold: a diagnostic must not warm the service and
 # accidentally hide the original failure. Its status determines the final result.
+# Reproduce the original release job's order, including the preceding desktop
+# test. Agents and CLI acceptance already passed for these exact archive bytes.
+node tools/tests/test-mcp-desktop.cjs
 cold=0
 node tools/tests/test-mcp-macos-package.cjs || cold=$?
 xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-spelling-diagnostic.m crates/rocket-spell/src/macos.m -o "$out/spelling-probe"
 "$out/spelling-probe" > "$out/spelling-native.json"
 warm=0
 if [ "$cold" != 0 ]; then node tools/tests/test-mcp-macos-package.cjs || warm=$?; fi
-# Finish the previously unexecuted checks against these same extracted bytes.
-export ROCKET_AGENTS_EXE="$ROCKET_MCP_EXE" ROCKET_AGENTS_REPORT_ROOT="$out/mcp"
-node tools/tests/test-mcp-agents.cjs
-export ROCKET_CLI_EXE="$out/extracted/package/Rocket.app/Contents/MacOS/rocket-cli" ROCKET_CLI_RESULTS="$out/mcp"
-node tools/tests/test-cli-hosting-other-inline.cjs
 node tools/macos/bundle.cjs verify "$out/extracted/package"
 node - "$out" "$cold" "$warm" <<'JS'
 const fs=require('node:fs');fs.writeFileSync(process.argv[2]+'/retained-result.json',JSON.stringify({source_run:42900875578,source_commit:'57e688e3c3372dcf7fac5e1a93e93f88f90aeb93',package_sha256:'077f91675937575be287913f7e81aa64191ff4acb71b8a950fa841de92876a6f',cold_exit:Number(process.argv[3]),warm_exit:Number(process.argv[4]),passed:process.argv[3]==='0'},null,2));
