@@ -83,7 +83,7 @@ fn author(j: &Json, p: ForgeProvider) -> String {
         512,
     )
 }
-fn identity(j: &Json, p: ForgeProvider) -> Option<String> {
+pub(super) fn identity(j: &Json, p: ForgeProvider) -> Option<String> {
     let key = match p {
         ForgeProvider::GitLab => "username",
         ForgeProvider::Bitbucket => "uuid",
@@ -201,7 +201,7 @@ fn commit(j: &Json, p: ForgeProvider) -> Option<ForgePullCommit> {
         author: bounded(name, 512),
     })
 }
-fn note(j: &Json, p: ForgeProvider) -> Option<ForgePullComment> {
+pub(super) fn note(j: &Json, p: ForgeProvider) -> Option<ForgePullComment> {
     let user = match p {
         ForgeProvider::Bitbucket | ForgeProvider::Gitea => j.get("user"),
         _ => j.get("author"),
@@ -229,7 +229,7 @@ fn note(j: &Json, p: ForgeProvider) -> Option<ForgePullComment> {
     })
 }
 impl ForgeSession {
-    fn provider_path(&self, repo: &ForgeRepository, n: u64) -> Result<String> {
+    pub(super) fn provider_path(&self, repo: &ForgeRepository, n: u64) -> Result<String> {
         self.check_repository(repo)?;
         if n == 0 || n > i32::MAX as u64 {
             return Err(invalid("Select a valid pull request."));
@@ -250,7 +250,7 @@ impl ForgeSession {
         };
         Ok(format!("{prefix}/{noun}/{n}"))
     }
-    fn versioned(&self, path: &str) -> String {
+    pub(super) fn versioned(&self, path: &str) -> String {
         if self.config.provider().is_azure() {
             format!(
                 "{path}{}api-version={}",

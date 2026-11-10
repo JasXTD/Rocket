@@ -1,0 +1,8 @@
+{
+  "Created by Xetro": "Автор: Xetro",
+  "Version {version} · a native Rust Git workspace": "Версия {version} · нативная рабочая среда Git на Rust",
+  "Free and open-source software under the {license} license.": "Свободное ПО с открытым исходным кодом под лицензией {license}.",
+  "What changed in each Rocket build.": "Что изменилось в каждой сборке Rocket.",
+  "{version} · this build": "{version} · эта сборка",
+  "This build": "Эта сборка"
+}

@@ -113,29 +113,41 @@ window open and resolve the file conflict before **Retry saving draft**.
 ## Connect a service
 
 Enable **Jira**, then set your Jira Cloud HTTPS server, authentication and project key on its
-connection. Jira API tokens commonly
+connection. Jira account API tokens
 use **Identifier + token**; enter the account identifier locally. A classic API token uses your
 site, such as `https://yoursite.atlassian.net`, and leaves **Cloud ID for scoped tokens** empty.
 A token created with scopes only works through Atlassian's gateway: set the server to
 `https://api.atlassian.com` and the Cloud ID to your site's ID, which
 `https://yoursite.atlassian.net/_edge/tenant_info` shows while you're signed in. Give it the
-Jira scopes `read:jira-work` and `write:jira-work`. Jira shows your issues beside
+Jira scopes `read:jira-work` and `write:jira-work`; scopes do not replace the account's project
+and issue permissions. See Atlassian's
+[API-token authentication guide](https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/).
+Jira shows your issues beside
 the one you choose. One search box takes an issue key, words or JQL, and **My issues**, **Project**,
 **This week** and **This branch** switch the list. An issue shows its description and comments,
 with **Move to**, **Edit** and **Add a comment**. These use Jira Cloud's
 [search API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issue-search/)
 and [issue/edit/transition API](https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-issues/).
-It has been checked against mock APIs, not a real Jira account.
+The bundled API contract was reviewed against Atlassian's documentation on 2026-11-10.
+Isolated tests use synthetic responses, not a real Jira account. Tenant permissions,
+token scopes, custom field configurations and workflow validators still require real-account
+acceptance. Search can lag recent writes; inspect the issue itself when checking an uncertain
+result. An empty search is not proof that a write failed.
 
 **Edit** reads the project's edit metadata. Existing rich descriptions stay unchanged unless
 **Replace the description** is selected; an empty replacement clears
 the description. Edits and moves require an update marker. Rocket rereads it
 before review and send, stopping if the service changed. **Reload** in the edit form reads the new
 details and keeps your edit fields, so review them before overwriting newer values.
-This check is not atomic with Jira's write.
+This check is not atomic with Jira's write and does not detect every workflow or permission
+change. Jira can still reject a request after review.
 
-**Create issue** lists the project's issue types and checks required fields when you review it,
-naming any it can't fill. Moves that need extra fields are left out. Use Jira or
+**Create issue** lists up to 32 non-subtask issue types and warns when the list is incomplete.
+It checks required fields when you review it, following Jira's returned pagination even when
+the server returns fewer fields than requested. It reads at most four metadata pages of up to
+50 entries each and blocks creation if it cannot finish the check. Required Description must
+be filled; other required fields without defaults are named when the form cannot supply them.
+Moves that need extra fields are left out. Use Jira or
 extend the script for those fields and screens. Search displays 25 results per page,
 up to 20 pages; refine the query beyond that limit. Description previews and
 move lists are bounded. A Jira folder from an earlier **Add Jira example** counts as the

@@ -45,7 +45,7 @@ struct Listed {
 impl State {
     /// Every key once: the SSH folder's in name order, then Rocket's others.
     fn listed(&self) -> Vec<Listed> {
-        let folder = format!("in {}", file_name(&self.scan_directory));
+        let folder = crate::i18n::trf!("in {folder}", folder = file_name(&self.scan_directory));
         let mut taken = vec![false; self.profiles.len()];
         let mut keys: Vec<Listed> = Vec::new();
         for (i, k) in self.discovery.iter().flat_map(|d| &d.keys).enumerate() {
@@ -73,12 +73,12 @@ impl State {
                 continue;
             }
             let entry = if under(&p.key, &self.root) {
-                self.profile_entry(j, p.alias.clone(), "made by Rocket")
+                self.profile_entry(j, p.alias.clone(), crate::i18n::tr("made by Rocket"))
             } else {
                 // A second profile for a listed key is told apart by its alias.
                 let name = file_name(&p.key);
                 let name = if keys.iter().any(|k| k.name == name) { p.alias.clone() } else { name };
-                let place = format!("in {}", p.key.parent().map(file_name).unwrap_or_default());
+                let place = crate::i18n::trf!("in {folder}", folder = p.key.parent().map(file_name).unwrap_or_default());
                 self.profile_entry(j, name, &place)
             };
             keys.push(entry);
@@ -89,7 +89,7 @@ impl State {
     fn profile_entry(&self, j: usize, name: String, place: &str) -> Listed {
         let p = &self.profiles[j];
         let kind = kind_label(p.public_key.split_whitespace().next().unwrap_or_default());
-        let passphrase = if p.encrypted { " · passphrase" } else { "" };
+        let passphrase = if p.encrypted { crate::i18n::tr(" · passphrase") } else { "" };
         Listed {
             source: Source::Profile(j),
             name,
@@ -155,7 +155,7 @@ impl Rocket {
         ui.spacing_mut().item_spacing.y = 10.0;
         if !s.enabled {
             messages(ui, s);
-            pages::callout(ui, RED(), "SSH management requires a marked disposable fixture in this MCP window.");
+            pages::callout(ui, RED(), crate::i18n::tr("SSH management requires a marked disposable fixture in this MCP window."));
             return;
         }
         let keys = s.listed();
@@ -175,7 +175,7 @@ impl Rocket {
             if s.loaded {
                 empty_state(ui, s, widgets, &repository, busy, &mut out);
             } else if busy {
-                pages::loading(ui, "Looking for SSH keys");
+                pages::loading(ui, crate::i18n::tr("Looking for SSH keys"));
             }
         } else if ui.available_width() >= 620.0 {
             // The list beside the chosen key, together as tall as the page.
@@ -261,19 +261,18 @@ fn status_row(ui: &mut Ui, s: &State, widgets: &mut HashMap<String, UiControl>, 
                 if s.loaded {
                     if s.agent_running {
                         let text = match s.loaded_keys.len() {
-                            0 => "ssh-agent running".to_owned(),
-                            1 => "ssh-agent running · 1 key unlocked".to_owned(),
-                            n => format!("ssh-agent running · {n} keys unlocked"),
+                            0 => crate::i18n::tr("ssh-agent running").to_owned(),
+                            n => crate::i18n::trf!("ssh-agent running · unlocked keys: {count}", count = n),
                         };
                         pages::pill(ui, &text, GREEN());
                     } else {
-                        pages::pill(ui, "ssh-agent isn't running", AMBER());
-                        ui.label(RichText::new("Direct key mode works without it.").size(12.0).color(HINT()));
+                        pages::pill(ui, crate::i18n::tr("ssh-agent isn't running"), AMBER());
+                        ui.label(RichText::new(crate::i18n::tr("Direct key mode works without it.")).size(12.0).color(HINT()));
                     }
                 }
             },
         );
-        let r = pages::tool(ui, Icon::Refresh, "Rescan", !busy);
+        let r = pages::tool(ui, Icon::Refresh, crate::i18n::tr("Rescan"), !busy);
         control(widgets, "ssh-scan", &r, ui.clip_rect());
         if r.clicked() {
             out.action = Some("scan");
@@ -283,11 +282,11 @@ fn status_row(ui: &mut Ui, s: &State, widgets: &mut HashMap<String, UiControl>, 
         ui.horizontal_wrapped(|ui| {
             ui.add(Spinner::new().size(14.0));
             let text = if s.stopping {
-                "Stopping OpenSSH and checking the result"
+                crate::i18n::tr("Stopping OpenSSH and checking the result")
             } else if matches!(s.operation, "ssh-list" | "ssh-discover") {
-                "Looking for keys"
+                crate::i18n::tr("Looking for keys")
             } else {
-                "Working. OpenSSH may ask for a passphrase."
+                crate::i18n::tr("Working. OpenSSH may ask for a passphrase.")
             };
             ui.label(RichText::new(text).size(12.5).color(MUTED()));
         });
@@ -300,7 +299,7 @@ fn messages(ui: &mut Ui, s: &State) {
         pages::callout(
             ui,
             AMBER(),
-            &format!("{} invalid or incomplete profile folders were left as they are.", s.invalid),
+            &crate::i18n::trf!("Invalid or incomplete profile folders left unchanged: {count}.", count = s.invalid),
         );
     }
     if let Some(e) = &s.error {
@@ -319,11 +318,10 @@ fn messages(ui: &mut Ui, s: &State) {
     };
     match d.skipped {
         0 => {}
-        1 => line(format!("1 file in {folder} was skipped: an incomplete, unreadable or unsupported key pair.")),
-        n => line(format!("{n} files in {folder} were skipped: incomplete, unreadable or unsupported key pairs.")),
+        n => line(crate::i18n::trf!("Skipped files in {folder}: {count}. Key pairs were incomplete, unreadable or unsupported.", folder, count = n)),
     }
     if d.truncated {
-        line("Scan limit reached. Use Add key file for a key that isn't listed.".into());
+        line(crate::i18n::tr("Scan limit reached. Use Add key file for a key that isn't listed.").into());
     }
 }
 
@@ -395,7 +393,7 @@ fn list_card(
         painter.text(
             pos2(bar.left() + 12.0, bar.center().y),
             Align2::LEFT_CENTER,
-            format!("KEYS · {}", keys.len()),
+            crate::i18n::trf!("KEYS · {count}", count = keys.len()),
             semibold(11.0),
             FAINT(),
         );
@@ -421,7 +419,7 @@ fn list_card(
                 if keys.is_empty() {
                     ui.add_space(16.0);
                     ui.vertical_centered(|ui| {
-                        ui.label(RichText::new("No keys yet").size(12.5).color(HINT()));
+                        ui.label(RichText::new(crate::i18n::tr("No keys yet")).size(12.5).color(HINT()));
                     });
                 }
                 let chosen = s.source();
@@ -455,9 +453,9 @@ fn list_card(
         );
         row.spacing_mut().item_spacing.x = 8.0;
         let half = (row.available_width() - 8.0) / 2.0;
-        let new = icon_btn(&mut row, Icon::Plus, "New key", !busy, false, half);
+        let new = icon_btn(&mut row, Icon::Plus, crate::i18n::tr("New key"), !busy, false, half);
         control(widgets, "ssh-new", &new, row.clip_rect());
-        let file = row.add_enabled(!busy, Button::new("Add key file").min_size(vec2(half, 28.0)));
+        let file = row.add_enabled(!busy, Button::new(crate::i18n::tr("Add key file")).min_size(vec2(half, 28.0)));
         // Add key file keeps the name of the "Use an existing private key" box it replaces.
         control(widgets, "ssh-existing-toggle", &file, row.clip_rect());
         if new.clicked() {
@@ -504,7 +502,7 @@ fn key_row(ui: &mut Ui, k: &Listed, selected: bool, unlocked: bool, can_tick: bo
     clipped_text(ui, Rect::from_min_max(pos2(left, rect.top() + 8.0), pos2(right, rect.center().y + 1.0)), &k.name, 13.0, TEXT());
     clipped_text(ui, Rect::from_min_max(pos2(left, rect.center().y + 1.0), pos2(right, rect.bottom() - 7.0)), &k.detail, 12.0, HINT());
     row.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, &k.name));
-    tick.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, can_tick, unlocked, "Unlocked in ssh-agent"));
+    tick.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, can_tick, unlocked, crate::i18n::tr("Unlocked in ssh-agent")));
     (row, tick)
 }
 
@@ -546,7 +544,7 @@ fn right_side(
         if s.creating {
             ui.add_enabled_ui(false, |ui| form_card(ui, s, widgets, repository, out));
         }
-        let name = chosen.map_or("the key", |k| k.name.as_str());
+        let name = chosen.map_or(crate::i18n::tr("the key"), |k| k.name.as_str());
         prompt_card(ui, s, widgets, prompt, name);
     } else if s.preview.is_some() {
         review_card(ui, s, widgets, chosen, repository, out);
@@ -570,16 +568,16 @@ fn key_card(
 ) {
     card(ui, height, |ui| {
         let kind = match k.encrypted {
-            Some(true) => format!("{} · passphrase", k.kind),
-            Some(false) => format!("{} · no passphrase", k.kind),
+            Some(true) => crate::i18n::trf!("{kind} · passphrase", kind = k.kind),
+            Some(false) => crate::i18n::trf!("{kind} · no passphrase", kind = k.kind),
             None => k.kind.clone(),
         };
         card_header(ui, Icon::Key, &k.name, &kind, |ui| {
             if s.loaded && s.agent_running {
                 if s.loaded_keys.contains(&k.fingerprint) {
-                    pages::pill(ui, "In agent", GREEN());
+                    pages::pill(ui, crate::i18n::tr("In agent"), GREEN());
                 } else {
-                    pages::pill(ui, "Not in agent", HINT());
+                    pages::pill(ui, crate::i18n::tr("Not in agent"), HINT());
                 }
             }
         });
@@ -587,13 +585,16 @@ fn key_card(
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 10.0;
             let path = crate::views::display_path(&k.path);
-            if info_row(ui, widgets, "Location", &path, ("ssh-show-folder", Icon::Folder, crate::desktop::FOLDER_HINT)) {
+            let folder_hint = if cfg!(target_os = "macos") { crate::i18n::tr("Show in Finder") }
+                else if cfg!(windows) { crate::i18n::tr("Show in File Explorer") }
+                else { crate::i18n::tr("Show in file manager") };
+            if info_row(ui, widgets, crate::i18n::tr("Location"), &path, ("ssh-show-folder", Icon::Folder, folder_hint)) {
                 out.reveal = k.path.parent().map(Path::to_path_buf);
             }
-            if info_row(ui, widgets, "Fingerprint", &k.fingerprint, ("ssh-copy-fingerprint", Icon::Copy, "Copy fingerprint")) {
-                out.copy = Some((k.fingerprint.clone(), "Fingerprint copied."));
+            if info_row(ui, widgets, crate::i18n::tr("Fingerprint"), &k.fingerprint, ("ssh-copy-fingerprint", Icon::Copy, crate::i18n::tr("Copy fingerprint"))) {
+                out.copy = Some((k.fingerprint.clone(), crate::i18n::tr("Fingerprint copied.")));
             }
-            ui.label(RichText::new("Public key").size(12.0).color(HINT()));
+            ui.label(RichText::new(crate::i18n::tr("Public key")).size(12.0).color(HINT()));
             // Read-only, so it can be selected; an RSA key scrolls instead of growing.
             ScrollArea::vertical().id_salt("ssh-public-key").max_height(62.0).show(ui, |ui| {
                 let mut public = k.public_key.as_str();
@@ -606,36 +607,36 @@ fn key_card(
             });
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 12.0;
-                let r = icon_btn(ui, Icon::Copy, "Copy public key", true, true, 0.0);
+                let r = icon_btn(ui, Icon::Copy, crate::i18n::tr("Copy public key"), true, true, 0.0);
                 control(widgets, "ssh-copy", &r, ui.clip_rect());
                 if r.clicked() {
-                    out.copy = Some((k.public_key.clone(), "Public key copied. The private key was not copied."));
+                    out.copy = Some((k.public_key.clone(), crate::i18n::tr("Public key copied. The private key was not copied.")));
                 }
-                ui.add(Label::new(RichText::new("Paste it into your Git host's SSH key settings.").size(12.0).color(HINT())).truncate());
+                ui.add(Label::new(RichText::new(crate::i18n::tr("Paste it into your Git host's SSH key settings.")).size(12.0).color(HINT())).truncate());
             });
             ui.separator();
-            ui.label(RichText::new("Use this key through").font(semibold(13.0)));
+            ui.label(RichText::new(crate::i18n::tr("Use this key through")).font(semibold(13.0)));
             ui.horizontal_wrapped(|ui| {
-                for (id,label,mode) in [("ssh-mode-agent",if cfg!(windows) {"Windows agent"} else {"ssh-agent"},SshAuthentication::Agent),("ssh-mode-direct","Direct key",SshAuthentication::Direct)] {
+                for (id,label,mode) in [("ssh-mode-agent",if cfg!(windows) {crate::i18n::tr("Windows agent")} else {"ssh-agent"},SshAuthentication::Agent),("ssh-mode-direct",crate::i18n::tr("Direct key"),SshAuthentication::Direct)] {
                     let r=ui.selectable_value(&mut s.authentication,mode,label);
                     control(widgets,id,&r,ui.clip_rect());
                 }
             });
             if s.authentication==SshAuthentication::Direct {
-                ui.label(RichText::new("Uses this key directly. Unknown or changed host keys are rejected.").size(12.0).color(HINT()));
+                ui.label(RichText::new(crate::i18n::tr("Uses this key directly. Unknown or changed host keys are rejected.")).size(12.0).color(HINT()));
                 if let Some(p)=s.profile() {
                     let saved=p.passphrase_saved;
-                    let saved_text = if cfg!(windows) {"Passphrase saved with Windows user encryption."} else if cfg!(target_os="macos") {"Passphrase saved, encrypted with a key in your macOS Keychain."} else {"Passphrase saved, encrypted with a key in your desktop keyring."};
-                    ui.label(RichText::new(if saved {saved_text} else if p.encrypted {"Save this key's passphrase before using it directly."} else {"This key has no passphrase."}).size(12.0).color(if saved {GREEN()}else{HINT()}));
+                    let saved_text = if cfg!(windows) {crate::i18n::tr("Passphrase saved with Windows user encryption.")} else if cfg!(target_os="macos") {crate::i18n::tr("Passphrase saved, encrypted with a key in your macOS Keychain.")} else {crate::i18n::tr("Passphrase saved, encrypted with a key in your desktop keyring.")};
+                    ui.label(RichText::new(if saved {saved_text} else if p.encrypted {crate::i18n::tr("Save this key's passphrase before using it directly.")} else {crate::i18n::tr("This key has no passphrase.")}).size(12.0).color(if saved {GREEN()}else{HINT()}));
                     ui.horizontal_wrapped(|ui| {
-                        if btn(ui,widgets,"ssh-remember","Save passphrase",p.encrypted&&!saved){out.action=Some("remember");}
-                        if btn(ui,widgets,"ssh-forget","Forget passphrase",saved){out.action=Some("forget");}
+                        if btn(ui,widgets,"ssh-remember",crate::i18n::tr("Save passphrase"),p.encrypted&&!saved){out.action=Some("remember");}
+                        if btn(ui,widgets,"ssh-forget",crate::i18n::tr("Forget passphrase"),saved){out.action=Some("forget");}
                     });
                 } else {
-                    ui.label(RichText::new("First use the repository action below to set up this key's host profile.").size(12.0).color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("First use the repository action below to set up this key's host profile.")).size(12.0).color(HINT()));
                 }
             } else {
-                ui.label(RichText::new(if cfg!(windows) {"The key's tick controls Windows ssh-agent. Rocket does not save its passphrase in this mode."} else {"The key's tick controls ssh-agent. Rocket does not save its passphrase in this mode."}).size(12.0).color(HINT()));
+                ui.label(RichText::new(if cfg!(windows) {crate::i18n::tr("The key's tick controls Windows ssh-agent. Rocket does not save its passphrase in this mode.")} else {crate::i18n::tr("The key's tick controls ssh-agent. Rocket does not save its passphrase in this mode.")}).size(12.0).color(HINT()));
             }
             // The repository box sits at the card's foot when the card fills the page. Its
             // buttons go beside the repository when they fit, otherwise under it.
@@ -680,13 +681,13 @@ fn buttons_beside(ui: &Ui, k: &Listed) -> Option<f32> {
         ui.painter().layout_no_wrap(text.to_owned(), FontId::proportional(size), TEXT()).size().x
     };
     // A button pads its label by 10 points a side; buttons are 8 apart.
-    let mut buttons = width("Use only this key", 13.0) + 20.0;
+    let mut buttons = width(crate::i18n::tr("Use only this key"), 13.0) + 20.0;
     if let Source::Profile(_) = k.source {
-        buttons += 8.0 + width("Check settings", 13.0) + 20.0;
+        buttons += 8.0 + width(crate::i18n::tr("Check settings"), 13.0) + 20.0;
     }
     // The box's margins and edge take 26 points, the gap before the buttons 16.
     let room = ui.available_width() - 26.0 - 16.0;
-    (room >= width("Restore previous setting", 12.0) + buttons).then_some(buttons)
+    (room >= width(crate::i18n::tr("Restore previous setting"), 12.0) + buttons).then_some(buttons)
 }
 
 /// The open repository and this key: Use only this key, Check settings, Restore.
@@ -702,24 +703,24 @@ fn repository_box(
 ) {
     let about = |ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, out: &mut Out| {
         ui.spacing_mut().item_spacing.y = 2.0;
-        ui.label(RichText::new("THIS REPOSITORY").font(semibold(11.0)).color(FAINT()));
+        ui.label(RichText::new(crate::i18n::tr("THIS REPOSITORY")).font(semibold(11.0)).color(FAINT()));
         match repository {
             Some(name) => {
                 ui.add(Label::new(RichText::new(name).size(13.0)).truncate());
-                let r = restore_link(ui, "Restore previous setting", true);
+                let r = restore_link(ui, crate::i18n::tr("Restore previous setting"), true);
                 control(widgets, "ssh-restore", &r, ui.clip_rect());
                 if r.clicked() {
                     out.action = Some("restore");
                 }
             }
             None => {
-                ui.add(Label::new(RichText::new("Open a repository to use only this key with it.").size(12.5).color(HINT())).wrap());
+                ui.add(Label::new(RichText::new(crate::i18n::tr("Open a repository to use only this key with it.")).size(12.5).color(HINT())).wrap());
             }
         }
     };
     let buttons = |ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, out: &mut Out| {
         ui.spacing_mut().item_spacing.x = 8.0;
-        if btn(ui, widgets, "ssh-review", "Use only this key", s.loaded && repository.is_some()) {
+        if btn(ui, widgets, "ssh-review", crate::i18n::tr("Use only this key"), s.loaded && repository.is_some()) {
             match k.source {
                 Source::Profile(_) => out.action = Some("review"),
                 Source::Found(i) => out.form = Some(Form::Use(i)),
@@ -727,7 +728,7 @@ fn repository_box(
         }
         // `ssh -G` reads the profile's settings; it doesn't connect.
         if let Source::Profile(_) = k.source {
-            let r = pages::ghost(ui, true, "Check settings");
+            let r = pages::ghost(ui, true, crate::i18n::tr("Check settings"));
             control(widgets, "ssh-check", &r, ui.clip_rect());
             if r.clicked() {
                 out.action = Some("check");
@@ -771,12 +772,12 @@ fn form_card(
     let (image, title, detail, submit) = match (&found, s.use_existing) {
         (Some(key), _) => (
             Icon::Key,
-            format!("Use {} for {}", file_name(&key.key), repository.as_deref().unwrap_or("the repository")),
+            crate::i18n::trf!("Use {key} for {repository}", key = file_name(&key.key), repository = repository.as_deref().unwrap_or(crate::i18n::tr("the repository"))),
             key.fingerprint.clone(),
-            "Continue",
+            crate::i18n::tr("Continue"),
         ),
-        (None, true) => (Icon::Plus, "Add key file".to_owned(), "The key file stays where it is.".to_owned(), "Add key"),
-        (None, false) => (Icon::Plus, "New key".to_owned(), format!("Saved in {root}"), "Create key"),
+        (None, true) => (Icon::Plus, crate::i18n::tr("Add key file").to_owned(), crate::i18n::tr("The key file stays where it is.").to_owned(), crate::i18n::tr("Add key")),
+        (None, false) => (Icon::Plus, crate::i18n::tr("New key").to_owned(), crate::i18n::trf!("Saved in {folder}", folder = root), crate::i18n::tr("Create key")),
     };
     card(ui, None, |ui| {
         card_header(ui, image, &title, &detail, |_| {});
@@ -784,14 +785,14 @@ fn form_card(
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 6.0;
             if s.use_existing && found.is_none() {
-                field(ui, widgets, "ssh-existing", "Key file (its .pub file must be beside it)", &mut s.existing, true, false);
+                field(ui, widgets, "ssh-existing", crate::i18n::tr("Key file (its .pub file must be beside it)"), &mut s.existing, true, false);
                 ui.add_space(4.0);
             }
-            field(ui, widgets, "ssh-alias", "Name (rocket-…)", &mut s.alias, true, false);
+            field(ui, widgets, "ssh-alias", crate::i18n::tr("Name (rocket-…)"), &mut s.alias, true, false);
             if !s.use_existing {
                 ui.add_space(4.0);
-                ui.label("Type");
-                let r = pages::segments(ui, &[("Ed25519 · recommended", !s.rsa), ("RSA 4096", s.rsa)]);
+                ui.label(crate::i18n::tr("Type"));
+                let r = pages::segments(ui, &[(crate::i18n::tr("Ed25519 · recommended"), !s.rsa), ("RSA 4096", s.rsa)]);
                 control(widgets, "ssh-ed25519", &r[0], ui.clip_rect());
                 control(widgets, "ssh-rsa", &r[1], ui.clip_rect());
                 if r[0].clicked() {
@@ -806,9 +807,9 @@ fn form_card(
                 let total = ui.available_width() - 20.0;
                 let (user, port) = (total * 0.28, total * 0.17);
                 for (key, label, value, width) in [
-                    ("ssh-host", "Host", &mut s.host, total - user - port),
-                    ("ssh-user", "User", &mut s.user, user),
-                    ("ssh-port", "Port", &mut s.port, port),
+                    ("ssh-host", crate::i18n::tr("Host"), &mut s.host, total - user - port),
+                    ("ssh-user", crate::i18n::tr("User"), &mut s.user, user),
+                    ("ssh-port", crate::i18n::tr("Port"), &mut s.port, port),
                 ] {
                     ui.allocate_ui_with_layout(vec2(width, 52.0), Layout::top_down(Align::Min), |ui| {
                         ui.set_width(width);
@@ -823,7 +824,7 @@ fn form_card(
                 if primary_btn(ui, widgets, "ssh-create", submit, true) {
                     out.action = Some("create");
                 }
-                if btn(ui, widgets, "ssh-form-cancel", "Cancel", true) {
+                if btn(ui, widgets, "ssh-form-cancel", crate::i18n::tr("Cancel"), true) {
                     s.creating = false;
                     s.discovered_choice = None;
                     s.review_after_create = false;
@@ -836,17 +837,17 @@ fn form_card(
 /// What OpenSSH asks while it makes or unlocks a key. The passphrase goes straight to it.
 fn prompt_card(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, prompt: Prompt, name: &str) {
     let title = match prompt {
-        Prompt::New | Prompt::Confirm | Prompt::NewRetry => "ssh-keygen asks for a passphrase",
-        Prompt::Unlock | Prompt::UnlockRetry => "ssh-add asks for the passphrase",
-        Prompt::Remember => "Verify and save this key's passphrase",
+        Prompt::New | Prompt::Confirm | Prompt::NewRetry => crate::i18n::tr("ssh-keygen asks for a passphrase"),
+        Prompt::Unlock | Prompt::UnlockRetry => crate::i18n::tr("ssh-add asks for the passphrase"),
+        Prompt::Remember => crate::i18n::tr("Verify and save this key's passphrase"),
     };
     let label = match prompt {
-        Prompt::New => "Enter a new passphrase, at least 10 characters".to_owned(),
-        Prompt::Confirm => "Confirm the passphrase".to_owned(),
-        Prompt::NewRetry => "The passphrases didn't match. Enter a new passphrase.".to_owned(),
-        Prompt::Unlock => format!("Passphrase for {name}"),
-        Prompt::UnlockRetry => "Passphrase rejected. Try again.".to_owned(),
-        Prompt::Remember => format!("Passphrase for {name} — saved only after OpenSSH verifies it"),
+        Prompt::New => crate::i18n::tr("Enter a new passphrase, at least 10 characters").to_owned(),
+        Prompt::Confirm => crate::i18n::tr("Confirm the passphrase").to_owned(),
+        Prompt::NewRetry => crate::i18n::tr("The passphrases didn't match. Enter a new passphrase.").to_owned(),
+        Prompt::Unlock => crate::i18n::trf!("Passphrase for {name}", name = name),
+        Prompt::UnlockRetry => crate::i18n::tr("Passphrase rejected. Try again.").to_owned(),
+        Prompt::Remember => crate::i18n::trf!("Passphrase for {name} — saved only after OpenSSH verifies it", name = name),
     };
     pages::titled_card(
         ui,
@@ -856,7 +857,7 @@ fn prompt_card(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiContr
         |ui| {
             field(ui, widgets, "ssh-passphrase", &label, &mut s.passphrase, !s.stopping, true);
             ui.add_space(4.0);
-            if primary_btn(ui, widgets, "ssh-send", "Send securely", !s.stopping) {
+            if primary_btn(ui, widgets, "ssh-send", crate::i18n::tr("Send securely"), !s.stopping) {
                 send_passphrase(s, prompt);
             }
         },
@@ -869,7 +870,7 @@ fn send_passphrase(s: &mut State, prompt: Prompt) {
         && !s.passphrase.chars().any(char::is_control)
         && (matches!(prompt, Prompt::Unlock | Prompt::UnlockRetry | Prompt::Remember) || s.passphrase.chars().count() >= 10);
     if !valid {
-        s.error = Some("Use at least 10 characters for a new key, at most 1024 bytes, without control characters.".into());
+        s.error = Some(crate::i18n::tr("Use at least 10 characters for a new key, at most 1024 bytes, without control characters.").into());
     } else if s.input.as_ref().is_some_and(|c| c.try_send(std::mem::take(&mut s.passphrase)).is_ok()) {
         s.prompt = None;
         s.error = None;
@@ -886,16 +887,16 @@ fn review_card(
     out: &mut Out,
 ) {
     let Some(review) = s.preview.clone() else { return };
-    let repository = repository.as_deref().unwrap_or("the repository");
+    let repository = repository.as_deref().unwrap_or(crate::i18n::tr("the repository"));
     let name = match (&review.profile, chosen) {
         (Some(p), Some(k)) if same_file(&p.key, &k.path) => k.name.clone(),
         (Some(p), _) => p.alias.clone(),
         (None, _) => String::new(),
     };
     let title = if review.restoring {
-        format!("Restore the previous SSH setting of {repository}")
+        crate::i18n::trf!("Restore the previous SSH setting of {repository}", repository)
     } else {
-        format!("Use only {name} for {repository}")
+        crate::i18n::trf!("Use only {key} for {repository}", key = name, repository)
     };
     pages::titled_card(
         ui,
@@ -903,18 +904,18 @@ fn review_card(
             ui.add(Label::new(RichText::new(title).font(semibold(13.0))).truncate());
         },
         |ui| {
-            pages::key_value(ui, "Repository", 96.0, |ui| {
+            pages::key_value(ui, crate::i18n::tr("Repository"), 96.0, |ui| {
                 ui.label(repository);
             });
             if let Some(p) = &review.profile {
-                pages::key_value(ui,"Authentication",96.0,|ui|{ui.label(if review.authentication==SshAuthentication::Direct {"Direct key · host verification required"}else if cfg!(windows) {"Windows agent / OpenSSH"} else {"ssh-agent / OpenSSH"});});
-                pages::key_value(ui, "Key", 96.0, |ui| {
+                pages::key_value(ui,crate::i18n::tr("Authentication"),96.0,|ui|{ui.label(if review.authentication==SshAuthentication::Direct {crate::i18n::tr("Direct key · host verification required")}else if cfg!(windows) {crate::i18n::tr("Windows agent / OpenSSH")} else {"ssh-agent / OpenSSH"});});
+                pages::key_value(ui, crate::i18n::tr("Key"), 96.0, |ui| {
                     ui.label(&name);
                 });
-                pages::key_value(ui, "Connects as", 96.0, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Connects as"), 96.0, |ui| {
                     ui.label(format!("{}@{}:{}", p.user, p.host, p.port));
                 });
-                pages::key_value(ui, "Fingerprint", 96.0, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Fingerprint"), 96.0, |ui| {
                     ui.label(RichText::new(&p.fingerprint).monospace().size(12.5));
                 });
             }
@@ -922,17 +923,17 @@ fn review_card(
                 pages::callout(
                     ui,
                     AMBER(),
-                    "The repository will use this key's own SSH config, so proxies and other settings in yours won't apply to it.",
+                    crate::i18n::tr("The repository will use this key's own SSH config, so proxies and other settings in yours won't apply to it."),
                 );
             }
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                let apply = if review.restoring { "Restore setting" } else { "Use only this key" };
+                let apply = if review.restoring { crate::i18n::tr("Restore setting") } else { crate::i18n::tr("Use only this key") };
                 if primary_btn(ui, widgets, "ssh-apply", apply, true) {
                     out.action = Some("apply");
                 }
-                if btn(ui, widgets, "ssh-back", "Back", true) {
+                if btn(ui, widgets, "ssh-back", crate::i18n::tr("Back"), true) {
                     s.preview = None;
                 }
             });
@@ -968,14 +969,14 @@ fn empty_state(
     ui.painter().rect(tile, 12.0, RAISED(), Stroke::new(1.0, EDGE_HOT()), StrokeKind::Inside);
     icon(ui.painter(), tile.shrink(13.0), Icon::Key, BLUE());
     let folder = crate::views::display_path(&s.scan_directory);
-    ui.add(Label::new(RichText::new(format!("No SSH keys in {folder}")).font(semibold(15.0))).wrap());
-    ui.label(RichText::new("Create one here, or add a key file from another folder.").color(MUTED()));
+    ui.add(Label::new(RichText::new(crate::i18n::trf!("No SSH keys in {folder}", folder)).font(semibold(15.0))).wrap());
+    ui.label(RichText::new(crate::i18n::tr("Create one here, or add a key file from another folder.")).color(MUTED()));
     ui.add_space(2.0);
     ui.allocate_ui_with_layout(vec2(248.0, 28.0), Layout::left_to_right(Align::Center), |ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
-        let new = icon_btn(ui, Icon::Plus, "New key", !busy, true, 120.0);
+        let new = icon_btn(ui, Icon::Plus, crate::i18n::tr("New key"), !busy, true, 120.0);
         control(widgets, "ssh-new", &new, ui.clip_rect());
-        let file = ui.add_enabled(!busy, Button::new("Add key file").min_size(vec2(120.0, 28.0)));
+        let file = ui.add_enabled(!busy, Button::new(crate::i18n::tr("Add key file")).min_size(vec2(120.0, 28.0)));
         control(widgets, "ssh-existing-toggle", &file, ui.clip_rect());
         if new.clicked() {
             out.form = Some(Form::New);
@@ -984,7 +985,7 @@ fn empty_state(
         }
     });
     if let Some(repository) = repository {
-        let r = restore_link(ui, &format!("Restore the previous SSH setting of {repository}"), !busy);
+        let r = restore_link(ui, &crate::i18n::trf!("Restore the previous SSH setting of {repository}", repository), !busy);
         control(widgets, "ssh-restore", &r, ui.clip_rect());
         if r.clicked() {
             out.action = Some("restore");
@@ -1122,7 +1123,7 @@ fn kind_label(kind: &str) -> String {
         "ssh-ed25519" => "Ed25519".into(),
         "ssh-rsa" => "RSA".into(),
         k if k.starts_with("ecdsa-") => "ECDSA".into(),
-        "" => "Key".into(),
+        "" => crate::i18n::tr("Key").into(),
         k => k.into(),
     }
 }

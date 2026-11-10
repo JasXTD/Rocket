@@ -21,7 +21,7 @@ enum Outcome {
     Checked(UpdateCheck),
     Prepared(package::Prepared, bool),
     Handoff(install::Handoff),
-    Receipt(String),
+    Receipt(&'static str),
 }
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum Operation {
@@ -166,7 +166,7 @@ impl Rocket {
         self.updates.started = true;
         let Some(endpoint) = self.updates.endpoint else {
             self.updates.status = "disabled";
-            self.updates.message = Some("App updates are disabled in this isolated window.".into());
+            self.updates.message = Some(crate::i18n::tr("App updates are disabled in this isolated window.").into());
             return;
         };
         if self.updates.running() {
@@ -317,7 +317,7 @@ impl Rocket {
             self.updates.status = "cancelled";
             self.updates.open = true;
             self.updates.message =
-                Some("Restart cancelled. The existing installation is unchanged.".into());
+                Some(crate::i18n::tr("Restart cancelled. The existing installation is unchanged.").into());
             self.updates.prepared = None;
             self.updates.installable = false;
         }
@@ -338,11 +338,11 @@ impl Rocket {
                 Ok(Outcome::Checked(UpdateCheck::Current)) => {
                     self.updates.status = "current";
                     self.updates.message =
-                        Some("You're up to date. No newer stable release is available.".into());
+                        Some(crate::i18n::tr("You're up to date. No newer stable release is available.").into());
                 }
                 Ok(Outcome::Checked(UpdateCheck::Unavailable)) => {
                     self.updates.status = "unavailable";
-                    self.updates.message=Some("No public release is available yet. The repository may still be private or have no published stable release.".into());
+                    self.updates.message=Some(crate::i18n::tr("No public release is available yet. The repository may still be private or have no published stable release.").into());
                 }
                 Ok(Outcome::Prepared(prepared, installable)) => {
                     self.updates.status = "ready";
@@ -356,6 +356,7 @@ impl Rocket {
                     self.request_close();
                 }
                 Ok(Outcome::Receipt(message)) => {
+                    let message = crate::i18n::tr(message).to_owned();
                     if self.notice.is_none() {
                         self.notice = Some(message.clone());
                     }
@@ -364,7 +365,7 @@ impl Rocket {
                 Err(rocket_git::Error::Cancelled) => {
                     self.updates.status = "cancelled";
                     self.updates.message =
-                        Some("Update cancelled. Your current installation is unchanged.".into());
+                        Some(crate::i18n::tr("Update cancelled. Your current installation is unchanged.").into());
                 }
                 Err(e) => {
                     self.updates.status = "error";
@@ -382,17 +383,17 @@ impl Rocket {
                 let result = package::json_file(&job.join("result.json"))?;
                 let text = match result["code"].as_str() {
                     Some("installed") => {
-                        "Rocket was updated successfully. The previous installation is retained beside the app."
+                        crate::i18n::mark("Rocket was updated successfully. The previous installation is retained beside the app.")
                     }
                     Some("rolled_back") => {
-                        "The update failed. Rocket restored the previous installation."
+                        crate::i18n::mark("The update failed. Rocket restored the previous installation.")
                     }
                     Some("recovery_required") => {
-                        "The update needs recovery. Both installation directories were retained; inspect the update transaction before retrying."
+                        crate::i18n::mark("The update needs recovery. Both installation directories were retained; inspect the update transaction before retrying.")
                     }
-                    _ => "The update did not finish. Your previous files were retained.",
+                    _ => crate::i18n::mark("The update did not finish. Your previous files were retained."),
                 };
-                Ok(Outcome::Receipt(text.into()))
+                Ok(Outcome::Receipt(text))
             });
             self.assign_update_task(task);
         }

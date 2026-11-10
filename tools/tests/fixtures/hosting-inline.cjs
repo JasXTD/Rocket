@@ -1,6 +1,6 @@
 // Inert loopback contracts for CLI/native hosting tests. Never contacts a host.
 const http=require('node:http'),assert=require('node:assert/strict');
-exports.create=(provider,token)=>{
+exports.create=(provider,token,threadHandler)=>{
  const lab=provider==='gitlab',prefix=lab?'/gitlab/projects/team%2Fsample':'/gitea/repos/team/sample';
  const state={mode:'ok',head:'a'.repeat(40),base:'b'.repeat(40),start:'b'.repeat(40),diffBase:'c'.repeat(40),merged:false,requests:[],reviews:[],notes:[],pending:null,closedAt:null,error:null};
  const name='資料/新 é 🚀.rs',old='資料/旧 é 🚀.rs',patch='@@ -10,2 +20,2 @@\n context\n-old\n+new 界\n';
@@ -20,6 +20,7 @@ exports.create=(provider,token)=>{
   if(state.mode==='429')return send(429,{message:token});
   if(state.mode==='redirect')return send(302,{}, {Location:'http://127.0.0.1:1/never-follow'});
   if(state.mode==='slow-read'&&req.method==='GET')return slow();
+  if(threadHandler?.({provider,state,route,pr,req,data,u,send,slow}))return;
   if(route.includes('/branches/'))return send(200,{commit:{id:route.endsWith('/main')?state.base:state.head}});
   if(route===''&&!lab)return send(200,{full_name:'team/sample',archived:false,allow_merge_commits:true,allow_squash_merge:true,allow_rebase:true,permissions:{push:true}});
   if(req.method==='GET'&&(route===noun||route==='/issues')){

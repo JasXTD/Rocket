@@ -264,13 +264,10 @@ impl Rocket {
                         s.show_list = true;
                     }
                     Err(Error::Cancelled) => {
-                        s.notice = Some("Folder read cancelled. Previous results retained.".into())
+                        s.notice = Some(crate::i18n::tr("Folder read cancelled. Previous results retained.").into())
                     }
                     Err(e) => {
-                        s.error = Some(format!(
-                            "{} Previous results retained.",
-                            tree_error(&e, false)
-                        ))
+                        s.error = Some(crate::i18n::trf!("{error} Previous results retained.", error = tree_error(&e, false)))
                     }
                 }
             }
@@ -279,7 +276,7 @@ impl Rocket {
                 match result {
                     Ok(content) => s.content = Some(content),
                     Err(Error::Cancelled) => {
-                        s.notice = Some("File read cancelled. Retry or select another file.".into())
+                        s.notice = Some(crate::i18n::tr("File read cancelled. Retry or select another file.").into())
                     }
                     Err(e) => s.error = Some(tree_error(&e, true)),
                 }
@@ -300,9 +297,9 @@ pub(crate) fn tree_error(error: &Error, content: bool) -> String {
         Error::Git { code, .. } => format!(
             "{} [git_exit_{}]",
             if content {
-                "Could not read this file object. It may be missing or unavailable locally. Fetch the needed objects separately, then retry."
+                crate::i18n::tr("Could not read this file object. It may be missing or unavailable locally. Fetch the needed objects separately, then retry.")
             } else {
-                "Could not load this revision or folder. Check the commit, branch or tag and that its objects exist locally. An empty repository has no commit to browse."
+                crate::i18n::tr("Could not load this revision or folder. Check the commit, branch or tag and that its objects exist locally. An empty repository has no commit to browse.")
             },
             code.map_or_else(|| "unknown".into(), |n| n.to_string())
         ),
@@ -487,11 +484,11 @@ pub fn path_label(bytes: &[u8]) -> String {
 }
 pub fn kind_label(kind: TreeEntryKind) -> &'static str {
     match kind {
-        TreeEntryKind::Directory => "Folder",
-        TreeEntryKind::File => "File",
-        TreeEntryKind::Executable => "Executable file",
-        TreeEntryKind::Symlink => "Symbolic link",
-        TreeEntryKind::Submodule => "Submodule",
+        TreeEntryKind::Directory => crate::i18n::tr("Folder"),
+        TreeEntryKind::File => crate::i18n::tr("File"),
+        TreeEntryKind::Executable => crate::i18n::tr("Executable file"),
+        TreeEntryKind::Symlink => crate::i18n::tr("Symbolic link"),
+        TreeEntryKind::Submodule => crate::i18n::tr("Submodule"),
     }
 }
 fn register(ui: &Ui, widgets: &mut HashMap<String, UiControl>, key: &str, r: &Response) {
@@ -540,8 +537,8 @@ pub(crate) fn view(
         pages::header(
             ui,
             Icon::Folder,
-            "Repository files",
-            "Read only · browse a commit, or search the checkout or a commit",
+            crate::i18n::tr("Repository files"),
+            crate::i18n::tr("Read only · browse a commit, or search the checkout or a commit"),
             |_| {},
         );
         pages::divider(ui);
@@ -556,12 +553,12 @@ pub(crate) fn view(
                     [(ui.available_width() - 330.0).clamp(70.0, 360.0), 28.0],
                     TextEdit::singleline(&mut s.revision)
                         .char_limit(4096)
-                        .hint_text("Commit, branch or tag")
+                        .hint_text(crate::i18n::tr("Commit, branch or tag"))
                         .vertical_align(Align::Center),
                 );
                 register(ui, widgets, "tree-revision", &r);
                 let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
-                let load = pages::primary(ui, !s.revision.is_empty(), "Browse revision");
+                let load = pages::primary(ui, !s.revision.is_empty(), crate::i18n::tr("Browse revision"));
                 register(ui, widgets, "tree-load", &load);
                 if load.clicked() || enter {
                     emit(intents, TreeIntent::Load);
@@ -570,7 +567,7 @@ pub(crate) fn view(
                     ui,
                     widgets,
                     "tree-cancel",
-                    "Stop",
+                    crate::i18n::tr("Stop"),
                     s.running() && !s.cancelling,
                 ) {
                     emit(intents, TreeIntent::Cancel);
@@ -592,17 +589,17 @@ pub(crate) fn view(
                     .on_hover_text(commit);
                 }
                 let text = if s.cancelling {
-                    "Stopping read…"
+                    crate::i18n::tr("Stopping read…")
                 } else if s.listing.is_some() {
                     if s.running() {
-                        "read only · loading…"
+                        crate::i18n::tr("read only · loading…")
                     } else {
-                        "read only"
+                        crate::i18n::tr("read only")
                     }
                 } else if s.running() {
-                    "Loading revision…"
+                    crate::i18n::tr("Loading revision…")
                 } else {
-                    "Choose a revision to browse its committed files."
+                    crate::i18n::tr("Choose a revision to browse its committed files.")
                 };
                 ui.add(Label::new(RichText::new(text).size(12.0).color(FAINT())).truncate())
                     .on_hover_text(commit);
@@ -741,17 +738,17 @@ fn trail_bar(
         return;
     }
     pages::strip(ui, |ui| {
-        if button(ui, widgets, "tree-root", "Root", true) {
+        if button(ui, widgets, "tree-root", crate::i18n::tr("Root"), true) {
             emit(intents, TreeIntent::Ancestor(0));
         }
-        if button(ui, widgets, "tree-up", "Up", s.trail.len() > 1) {
+        if button(ui, widgets, "tree-up", crate::i18n::tr("Up"), s.trail.len() > 1) {
             emit(intents, TreeIntent::Ancestor(s.trail.len() - 2));
         }
         if button(
             ui,
             widgets,
             "tree-history",
-            "Folder history",
+            crate::i18n::tr("Folder history"),
             !s.running() && s.trail.len() > 1,
         ) {
             intents.push(Intent::File(crate::file_history::FileIntent::FromTree));
@@ -762,9 +759,9 @@ fn trail_bar(
                 widgets,
                 "tree-toggle-list",
                 if s.show_list {
-                    "Show file"
+                    crate::i18n::tr("Show file")
                 } else {
-                    "Show folders"
+                    crate::i18n::tr("Show folders")
                 },
                 true,
             )
@@ -800,7 +797,7 @@ fn folder_view(
         Frame::new()
             .inner_margin(Margin::symmetric(16, 4))
             .show(ui, |ui| {
-                pages::empty(ui, "Browse HEAD, a branch, tag or commit ID to begin.");
+                pages::empty(ui, crate::i18n::tr("Browse HEAD, a branch, tag or commit ID to begin."));
             });
         return;
     };
@@ -813,20 +810,12 @@ fn folder_view(
         })
         .show(ui, |ui| {
             ui.label(
-                RichText::new(format!(
-                    "{} {} · folders first",
-                    list.entries.len(),
-                    if list.entries.len() == 1 {
-                        "entry"
-                    } else {
-                        "entries"
-                    }
-                ))
+                RichText::new(crate::i18n::trf!("Entries: {count} · folders first", count = list.entries.len()))
                 .size(11.5)
                 .color(FAINT()),
             );
             if list.entries.is_empty() {
-                pages::empty(ui, "This folder is empty at the pinned commit.");
+                pages::empty(ui, crate::i18n::tr("This folder is empty at the pinned commit."));
             }
         });
     // Rows are 30 points; with zero spacing the row pitch is exact.
@@ -903,7 +892,7 @@ fn file_view(
             .show(ui, |ui| {
                 pages::empty(
                     ui,
-                    "Select a file to view its contents at the pinned commit.",
+                    crate::i18n::tr("Select a file to view its contents at the pinned commit."),
                 );
             });
         return;
@@ -923,7 +912,7 @@ fn file_view(
                     ui,
                     widgets,
                     "tree-restore",
-                    "Restore this file",
+                    crate::i18n::tr("Restore this file"),
                     !s.running(),
                 )
             {
@@ -935,17 +924,12 @@ fn file_view(
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                 if s.content.is_none()
                     && entry.kind() != TreeEntryKind::Submodule
-                    && button(ui, widgets, "tree-retry", "Retry", !s.running())
+                    && button(ui, widgets, "tree-retry", crate::i18n::tr("Retry"), !s.running())
                 {
                     emit(intents, TreeIntent::Retry);
                 }
                 let meta = match &s.content {
-                    Some(c) if c.kind == HistoricalFileKind::Text => format!(
-                        "{} line{} · {}",
-                        c.lines.len(),
-                        if c.lines.len() == 1 { "" } else { "s" },
-                        size(c.bytes)
-                    ),
+                    Some(c) if c.kind == HistoricalFileKind::Text => crate::i18n::trf!("Lines: {count} · {size}", count = c.lines.len(), size = size(c.bytes)),
                     Some(c) => size(c.bytes),
                     None => kind_label(entry.kind()).into(),
                 };
@@ -987,16 +971,16 @@ fn file_view(
             if entry.kind() == TreeEntryKind::Submodule {
                 pages::note(
                     ui,
-                    "This entry points to a submodule commit. Browsing does not open or fetch the submodule.",
+                    crate::i18n::tr("This entry points to a submodule commit. Browsing does not open or fetch the submodule."),
                 );
                 return false;
             }
             if entry.kind() == TreeEntryKind::Symlink {
-                pages::callout(ui, AMBER(), "Link target text only. The link is not followed.");
+                pages::callout(ui, AMBER(), crate::i18n::tr("Link target text only. The link is not followed."));
             }
             let Some(content) = &s.content else {
                 if s.running() {
-                    if let Some(true) = crate::preview_tab::downloading(ui, preview, &format!("Downloading {name}"), "tree-download-stop", widgets) {
+                    if let Some(true) = crate::preview_tab::downloading(ui, preview, &crate::i18n::trf!("Downloading {name}", name), "tree-download-stop", widgets) {
                         emit(intents, TreeIntent::Cancel);
                     }
                 } else if let Some(true) = crate::preview_tab::not_downloaded(ui, preview, "tree-download-retry", widgets) {
@@ -1007,25 +991,22 @@ fn file_view(
             if content.kind == HistoricalFileKind::Binary {
                 pages::note(
                     ui,
-                    &format!(
-                        "Binary file · {} bytes. Text preview is unavailable.",
-                        content.bytes
-                    ),
+                    &crate::i18n::trf!("Binary file · {bytes} bytes. Text preview is unavailable.", bytes = content.bytes),
                 );
                 return false;
             }
             if content.lossy {
-                pages::callout(ui, MUTED(), "Not UTF-8: bytes that aren't valid UTF-8 show as \u{fffd}.");
+                pages::callout(ui, MUTED(), crate::i18n::tr("Not UTF-8: invalid bytes are shown as �."));
             }
             if content.limited {
                 pages::callout(
                     ui,
                     AMBER(),
-                    "Preview limited to 50,000 lines and 8 KiB per line.",
+                    crate::i18n::tr("Preview limited to 50,000 lines and 8 KiB per line."),
                 );
             }
             if content.lines.is_empty() {
-                pages::note(ui, "Empty file at this commit.");
+                pages::note(ui, crate::i18n::tr("Empty file at this commit."));
             }
             true
         })

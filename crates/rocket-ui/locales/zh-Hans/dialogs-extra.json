@@ -1,0 +1,8 @@
+{
+  "Created by Xetro": "由 Xetro 创建",
+  "Version {version} · a native Rust Git workspace": "版本 {version} · 原生 Rust Git 工作区",
+  "Free and open-source software under the {license} license.": "基于 {license} 许可证的自由开源软件。",
+  "What changed in each Rocket build.": "每个 Rocket 构建的更改。",
+  "{version} · this build": "{version} · 此构建",
+  "This build": "此构建"
+}

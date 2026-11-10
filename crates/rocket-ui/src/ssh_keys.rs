@@ -129,8 +129,8 @@ impl State {
             self.prompt = None;
             self.clear_passphrase();
             self.notice = Some(if self.operation == "ssh-discover" || self.operation == "ssh-list" {
-                "Stopping the scan. The previous list will be retained."
-            } else { "Stopping… waiting for OpenSSH, then checking the result." }.into())
+                crate::i18n::tr("Stopping the scan. The previous list will be retained.")
+            } else { crate::i18n::tr("Stopping… waiting for OpenSSH, then checking the result.") }.into())
         }
     }
 }
@@ -177,25 +177,26 @@ impl Rocket {
                 review=s.review_after_create && !(mode==SshAuthentication::Direct && p.encrypted && !p.passphrase_saved);
                 s.profiles.push(p);s.select(page::Source::Profile(s.profiles.len()-1));s.authentication=mode;
                 s.creating=false;s.discovered_choice=None;s.review_after_create=false;s.loaded=true;
-                s.notice=Some(if mode==SshAuthentication::Direct&&!review {"Key profile ready. Save its passphrase for direct use, then review the repository setting."}else{"Key added. Copy its public key to your Git host."}.into());
+                s.notice=Some(if mode==SshAuthentication::Direct&&!review {crate::i18n::tr("Key profile ready. Save its passphrase for direct use, then review the repository setting.")}else{crate::i18n::tr("Key added. Copy its public key to your Git host.")}.into());
             }
             Ok(Done::Review(r))=>{s.preview=Some(r);s.notice=None;}
-            Ok(Done::Saved(path))=>{s.preview=None;s.notice=Some(format!("Repository SSH setting saved. Recovery backup: {}. Working files and remote URLs are unchanged.",path.display()));}
+            Ok(Done::Saved(path))=>{s.preview=None;s.notice=Some(crate::i18n::trf!("Repository SSH setting saved. Recovery backup: {path}. Working files and remote URLs are unchanged.",path=path.display()));}
             Ok(Done::Checked(v))=>s.notice=Some(v),
             Ok(Done::Agent(fingerprint,unlocked))=>{
                 s.loaded_keys.retain(|v|v!=&fingerprint);if unlocked{s.loaded_keys.push(fingerprint)}
-                s.notice=Some(if stopped&&unlocked{"Stopped. OpenSSH had already unlocked this key; the result was checked. Untick it to remove it from ssh-agent."}
-                    else if unlocked{if cfg!(windows) {"Key unlocked in Windows ssh-agent. Only this key was added."} else {"Key unlocked in ssh-agent. Only this key was added."}}
-                    else if stopped{"Cancelled. The key is still locked."}else{"Key removed from ssh-agent. Key files and other unlocked keys are unchanged."}.into());
+                s.notice=Some(if stopped&&unlocked{crate::i18n::tr("Stopped. OpenSSH had already unlocked this key; the result was checked. Untick it to remove it from ssh-agent.")}
+                    else if unlocked{if cfg!(windows) {crate::i18n::tr("Key unlocked in Windows ssh-agent. Only this key was added.")} else {crate::i18n::tr("Key unlocked in ssh-agent. Only this key was added.")}}
+                    else if stopped{crate::i18n::tr("Cancelled. The key is still locked.")}else{crate::i18n::tr("Key removed from ssh-agent. Key files and other unlocked keys are unchanged.")}.into());
             }
             Ok(Done::Passphrase(p,saved))=>{
                 if let Some(old)=s.profiles.iter_mut().find(|old|old.alias==p.alias){*old=p;}
-                s.notice=Some(if !saved {"Saved passphrase forgotten. The private key, public key and agent are unchanged."}
-                    else if cfg!(windows) {"Passphrase verified by OpenSSH and saved with Windows user encryption. Windows ssh-agent and key files were not changed."}
-                    else if cfg!(target_os="macos") {"Passphrase verified by OpenSSH and saved, encrypted with a key in your macOS Keychain. The agent and key files were not changed."}
-                    else {"Passphrase verified by OpenSSH and saved, encrypted with a key in your desktop keyring. ssh-agent and key files were not changed."}.into());
+                s.notice=Some(if !saved {crate::i18n::tr("Saved passphrase forgotten. The private key, public key and agent are unchanged.").into()}
+                    else {crate::i18n::trf!("Passphrase verified by OpenSSH and saved with {storage}. The agent and key files were not changed.", storage =
+                        if cfg!(windows) {crate::i18n::tr("Windows user encryption")}
+                        else if cfg!(target_os="macos") {crate::i18n::tr("encryption using a key in your macOS Keychain")}
+                        else {crate::i18n::tr("encryption using a key in your desktop keyring")})});
             }
-            Err(Error::Cancelled)=>s.notice=Some(if reading {"Scan cancelled. The previous list is retained; keys and settings are unchanged."} else {"Cancelled. No profile or repository setting was published. Any incomplete key folder is retained for recovery."}.into()),
+            Err(Error::Cancelled)=>s.notice=Some(if reading {crate::i18n::tr("Scan cancelled. The previous list is retained; keys and settings are unchanged.")} else {crate::i18n::tr("Cancelled. No profile or repository setting was published. Any incomplete key folder is retained for recovery.")}.into()),
             Err(e)=>{s.error=Some(user_error(&e));s.preview=None;}
         }
         if review {
@@ -219,7 +220,7 @@ impl Rocket {
         s.prompt = None;
         s.clear_passphrase();
         if !s.enabled {
-            s.error=Some("SSH management is disabled in this MCP window. Use a marked disposable SSH fixture.".into());
+            s.error=Some(crate::i18n::tr("SSH management is disabled in this MCP window. Use a marked disposable SSH fixture.").into());
             return;
         }
         let result = (|| -> Result<WriteTask<Done>> {

@@ -7,6 +7,7 @@ use crate::{
 };
 use eframe::egui::*;
 use rocket_git::*;
+use crate::i18n::{tr, trf, trn};
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -234,11 +235,7 @@ impl Rocket {
             self.start_worktree_read();
         } else {
             s.invalidate();
-            d.error = Some(format!(
-                "{}\n{}\nReturn to the list and refresh before retrying.",
-                outcome.summary,
-                outcome.details.join("\n")
-            ));
+            d.error = Some(trf!("{summary}\n{details}\nReturn to the list and refresh before retrying.", summary = outcome.summary, details = outcome.details.join("\n")));
         }
     }
     /// Worktrees page: list and details. Create and remove open the review dialog.
@@ -275,16 +272,13 @@ impl Rocket {
             pages::header(
                 ui,
                 Icon::Worktree,
-                "Worktrees",
-                &format!(
-                    "{} · each has its own branch and changes; the history is shared",
-                    if count == 1 { "1 working folder".to_owned() } else { format!("{count} working folders") }
-                ),
+                crate::i18n::tr("Worktrees"),
+                &trn!(count, "{n} working folder · each has its own branch and changes; the history is shared", "{n} working folders · each has its own branch and changes; the history is shared"),
                 |ui| {
-                    let r = pages::ghost(ui, !s.applying, "Close");
+                    let r = pages::ghost(ui, !s.applying, crate::i18n::tr("Close"));
                     control(widgets, "dialog-cancel", &r, ui.clip_rect());
                     f.dismiss = r.clicked();
-                    let r = pages::primary(ui, !waiting && writable, "New worktree");
+                    let r = pages::primary(ui, !waiting && writable, tr("New worktree"));
                     control(widgets, "dialog-worktree-create", &r, ui.clip_rect());
                     if r.clicked() {
                         s.creating = true;
@@ -294,7 +288,7 @@ impl Rocket {
                         d.error = None;
                     }
                     let r = crate::chrome::icon_button(ui, Icon::Refresh, !waiting, false, 32.0)
-                        .on_hover_text("Refresh");
+                        .on_hover_text(crate::i18n::tr("Refresh"));
                     control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                     f.refresh |= r.clicked();
                 },
@@ -305,10 +299,7 @@ impl Rocket {
                     pages::callout(
                         ui,
                         BLUE(),
-                        &format!(
-                            "{} is a bare repository: it has history and tags but no working folder. Add a worktree to check out a branch and edit files.",
-                            folder_name(&bare.path)
-                        ),
+                        &trf!("{repository} is a bare repository: it has history and tags but no working folder. Add a worktree to check out a branch and edit files.", repository = folder_name(&bare.path)),
                     )
                 });
             }
@@ -326,10 +317,10 @@ impl Rocket {
                         .show(ui, |ui| {
                             ui.spacing_mut().item_spacing.y = 2.0;
                             if s.entries.is_empty() && !waiting {
-                                pages::empty(ui, "No worktrees loaded. Refresh to check the repository.");
+                                pages::empty(ui, tr("No worktrees loaded. Refresh to check the repository."));
                             }
                             if s.entries.is_empty() && waiting {
-                                pages::loading(ui, "Reading worktrees");
+                                pages::loading(ui, tr("Reading worktrees"));
                             }
                             for (i, e) in s.entries.iter().enumerate() {
                                 let status = s.statuses.iter().find(|st| st.path == e.path);
@@ -358,7 +349,7 @@ impl Rocket {
                 }
                 pages::Side::Details => {
                     let Some(e) = s.selected_entry().cloned() else {
-                        pages::empty(ui, "Select a worktree to see its folder, branch and changes.");
+                        pages::empty(ui, tr("Select a worktree to see its folder, branch and changes."));
                         return;
                     };
                     let status = s.statuses.iter().find(|st| st.path == e.path).cloned();
@@ -369,15 +360,15 @@ impl Rocket {
                         }
                     });
                     ui.add_space(4.0);
-                    pages::key_value(ui, "Folder", 92.0, |ui| {
+                    pages::key_value(ui, crate::i18n::tr("Folder"), 92.0, |ui| {
                         ui.add(Label::new(crate::views::display_path(&e.path)).wrap());
                         ui.horizontal(|ui| {
-                            let r = pages::ghost(ui, true, "Copy path");
+                            let r = pages::ghost(ui, true, crate::i18n::tr("Copy path"));
                             control(widgets, "dialog-worktree-copy", &r, ui.clip_rect());
                             if r.clicked() {
                                 ui.ctx().copy_text(e.path.display().to_string());
                             }
-                            let r = pages::ghost(ui, !e.bare && e.prunable.is_none(), "Show in Explorer");
+                            let r = pages::ghost(ui, !e.bare && e.prunable.is_none(), crate::i18n::tr("Show in Explorer"));
                             control(widgets, "dialog-worktree-reveal", &r, ui.clip_rect());
                             if r.clicked() {
                                 f.reveal = Some(e.path.clone());
@@ -387,18 +378,15 @@ impl Rocket {
                     worktree_facts(ui, &e, status.as_ref(), s.status_task.is_some());
                     let open = open_paths.contains(&e.path);
                     let note = if e.bare {
-                        Some((MUTED(), "Holds the repository itself. There is nothing to open or remove; add a worktree to work on files.".to_owned()))
+                        Some((MUTED(), tr("Holds the repository itself. There is nothing to open or remove; add a worktree to work on files.").to_owned()))
                     } else if let Some(reason) = &e.prunable {
-                        Some((AMBER(), format!(
-                            "The folder is gone ({}). If you moved it, find it; if you deleted it, forget it. No files are deleted either way.",
-                            display(reason)
-                        )))
+                        Some((AMBER(), trf!("The folder is gone ({reason}). If you moved it, find it; if you deleted it, forget it. No files are deleted either way.", reason = display(reason))))
                     } else if let Some(reason) = &e.locked {
-                        Some((AMBER(), format!("Locked: {}", display(reason))))
+                        Some((AMBER(), trf!("Locked: {reason}", reason = display(reason))))
                     } else if e.main {
-                        Some((MUTED(), "The main worktree holds the repository, so it can't be removed or moved here.".to_owned()))
+                        Some((MUTED(), tr("The main worktree holds the repository, so it can't be removed or moved here.").to_owned()))
                     } else if open {
-                        Some((MUTED(), "Open in Rocket. Close that tab before removing it; Open switches to it.".to_owned()))
+                        Some((MUTED(), tr("Open in Rocket. Close that tab before removing it; Open switches to it.").to_owned()))
                     } else {
                         None
                     };
@@ -410,7 +398,7 @@ impl Rocket {
                     ui.add_space(4.0);
                     ui.horizontal_wrapped(|ui| {
                         if !e.bare && e.prunable.is_none() {
-                            let label = if here.as_ref() == Some(&e.path) { "Open in this window" } else { "Open in Rocket" };
+                            let label = if here.as_ref() == Some(&e.path) { tr("Open in this window") } else { tr("Open in Rocket") };
                             let r = pages::primary(ui, !waiting, label);
                             control(widgets, "dialog-worktree-open", &r, ui.clip_rect());
                             f.opening = r.clicked();
@@ -418,9 +406,9 @@ impl Rocket {
                         let can_maintain = !waiting && writable && !terminals_closing
                             && !e.main && !e.bare && e.locked.is_none() && !open;
                         for (kind, id, label) in [
-                            (WorktreeMaintenance::Move, "move", "Move"),
-                            (WorktreeMaintenance::Repair, "repair", "Find moved folder"),
-                            (WorktreeMaintenance::Prune, "prune", "Forget it"),
+                            (WorktreeMaintenance::Move, "move", tr("Move")),
+                            (WorktreeMaintenance::Repair, "repair", tr("Find moved folder")),
+                            (WorktreeMaintenance::Prune, "prune", tr("Forget it")),
                         ] {
                             let eligible = if kind == WorktreeMaintenance::Move { e.prunable.is_none() } else { e.prunable.is_some() };
                             if !eligible || e.main || e.bare {
@@ -445,7 +433,7 @@ impl Rocket {
                             && e.prunable.is_none()
                             && !open;
                         if !e.main && !e.bare && e.prunable.is_none() {
-                            let r = pages::danger_ghost(ui, can_remove, "Remove");
+                            let r = pages::danger_ghost(ui, can_remove, tr("Remove"));
                             control(widgets, "dialog-worktree-remove", &r, ui.clip_rect());
                             if r.clicked() {
                                 s.removing = true;
@@ -498,25 +486,22 @@ impl Rocket {
             .as_ref()
             .and_then(|e| s.statuses.iter().find(|st| st.path == e.path))
             .cloned();
-        let remove_title = format!(
-            "Remove {}?",
-            selected.as_ref().map_or_else(|| "this worktree".to_owned(), |e| folder_name(&e.path))
-        );
+        let remove_title = trf!("Remove {worktree}?", worktree = selected.as_ref().map_or_else(|| tr("this worktree").to_owned(), |e| folder_name(&e.path)));
         let head = pages::ReviewHeader {
             image: Icon::Worktree,
             title: if let Some(kind) = maintaining {
-                kind.title()
+                maintenance_title(kind)
             } else if creating {
-                "New worktree"
+                tr("New worktree")
             } else {
                 &remove_title
             },
             subtitle: if maintaining.is_some() {
-                "Only this worktree is affected."
+                tr("Only this worktree is affected.")
             } else if creating {
-                "Another working folder for this repository, with its own branch."
+                tr("Another working folder for this repository, with its own branch.")
             } else {
-                "Deletes the folder. The branch and its commits stay."
+                tr("Deletes the folder. The branch and its commits stay.")
             },
             danger: !creating
                 && (maintaining.is_none() || maintaining == Some(WorktreeMaintenance::Prune)),
@@ -526,20 +511,20 @@ impl Rocket {
         let create_problem = |s: &DialogState, folder: &str| -> Option<String> {
             let branch = s.branch.trim();
             if branch.is_empty() {
-                return Some("Name the branch".into());
+                return Some(crate::i18n::tr("Name the branch").into());
             }
             if s.existing {
                 if !local_branches.iter().any(|b| b == branch) {
-                    return Some("Choose a branch that isn't checked out anywhere".into());
+                    return Some(tr("Choose a branch that isn't checked out anywhere").into());
                 }
             } else if let Some(problem) = crate::small_dialogs::branch_name_problem(branch, &all_branches, None) {
                 return Some(problem);
             }
             if s.remote && s.upstream.trim().is_empty() {
-                return Some("Choose the remote branch to track".into());
+                return Some(tr("Choose the remote branch to track").into());
             }
             if folder.trim().is_empty() {
-                return Some("Choose a folder".into());
+                return Some(tr("Choose a folder").into());
             }
             None
         };
@@ -554,13 +539,13 @@ impl Rocket {
                 pages::Part::Body => {
                     if let Some(kind) = maintaining {
                         if let Some(entry) = &selected {
-                            worktree_card(ui, "Worktree", entry, selected_status.as_ref());
+                            worktree_card(ui, tr("Worktree"), entry, selected_status.as_ref());
                         }
                         if kind != WorktreeMaintenance::Prune {
                             ui.label(RichText::new(if kind == WorktreeMaintenance::Move {
-                                "New place for the folder · must not exist yet, same drive"
+                                tr("New place for the folder · must not exist yet, same drive")
                             } else {
-                                "Where the folder is now"
+                                tr("Where the folder is now")
                             }).size(12.0).color(MUTED()));
                             let r = ui.add_enabled(
                                 !s.applying,
@@ -579,25 +564,25 @@ impl Rocket {
                             ui,
                             if kind == WorktreeMaintenance::Prune { AMBER() } else { BLUE() },
                             match kind {
-                                WorktreeMaintenance::Move => "The whole folder moves. Close editors using it first.",
-                                WorktreeMaintenance::Repair => "Reconnects this worktree to its moved folder.",
+                                WorktreeMaintenance::Move => tr("The whole folder moves. Close editors using it first."),
+                                WorktreeMaintenance::Repair => tr("Reconnects this worktree to its moved folder."),
                                 WorktreeMaintenance::Prune => {
-                                    "Only Git's record of it goes. If the folder was moved rather than deleted, use Find moved folder instead."
+                                    tr("Only Git's record of it goes. If the folder was moved rather than deleted, use Find moved folder instead.")
                                 }
                             },
                         );
                         if let Some(p) = &s.preview {
-                            pages::key_value(ui, "Reviewed folder", 112.0, |ui| {
+                            pages::key_value(ui, tr("Reviewed folder"), 112.0, |ui| {
                                 ui.add(Label::new(crate::views::display_path(p.path())).wrap());
                             });
                         }
                     } else if creating {
                         let mut edited = false;
-                        ui.label(RichText::new("Branch").size(12.0).color(MUTED()));
+                        ui.label(RichText::new(crate::i18n::tr("Branch")).size(12.0).color(MUTED()));
                         let kinds = [
-                            (false, false, "New branch", "Start one from any commit", "new"),
-                            (true, false, "Existing branch", "One not checked out anywhere", "existing"),
-                            (false, true, "Remote branch", "Track a branch on a remote", "remote"),
+                            (false, false, crate::i18n::tr("New branch"), tr("Start one from any commit"), "new"),
+                            (true, false, tr("Existing branch"), tr("One not checked out anywhere"), "existing"),
+                            (false, true, tr("Remote branch"), tr("Track a branch on a remote"), "remote"),
                         ];
                         let cards: Vec<_> = kinds
                             .iter()
@@ -613,7 +598,7 @@ impl Rocket {
                         }
                         ui.add_space(2.0);
                         if s.remote {
-                            ui.label(RichText::new("Remote branch to track").size(12.0).color(MUTED()));
+                            ui.label(RichText::new(tr("Remote branch to track")).size(12.0).color(MUTED()));
                             ui.horizontal(|ui| {
                                 let width = (ui.available_width() - 150.0).max(160.0);
                                 let r = ui.add_enabled(
@@ -630,7 +615,7 @@ impl Rocket {
                                     ui,
                                     widgets,
                                     "dialog-worktree-upstream-choice",
-                                    "Remote branches",
+                                    crate::i18n::tr("Remote branches"),
                                     &remote_names,
                                     !s.applying,
                                 ) {
@@ -651,11 +636,11 @@ impl Rocket {
                         }
                         ui.label(
                             RichText::new(if s.remote {
-                                "Local name"
+                                tr("Local name")
                             } else if s.existing {
-                                "Branch"
+                                crate::i18n::tr("Branch")
                             } else {
-                                "New branch name"
+                                tr("New branch name")
                             })
                             .size(12.0)
                             .color(MUTED()),
@@ -680,7 +665,7 @@ impl Rocket {
                                     ui,
                                     widgets,
                                     "dialog-worktree-branch-choice",
-                                    "Free branches",
+                                    tr("Free branches"),
                                     &local_branches,
                                     !s.applying,
                                 )
@@ -693,7 +678,7 @@ impl Rocket {
                         if !branch.is_empty() {
                             let problem = if s.existing {
                                 (!local_branches.contains(&branch))
-                                    .then(|| "Choose a branch that isn't checked out anywhere.".to_owned())
+                                    .then(|| tr("Choose a branch that isn't checked out anywhere.").to_owned())
                             } else {
                                 crate::small_dialogs::branch_name_problem(&branch, &all_branches, None)
                             };
@@ -702,11 +687,11 @@ impl Rocket {
                             }
                         }
                         if !s.existing && !s.remote {
-                            ui.label(RichText::new("Start from").size(12.0).color(MUTED()));
+                            ui.label(RichText::new(crate::i18n::tr("Start from")).size(12.0).color(MUTED()));
                             let r = ui.add_enabled(
                                 !s.applying,
                                 TextEdit::singleline(&mut s.target)
-                                    .hint_text(RichText::new("HEAD, a branch or a commit ID").color(FAINT()))
+                                    .hint_text(RichText::new(tr("HEAD, a branch or a commit ID")).color(FAINT()))
                                     .desired_width(f32::INFINITY)
                                     .min_size(vec2(0.0, 30.0))
                                     .vertical_align(Align::Center),
@@ -731,7 +716,7 @@ impl Rocket {
                                 s.suggested = Some(suggestion);
                             }
                         }
-                        ui.label(RichText::new("Folder").size(12.0).color(MUTED()));
+                        ui.label(RichText::new(crate::i18n::tr("Folder")).size(12.0).color(MUTED()));
                         ui.horizontal(|ui| {
                             let width = (ui.available_width() - 84.0).max(160.0);
                             let r = ui.add_enabled(
@@ -746,11 +731,11 @@ impl Rocket {
                                 s.suggested = None;
                                 edited = true;
                             }
-                            let r = ui.add_enabled(!s.applying, Button::new("Browse").min_size(vec2(76.0, 30.0)));
+                            let r = ui.add_enabled(!s.applying, Button::new(crate::i18n::tr("Browse")).min_size(vec2(76.0, 30.0)));
                             control(widgets, "dialog-worktree-browse", &r, ui.clip_rect());
                             f.browse = r.clicked();
                         });
-                        pages::note(ui, "A new folder; Rocket suggests one next to the repository.");
+                        pages::note(ui, tr("A new folder; Rocket suggests one next to the repository."));
                         if edited {
                             s.invalidate();
                             d.error = None;
@@ -759,40 +744,40 @@ impl Rocket {
                             let branch = p.checkout().map_or(branch.clone(), |c| c.branch().to_owned());
                             let folder = folder_name(p.path());
                             let text = match p.checkout().and_then(WorktreeCheckout::upstream) {
-                                Some(upstream) => format!("A new folder {folder} with {branch} checked out, tracking {upstream}. This window stays on {current}."),
-                                None => format!("A new folder {folder} with {branch} checked out. This window stays on {current}."),
+                                Some(upstream) => trf!("A new folder {folder} with {branch} checked out, tracking {upstream}. This window stays on {current}.", folder, branch, upstream, current),
+                                None => trf!("A new folder {folder} with {branch} checked out. This window stays on {current}.", folder, branch, current),
                             };
                             pages::callout(ui, BLUE(), &text);
                         }
                     } else if let Some(e) = &selected {
                         let changes = selected_status.as_ref().map(|st| st.changes);
-                        crate::tags::card(ui, "What goes", |ui| {
-                            pages::key_value(ui, "Folder", 104.0, |ui| {
+                        crate::tags::card(ui, tr("What goes"), |ui| {
+                            pages::key_value(ui, crate::i18n::tr("Folder"), 104.0, |ui| {
                                 ui.add(Label::new(crate::views::display_path(&e.path)).wrap());
                             });
-                            pages::key_value(ui, "Changes", 104.0, |ui| match changes {
+                            pages::key_value(ui, crate::i18n::tr("Changes"), 104.0, |ui| match changes {
                                 Some(0) => {
-                                    ui.label(RichText::new("None · nothing to lose").color(GREEN()));
+                                    ui.label(RichText::new(tr("None · nothing to lose")).color(GREEN()));
                                 }
                                 Some(n) => {
                                     ui.label(RichText::new(changed_files(n)).color(AMBER()));
                                 }
                                 None => {
-                                    ui.label(RichText::new("Checked when you remove it").color(MUTED()));
+                                    ui.label(RichText::new(tr("Checked when you remove it")).color(MUTED()));
                                 }
                             });
                         });
-                        crate::tags::card(ui, "What stays", |ui| {
-                            pages::key_value(ui, "Branch", 104.0, |ui| {
+                        crate::tags::card(ui, tr("What stays"), |ui| {
+                            pages::key_value(ui, crate::i18n::tr("Branch"), 104.0, |ui| {
                                 ui.label(branch_label(e));
                             });
                             last_commit(ui, e, selected_status.as_ref());
                         });
                         // A failed review's error, below, says why instead.
                         let (color, note) = if changes.is_some_and(|n| n > 0) {
-                            (AMBER(), "Commit or stash its changes there first. Rocket doesn't remove folders with work in them.")
+                            (AMBER(), tr("Commit or stash its changes there first. Rocket doesn't remove folders with work in them."))
                         } else {
-                            (BLUE(), "Only the folder goes. You can make the worktree again later from the same branch.")
+                            (BLUE(), tr("Only the folder goes. You can make the worktree again later from the same branch."))
                         };
                         if d.error.is_none() {
                             pages::callout(ui, color, note);
@@ -800,7 +785,7 @@ impl Rocket {
                     }
                     // A running worktree operation shows its status and Stop in the footer.
                     if waiting && !s.applying {
-                        pages::waiting(ui, "Checking the worktree");
+                        pages::waiting(ui, tr("Checking the worktree"));
                     }
                     if let Some(error) = &d.error {
                         pages::callout(ui, RED(), error);
@@ -823,36 +808,36 @@ impl Rocket {
                         && d.error.is_none();
                     let r = if let Some(kind) = maintaining {
                         if kind == WorktreeMaintenance::Prune {
-                            pages::danger(ui, ready, kind.title())
+                            pages::danger(ui, ready, maintenance_title(kind))
                         } else {
-                            pages::primary(ui, ready, kind.title())
+                            pages::primary(ui, ready, maintenance_title(kind))
                         }
                     } else if creating {
-                        pages::primary(ui, ready, "Create worktree")
+                        pages::primary(ui, ready, crate::i18n::tr("Create worktree"))
                     } else {
-                        pages::danger(ui, ready, "Remove worktree")
+                        pages::danger(ui, ready, crate::i18n::tr("Remove worktree"))
                     };
                     control(widgets, "dialog-submit", &r, ui.clip_rect());
                     f.submit = r.clicked();
                     let problem = if creating { create_problem(s, &d.first) } else { None };
                     let can_review = !waiting && problem.is_none();
                     let r = if creating && s.preview.is_none() && d.error.is_none() {
-                        pages::primary(ui, can_review, "Review")
+                        pages::primary(ui, can_review, crate::i18n::tr("Review"))
                     } else {
-                        ui.add_enabled(can_review, Button::new("Review again"))
+                        ui.add_enabled(can_review, Button::new(tr("Review again")))
                     };
                     control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                     f.refresh |= r.clicked();
                     let status = if waiting {
-                        "Reviewing".to_owned()
+                        tr("Reviewing").to_owned()
                     } else if d.error.is_some() {
-                        "Fix the problem above, then review again".to_owned()
+                        tr("Fix the problem above, then review again").to_owned()
                     } else if let Some(problem) = problem {
                         problem
                     } else if s.preview.is_some() {
-                        "Reviewed · nothing has changed yet".to_owned()
+                        tr("Reviewed · nothing has changed yet").to_owned()
                     } else if creating {
-                        "Review to see what will be created".to_owned()
+                        tr("Review to see what will be created").to_owned()
                     } else {
                         String::new()
                     };
@@ -918,7 +903,7 @@ impl Rocket {
             if self.write.is_none() {
                 s.applying = false;
                 d.error =
-                    Some("Could not start. Wait for repository refresh, then review again.".into());
+                    Some(tr("Could not start. Wait for repository refresh, then review again.").into());
             }
         }
         let folder = d.first.clone();
@@ -998,11 +983,18 @@ fn branch_label(e: &WorktreeEntry) -> String {
         .map(|b| display(b.strip_prefix(b"refs/heads/").unwrap_or(b)))
         .unwrap_or_else(|| {
             if e.bare {
-                "Bare repository".into()
+                tr("Bare repository").into()
             } else {
-                "Detached HEAD".into()
+                crate::i18n::tr("Detached HEAD").into()
             }
         })
+}
+fn maintenance_title(kind: WorktreeMaintenance) -> &'static str {
+    match kind {
+        WorktreeMaintenance::Move => tr("Move worktree"),
+        WorktreeMaintenance::Repair => tr("Repair worktree"),
+        WorktreeMaintenance::Prune => tr("Prune registration"),
+    }
 }
 
 /// A path's last part, the name the worktree is known by.
@@ -1012,28 +1004,28 @@ fn folder_name(path: &Path) -> String {
 }
 
 fn changed_files(n: usize) -> String {
-    if n == 1 { "1 changed file".into() } else { format!("{n} changed files") }
+    trn!(n, "{n} changed file", "{n} changed files")
 }
 
 /// A worktree's pills: what kind it is, whether it is open, and what needs attention.
 fn pills(e: &WorktreeEntry, open: &[PathBuf], here: Option<&PathBuf>) -> Vec<(String, Color32)> {
     let mut pills = vec![if e.bare {
-        ("Bare".to_owned(), pages::NEUTRAL())
+        (tr("Bare").to_owned(), pages::NEUTRAL())
     } else if e.main {
-        ("Main".to_owned(), pages::INFO())
+        (tr("Main").to_owned(), pages::INFO())
     } else {
-        ("Linked".to_owned(), pages::NEUTRAL())
+        (tr("Linked").to_owned(), pages::NEUTRAL())
     }];
     if here == Some(&e.path) {
-        pills.push(("This window".into(), pages::INFO()));
+        pills.push((tr("This window").into(), pages::INFO()));
     } else if open.contains(&e.path) {
-        pills.push(("Open".into(), pages::OK()));
+        pills.push((crate::i18n::tr("Open").into(), pages::OK()));
     }
     if e.locked.is_some() {
-        pills.push(("Locked".into(), pages::WARN()));
+        pills.push((crate::i18n::tr("Locked").into(), pages::WARN()));
     }
     if e.prunable.is_some() {
-        pills.push(("Folder missing".into(), pages::WARN()));
+        pills.push((tr("Folder missing").into(), pages::WARN()));
     }
     pills
 }
@@ -1041,15 +1033,15 @@ fn pills(e: &WorktreeEntry, open: &[PathBuf], here: Option<&PathBuf>) -> Vec<(St
 /// What a worktree's changes look like in words, and their color.
 fn changes_text(e: &WorktreeEntry, status: Option<&WorktreeStatus>, checking: bool) -> (String, Color32) {
     if e.bare {
-        return ("no working folder".into(), MUTED());
+        return (tr("no working folder").into(), MUTED());
     }
     if e.prunable.is_some() {
-        return ("folder missing".into(), AMBER());
+        return (tr("folder missing").into(), AMBER());
     }
     match status {
-        Some(s) if s.changes == 0 => ("Clean".into(), GREEN()),
+        Some(s) if s.changes == 0 => (tr("Clean").into(), GREEN()),
         Some(s) => (changed_files(s.changes), AMBER()),
-        None if checking => ("checking".into(), MUTED()),
+        None if checking => (tr("Checking").into(), MUTED()),
         None => (String::new(), MUTED()),
     }
 }
@@ -1146,7 +1138,7 @@ fn worktree_row(
 
 /// The worktree's last commit as a card row.
 fn last_commit(ui: &mut Ui, e: &WorktreeEntry, status: Option<&WorktreeStatus>) {
-    pages::key_value(ui, "Last commit", 92.0, |ui| match (&e.head, status.and_then(|s| s.last.as_ref())) {
+    pages::key_value(ui, tr("Last commit"), 92.0, |ui| match (&e.head, status.and_then(|s| s.last.as_ref())) {
         (Some(head), Some((subject, time))) => {
             let mut job = text::LayoutJob::default();
             job.append(&head.as_str()[..7], 0.0, TextFormat::simple(FontId::monospace(12.5), TEXT()));
@@ -1160,14 +1152,14 @@ fn last_commit(ui: &mut Ui, e: &WorktreeEntry, status: Option<&WorktreeStatus>) 
             ui.label(RichText::new(&head.as_str()[..7]).monospace().size(12.5));
         }
         (None, _) => {
-            ui.label(RichText::new("None yet").color(MUTED()));
+            ui.label(RichText::new(tr("None yet")).color(MUTED()));
         }
     });
 }
 
 /// Branch, last commit and changes, as card rows.
 fn worktree_facts(ui: &mut Ui, e: &WorktreeEntry, status: Option<&WorktreeStatus>, checking: bool) {
-    pages::key_value(ui, "Branch", 92.0, |ui| {
+    pages::key_value(ui, crate::i18n::tr("Branch"), 92.0, |ui| {
         ui.add(Label::new(branch_label(e)).wrap());
     });
     // Git lists no checked-out commit for the bare entry, though it has history.
@@ -1176,7 +1168,7 @@ fn worktree_facts(ui: &mut Ui, e: &WorktreeEntry, status: Option<&WorktreeStatus
     }
     let (changes, color) = changes_text(e, status, checking);
     if !changes.is_empty() {
-        pages::key_value(ui, "Changes", 92.0, |ui| {
+        pages::key_value(ui, crate::i18n::tr("Changes"), 92.0, |ui| {
             let mut chars = changes.chars();
             let text: String = match chars.next() {
                 Some(first) => first.to_uppercase().chain(chars).collect(),
@@ -1190,15 +1182,15 @@ fn worktree_facts(ui: &mut Ui, e: &WorktreeEntry, status: Option<&WorktreeStatus
 /// A worktree's folder and facts in one card, for the maintenance reviews.
 fn worktree_card(ui: &mut Ui, title: &str, e: &WorktreeEntry, status: Option<&WorktreeStatus>) {
     crate::tags::card(ui, title, |ui| {
-        pages::key_value(ui, "Folder", 92.0, |ui| {
+        pages::key_value(ui, crate::i18n::tr("Folder"), 92.0, |ui| {
             ui.add(Label::new(crate::views::display_path(&e.path)).wrap());
         });
         worktree_facts(ui, e, status, false);
         if let Some(reason) = &e.locked {
-            pages::callout(ui, AMBER(), &format!("Locked: {}", display(reason)));
+            pages::callout(ui, AMBER(), &trf!("Locked: {reason}", reason = display(reason)));
         }
         if let Some(reason) = &e.prunable {
-            pages::callout(ui, AMBER(), &format!("Folder missing: {}", display(reason)));
+            pages::callout(ui, AMBER(), &trf!("Folder missing: {reason}", reason = display(reason)));
         }
     });
 }

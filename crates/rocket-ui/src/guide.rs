@@ -99,43 +99,43 @@ impl Topic {
 
     pub(crate) fn title(self) -> &'static str {
         match self {
-            Topic::GettingStarted => "Getting started",
-            Topic::Safety => "Reviews and safety",
-            Topic::Repositories => "Repositories",
-            Topic::Explore => "Exploring other repositories",
-            Topic::Commits => "Commits",
-            Topic::Branches => "Branches",
-            Topic::Remotes => "Remotes",
-            Topic::FetchPull => "Fetch and pull",
-            Topic::Push => "Push",
-            Topic::ForcePush => "Force push with lease",
-            Topic::AtomicPush => "Push branches together",
-            Topic::Merge => "Merge",
-            Topic::Rebase => "Rebase",
-            Topic::Conflicts => "Conflicts",
-            Topic::Stashes => "Stashes",
-            Topic::Recovery => "Reflog and recovery",
-            Topic::Tags => "Tags",
-            Topic::Worktrees => "Worktrees",
-            Topic::Submodules => "Submodules",
-            Topic::Lfs => "Git LFS",
-            Topic::Patches => "Patches",
-            Topic::Files => "Restoring files",
-            Topic::Ignore => "Ignore rules",
-            Topic::Bisect => "Bisect",
-            Topic::GitFlow => "Git Flow",
-            Topic::Signing => "Signing",
-            Topic::CustomCommands => "Custom commands",
-            Topic::IssueLinks => "Issue links",
-            Topic::Hosting => "Hosting and pull requests",
-            Topic::CiChecks => "CI checks",
-            Topic::Integrations => "Extensions",
-            Topic::SshKeys => "SSH keys",
-            Topic::FileHistory => "File history",
-            Topic::Activity => "Activity and diagnostics",
-            Topic::Preferences => "Preferences and tools",
-            Topic::Themes => "Themes",
-            Topic::CommitSwitch => "Commit & Push and saved switching",
+            Topic::GettingStarted => crate::i18n::mark("Getting started"),
+            Topic::Safety => crate::i18n::mark("Reviews and safety"),
+            Topic::Repositories => crate::i18n::mark("Repositories"),
+            Topic::Explore => crate::i18n::mark("Exploring other repositories"),
+            Topic::Commits => crate::i18n::mark("Commits"),
+            Topic::Branches => crate::i18n::mark("Branches"),
+            Topic::Remotes => crate::i18n::mark("Remotes"),
+            Topic::FetchPull => crate::i18n::mark("Fetch and pull"),
+            Topic::Push => crate::i18n::mark("Push"),
+            Topic::ForcePush => crate::i18n::mark("Force push with lease"),
+            Topic::AtomicPush => crate::i18n::mark("Push branches together"),
+            Topic::Merge => crate::i18n::mark("Merge"),
+            Topic::Rebase => crate::i18n::mark("Rebase"),
+            Topic::Conflicts => crate::i18n::mark("Conflicts"),
+            Topic::Stashes => crate::i18n::mark("Stashes"),
+            Topic::Recovery => crate::i18n::mark("Reflog and recovery"),
+            Topic::Tags => crate::i18n::mark("Tags"),
+            Topic::Worktrees => crate::i18n::mark("Worktrees"),
+            Topic::Submodules => crate::i18n::mark("Submodules"),
+            Topic::Lfs => crate::i18n::mark("Git LFS"),
+            Topic::Patches => crate::i18n::mark("Patches"),
+            Topic::Files => crate::i18n::mark("Restoring files"),
+            Topic::Ignore => crate::i18n::mark("Ignore rules"),
+            Topic::Bisect => crate::i18n::mark("Bisect"),
+            Topic::GitFlow => crate::i18n::mark("Git Flow"),
+            Topic::Signing => crate::i18n::mark("Signing"),
+            Topic::CustomCommands => crate::i18n::mark("Custom commands"),
+            Topic::IssueLinks => crate::i18n::mark("Issue links"),
+            Topic::Hosting => crate::i18n::mark("Hosting and pull requests"),
+            Topic::CiChecks => crate::i18n::mark("CI checks"),
+            Topic::Integrations => crate::i18n::mark("Extensions"),
+            Topic::SshKeys => crate::i18n::mark("SSH keys"),
+            Topic::FileHistory => crate::i18n::mark("File history"),
+            Topic::Activity => crate::i18n::mark("Activity and diagnostics"),
+            Topic::Preferences => crate::i18n::mark("Preferences and tools"),
+            Topic::Themes => crate::i18n::mark("Themes"),
+            Topic::CommitSwitch => crate::i18n::mark("Commit & Push and saved switching"),
         }
     }
 }
@@ -232,8 +232,8 @@ pub(crate) fn header_button(ui: &mut Ui) {
         semibold(13.0),
         if hovered { TEXT() } else { MUTED() },
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, "Guide"));
-    if response.on_hover_text("Guide (F1)").clicked() {
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, crate::i18n::tr("Guide")));
+    if response.on_hover_text(crate::i18n::tr("Guide (F1)")).clicked() {
         request(ui.ctx());
     }
 }
@@ -311,15 +311,15 @@ impl Rocket {
                             ui.add_space(10.0);
                             ui.vertical(|ui| {
                                 ui.spacing_mut().item_spacing.y = 3.0;
-                                ui.label(RichText::new("Guide").font(semibold(16.0)));
+                                ui.label(RichText::new(crate::i18n::tr("Guide")).font(semibold(16.0)));
                                 ui.label(
-                                    RichText::new("How Rocket's operations work, by topic.")
+                                    RichText::new(crate::i18n::tr("How Rocket's operations work, by topic."))
                                         .color(MUTED()),
                                 );
                             });
                             ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                                 close |= crate::chrome::icon_button(ui, Icon::Close, true, false, 28.0)
-                                    .on_hover_text("Close (Esc)")
+                                    .on_hover_text(crate::i18n::tr("Close (Esc)"))
                                     .clicked();
                             });
                         });
@@ -340,7 +340,7 @@ impl Rocket {
                                         |ui| {
                                             ui.spacing_mut().item_spacing.y = 1.0;
                                             for t in Topic::ALL {
-                                                if topic_row(ui, t.title(), t == topic).clicked() {
+                                                if topic_row(ui, crate::i18n::tr(t.title()), t == topic).clicked() {
                                                     topic = t;
                                                 }
                                             }
@@ -519,7 +519,7 @@ fn topic_row(ui: &mut Ui, title: &str, selected: bool) -> Response {
 
 fn topic_body(ui: &mut Ui, topic: Topic) {
     ui.spacing_mut().item_spacing.y = 7.0;
-    ui.label(RichText::new(topic.title()).font(semibold(18.0)));
+    ui.label(RichText::new(crate::i18n::tr(topic.title())).font(semibold(18.0)));
     let Some((_, blocks)) = sections().iter().find(|(title, _)| title == topic.title()) else {
         return;
     };

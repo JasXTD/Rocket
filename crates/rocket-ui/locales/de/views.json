@@ -16,7 +16,10 @@
   "Changes require an available working tree.": "Änderungen erfordern ein verfügbares Arbeitsverzeichnis.",
   "Checked out at": "Ausgecheckt in",
   "Cherry-pick commit": "Commit cherry-picken",
-  "Cherry-pick {n} commits": "{n} Commits cherry-picken",
+  "Cherry-pick {n} commits": {
+    "one": "{n} Commit cherry-picken",
+    "other": "{n} Commits cherry-picken"
+  },
   "Choose what the commit search looks at": "Wählen, was die Commit-Suche durchsucht",
   "Clear recent messages": "Letzte Nachrichten leeren",
   "Clear the path": "Pfad leeren",
@@ -152,7 +155,10 @@
   "Resume continues with older commits.": "„Fortsetzen“ sucht in älteren Commits weiter.",
   "Retry Git discovery": "Git-Suche wiederholen",
   "Revert commit": "Commit reverten",
-  "Revert {n} commits": "{n} Commits reverten",
+  "Revert {n} commits": {
+    "one": "{n} Commit reverten",
+    "other": "{n} Commits reverten"
+  },
   "Review an amended latest commit with the staged changes": "Einen geänderten letzten Commit mit den gestagten Änderungen prüfen",
   "Review stopping tracking while keeping the local file. Unstage selected changes first.": "Beenden der Verfolgung prüfen; die lokale Datei bleibt erhalten. Unstagen Sie zuerst die ausgewählten Änderungen.",
   "Save, switch & restore…": "Speichern, wechseln & wiederherstellen…",

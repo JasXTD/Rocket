@@ -122,7 +122,7 @@ impl State {
     }
     pub fn stop_words(&mut self) {
         self.word_task = None;
-        self.word_error = Some("Word highlights cancelled. Toggle Words to retry.".into());
+        self.word_error = Some(crate::i18n::tr("Word highlights cancelled. Toggle Words to retry.").into());
     }
     pub fn poll(&mut self) {
         if let Some(result) = self.word_task.as_mut().and_then(ReadTask::try_finish) {

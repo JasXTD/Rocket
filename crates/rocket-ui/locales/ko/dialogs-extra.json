@@ -1,0 +1,8 @@
+{
+  "Created by Xetro": "Xetro 제작",
+  "Version {version} · a native Rust Git workspace": "버전 {version} · Rust 기반 네이티브 Git 작업 공간",
+  "Free and open-source software under the {license} license.": "{license} 라이선스의 자유 오픈 소스 소프트웨어입니다.",
+  "What changed in each Rocket build.": "각 Rocket 빌드의 변경 사항입니다.",
+  "{version} · this build": "{version} · 현재 빌드",
+  "This build": "현재 빌드"
+}

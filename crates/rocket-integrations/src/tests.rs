@@ -633,11 +633,11 @@ mod scripts {
                 {"key":"ROCKET-7","fields":{"summary":"Keep the login redirect","status":{"name":"In progress","statusCategory":{"key":"indeterminate"}}}},
                 {"key":"ROCKET-3","fields":{"summary":"Sign-in loops","status":{"name":"Done","statusCategory":{"key":"done"}}}}]})
         } else if path.contains("/createmeta/") && path.contains("/issuetypes/20") {
-            json!({"fields":[{"fieldId":"summary","required":true},{"fieldId":"customfield_1","name":"Team","required":true}]})
+            json!({"startAt":0,"maxResults":50,"total":2,"fields":[{"fieldId":"summary","required":true},{"fieldId":"customfield_1","name":"Team","required":true}]})
         } else if path.contains("/createmeta/") && path.contains("/issuetypes/") {
-            json!({"fields":[{"fieldId":"summary","required":true}]})
+            json!({"startAt":0,"maxResults":50,"total":1,"fields":[{"fieldId":"summary","required":true}]})
         } else if path.contains("/createmeta/") {
-            json!({"issueTypes":[{"id":"10","name":"Task"},{"id":"20","name":"Bug"},{"id":"30","name":"Sub-task","subtask":true}]})
+            json!({"startAt":0,"maxResults":50,"total":3,"issueTypes":[{"id":"10","name":"Task"},{"id":"20","name":"Bug"},{"id":"30","name":"Sub-task","subtask":true}]})
         } else if path.ends_with("/editmeta") {
             json!({"fields":{"summary":{"operations":["set"]},"description":{"operations":["set"]}}})
         } else if path.contains("/transitions") {

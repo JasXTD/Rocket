@@ -213,7 +213,7 @@ impl State {
                     )?),
                     Mode::Lines => {
                         let (first, last) = lines.ok_or_else(|| {
-                            Error::InvalidInput("Select lines in Blame first.".into())
+                            Error::InvalidInput(crate::i18n::tr("Select lines in Blame first.").into())
                         })?;
                         Read::Diff(line_patch(&repo.line_history(
                             &entry.commit.id,
@@ -224,7 +224,7 @@ impl State {
                     }
                     Mode::Compare => {
                         let (older, newer) = pair.ok_or_else(|| {
-                            Error::InvalidInput("Ctrl-click a second commit to compare.".into())
+                            Error::InvalidInput(crate::i18n::tr("Ctrl-click a second commit to compare.").into())
                         })?;
                         let mut paths = vec![newer.path.clone()];
                         if older.path != newer.path {
@@ -292,7 +292,7 @@ impl State {
                     match repo.resolve_commit("HEAD", &cancel) {
                         Err(error @ Error::Git { .. }) => {
                             if matches!(repo.head(&cancel)?, Head::Unborn { .. }) {
-                                return Err(Error::Unsupported("No committed history yet. Create the first commit before inspecting a file.".into()));
+                                return Err(Error::Unsupported(crate::i18n::tr("No committed history yet. Create the first commit before inspecting a file.").into()));
                             }
                             return Err(error);
                         }
@@ -351,7 +351,7 @@ pub(crate) fn intent(tab: &mut Tab, backend: Backend, intent: FileIntent) {
                     if let Some(tip) = tip {
                         s.load(backend, repo, Some((tip, path.clone(), false)));
                     } else {
-                        s.error=Some("No committed history yet. Create the first commit before inspecting this file.".into());
+                        s.error=Some(crate::i18n::tr("No committed history yet. Create the first commit before inspecting this file.").into());
                     }
                 }
             }
@@ -501,11 +501,11 @@ pub(crate) fn poll_tab(tab: &mut Tab, backend: &Backend, ctx: &Context) {
                             }
                         }
                         if s.entries.is_empty() {
-                            s.notice=Some("No history found. Check the exact repository-relative path at this revision.".into());
+                            s.notice=Some(crate::i18n::tr("No history found. Check the exact repository-relative path at this revision.").into());
                         }
                     }
                     Err(Error::Cancelled) => {
-                        s.notice = Some("Read cancelled. Previous results retained.".into())
+                        s.notice = Some(crate::i18n::tr("Read cancelled. Previous results retained.").into())
                     }
                     Err(e) => s.error = Some(user_error(&e)),
                 }
@@ -517,7 +517,7 @@ pub(crate) fn poll_tab(tab: &mut Tab, backend: &Backend, ctx: &Context) {
                     Ok(Read::Diff(p)) => s.patch = Some(p),
                     Ok(Read::Blame(b)) => s.blame = Some(b),
                     Err(Error::Cancelled) => {
-                        s.notice = Some("Read cancelled. Select a view or commit to retry.".into())
+                        s.notice = Some(crate::i18n::tr("Read cancelled. Select a view or commit to retry.").into())
                     }
                     Err(e) => s.error = Some(user_error(&e)),
                 }
@@ -653,7 +653,7 @@ pub(crate) fn view(
     if allow_windows && let Some(entry)=tab.file_history.selected.and_then(|i|tab.file_history.entries.get(i)) {
         let commit=entry.commit.id.clone();let path=entry.path.clone();
         ui.horizontal_wrapped(|ui| {
-            for (key,label,blame) in [("file-open-review","Open history window",false),("file-open-blame","Open blame window",true)] {
+            for (key,label,blame) in [("file-open-review",crate::i18n::tr("Open history window"),false),("file-open-blame",crate::i18n::tr("Open blame window"),true)] {
                 if control(ui,widgets,key,label,true){intents.push(Intent::OpenReview(crate::reviews::Request{commit:commit.clone(),path:Some(path.clone()),blame}));}
             }
         });
@@ -666,20 +666,16 @@ pub(crate) fn view(
     let compact = short || tab.review_window;
     if !compact {
         let description = match (&s.tip, &s.path) {
-            (Some(tip), Some(path)) => format!(
-                "{} · pinned {} · committed versions",
-                path.display_lossy(),
-                &tip.as_str()[..8]
-            ),
-            _ => "Files follow renames · folders use a fixed path · committed versions only".into(),
+            (Some(tip), Some(path)) => crate::i18n::trf!("{path} · pinned {commit} · committed versions", path = path.display_lossy(), commit = &tip.as_str()[..8]),
+            _ => crate::i18n::tr("Files follow renames · folders use a fixed path · committed versions only").into(),
         };
         pages::header(
             ui,
             Icon::File,
-            "File & folder history",
+            crate::i18n::tr("File & folder history"),
             &description,
             |ui| {
-                if !s.back.is_empty() && control(ui, widgets, "file-back", "Back", !s.running()) {
+                if !s.back.is_empty() && control(ui, widgets, "file-back", crate::i18n::tr("Back"), !s.running()) {
                     emit(intents, FileIntent::Back);
                 }
             },
@@ -694,7 +690,7 @@ pub(crate) fn view(
                 ui.spacing_mut().item_spacing.x = 6.0;
                 if compact
                     && !s.back.is_empty()
-                    && control(ui, widgets, "file-back", "Back", !s.running())
+                    && control(ui, widgets, "file-back", crate::i18n::tr("Back"), !s.running())
                 {
                     emit(intents, FileIntent::Back);
                 }
@@ -702,16 +698,16 @@ pub(crate) fn view(
                     [(ui.available_width() - 400.0).clamp(80.0, 420.0), 28.0],
                     TextEdit::singleline(&mut s.path_input)
                         .char_limit(4096)
-                        .hint_text("Repository-relative path, e.g. src/main.rs")
+                        .hint_text(crate::i18n::tr("Repository-relative path, e.g. src/main.rs"))
                         .vertical_align(Align::Center),
                 );
                 if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                     emit(intents, FileIntent::Load);
                 }
                 register(ui, widgets, "file-path", &r);
-                let r = ui.add(checkbox(&mut s.directory_input, "Folder"));
+                let r = ui.add(checkbox(&mut s.directory_input, crate::i18n::tr("Folder")));
                 register(ui, widgets, "file-directory", &r);
-                let load = pages::primary(ui, !s.path_input.is_empty(), if allow_windows {"Load HEAD"} else {"Load pinned"});
+                let load = pages::primary(ui, !s.path_input.is_empty(), if allow_windows {crate::i18n::tr("Load HEAD")} else {crate::i18n::tr("Load pinned")});
                 register(ui, widgets, "file-load", &load);
                 if load.clicked() {
                     emit(intents, FileIntent::Load);
@@ -720,7 +716,7 @@ pub(crate) fn view(
                     ui,
                     widgets,
                     "file-cancel",
-                    if s.cancelling { "Stopping" } else { "Stop" },
+                    if s.cancelling { crate::i18n::tr("Stopping") } else { crate::i18n::tr("Stop") },
                     s.running() && !s.cancelling,
                 ) {
                     emit(intents, FileIntent::Cancel);
@@ -733,11 +729,11 @@ pub(crate) fn view(
                     ui.add(
                         Label::new(
                             RichText::new(if s.cancelling {
-                                "Stopping Git read…"
+                                crate::i18n::tr("Stopping Git read…")
                             } else if s.history_running() {
-                                "Reading file history…"
+                                crate::i18n::tr("Reading file history…")
                             } else {
-                                "Reading committed file…"
+                                crate::i18n::tr("Reading committed file…")
                             })
                             .size(12.0)
                             .color(MUTED()),
@@ -759,7 +755,7 @@ pub(crate) fn view(
         });
     if s.directory && !short {
         pages::strip(ui, |ui| {
-            ui.add(Label::new(RichText::new("Fixed folder path · includes descendants · folder renames are not followed · select a file for blame").size(12.0).color(MUTED())).truncate());
+            ui.add(Label::new(RichText::new(crate::i18n::tr("Fixed folder path · includes descendants · folder renames are not followed · select a file for blame")).size(12.0).color(MUTED())).truncate());
         });
     }
     if !short && !s.entries.is_empty() {
@@ -775,9 +771,9 @@ pub(crate) fn view(
                     widgets,
                     "file-toggle-list",
                     if s.show_list {
-                        "Inspect file"
+                        crate::i18n::tr("Inspect file")
                     } else {
-                        "Commit list"
+                        crate::i18n::tr("Commit list")
                     },
                     !s.entries.is_empty(),
                 ) {
@@ -786,7 +782,7 @@ pub(crate) fn view(
                 if let Some(i) = s.selected {
                     ui.add(
                         Label::new(
-                            RichText::new(format!("{} / {} commits", i + 1, s.entries.len()))
+                            RichText::new(crate::i18n::trf!("Commits: {loaded} / {total}", loaded = i + 1, total = s.entries.len()))
                                 .size(12.0)
                                 .color(FAINT()),
                         )
@@ -795,7 +791,7 @@ pub(crate) fn view(
                 }
                 if short
                     && s.next.is_some()
-                    && control(ui, widgets, "file-more", "Load older", !s.running())
+                    && control(ui, widgets, "file-more", crate::i18n::tr("Load older"), !s.running())
                 {
                     emit(intents, FileIntent::More);
                 }
@@ -898,7 +894,7 @@ fn timeline(
     painter.text(
         pos2(rect.center().x, label_y),
         Align2::CENTER_CENTER,
-        format!("Timeline · {} commits loaded", s.entries.len()),
+        crate::i18n::trf!("Timeline · loaded commits: {count}", count = s.entries.len()),
         FontId::proportional(11.0),
         FAINT(),
     );
@@ -965,14 +961,14 @@ fn history_list(
     if !short {
         pages::bar(
             ui,
-            "Commits",
-            &format!("{} loaded · newest first", s.entries.len()),
+            crate::i18n::tr("Commits"),
+            &crate::i18n::trf!("Loaded: {count} · newest first", count = s.entries.len()),
             |ui| {
                 if control(
                     ui,
                     widgets,
                     "file-more",
-                    "Load older",
+                    crate::i18n::tr("Load older"),
                     s.next.is_some() && !s.running(),
                 ) {
                     emit(intents, FileIntent::More);
@@ -987,7 +983,7 @@ fn history_list(
                 pages::callout(
                     ui,
                     AMBER(),
-                    "10,000 commit limit. Inspect an older commit to continue.",
+                    crate::i18n::tr("10,000 commit limit. Inspect an older commit to continue."),
                 )
             });
     }
@@ -1017,9 +1013,9 @@ fn history_list(
                         );
                         let mut pills = Vec::new();
                         if entry.previous_path.is_some() {
-                            pills.push(("Renamed".to_owned(), VIOLET()));
+                            pills.push((crate::i18n::tr("Renamed").to_owned(), VIOLET()));
                         } else if entry.deleted {
-                            pills.push(("Deleted".to_owned(), RED()));
+                            pills.push((crate::i18n::tr("Deleted").to_owned(), RED()));
                         }
                         let r = pages::row(
                             ui,
@@ -1088,7 +1084,7 @@ fn inspector(
             .show(ui, |ui| {
                 pages::empty(
                     ui,
-                    "Enter an exact path to read its committed history. Deleted paths are supported.",
+                    crate::i18n::tr("Enter an exact path to read its committed history. Deleted paths are supported."),
                 )
             });
         return;
@@ -1106,7 +1102,7 @@ fn inspector(
                     ui,
                     widgets,
                     "file-blame-next",
-                    if short { "›" } else { "Next" },
+                    if short { "›" } else { crate::i18n::tr("Next") },
                     b.next_line.is_some() && !s.running(),
                 ) {
                     emit(intents, FileIntent::BlamePage(b.next_line.unwrap()));
@@ -1120,7 +1116,7 @@ fn inspector(
                     ui,
                     widgets,
                     "file-blame-prev",
-                    if short { "‹" } else { "Previous" },
+                    if short { "‹" } else { crate::i18n::tr("Previous") },
                     first > 1 && !s.running(),
                 ) {
                     emit(
@@ -1131,15 +1127,15 @@ fn inspector(
                 ui.add_space(6.0);
             }
             let mut modes = vec![
-                (Mode::Diff, "file-diff", "Diff"),
-                (Mode::Contents, "file-contents", "Contents"),
-                (Mode::Blame, "file-blame", "Blame"),
+                (Mode::Diff, "file-diff", crate::i18n::tr("Diff")),
+                (Mode::Contents, "file-contents", crate::i18n::tr("Contents")),
+                (Mode::Blame, "file-blame", crate::i18n::tr("Blame")),
             ];
             if s.lines.is_some() {
-                modes.push((Mode::Lines, "file-lines", "Lines"));
+                modes.push((Mode::Lines, "file-lines", crate::i18n::tr("Lines")));
             }
             if s.compare.is_some() {
-                modes.push((Mode::Compare, "file-compare", "Compare"));
+                modes.push((Mode::Compare, "file-compare", crate::i18n::tr("Compare")));
             }
             let modes = if s.directory { &modes[..1] } else { &modes[..] };
             let items: Vec<_> = modes.iter().map(|m| (m.2, s.mode == m.0)).collect();
@@ -1150,7 +1146,7 @@ fn inspector(
                 }
             }
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                if short && control(ui, widgets, "file-toggle-list", "Commits", true) {
+                if short && control(ui, widgets, "file-toggle-list", crate::i18n::tr("Commits"), true) {
                     emit(intents, FileIntent::ToggleList);
                 }
                 let subject = entry.commit.subject_lossy();
@@ -1172,7 +1168,7 @@ fn inspector(
                             &entry.commit.id.as_str()[..8],
                             entry.path.display_lossy(),
                             if entry.previous_path.is_some() {
-                                " · renamed"
+                                crate::i18n::tr(" · renamed")
                             } else {
                                 ""
                             }
@@ -1182,16 +1178,7 @@ fn inspector(
                     )
                     .truncate(),
                 )
-                .on_hover_text(format!(
-                    "{}\n{}\nRenamed from: {}\nPinned history: {}",
-                    entry.commit.id,
-                    entry.commit.subject_lossy(),
-                    entry
-                        .previous_path
-                        .as_ref()
-                        .map_or_else(|| "—".into(), |p| p.display_lossy().into_owned()),
-                    s.tip.as_ref().map_or("—", |t| t.as_str())
-                ));
+                .on_hover_text(crate::i18n::trf!("{id}\n{subject}\nRenamed from: {path}\nPinned history: {tip}", id = entry.commit.id, subject = entry.commit.subject_lossy(), path = entry.previous_path.as_ref().map_or_else(|| "—".into(), |p| p.display_lossy().into_owned()), tip = s.tip.as_ref().map_or("—", |t| t.as_str())));
             } else {
                 ui.horizontal(|ui| {
                     ui.label(
@@ -1209,7 +1196,7 @@ fn inspector(
                 if let Some(old) = &entry.previous_path {
                     ui.add(
                         Label::new(
-                            RichText::new(format!("Renamed from {}", old.display_lossy()))
+                            RichText::new(crate::i18n::trf!("Renamed from {path}", path = old.display_lossy()))
                                 .size(12.0)
                                 .color(GREEN()),
                         )
@@ -1225,7 +1212,7 @@ fn inspector(
                     origin.path.display_lossy(),
                     origin.original_line,
                     if origin.boundary {
-                        " · history boundary"
+                        crate::i18n::tr(" · history boundary")
                     } else {
                         ""
                     }
@@ -1255,16 +1242,16 @@ fn inspector(
                                 ui,
                                 widgets,
                                 "file-origin-history",
-                                "History from here",
+                                crate::i18n::tr("History from here"),
                                 !s.running(),
                             ) {
                                 emit(intents, FileIntent::OriginHistory);
                             }
                             if let Some((first, last)) = s.lines {
                                 let label = if first == last {
-                                    format!("Line {first} history")
+                                    crate::i18n::trf!("Line {first} history", first)
                                 } else {
-                                    format!("Lines {first}–{last} history")
+                                    crate::i18n::trf!("Lines {first}–{last} history", first, last)
                                 };
                                 if control(ui, widgets, "file-line-history", &label, !s.running())
                                 {
@@ -1289,13 +1276,13 @@ fn inspector(
                     if let Some(c) = &s.content {
                         let message = match c.kind {
                             HistoricalFileKind::Missing => Some(
-                                "File absent at this commit. Select an earlier version or view its deletion diff.",
+                                crate::i18n::tr("File absent at this commit. Select an earlier version or view its deletion diff."),
                             ),
                             HistoricalFileKind::Binary => Some(
-                                "Binary or non-UTF-8 file. Text preview and blame are unavailable.",
+                                crate::i18n::tr("Binary or non-UTF-8 file. Text preview and blame are unavailable."),
                             ),
                             HistoricalFileKind::NonFile => {
-                                Some("This path is a directory or submodule, not a file.")
+                                Some(crate::i18n::tr("This path is a directory or submodule, not a file."))
                             }
                             _ => None,
                         };
@@ -1307,31 +1294,31 @@ fn inspector(
                             pages::callout(
                                 ui,
                                 AMBER(),
-                                "Preview limited to 50,000 lines and 8 KiB per line.",
+                                crate::i18n::tr("Preview limited to 50,000 lines and 8 KiB per line."),
                             );
                         }
                         if c.lines.is_empty() {
-                            pages::note(ui, "Empty file at this commit.");
+                            pages::note(ui, crate::i18n::tr("Empty file at this commit."));
                         }
                     }
                 }
                 Mode::Diff => {
                     if let Some(p) = &s.patch {
                         if p.limited {
-                            pages::callout(ui, AMBER(), "Diff preview limit reached.");
+                            pages::callout(ui, AMBER(), crate::i18n::tr("Diff preview limit reached."));
                         }
                         if p.files.is_empty() {
-                            pages::note(ui, "No first-parent patch for this commit.");
+                            pages::note(ui, crate::i18n::tr("No first-parent patch for this commit."));
                         }
                     }
                 }
                 Mode::Blame => {
                     if s.blame.as_ref().is_some_and(|b| b.total_lines == 0) {
-                        pages::note(ui, "Empty file: no lines to attribute.");
+                        pages::note(ui, crate::i18n::tr("Empty file: no lines to attribute."));
                     } else if s.lines.is_none() {
                         pages::note(
                             ui,
-                            "Click a line's commit to select it; Shift-click another to select a range.",
+                            crate::i18n::tr("Click a line's commit to select it; Shift-click another to select a range."),
                         );
                     }
                 }
@@ -1339,12 +1326,10 @@ fn inspector(
                     if let (Some((first, last)), Some(p)) = (s.lines, &s.patch) {
                         pages::note(
                             ui,
-                            &format!(
-                                "Commits that changed lines {first}–{last} as of this commit, newest first."
-                            ),
+                            &crate::i18n::trf!("Commits that changed lines {first}–{last} as of this commit, newest first.", first, last),
                         );
                         if p.limited {
-                            pages::callout(ui, AMBER(), "Showing the newest 200 commits.");
+                            pages::callout(ui, AMBER(), crate::i18n::tr("Showing the newest 200 commits."));
                         }
                     }
                 }
@@ -1357,15 +1342,11 @@ fn inspector(
                         };
                         pages::note(
                             ui,
-                            &format!(
-                                "Changes from {} to {}, the older version first.",
-                                &older.commit.id.as_str()[..8],
-                                &newer.commit.id.as_str()[..8]
-                            ),
+                            &crate::i18n::trf!("Changes from {from} to {to}, the older version first.", from = &older.commit.id.as_str()[..8], to = &newer.commit.id.as_str()[..8]),
                         );
                     }
                     if s.patch.as_ref().is_some_and(|p| p.files.is_empty()) {
-                        pages::note(ui, "The file is the same in both commits.");
+                        pages::note(ui, crate::i18n::tr("The file is the same in both commits."));
                     }
                 }
             }

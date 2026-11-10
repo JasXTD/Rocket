@@ -36,15 +36,15 @@ pub struct DialogState {
 
 /// "1 commit", "4 commits".
 fn commits(n: usize) -> String {
-    if n == 1 { "1 commit".into() } else { format!("{n} commits") }
+    crate::i18n::trn!(n, "{n} commit", "{n} commits")
 }
 
 /// What follows the stopped patch, for "then imports …".
 fn the_rest(rest: usize) -> String {
     match rest {
-        0 => "that's the last one".into(),
-        1 => "then imports the last patch".into(),
-        n => format!("then imports the other {n} patches"),
+        0 => crate::i18n::tr("that's the last one").into(),
+        1 => crate::i18n::tr("then imports the last patch").into(),
+        n => crate::i18n::trf!("then imports the remaining patches: {count}", count = n),
     }
 }
 
@@ -115,7 +115,7 @@ impl Rocket {
                 s.fix = r.fix;
             }
             Err(Error::Cancelled) => {
-                d.error = Some("Import review stopped. No commits were imported.".into())
+                d.error = Some(crate::i18n::tr("Import review stopped. No commits were imported.").into())
             }
             Err(e) => d.error = Some(user_error(&e)),
         }
@@ -155,12 +155,12 @@ impl Rocket {
         let original = s.preview.as_ref().map(|p| {
             let id = p.original();
             let commit = tab.and_then(|t| t.loaded_commits().iter().find(|c| c.id == *id));
-            (commit.map_or_else(|| "Your branch before the import".to_owned(), subject), id.as_str()[..7].to_owned())
+            (commit.map_or_else(|| crate::i18n::tr("Your branch before the import").to_owned(), subject), id.as_str()[..7].to_owned())
         });
         let at = s.preview.as_ref().map(|p| p.current()).or(stopped.as_ref().map(|t| t.at));
         let total = s.preview.as_ref().map(|p| p.entries().len()).or(stopped.as_ref().map(|t| t.total)).unwrap_or(0);
         let rest = total.saturating_sub(at.unwrap_or(0));
-        let patch = at.map_or_else(|| "patch".to_owned(), |n| format!("patch {n}"));
+        let patch = at.map_or_else(|| crate::i18n::tr("patch").to_owned(), |n| crate::i18n::trf!("patch {number}", number = n));
         let name = s
             .preview
             .as_ref()
@@ -168,21 +168,21 @@ impl Rocket {
             .map(|e| e.subject.clone())
             .or(stopped.as_ref().map(|t| t.subject.clone()))
             .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| "this patch".into());
+            .unwrap_or_else(|| crate::i18n::tr("this patch").into());
         let title = match action {
-            MailImportAction::Start => "Import commit series".to_owned(),
-            MailImportAction::Continue => "Continue import".into(),
-            MailImportAction::Skip => format!("Skip {patch}"),
-            MailImportAction::Abort => "Abort import".into(),
+            MailImportAction::Start => crate::i18n::tr("Import commit series").to_owned(),
+            MailImportAction::Continue => crate::i18n::tr("Continue import").into(),
+            MailImportAction::Skip => crate::i18n::trf!("Skip {patch}", patch),
+            MailImportAction::Abort => crate::i18n::tr("Abort import").into(),
         };
         let subtitle = match action {
             MailImportAction::Start => {
-                format!("Makes each patch in a folder into a commit on {branch}. Authors, dates and messages are kept.")
+                crate::i18n::trf!("Makes each patch in a folder into a commit on {branch}. Authors, dates and messages are kept.", branch)
             }
-            MailImportAction::Continue if s.preview.is_some() => format!("Saves your fix as {patch}, {}.", the_rest(rest)),
-            MailImportAction::Continue => format!("{}{name}", at.map_or_else(String::new, |n| format!("Patch {n} of {total} · "))),
-            MailImportAction::Skip => format!("Leaves out {name}, {}.", the_rest(rest)),
-            MailImportAction::Abort => format!("Puts {branch} back where it was before the import."),
+            MailImportAction::Continue if s.preview.is_some() => crate::i18n::trf!("Saves your fix as {patch}, {next}.", patch, next = the_rest(rest)),
+            MailImportAction::Continue => format!("{}{name}", at.map_or_else(String::new, |n| crate::i18n::trf!("Patch {number} of {total} · ", number = n, total))),
+            MailImportAction::Skip => crate::i18n::trf!("Leaves out {name}, {next}.", name, next = the_rest(rest)),
+            MailImportAction::Abort => crate::i18n::trf!("Puts {branch} back where it was before the import.", branch),
         };
         let danger = matches!(action, MailImportAction::Skip | MailImportAction::Abort);
         let applying = s.applying;
@@ -220,9 +220,9 @@ impl Rocket {
                         pages::waiting(
                             ui,
                             if s.stopping {
-                                "Stopping review…"
+                                crate::i18n::tr("Stopping review…")
                             } else {
-                                "Reading patches and checking local changes…"
+                                crate::i18n::tr("Reading patches and checking local changes…")
                             },
                         );
                     }
@@ -230,18 +230,18 @@ impl Rocket {
                         pages::waiting(
                             ui,
                             if s.stopping {
-                                "Stopping… Checking the resulting import state."
+                                crate::i18n::tr("Stopping… Checking the resulting import state.")
                             } else {
-                                "Applying commits and recording recovery state…"
+                                crate::i18n::tr("Applying commits and recording recovery state…")
                             },
                         );
                     }
                     if let Some(p) = s.preview.clone() {
                         if p.requires_truncation_acknowledgement() {
-                            pages::callout(ui, AMBER(), "This preview leaves out part of these patches. Import uses the whole patches.");
+                            pages::callout(ui, AMBER(), crate::i18n::tr("This preview leaves out part of these patches. Import uses the whole patches."));
                             let mut accepted = p.truncation_acknowledged();
                             let r = ui.add_enabled(!s.applying, Checkbox::new(&mut accepted,
-                                "I understand the full patches include text not shown here"));
+                                crate::i18n::tr("I understand the full patches include text not shown here")));
                             pages::control(widgets, "dialog-series-acknowledge", &r, ui.clip_rect());
                             if r.changed() {
                                 acknowledgement = Some(accepted);
@@ -250,37 +250,37 @@ impl Rocket {
                         match action {
                             MailImportAction::Start => patches_list(ui, s, &p, widgets, height),
                             MailImportAction::Continue => {
-                                pages::steps(ui, "dialog-series", &steps(&p, StepMark::Stopped, "your fix"));
+                                pages::steps(ui, "dialog-series", &steps(&p, StepMark::Stopped, crate::i18n::tr("your fix")));
                                 if !s.fix.is_empty() {
-                                    let files = if s.fix.len() == 1 { "1 file staged".to_owned() } else { format!("{} files staged", s.fix.len()) };
-                                    series_view::diff_card(ui, &format!("Your fix · {files}"), "dialog-series-fix", &s.fix, 160.0);
+                                    let files = crate::i18n::trf!("Staged files: {count}", count = s.fix.len());
+                                    series_view::diff_card(ui, &crate::i18n::trf!("Your fix · {files}", files), "dialog-series-fix", &s.fix, 160.0);
                                 }
                             }
                             MailImportAction::Skip => {
-                                pages::steps(ui, "dialog-series", &steps(&p, StepMark::LeftOut, "left out"));
+                                pages::steps(ui, "dialog-series", &steps(&p, StepMark::LeftOut, crate::i18n::tr("left out")));
                                 if let Some(files) = s.shown.get(p.current().saturating_sub(1)) {
-                                    series_view::diff_card(ui, &format!("What {patch} would have changed"), "dialog-series-left-out", files, 160.0);
+                                    series_view::diff_card(ui, &crate::i18n::trf!("What {patch} would have changed", patch), "dialog-series-left-out", files, 160.0);
                                 }
                                 if !s.fix.is_empty() {
                                     s.edits = series_view::edits_section(ui, "dialog-series-edits", &s.fix, s.edits, widgets);
-                                    pages::note(ui, "Rocket keeps a copy of your edits first and names the folder in Activity.");
+                                    pages::note(ui, crate::i18n::tr("Rocket keeps a copy of your edits first and names the folder in Activity."));
                                 }
                             }
                             MailImportAction::Abort => {
-                                ui.label(RichText::new(format!("{branch} goes back to")).size(12.0).color(HINT()));
+                                ui.label(RichText::new(crate::i18n::trf!("{branch} goes back to", branch)).size(12.0).color(HINT()));
                                 if let Some((subject, id)) = &original {
-                                    pages::commit_card(ui, subject, id, "before the import");
+                                    pages::commit_card(ui, subject, id, crate::i18n::tr("before the import"));
                                 }
                                 pages::steps(ui, "dialog-series", &abort_steps(&p));
                                 if !s.fix.is_empty() {
                                     s.edits = series_view::edits_section(ui, "dialog-series-edits", &s.fix, s.edits, widgets);
                                 }
-                                let mut note = "Your patch files stay as they are, so you can import them again.".to_owned();
+                                let mut note = crate::i18n::tr("Your patch files stay as they are, so you can import them again.").to_owned();
                                 if !p.imported().is_empty() {
-                                    note.push_str(" Reflog & Recovery can still find what comes off.");
+                                    note.push_str(crate::i18n::tr(" Reflog & Recovery can still find what comes off."));
                                 }
                                 if !s.fix.is_empty() {
-                                    note.push_str(" Rocket keeps a copy of your edits and names the folder in Activity.");
+                                    note.push_str(crate::i18n::tr(" Rocket keeps a copy of your edits and names the folder in Activity."));
                                 }
                                 pages::note(ui, &note);
                             }
@@ -289,7 +289,7 @@ impl Rocket {
                 }
                 pages::Part::Footer => {
                     if s.applying {
-                        let r = ui.add_enabled(!s.stopping, Button::new("Stop"));
+                        let r = ui.add_enabled(!s.stopping, Button::new(crate::i18n::tr("Stop")));
                         pages::control(widgets, "cancel-operation", &r, ui.clip_rect());
                         if r.clicked() {
                             s.stopping = true;
@@ -302,8 +302,8 @@ impl Rocket {
                             !p.requires_truncation_acknowledgement() || p.truncation_acknowledged()) && d.error.is_none();
                     let count = s.preview.as_ref().map_or(0, |p| p.entries().len());
                     let label = match action {
-                        MailImportAction::Start if count > 0 => format!("Import {}", commits(count)),
-                        MailImportAction::Start => "Import commits".to_owned(),
+                        MailImportAction::Start if count > 0 => crate::i18n::trf!("Import {commits}", commits = commits(count)),
+                        MailImportAction::Start => crate::i18n::tr("Import commits").to_owned(),
                         _ => title.clone(),
                     };
                     let r = if danger {
@@ -318,15 +318,15 @@ impl Rocket {
                     if (start && !d.first.trim().is_empty()) || d.error.is_some() {
                         let can = ready && s.task.is_none();
                         let r = if start && s.preview.is_none() && d.error.is_none() {
-                            pages::primary(ui, can, "Review")
+                            pages::primary(ui, can, crate::i18n::tr("Review"))
                         } else {
-                            ui.add_enabled(can, Button::new("Review again"))
+                            ui.add_enabled(can, Button::new(crate::i18n::tr("Review again")))
                         };
                         pages::control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                         review |= r.clicked();
                     }
                     if s.task.is_some() {
-                        let r = ui.add_enabled(!s.stopping, Button::new("Stop review"));
+                        let r = ui.add_enabled(!s.stopping, Button::new(crate::i18n::tr("Stop review")));
                         pages::control(widgets, "dialog-series-stop", &r, ui.clip_rect());
                         if r.clicked() {
                             if let Some(t) = &s.task {
@@ -336,17 +336,17 @@ impl Rocket {
                         }
                     }
                     let status = if s.task.is_some() {
-                        "Reviewing".to_owned()
+                        crate::i18n::tr("Reviewing").to_owned()
                     } else if d.error.is_some() {
-                        "Fix the problem above, then review again".to_owned()
+                        crate::i18n::tr("Fix the problem above, then review again").to_owned()
                     } else if !start {
-                        "Nothing has changed yet".to_owned()
+                        crate::i18n::tr("Nothing has changed yet").to_owned()
                     } else if count > 0 {
-                        format!("Reviewed · adds {} to {branch} · nothing is pushed", commits(count))
+                        crate::i18n::trf!("Reviewed · adds {commits} to {branch} · nothing is pushed", commits = commits(count), branch)
                     } else if d.first.trim().is_empty() {
-                        "Choose a folder to see what it adds".to_owned()
+                        crate::i18n::tr("Choose a folder to see what it adds").to_owned()
                     } else {
-                        "Review to see what it adds".to_owned()
+                        crate::i18n::tr("Review to see what it adds").to_owned()
                     };
                     pages::footer_status(ui, false, &status);
                 }
@@ -393,13 +393,13 @@ fn folder_row(
     review: &mut bool,
     browse: &mut bool,
 ) {
-    crate::patches::form_row(ui, "Folder", |ui| {
+    crate::patches::form_row(ui, crate::i18n::tr("Folder"), |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             let r = ui.add_enabled(
                 !s.applying,
                 TextEdit::singleline(first)
-                    .hint_text("A folder of numbered .patch files")
+                    .hint_text(crate::i18n::tr("A folder of numbered .patch files"))
                     .desired_width(ui.available_width() - 76.0)
                     .min_size(vec2(0.0, 30.0))
                     .vertical_align(Align::Center),
@@ -411,7 +411,7 @@ fn folder_row(
                 *error = None;
             }
             *review |= r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) && !first.trim().is_empty();
-            let b = ui.add_enabled(!s.applying, Button::new("Browse").min_size(vec2(0.0, 30.0)));
+            let b = ui.add_enabled(!s.applying, Button::new(crate::i18n::tr("Browse")).min_size(vec2(0.0, 30.0)));
             pages::control(widgets, "dialog-series-browse", &b, ui.clip_rect());
             *browse = b.clicked();
         });
@@ -419,11 +419,11 @@ fn folder_row(
             Some(p) => {
                 let n = p.entries().len();
                 let bytes = p.entries().iter().map(|e| e.size()).sum();
-                let patches = if n == 1 { "1 patch".to_owned() } else { format!("{n} patches") };
-                crate::tags::check(ui, true, &format!("{patches} · {} · apply in this order", crate::patches::size(bytes)));
+                let patches = crate::i18n::trf!("Patches: {count}", count = n);
+                crate::tags::check(ui, true, &crate::i18n::trf!("{patches} · {size} · apply in this order", patches, size = crate::patches::size(bytes)));
             }
             None if s.task.is_none() && error.is_none() => {
-                pages::note(ui, "Export commit series makes this kind of folder.");
+                pages::note(ui, crate::i18n::tr("Export commit series makes this kind of folder."));
             }
             None => {}
         }
@@ -451,7 +451,7 @@ fn patches_list(
             }
         })
         .collect();
-    let title = if rows.len() == 1 { "1 patch".to_owned() } else { format!("{} patches, oldest first", rows.len()) };
+    let title = crate::i18n::trf!("Patches: {count}, oldest first", count = rows.len());
     let files = s.shown.get(s.selected).map(Vec::as_slice).unwrap_or_default();
     series_view::split(
         ui,
@@ -469,7 +469,7 @@ fn patches_list(
             pages::note(ui, &left_out(e, s.shown.get(s.selected).map(Vec::as_slice).unwrap_or_default()));
         }
         if e.display.escaped {
-            pages::note(ui, "Invisible characters and backslashes show as visible escapes. The patch itself is unchanged.");
+            pages::note(ui, crate::i18n::tr("Invisible characters and backslashes show as visible escapes. The patch itself is unchanged."));
         }
     }
 }
@@ -478,7 +478,7 @@ fn patches_list(
 /// reached the diff.
 fn left_out(e: &MailImportEntry, shown: &[Shown]) -> String {
     let display = &e.display;
-    let mut text = format!("Shows {} of {} lines in this patch.", display.shown_lines, display.total_lines);
+    let mut text = crate::i18n::trf!("Shows {shown} of {total} lines in this patch.", shown = display.shown_lines, total = display.total_lines);
     let missing: Vec<&str> = display
         .paths
         .iter()
@@ -487,14 +487,14 @@ fn left_out(e: &MailImportEntry, shown: &[Shown]) -> String {
         .collect();
     let beyond = e.paths.len() - display.paths.len();
     if !missing.is_empty() {
-        text.push_str(&format!(" It also changes {}", missing.iter().take(6).copied().collect::<Vec<_>>().join(", ")));
+        text.push_str(&crate::i18n::trf!(" It also changes {files}", files = missing.iter().take(6).copied().collect::<Vec<_>>().join(", ")));
     }
     let more = missing.len().saturating_sub(6) + beyond;
     match (more, missing.is_empty()) {
         (0, false) => text.push('.'),
         (0, true) => {}
-        (n, false) => text.push_str(&format!(" and {n} more.")),
-        (n, true) => text.push_str(&format!(" It also changes {n} more files.")),
+        (n, false) => text.push_str(&crate::i18n::trf!(" and {count} more.", count = n)),
+        (n, true) => text.push_str(&crate::i18n::trf!(" Additional changed files: {count}.", count = n)),
     }
     text
 }
@@ -511,8 +511,8 @@ fn steps(p: &MailImportPreview, stopped: StepMark, note: &'static str) -> Vec<St
         .map(|(i, e)| {
             let number = i + 1;
             let (mark, note) = match number.cmp(&at) {
-                std::cmp::Ordering::Less if none_skipped || imported.contains(&e.subject) => (StepMark::Done, "done"),
-                std::cmp::Ordering::Less => (StepMark::Waiting, "skipped"),
+                std::cmp::Ordering::Less if none_skipped || imported.contains(&e.subject) => (StepMark::Done, crate::i18n::tr("done")),
+                std::cmp::Ordering::Less => (StepMark::Waiting, crate::i18n::tr("skipped")),
                 std::cmp::Ordering::Equal => (stopped, note),
                 std::cmp::Ordering::Greater => (StepMark::Waiting, ""),
             };
@@ -533,10 +533,10 @@ fn abort_steps(p: &MailImportPreview) -> Vec<Step> {
         .map(|(i, e)| {
             let number = i + 1;
             let (mark, note) = match number.cmp(&at) {
-                std::cmp::Ordering::Less if none_skipped || imported.contains(&e.subject) => (StepMark::LeftOut, "comes off"),
-                std::cmp::Ordering::Less => (StepMark::Waiting, "skipped"),
-                std::cmp::Ordering::Equal => (StepMark::Stopped, "not imported"),
-                std::cmp::Ordering::Greater => (StepMark::Waiting, "not imported"),
+                std::cmp::Ordering::Less if none_skipped || imported.contains(&e.subject) => (StepMark::LeftOut, crate::i18n::tr("comes off")),
+                std::cmp::Ordering::Less => (StepMark::Waiting, crate::i18n::tr("skipped")),
+                std::cmp::Ordering::Equal => (StepMark::Stopped, crate::i18n::tr("not imported")),
+                std::cmp::Ordering::Greater => (StepMark::Waiting, crate::i18n::tr("not imported")),
             };
             Step { mark, number, subject: e.subject.clone(), note }
         })

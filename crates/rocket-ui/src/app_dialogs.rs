@@ -46,19 +46,19 @@ fn about(ctx: &Context, widgets: &mut HashMap<String, UiControl>, next: &mut Opt
             crate::app_icon::paint_mark(ui.painter(), tile, None);
             ui.add_space(4.0);
             ui.label(RichText::new("Rocket").font(semibold(20.0)));
-            ui.label(RichText::new("Created by Xetro").color(TEXT_SOFT()));
-            ui.label(RichText::new(format!("Version {version} · a native Rust Git workspace")).color(MUTED()));
+            ui.label(RichText::new(crate::i18n::tr("Created by Xetro")).color(TEXT_SOFT()));
+            ui.label(RichText::new(crate::i18n::trf!("Version {version} · a native Rust Git workspace", version)).color(MUTED()));
             ui.add_space(8.0);
             ui.label(
-                RichText::new(format!(
-                    "Free and open-source software under the {} license.",
-                    crate::legal::license()
+                RichText::new(crate::i18n::trf!(
+                    "Free and open-source software under the {license} license.",
+                    license = crate::legal::license()
                 ))
                 .color(TEXT_SOFT()),
             );
             ui.label(RichText::new(format!("© {}", crate::legal::copyright())).size(12.0).color(HINT()));
             ui.add_space(10.0);
-            let r = ui.add(Button::new("Legal").min_size(vec2(84.0, 30.0)));
+            let r = ui.add(Button::new(crate::i18n::tr("Legal")).min_size(vec2(84.0, 30.0)));
             control(widgets, "dialog-about-legal", &r, ui.clip_rect());
             if r.clicked() {
                 crate::legal::reset(ui.ctx());
@@ -133,8 +133,8 @@ fn parse_versions(changelog: &str) -> Vec<Version> {
 fn release_notes(ctx: &Context, widgets: &mut HashMap<String, UiControl>) -> pages::ReviewResponse {
     let head = pages::ReviewHeader {
         image: Icon::File,
-        title: "Release notes",
-        subtitle: "What changed in each Rocket build.",
+        title: crate::i18n::tr("Release notes"),
+        subtitle: crate::i18n::tr("What changed in each Rocket build."),
         danger: false,
     };
     let versions = versions();
@@ -177,7 +177,7 @@ fn release_notes(ctx: &Context, widgets: &mut HashMap<String, UiControl>) -> pag
                     .show(ui, |ui| {
                         ui.set_width(ui.available_width());
                         ui.label(
-                            RichText::new(if v.number == current { format!("{} · this build", v.number) } else { v.number.clone() })
+                            RichText::new(if v.number == current { crate::i18n::trf!("{version} · this build", version = v.number) } else { v.number.clone() })
                                 .size(12.0)
                                 .color(HINT()),
                         );
@@ -219,7 +219,7 @@ fn version_row(ui: &mut Ui, v: &Version, selected: bool, current: bool) -> Respo
     let number_width = number.size().x;
     painter.galley(pos2(rect.left() + 10.0, rect.top() + 6.0), number, TEXT());
     if current {
-        let pill = painter.layout_no_wrap("This build".to_owned(), FontId::proportional(11.0), BLUE());
+        let pill = painter.layout_no_wrap(crate::i18n::tr("This build").to_owned(), FontId::proportional(11.0), BLUE());
         let pill_rect = Rect::from_min_size(
             pos2(rect.left() + 18.0 + number_width, rect.top() + 6.0),
             vec2(pill.size().x + 12.0, 17.0),

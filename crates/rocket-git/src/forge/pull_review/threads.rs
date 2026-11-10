@@ -1,6 +1,7 @@
-//! GitHub thread IDs are read from a bounded, repository-scoped GraphQL query.
-//! No arbitrary query or server-supplied URL can be executed by this adapter.
+//! Bounded, repository-scoped discussions. Reviewed actions revalidate the PR
+//! and thread, never follow response URLs and never retry an uncertain write.
 use super::*;
+mod providers;
 const READ: &str = "hosting-thread-details";
 const PREVIEW: &str = "hosting-thread-preview";
 const SUBMIT: &str = "hosting-thread-submit";
@@ -12,10 +13,15 @@ pub struct ForgeReviewThread {
     pub line: Option<u64>,
     pub resolved: bool,
     pub outdated: bool,
+    pub can_reply: bool,
     pub can_resolve: bool,
     pub can_unresolve: bool,
     pub comments: Vec<ForgePullComment>,
     pub limited: bool,
+    // Fingerprint the complete loaded record, not just displayed/truncated text.
+    // Do not retain several large responses across previews and readbacks.
+    revision: String,
+    version: Option<u64>,
 }
 #[derive(Clone, Debug)]
 pub struct ForgePullThreads {
@@ -145,10 +151,13 @@ fn parse_thread(j: &Json) -> Result<ForgeReviewThread> {
         line: j.u64("line"),
         resolved: required(j.bool("isResolved"))?,
         outdated: required(j.bool("isOutdated"))?,
+        can_reply: !out.is_empty(),
         can_resolve: required(j.bool("viewerCanResolve"))?,
         can_unresolve: required(j.bool("viewerCanUnresolve"))?,
         comments: out,
         limited: required(comments.get("pageInfo").and_then(|p| p.bool("hasNextPage")))?,
+        revision: fingerprint(j)?,
+        version: None,
     })
 }
 impl ForgeSession {
@@ -159,7 +168,7 @@ impl ForgeSession {
         c: &CancellationToken,
     ) -> Result<ForgePullThreads> {
         self.runner.step(READ,"read_review_threads",||{
-            if !self.config.provider().is_github(){return fail(ForgeFailure::Unsupported);}
+            if !self.config.provider().is_github(){return self.provider_threads(repo,number,c);}
             if number>i32::MAX as u64{return Err(invalid("Pull request number exceeds GraphQL's integer limit."));}
             let path=self.pull_scope(repo,number)?;let first=self.pull_summary(READ,&path,number,c)?;
             let(owner,name)=repo.path().split_once('/').ok_or_else(||invalid("Select a valid repository."))?;
@@ -189,6 +198,9 @@ impl ForgeSession {
         self.runner.step(PREVIEW, "validate_thread_action", || {
             if snapshot.session != self.id {
                 return fail(ForgeFailure::PullReviewStale);
+            }
+            if action == ForgeThreadAction::Reply && !self.config.provider().is_github() && self.account_identity().is_none() {
+                return fail(ForgeFailure::IdentityUnverified);
             }
             if action == ForgeThreadAction::Reply
                 && (text.trim().is_empty() || text.len() > 8192 || text.contains('\0'))
@@ -236,6 +248,7 @@ impl ForgeSession {
             let thread=current.threads.iter().find(|t|t.id==preview.thread.id).ok_or(Error::Forge(ForgeFailure::PullChanged))?;
             thread_matches(&preview.thread,thread)?;allowed(thread,preview.action)?;c.check()?;
             if preview.used.swap(true,Ordering::AcqRel){return fail(ForgeFailure::PullReviewStale);}
+            if !self.config.provider().is_github(){return self.submit_provider_thread(preview,thread,c);}
             if preview.action==ForgeThreadAction::Reply {
                 let root=thread.comments.first().ok_or_else(||invalid("The original comment is unavailable."))?.id;
                 let response=self.request(SUBMIT,"reply_to_review_thread","POST",&format!("/repos/{}/pulls/{}/comments/{root}/replies",preview.repository().encoded(),preview.number()),Some(&format!("{{\"body\":{}}}",quote(&preview.body))),true,c)?.0;
@@ -258,19 +271,73 @@ fn thread_matches(a: &ForgeReviewThread, b: &ForgeReviewThread) -> Result<()> {
         || a.line != b.line
         || a.outdated != b.outdated
         || a.resolved != b.resolved
-        || a.comments.first().map(|c| c.id) != b.comments.first().map(|c| c.id)
+        || a.revision != b.revision
+        || a.version != b.version
+        || a.can_reply != b.can_reply
+        || a.can_resolve != b.can_resolve
+        || a.can_unresolve != b.can_unresolve
+        || a.limited != b.limited
     {
         return fail(ForgeFailure::PullChanged);
     }
     Ok(())
 }
 fn allowed(t: &ForgeReviewThread, action: ForgeThreadAction) -> Result<()> {
+    if t.limited {
+        return Err(invalid("This thread is incomplete. Open it on the provider before replying or changing its resolution."));
+    }
     if match action {
         ForgeThreadAction::Resolve => t.resolved || !t.can_resolve,
         ForgeThreadAction::Unresolve => !t.resolved || !t.can_unresolve,
-        ForgeThreadAction::Reply => t.comments.first().is_none_or(|c| c.reply_to.is_some()),
+        ForgeThreadAction::Reply => !t.can_reply || t.comments.first().is_none_or(|c| c.reply_to.is_some()),
     } {
         return fail(ForgeFailure::Forbidden);
     }
     Ok(())
+}
+// Sort object fields and frame every value by type/length. Array order remains
+// significant. Hash all content, including text too long to display, without
+// retaining a second copy of every provider response. Input JSON depth is already
+// bounded by the transport parser; encoding has its own conservative byte cap.
+fn fingerprint(j: &Json) -> Result<String> {
+    fn append(bytes: &mut Vec<u8>, part: &[u8]) -> Result<()> {
+        if part.len() > (16 * 1024 * 1024usize).saturating_sub(bytes.len()) {
+            return fail(ForgeFailure::InvalidResponse);
+        }
+        bytes.extend_from_slice(part);
+        Ok(())
+    }
+    fn sized(bytes: &mut Vec<u8>, tag: u8, part: &[u8]) -> Result<()> {
+        append(bytes, &[tag])?;
+        append(bytes, &(part.len() as u64).to_le_bytes())?;
+        append(bytes, part)
+    }
+    fn write(j: &Json, bytes: &mut Vec<u8>) -> Result<()> {
+        match j {
+            Json::Null => append(bytes, b"n"),
+            Json::Bool(value) => append(bytes, if *value { b"t" } else { b"f" }),
+            Json::Number(value) => sized(bytes, b'd', value.as_bytes()),
+            Json::String(value) => sized(bytes, b's', value.as_bytes()),
+            Json::Array(rows) => {
+                append(bytes, b"a")?;
+                append(bytes, &(rows.len() as u64).to_le_bytes())?;
+                for row in rows { write(row, bytes)?; }
+                Ok(())
+            }
+            Json::Object(fields) => {
+                let mut fields: Vec<_> = fields.iter().collect();
+                fields.sort_by(|a, b| a.0.cmp(&b.0));
+                append(bytes, b"o")?;
+                append(bytes, &(fields.len() as u64).to_le_bytes())?;
+                for (key, value) in fields {
+                    sized(bytes, b'k', key.as_bytes())?;
+                    write(value, bytes)?;
+                }
+                Ok(())
+            }
+        }
+    }
+    let mut bytes = Vec::new();
+    write(j, &mut bytes)?;
+    crate::sha256_bytes(&bytes)
 }

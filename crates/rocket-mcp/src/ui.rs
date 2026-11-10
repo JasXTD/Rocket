@@ -3728,6 +3728,7 @@ fn hosting_state(app: &Rocket) -> Value {
             value["pull"]["details"]["inline_limit"]=json!(d.inline_comment_limit());
         }
         value["pull"]["threads"]=json!({"loaded":p.threads.snapshot.is_some(),"count":p.threads.snapshot.as_ref().map(|s|s.threads.len()),"limited":p.threads.snapshot.as_ref().is_some_and(|s|s.limited),"selected":p.threads.selected,"body_bytes":p.threads.body.len(),"reviewing":p.threads.preview.is_some(),"uncertain":p.threads.unknown,"can_acknowledge":p.threads.checked,"resolved":p.threads.snapshot.as_ref().map(|s|s.threads.iter().map(|t|t.resolved).collect::<Vec<_>>())});
+        value["pull"]["threads"]["capabilities"]=json!(p.threads.snapshot.as_ref().map(|s|s.threads.iter().map(|t|json!({"reply":t.can_reply&&!t.limited,"resolve":t.can_resolve&&!t.limited,"reopen":t.can_unresolve&&!t.limited,"complete":!t.limited})).collect::<Vec<_>>()));
         value["repository"]=json!(s.repository); value["filter"]=json!(s.filter);
         value["from_fork"]=json!(s.from_fork); value["source_repository"]=json!(s.source_repository);
         value["state"]=json!(format!("{:?}",s.state));

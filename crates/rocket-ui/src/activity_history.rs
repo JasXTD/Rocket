@@ -29,11 +29,14 @@ pub enum Filter {
 }
 impl Filter {
     pub fn label(self) -> &'static str {
+        crate::i18n::tr(self.code())
+    }
+    fn code(self) -> &'static str {
         match self {
-            Self::All => "All",
-            Self::Attention => "Needs attention",
-            Self::Cancelled => "Cancelled",
-            Self::Succeeded => "Succeeded",
+            Self::All => crate::i18n::mark("All"),
+            Self::Attention => crate::i18n::mark("Needs attention"),
+            Self::Cancelled => crate::i18n::mark("Cancelled"),
+            Self::Succeeded => crate::i18n::mark("Succeeded"),
         }
     }
 }
@@ -46,11 +49,14 @@ pub enum Status {
 }
 impl Status {
     pub fn label(self) -> &'static str {
+        crate::i18n::tr(self.code())
+    }
+    fn code(self) -> &'static str {
         match self {
-            Self::Succeeded => "Succeeded",
-            Self::Attention => "Needs attention",
-            Self::Cancelled => "Cancelled",
-            Self::Incomplete => "Incomplete",
+            Self::Succeeded => crate::i18n::mark("Succeeded"),
+            Self::Attention => crate::i18n::mark("Needs attention"),
+            Self::Cancelled => crate::i18n::mark("Cancelled"),
+            Self::Incomplete => crate::i18n::mark("Incomplete"),
         }
     }
     fn color(self) -> Color32 {
@@ -87,7 +93,7 @@ impl Entry {
         matches!(self.status, Status::Attention | Status::Incomplete)
     }
     pub fn summary(&self) -> String {
-        serde_json::to_string_pretty(&json!({"schema":1,"session":self.session,"request":self.request,"operation":self.operation,"time_unix_ms":self.time,"elapsed_ms":self.duration,"status":self.status.label(),"incomplete":self.incomplete,"records":self.records.iter().take(200).collect::<Vec<_>>(),"records_omitted":self.records.len().saturating_sub(200),"scope":"Structured diagnostic fields only; repository names, arguments and raw output are excluded."})).expect("diagnostic values serialize")
+        serde_json::to_string_pretty(&json!({"schema":1,"session":self.session,"request":self.request,"operation":self.operation,"time_unix_ms":self.time,"elapsed_ms":self.duration,"status":self.status.code(),"incomplete":self.incomplete,"records":self.records.iter().take(200).collect::<Vec<_>>(),"records_omitted":self.records.len().saturating_sub(200),"scope":"Structured diagnostic fields only; repository names, arguments and raw output are excluded."})).expect("diagnostic values serialize")
     }
 }
 #[derive(Clone, Debug, Default)]
@@ -274,7 +280,7 @@ fn project(v: Value) -> Result<Value> {
         }
     }
     for key in [
-        "complete",
+        crate::i18n::tr("complete"),
         "input_delivered",
         "verified",
         "command_succeeded",
@@ -430,7 +436,7 @@ fn aggregate(records: Vec<Value>, cancel: &CancellationToken) -> Result<Snapshot
             let failed = events.iter().any(|r| {
                 failed_result(r)
                     || (label(r, "level") == "warn" && label(r, "event") != "git_end")
-                    || r["complete"] == false
+                    || r[crate::i18n::tr("complete")] == false
                     || r["verified"] == false
                     || r["error_diagnostics"] == true
                     || matches!(
@@ -503,7 +509,7 @@ fn aggregate(records: Vec<Value>, cancel: &CancellationToken) -> Result<Snapshot
 pub fn timestamp(ms: u64) -> String {
     // Bounded to four-digit years for display.
     if ms > 253_402_300_799_999 {
-        return "Time unavailable".into();
+        return crate::i18n::tr("Time unavailable").into();
     }
     let t = civil(ms);
     format!(
@@ -622,7 +628,7 @@ impl Panel {
         self.last_read = Some(Instant::now());
         self.dirty = false;
         self.automatic = false;
-        self.notice = Some("Read stopped. Live updates are paused.".into());
+        self.notice = Some(crate::i18n::tr("Read stopped. Live updates are paused.").into());
     }
     pub fn poll(&mut self, directory: PathBuf, ctx: &Context) {
         if !self.open {
@@ -701,7 +707,7 @@ impl Panel {
     }
     pub fn state(&self, current: &str) -> Value {
         let matching = self.matching(current);
-        json!({"open":self.open,"loading":self.loading(),"query":self.query,"filter":self.filter.label(),"current_only":self.current_only,"automatic":self.automatic,"show_reads":self.show_reads,"records_view":self.records,"error":self.error,"notice":self.notice,"records":self.snapshot.records,"sessions":self.snapshot.sessions,"gaps":self.snapshot.gaps,"partial":self.snapshot.partial,"dropped":self.snapshot.dropped,"read_ms":self.snapshot.elapsed_ms,"matched":matching.len(),"rows":matching.into_iter().take(200).map(|i|{let e=&self.snapshot.entries[i];json!({"index":i,"key":e.key(),"operation":e.operation,"status":e.status.label(),"session":e.session,"request":e.request,"elapsed_ms":e.duration,"incomplete":e.incomplete})}).collect::<Vec<_>>(),"selected":self.selected.as_ref().and_then(|k|self.snapshot.entries.iter().find(|e|e.key()==*k)).map(|e|serde_json::from_str::<Value>(&e.summary()).expect("own summary"))})
+        json!({"open":self.open,"loading":self.loading(),"query":self.query,"filter":self.filter.code(),"current_only":self.current_only,"automatic":self.automatic,"show_reads":self.show_reads,"records_view":self.records,"error":self.error,"notice":self.notice,"records":self.snapshot.records,"sessions":self.snapshot.sessions,"gaps":self.snapshot.gaps,"partial":self.snapshot.partial,"dropped":self.snapshot.dropped,"read_ms":self.snapshot.elapsed_ms,"matched":matching.len(),"rows":matching.into_iter().take(200).map(|i|{let e=&self.snapshot.entries[i];json!({"index":i,"key":e.key(),"operation":e.operation,"status":e.status.code(),"session":e.session,"request":e.request,"elapsed_ms":e.duration,"incomplete":e.incomplete})}).collect::<Vec<_>>(),"selected":self.selected.as_ref().and_then(|k|self.snapshot.entries.iter().find(|e|e.key()==*k)).map(|e|serde_json::from_str::<Value>(&e.summary()).expect("own summary"))})
     }
     /// How many entries each status filter shows, within the search and session scope.
     fn counts(&self, current: &str) -> [usize; 4] {
@@ -783,7 +789,7 @@ impl Panel {
             ui.scope_builder(UiBuilder::new().max_rect(left), |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 crate::pages::card_bar(ui, |ui| {
-                    ui.label(RichText::new("Operations").font(semibold(13.0)));
+                    ui.label(RichText::new(crate::i18n::tr("Operations")).font(semibold(13.0)));
                     ui.label(RichText::new(crate::pages::number_text(matches.len())).size(12.0).color(HINT()));
                 });
                 let rest = Rect::from_min_max(ui.cursor().min, left.max);
@@ -799,7 +805,7 @@ impl Panel {
 
     fn header(&mut self, ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, narrow: bool) {
         let mut actions = |ui: &mut Ui, this: &mut Self| {
-            let close = crate::pages::ghost(ui, true, "Close");
+            let close = crate::pages::ghost(ui, true, crate::i18n::tr("Close"));
             widgets.insert("activity-close".into(), (&close).into());
             if close.clicked() {
                 this.close();
@@ -808,29 +814,29 @@ impl Panel {
             let first = !this.read_once && this.snapshot.entries.is_empty();
             let width = if narrow { 30.0 } else { 92.0 };
             if this.slow() && !first {
-                let stop = crate::pages::slot_button(ui, None, "Stop", width, true);
+                let stop = crate::pages::slot_button(ui, None, crate::i18n::tr("Stop"), width, true);
                 widgets.insert("activity-cancel".into(), (&stop).into());
                 if stop.clicked() {
                     this.cancel();
                 }
             } else {
-                let refresh = crate::pages::slot_button(ui, Some(Icon::Refresh), "Refresh", width, !first);
+                let refresh = crate::pages::slot_button(ui, Some(Icon::Refresh), crate::i18n::tr("Refresh"), width, !first);
                 widgets.insert("activity-refresh".into(), (&refresh).into());
                 if refresh.clicked() {
                     this.refresh();
                 }
             }
             ui.add_space(4.0);
-            ui.label(RichText::new("Live").color(MUTED()));
-            let live = switch(ui, &mut this.automatic, "Live updates")
-                .on_hover_text("Read new records every few seconds");
+            ui.label(RichText::new(crate::i18n::tr("Live")).color(MUTED()));
+            let live = switch(ui, &mut this.automatic, crate::i18n::tr("Live updates"))
+                .on_hover_text(crate::i18n::tr("Read new records every few seconds"));
             widgets.insert("activity-auto".into(), (&live).into());
             if !this.automatic && !narrow
                 && let Some(read) = this.last_read
             {
                 let seconds = read.elapsed().as_secs();
                 let when = ago(seconds, (unix_ms() / 1000) as i64 - seconds as i64);
-                ui.label(RichText::new(format!("Read {when}")).size(12.0).color(HINT()));
+                ui.label(RichText::new(crate::i18n::trf!("Read {when}", when)).size(12.0).color(HINT()));
             }
         };
         if narrow {
@@ -849,7 +855,7 @@ impl Panel {
                             actions(ui, self);
                             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                                 ui.add(
-                                    Label::new(RichText::new("Activity & diagnostics").font(semibold(16.0)))
+                                    Label::new(RichText::new(crate::i18n::tr("Activity & diagnostics")).font(semibold(16.0)))
                                         .truncate(),
                                 );
                             });
@@ -860,8 +866,8 @@ impl Panel {
             crate::pages::header(
                 ui,
                 Icon::Activity,
-                "Activity & diagnostics",
-                "What Rocket recorded on this computer, newest first.",
+                crate::i18n::tr("Activity & diagnostics"),
+                crate::i18n::tr("What Rocket recorded on this computer, newest first."),
                 |ui| actions(ui, self),
             );
         }
@@ -891,7 +897,7 @@ impl Panel {
                     // What the segments and buttons beside it need.
                     let beside = if narrow { 448.0 } else { 720.0 };
                     let width = (ui.available_width() - beside).clamp(150.0, 280.0);
-                    let hint = if narrow { "Search" } else { "Search operations or error codes" };
+                    let hint = if narrow { crate::i18n::tr("Search") } else { crate::i18n::tr("Search operations or error codes") };
                     let r = crate::pages::search_box(ui, &mut self.query, "activity-search", hint, width);
                     widgets.insert("activity-search".into(), (&r).into());
                     let filters = [Filter::All, Filter::Attention, Filter::Cancelled, Filter::Succeeded];
@@ -912,7 +918,7 @@ impl Panel {
                         }
                     }
                     if !narrow {
-                        self.chips(ui, widgets, reads, "This session only", CONTROL);
+                        self.chips(ui, widgets, reads, crate::i18n::tr("This session only"), CONTROL);
                     }
                 });
             });
@@ -928,13 +934,13 @@ impl Panel {
         height: f32,
     ) {
         let r = chip(ui, session, None, self.current_only, height)
-            .on_hover_text("Only operations from this run of Rocket");
+            .on_hover_text(crate::i18n::tr("Only operations from this run of Rocket"));
         widgets.insert("activity-current".into(), (&r).into());
         if r.clicked() {
             self.current_only = !self.current_only;
         }
-        let r = chip(ui, "Show reads", Some(reads), self.show_reads, height)
-            .on_hover_text("Also list the reads Rocket does by itself");
+        let r = chip(ui, crate::i18n::tr("Show reads"), Some(reads), self.show_reads, height)
+            .on_hover_text(crate::i18n::tr("Also list the reads Rocket does by itself"));
         widgets.insert("activity-reads".into(), (&r).into());
         if r.clicked() {
             self.show_reads = !self.show_reads;
@@ -958,15 +964,15 @@ impl Panel {
                 ui.set_width(ui.available_width());
                 ui.spacing_mut().item_spacing.y = 6.0;
                 if let Some(error) = self.error.clone() {
-                    let text = format!("Couldn't read the latest records. {error} This is the last good read.");
-                    if let Some(r) = crate::pages::notice_strip(ui, RED(), &text, Some("Try again")) {
+                    let text = crate::i18n::trf!("Couldn't read the latest records. {error} This is the last good read.", error);
+                    if let Some(r) = crate::pages::notice_strip(ui, RED(), &text, Some(crate::i18n::tr("Try again"))) {
                         widgets.insert("activity-retry".into(), (&r).into());
                         if r.clicked() {
                             self.refresh();
                         }
                     }
                 } else if let Some(notice) = self.notice.clone()
-                    && let Some(r) = crate::pages::notice_strip(ui, AMBER(), &notice, Some("Resume"))
+                    && let Some(r) = crate::pages::notice_strip(ui, AMBER(), &notice, Some(crate::i18n::tr("Resume")))
                 {
                     widgets.insert("activity-resume".into(), (&r).into());
                     if r.clicked() {
@@ -987,11 +993,11 @@ impl Panel {
                     let (mark, _) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::hover());
                     icon(ui.painter(), mark, Icon::Warning, AMBER());
                     ui.add_space(8.0);
-                    ui.label(RichText::new("Couldn't read the log").font(semibold(14.0)));
+                    ui.label(RichText::new(crate::i18n::tr("Couldn't read the log")).font(semibold(14.0)));
                     ui.add_space(4.0);
                     ui.label(RichText::new(error).color(MUTED()));
                     ui.add_space(10.0);
-                    let r = crate::pages::primary(ui, true, "Try again");
+                    let r = crate::pages::primary(ui, true, crate::i18n::tr("Try again"));
                     widgets.insert("activity-retry".into(), (&r).into());
                     if r.clicked() {
                         self.refresh();
@@ -1001,7 +1007,7 @@ impl Panel {
                 centred(ui, rect, 80.0, |ui| {
                     ui.label(RichText::new(notice).color(MUTED()));
                     ui.add_space(10.0);
-                    let r = crate::pages::primary(ui, true, "Resume");
+                    let r = crate::pages::primary(ui, true, crate::i18n::tr("Resume"));
                     widgets.insert("activity-resume".into(), (&r).into());
                     if r.clicked() {
                         self.notice = None;
@@ -1010,9 +1016,9 @@ impl Panel {
                     }
                 });
             } else {
-                crate::pages::loading_with(ui, "Reading the log", 40.0, |ui| {
+                crate::pages::loading_with(ui, crate::i18n::tr("Reading the log"), 40.0, |ui| {
                     ui.add_space(8.0);
-                    let r = ui.add_enabled(self.loading(), Button::new("Stop"));
+                    let r = ui.add_enabled(self.loading(), Button::new(crate::i18n::tr("Stop")));
                     widgets.insert("activity-cancel".into(), (&r).into());
                     if r.clicked() {
                         self.cancel();
@@ -1034,20 +1040,20 @@ impl Panel {
         ui.scope_builder(UiBuilder::new().max_rect(rect), |ui| {
             if self.snapshot.entries.is_empty() {
                 centred(ui, rect, 44.0, |ui| {
-                    ui.label(RichText::new("Nothing recorded yet").font(semibold(14.0)));
+                    ui.label(RichText::new(crate::i18n::tr("Nothing recorded yet")).font(semibold(14.0)));
                     ui.add_space(4.0);
-                    ui.label(RichText::new("Operations show here as they run.").color(MUTED()));
+                    ui.label(RichText::new(crate::i18n::tr("Operations show here as they run.")).color(MUTED()));
                 });
                 return;
             }
             // Rows exist, but every one is a read that went fine.
             if !self.matching(current).is_empty() {
                 centred(ui, rect, 88.0, |ui| {
-                    ui.label(RichText::new("Only reads so far").font(semibold(14.0)));
+                    ui.label(RichText::new(crate::i18n::tr("Only reads so far")).font(semibold(14.0)));
                     ui.add_space(4.0);
-                    ui.label(RichText::new("Nothing else matches these filters.").color(MUTED()));
+                    ui.label(RichText::new(crate::i18n::tr("Nothing else matches these filters.")).color(MUTED()));
                     ui.add_space(10.0);
-                    let r = ui.add(Button::new("Show reads"));
+                    let r = ui.add(Button::new(crate::i18n::tr("Show reads")));
                     widgets.insert("activity-show-reads".into(), (&r).into());
                     if r.clicked() {
                         self.show_reads = true;
@@ -1056,17 +1062,17 @@ impl Panel {
                 return;
             }
             centred(ui, rect, 88.0, |ui| {
-                ui.label(RichText::new("No operations match").font(semibold(14.0)));
+                ui.label(RichText::new(crate::i18n::tr("No operations match")).font(semibold(14.0)));
                 ui.add_space(4.0);
                 let query = self.query.trim();
                 let text = if query.is_empty() {
-                    "Nothing with these filters.".to_owned()
+                    crate::i18n::tr("Nothing with these filters.").to_owned()
                 } else {
-                    format!("Nothing for “{query}” with these filters.")
+                    crate::i18n::trf!("Nothing for “{query}” with these filters.", query)
                 };
                 ui.label(RichText::new(text).color(MUTED()));
                 ui.add_space(10.0);
-                let r = ui.add(Button::new("Clear filters"));
+                let r = ui.add(Button::new(crate::i18n::tr("Clear filters")));
                 widgets.insert("activity-clear".into(), (&r).into());
                 if r.clicked() {
                     self.query.clear();
@@ -1086,7 +1092,7 @@ impl Panel {
         current: &str,
         count: usize,
     ) {
-        let items = [("Operations", Some(count), !self.details_tab), ("Details", None, self.details_tab)];
+        let items = [(crate::i18n::tr("Operations"), Some(count), !self.details_tab), (crate::i18n::tr("Details"), None, self.details_tab)];
         for (r, (id, details)) in crate::pages::tab_segments(ui, &items)
             .into_iter()
             .zip([("activity-tab-list", false), ("activity-tab-details", true)])
@@ -1101,14 +1107,14 @@ impl Panel {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 // Added right to left, Show reads ends up last.
-                let r = chip(ui, "Show reads", Some(reads), self.show_reads, 24.0)
-                    .on_hover_text("Also list the reads Rocket does by itself");
+                let r = chip(ui, crate::i18n::tr("Show reads"), Some(reads), self.show_reads, 24.0)
+                    .on_hover_text(crate::i18n::tr("Also list the reads Rocket does by itself"));
                 widgets.insert("activity-reads".into(), (&r).into());
                 if r.clicked() {
                     self.show_reads = !self.show_reads;
                 }
-                let r = chip(ui, "This session", None, self.current_only, 24.0)
-                    .on_hover_text("Only operations from this run of Rocket");
+                let r = chip(ui, crate::i18n::tr("This session"), None, self.current_only, 24.0)
+                    .on_hover_text(crate::i18n::tr("Only operations from this run of Rocket"));
                 widgets.insert("activity-current".into(), (&r).into());
                 if r.clicked() {
                     self.current_only = !self.current_only;
@@ -1149,10 +1155,10 @@ impl Panel {
         for (group, session) in sessions.into_iter().enumerate() {
             let rows: Vec<usize> = matches.iter().copied().filter(|i| entries[*i].session == session).collect();
             let label = if session == current {
-                "This session".to_owned()
+                crate::i18n::tr("This session").to_owned()
             } else {
                 let newest = rows.first().map_or(0, |i| entries[*i].time);
-                format!("Earlier session · {} {}", day(newest, now), clock(newest))
+                crate::i18n::trf!("Earlier session · {day} {time}", day = day(newest, now), time = clock(newest))
             };
             let open = searching || !self.folded.contains(session);
             items.push(Item::Header(session.to_owned(), label, rows.len(), open, group));
@@ -1263,21 +1269,21 @@ impl Panel {
         let (mark, _) = foot_ui.allocate_exact_size(vec2(13.0, 13.0), Sense::hover());
         icon(foot_ui.painter(), mark, if complete { Icon::Check } else { Icon::Warning }, color);
         let text = if complete {
-            format!("Log complete · {} {}", s.sessions, if s.sessions == 1 { "session" } else { "sessions" })
+            crate::i18n::trf!("Log complete · sessions: {count}", count = s.sessions)
         } else {
-            "Some records are missing".to_owned()
+            crate::i18n::tr("Some records are missing").to_owned()
         };
         let hover = if complete {
-            format!("{} records read in {} ms", s.records, s.elapsed_ms)
+            crate::i18n::trf!("Read {records} records in {milliseconds} ms", records = s.records, milliseconds = s.elapsed_ms)
         } else {
-            format!("{} gaps · {} partial · {} dropped", s.gaps, s.partial, s.dropped)
+            crate::i18n::trf!("Gaps: {gaps} · partial: {partial} · dropped: {dropped}", gaps = s.gaps, partial = s.partial, dropped = s.dropped)
         };
         foot_ui
             .label(RichText::new(text).size(12.0).color(if complete { HINT() } else { AMBER() }))
             .on_hover_text(hover);
         foot_ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             let help = crate::chrome::icon_button(ui, Icon::Info, true, false, 26.0)
-                .on_hover_text("About these records (guide)");
+                .on_hover_text(crate::i18n::tr("About these records (guide)"));
             widgets.insert("activity-guide".into(), (&help).into());
             if help.clicked() {
                 crate::guide::request(ui.ctx());
@@ -1319,8 +1325,8 @@ impl Panel {
             ui.add(Label::new(RichText::new(&e.name).font(semibold(14.0))).truncate());
             crate::pages::pill(ui, e.status.label(), e.status.color());
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let r = crate::pages::slot_button(ui, Some(Icon::Copy), if copied { "Copied" } else { "Copy summary" }, 124.0, true)
-                    .on_hover_text("Copies up to 200 structured records; no Git output, arguments or paths");
+                let r = crate::pages::slot_button(ui, Some(Icon::Copy), if copied { crate::i18n::tr("Copied") } else { crate::i18n::tr("Copy summary") }, 124.0, true)
+                    .on_hover_text(crate::i18n::tr("Copies up to 200 structured records; no Git output, arguments or paths"));
                 widgets.insert("activity-copy".into(), (&r).into());
                 *copy = r.clicked();
             });
@@ -1363,10 +1369,10 @@ impl Panel {
                     ui.label(RichText::new(started(e.time, now)).color(MUTED()))
                         .on_hover_text(timestamp(e.time));
                     if let Some(ms) = e.duration {
-                        ui.label(RichText::new(format!("Took {}", duration(ms))).color(MUTED()));
+                        ui.label(RichText::new(crate::i18n::trf!("Took {duration}", duration = duration(ms))).color(MUTED()));
                     }
                     ui.label(
-                        RichText::new(if steps == 1 { "1 step".to_owned() } else { format!("{steps} steps") })
+                        RichText::new(crate::i18n::trf!("Steps: {count}", count = steps))
                             .color(MUTED()),
                     );
                 });
@@ -1376,13 +1382,13 @@ impl Panel {
                 }
                 ui.add_space(if roomy { 12.0 } else { 6.0 });
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("STEPS").font(semibold(11.0)).color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("STEPS")).font(semibold(11.0)).color(HINT()));
                     if self.records && e.records.len() > STEP_LIMIT {
-                        let text = format!("first {STEP_LIMIT} of {} records", e.records.len());
+                        let text = crate::i18n::trf!("First {limit} of {total} records", limit = STEP_LIMIT, total = e.records.len());
                         ui.label(RichText::new(text).size(12.0).color(HINT()));
                     }
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let items = [("Steps", None, !self.records), ("Records", Some(e.records.len()), self.records)];
+                        let items = [(crate::i18n::tr("Steps"), None, !self.records), (crate::i18n::tr("Records"), Some(e.records.len()), self.records)];
                         let responses = crate::pages::tab_segments(ui, &items);
                         for (r, (id, records)) in responses.into_iter().zip([("activity-view-steps", false), ("activity-view-records", true)]) {
                             widgets.insert(id.into(), (&r).into());
@@ -1416,13 +1422,13 @@ impl Panel {
         let (lock, _) = foot_ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
         icon(foot_ui.painter(), lock, Icon::Lock, HINT());
         if roomy {
-            foot_ui.label(RichText::new("No Git output, arguments, paths or repository names.").size(12.0).color(HINT()));
+            foot_ui.label(RichText::new(crate::i18n::tr("No Git output, arguments, paths or repository names.")).size(12.0).color(HINT()));
         }
         let short = e.session.get(..8).unwrap_or(&e.session).to_owned();
-        let ids = format!("Request {} · session {short}", e.request);
+        let ids = crate::i18n::trf!("Request {request} · session {session}", request = e.request, session = short);
         foot_ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.label(RichText::new(ids).size(12.0).color(FAINT()))
-                .on_hover_text(format!("Session {}", e.session));
+                .on_hover_text(crate::i18n::trf!("Session {session}", session = e.session));
         });
         if copy {
             ui.ctx().copy_text(e.summary());
@@ -1525,9 +1531,9 @@ pub(crate) fn day(ms: u64, now_ms: u64) -> String {
     let (then, now) = (local(ms), local(now_ms));
     let number = day_number(&then);
     match day_number(&now) - number {
-        0 => "Today".into(),
-        1 => "Yesterday".into(),
-        2..7 => ["Thursday", "Friday", "Saturday", "Sunday", "Monday", "Tuesday", "Wednesday"]
+        0 => crate::i18n::tr("Today").into(),
+        1 => crate::i18n::tr("Yesterday").into(),
+        2..7 => [crate::i18n::tr("Thursday"), crate::i18n::tr("Friday"), crate::i18n::tr("Saturday"), crate::i18n::tr("Sunday"), crate::i18n::tr("Monday"), crate::i18n::tr("Tuesday"), crate::i18n::tr("Wednesday")]
             [number.rem_euclid(7) as usize]
             .into(),
         _ => format!("{:04}-{:02}-{:02}", then.year, then.month, then.day),
@@ -1535,7 +1541,7 @@ pub(crate) fn day(ms: u64, now_ms: u64) -> String {
 }
 
 const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    crate::i18n::mark("Jan"), crate::i18n::mark("Feb"), crate::i18n::mark("Mar"), crate::i18n::mark("Apr"), crate::i18n::mark("May"), crate::i18n::mark("Jun"), crate::i18n::mark("Jul"), crate::i18n::mark("Aug"), crate::i18n::mark("Sep"), crate::i18n::mark("Oct"), crate::i18n::mark("Nov"), crate::i18n::mark("Dec"),
 ];
 /// A date in a list: "Today", a weekday this week, "2 Oct" this year, else "2 Oct 2025".
 pub(crate) fn short_date(seconds: i64, now_ms: u64) -> String {
@@ -1545,7 +1551,7 @@ pub(crate) fn short_date(seconds: i64, now_ms: u64) -> String {
         return named;
     }
     let (then, now) = (local(ms), local(now_ms));
-    let month = MONTHS[usize::from(then.month.clamp(1, 12)) - 1];
+    let month = crate::i18n::tr(MONTHS[usize::from(then.month.clamp(1, 12)) - 1]);
     if then.year == now.year {
         format!("{} {month}", then.day)
     } else {
@@ -1568,7 +1574,7 @@ pub(crate) fn clock(ms: u64) -> String {
 /// "Today at 00:59:43" on this computer's clock.
 pub(crate) fn started(ms: u64, now_ms: u64) -> String {
     let t = local(ms);
-    format!("{} at {:02}:{:02}:{:02}", day(ms, now_ms), t.hour, t.minute, t.second)
+    crate::i18n::trf!("{day} at {time}", day = day(ms, now_ms), time = format!("{:02}:{:02}:{:02}", t.hour, t.minute, t.second))
 }
 
 /// The row at a card's foot, its content from the left.
@@ -1697,7 +1703,7 @@ fn paint_entry(ui: &Ui, rect: Rect, e: &Entry, selected: bool, hovered: bool) {
     let (name, font, ink) = if e.tall() {
         (e.name.clone(), semibold(13.0), TEXT())
     } else if cancelled {
-        (format!("{} · cancelled", e.name), FontId::proportional(13.0), HINT())
+        (crate::i18n::trf!("{operation} · cancelled", operation = e.name), FontId::proportional(13.0), HINT())
     } else if e.read {
         (e.name.clone(), FontId::proportional(13.0), HINT())
     } else {
@@ -1752,15 +1758,15 @@ fn problem(status: Status, records: &[Value]) -> Option<Problem> {
     match status {
         Status::Succeeded => None,
         Status::Cancelled => Some(Problem {
-            headline: "Cancelled.".into(),
-            short: "Cancelled.".into(),
+            headline: crate::i18n::tr("Cancelled.").into(),
+            short: crate::i18n::tr("Cancelled.").into(),
             advice: None,
             chips: fields(&["cancel_to_stop_us"]),
             place: None,
         }),
         Status::Incomplete => Some(Problem {
-            headline: "The records end before this operation finished, so its outcome cannot be confirmed.".into(),
-            short: "The records end before it finished.".into(),
+            headline: crate::i18n::tr("The records end before this operation finished, so its outcome cannot be confirmed.").into(),
+            short: crate::i18n::tr("The records end before it finished.").into(),
             advice: None,
             chips: Vec::new(),
             place: None,
@@ -1780,17 +1786,17 @@ fn problem(status: Status, records: &[Value]) -> Option<Problem> {
                 (Some(text), ..) => text.summary.unwrap_or(text.guidance).to_owned(),
                 (None, Some(code), _) => format!("{}.", spelled(code)),
                 (None, None, Some(outcome)) => format!("{}.", spelled(outcome)),
-                (None, None, None) => "This operation needs a look.".to_owned(),
+                (None, None, None) => crate::i18n::tr("This operation needs a look.").to_owned(),
             };
             let place = at.and_then(|at| {
                 let r = &records[at];
                 if let Some(git) = failed_command(records) {
                     let exit = git["exit_code"].as_i64().unwrap_or_default();
-                    Some(format!("at git {} · exit {exit}", label(git, "operation")))
+                    Some(crate::i18n::trf!("at git {operation} · exit {exit}", operation = label(git, "operation"), exit))
                 } else if label(r, "event") == "git_end" {
-                    Some(format!("at git {}", label(r, "operation")))
+                    Some(crate::i18n::trf!("at git {operation}", operation = label(r, "operation")))
                 } else {
-                    Some(label(r, "step")).filter(|s| !s.is_empty()).map(|s| format!("at {}", spelled(s)))
+                    Some(label(r, "step")).filter(|s| !s.is_empty()).map(|s| crate::i18n::trf!("at {step}", step = spelled(s)))
                 }
             });
             Some(Problem {
@@ -1994,7 +2000,7 @@ fn steps_view(
                     ui.painter().text(
                         pos2(rect.left() + 54.0, rect.center().y),
                         Align2::LEFT_CENTER,
-                        "Setup · find Git, open the repository",
+                        crate::i18n::tr("Setup · find Git, open the repository"),
                         FontId::proportional(13.0),
                         HINT(),
                     );
@@ -2005,7 +2011,7 @@ fn steps_view(
                         FontId::proportional(12.0),
                         MUTED(),
                     );
-                    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, setup_open, "Setup"));
+                    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, setup_open, crate::i18n::tr("Setup")));
                     widgets.insert("activity-setup".into(), (&response).into());
                     *toggle |= response.clicked();
                     continue;
@@ -2215,6 +2221,21 @@ fn paint_step(ui: &Ui, rect: Rect, r: &Value, last: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn localized_statuses_preserve_exported_diagnostic_values() {
+        let rows = vec![row(1, 1, "request_start", json!({})), row(2, 1, "request_end", json!({"outcome":"ok"}))];
+        let snapshot = aggregate(rows, &CancellationToken::new()).unwrap();
+        let entry = &snapshot.entries[0];
+        let expected = entry.summary();
+        for language in crate::i18n::Language::ALL.into_iter().skip(1) {
+            crate::i18n::scoped(language, || {
+                assert_ne!(Status::Succeeded.label(), "Succeeded", "{language:?}");
+                assert_eq!(Status::Succeeded.code(), "Succeeded");
+                assert_eq!(Filter::Attention.code(), "Needs attention");
+                assert_eq!(entry.summary(), expected, "{language:?}");
+            });
+        }
+    }
     #[test]
     fn github_publish_partial_outcomes_keep_safe_phases_and_need_attention() {
         for creation in ["unknown", "rejected", "created"] {

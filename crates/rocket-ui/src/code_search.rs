@@ -126,10 +126,10 @@ impl State {
             }
         };
         let (source, label) = match (self.scope, revision) {
-            (Scope::Checkout, _) => (FileSearchSource::Checkout, "the checkout".to_owned()),
+            (Scope::Checkout, _) => (FileSearchSource::Checkout, crate::i18n::tr("the checkout").to_owned()),
             (Scope::Revision, Some(id)) => (FileSearchSource::Commit(id.clone()), short(id)),
             (Scope::Revision, None) => {
-                self.error = Some("Browse a revision first, or search the checkout.".into());
+                self.error = Some(crate::i18n::tr("Browse a revision first, or search the checkout.").into());
                 return;
             }
         };
@@ -350,7 +350,7 @@ pub(crate) fn search_row(
             let (field, _) = query_field(
                 ui,
                 &mut s.query,
-                "Search in files",
+                crate::i18n::tr("Search in files"),
                 width,
                 Some((&mut s.match_case, &mut s.regex)),
                 s.bad_pattern,
@@ -370,7 +370,7 @@ pub(crate) fn search_row(
             let path_width = if narrow { (ui.available_width() - 90.0).clamp(120.0, 300.0) } else { 170.0 };
             path_field(ui, &mut s.path, path_width, "files-search-path", widgets);
             if s.running() {
-                let r = ui.add_enabled(!s.stopping, Button::new("Stop"));
+                let r = ui.add_enabled(!s.stopping, Button::new(crate::i18n::tr("Stop")));
                 widgets.insert("files-search-stop".into(), (&r).into());
                 if r.clicked() {
                     emit(intents, crate::tree::TreeIntent::StopSearch);
@@ -378,7 +378,7 @@ pub(crate) fn search_row(
             } else {
                 // A search of the revision waits until the revision chosen has loaded.
                 let ready = !(s.scope == Scope::Revision && loading);
-                let r = pages::primary(ui, !s.query.trim().is_empty() && ready, "Search");
+                let r = pages::primary(ui, !s.query.trim().is_empty() && ready, crate::i18n::tr("Search"));
                 widgets.insert("files-search-go".into(), (&r).into());
                 if r.clicked() {
                     emit(intents, crate::tree::TreeIntent::Search);
@@ -405,13 +405,7 @@ fn done_text(s: &State) -> Option<String> {
     if s.groups.is_empty() || ended == Ended::Stopped {
         return None;
     }
-    let mut text = format!(
-        "{} {} in {} {}",
-        pages::number_text(s.matches),
-        if s.matches == 1 { "match" } else { "matches" },
-        pages::number_text(s.groups.len()),
-        if s.groups.len() == 1 { "file" } else { "files" },
-    );
+    let mut text = crate::i18n::trf!("Matches: {matches} · files: {files}", matches = pages::number_text(s.matches), files = pages::number_text(s.groups.len()));
     if let Some(elapsed) = s.elapsed {
         text.push_str(&format!(" · {:.1} s", elapsed.as_secs_f32()));
     }
@@ -421,7 +415,7 @@ fn done_text(s: &State) -> Option<String> {
 /// "In: Checkout" or "In: <revision>".
 fn scope_picker(ui: &mut Ui, s: &mut State, revision: Option<&ObjectId>, widgets: &mut HashMap<String, UiControl>) {
     let label = match (s.scope, revision) {
-        (Scope::Checkout, _) | (Scope::Revision, None) => "Checkout".to_owned(),
+        (Scope::Checkout, _) | (Scope::Revision, None) => crate::i18n::tr("Checkout").to_owned(),
         (Scope::Revision, Some(id)) => short(id),
     };
     let picker = ui.add(Button::new("").frame(false).min_size(vec2(128.0, 30.0)));
@@ -434,7 +428,7 @@ fn scope_picker(ui: &mut Ui, s: &mut State, revision: Option<&ObjectId>, widgets
         Stroke::new(1.0, BORDER()),
         StrokeKind::Inside,
     );
-    ui.painter().text(pos2(rect.left() + 10.0, rect.center().y), Align2::LEFT_CENTER, "In", FontId::proportional(12.0), FAINT());
+    ui.painter().text(pos2(rect.left() + 10.0, rect.center().y), Align2::LEFT_CENTER, crate::i18n::tr("In"), FontId::proportional(12.0), FAINT());
     clipped_text(
         ui,
         Rect::from_min_max(pos2(rect.left() + 28.0, rect.top()), pos2(rect.right() - 22.0, rect.bottom())),
@@ -443,8 +437,8 @@ fn scope_picker(ui: &mut Ui, s: &mut State, revision: Option<&ObjectId>, widgets
         TEXT(),
     );
     icon(ui.painter(), Rect::from_center_size(pos2(rect.right() - 12.0, rect.center().y), vec2(10.0, 10.0)), Icon::Chevron, FAINT());
-    let picker = picker.on_hover_text("Where to search");
-    picker.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("Search in: {label}")));
+    let picker = picker.on_hover_text(crate::i18n::tr("Where to search"));
+    picker.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, crate::i18n::trf!("Search in: {label}", label)));
     Popup::menu(&picker).show(|ui| {
         ui.set_min_width(300.0);
         let mut choice = |ui: &mut Ui, scope: Scope, key: &str, title: String, detail: &str, enabled: bool| {
@@ -458,16 +452,16 @@ fn scope_picker(ui: &mut Ui, s: &mut State, revision: Option<&ObjectId>, widgets
                 ui.close();
             }
         };
-        choice(ui, Scope::Checkout, "files-search-scope-checkout", "Checkout".into(), "Files on disk now, new ones included; ignored files are skipped", true);
+        choice(ui, Scope::Checkout, "files-search-scope-checkout", crate::i18n::tr("Checkout").into(), crate::i18n::tr("Files on disk now, new ones included; ignored files are skipped"), true);
         choice(
             ui,
             Scope::Revision,
             "files-search-scope-revision",
             match revision {
-                Some(id) => format!("Revision shown · {}", short(id)),
-                None => "Revision shown".into(),
+                Some(id) => crate::i18n::trf!("Revision shown · {commit}", commit = short(id)),
+                None => crate::i18n::tr("Revision shown").into(),
             },
-            "Files as committed, the snapshot the folders show",
+            crate::i18n::tr("Files as committed, the snapshot the folders show"),
             revision.is_some(),
         );
     });
@@ -479,7 +473,7 @@ pub(crate) fn pane_tabs(ui: &mut Ui, s: &State, intents: &mut Vec<Intent>, widge
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
             let count = (!s.groups.is_empty() || s.ran.is_some()).then_some(s.groups.len());
-            let r = pages::tab_segments(ui, &[("Folders", None, !s.results), ("Results", count, s.results)]);
+            let r = pages::tab_segments(ui, &[(crate::i18n::tr("Folders"), None, !s.results), (crate::i18n::tr("Results"), count, s.results)]);
             widgets.insert("files-pane-folders".into(), (&r[0]).into());
             widgets.insert("files-pane-results".into(), (&r[1]).into());
             if r[0].clicked() {
@@ -490,8 +484,8 @@ pub(crate) fn pane_tabs(ui: &mut Ui, s: &State, intents: &mut Vec<Intent>, widge
             }
             if s.results && s.ran.is_some() {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.label(RichText::new("Binary files skipped").size(11.5).color(FAINT()))
-                        .on_hover_text("Files Git sees as binary aren't searched");
+                    ui.label(RichText::new(crate::i18n::tr("Binary files skipped")).size(11.5).color(FAINT()))
+                        .on_hover_text(crate::i18n::tr("Files Git sees as binary aren't searched"));
                 });
             }
         });
@@ -506,7 +500,7 @@ pub(crate) fn results_pane(ui: &mut Ui, s: &mut State, narrow: bool, intents: &m
                 ui.label(RichText::new(text).size(12.0).color(MUTED()));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let r = ui.button("Show file");
+                let r = ui.button(crate::i18n::tr("Show file"));
                 widgets.insert("files-show-file".into(), (&r).into());
                 if r.clicked() {
                     s.show_file = true;
@@ -517,7 +511,7 @@ pub(crate) fn results_pane(ui: &mut Ui, s: &mut State, narrow: bool, intents: &m
     if let Some(error) = s.error.clone() {
         message(ui, widgets, RED(), Some(Icon::Warning), &error);
         if s.bad_pattern {
-            pages::empty(ui, "The previous results were cleared.");
+            pages::empty(ui, crate::i18n::tr("The previous results were cleared."));
         }
         return;
     }
@@ -526,13 +520,9 @@ pub(crate) fn results_pane(ui: &mut Ui, s: &mut State, narrow: bool, intents: &m
             ui.horizontal(|ui| {
                 ui.spinner();
                 let text = if s.stopping {
-                    "Stopping".to_owned()
+                    crate::i18n::tr("Stopping").to_owned()
                 } else {
-                    format!(
-                        "Searching · {} matches in {} files so far",
-                        pages::number_text(s.matches),
-                        pages::number_text(s.groups.len())
-                    )
+                    crate::i18n::trf!("Searching · matches: {matches} · files: {files}", matches = pages::number_text(s.matches), files = pages::number_text(s.groups.len()))
                 };
                 let r = ui.label(RichText::new(text).size(12.0).color(MUTED()));
                 widgets.insert("files-search-progress".into(), (&r).into());
@@ -545,32 +535,21 @@ pub(crate) fn results_pane(ui: &mut Ui, s: &mut State, narrow: bool, intents: &m
             widgets,
             AMBER(),
             Some(Icon::Warning),
-            &format!(
-                "Showing the first {} matches in {} files. Add a path or more text to narrow it.",
-                pages::number_text(s.matches),
-                pages::number_text(s.groups.len())
-            ),
+            &crate::i18n::trf!("Showing the first {matches} matches in {files} files. Add a path or more text to narrow it.", matches = pages::number_text(s.matches), files = pages::number_text(s.groups.len())),
         ),
         Some(Ended::TimedOut) => message(
             ui,
             widgets,
             AMBER(),
             Some(Icon::Warning),
-            &format!(
-                "Stopped after {} seconds. These matches come from the files searched so far.",
-                FILE_SEARCH_TIME.as_secs()
-            ),
+            &crate::i18n::trf!("Stopped after {seconds} seconds. These matches come from the files searched so far.", seconds = FILE_SEARCH_TIME.as_secs()),
         ),
         Some(Ended::Stopped) => message(
             ui,
             widgets,
             MUTED(),
             None,
-            &format!(
-                "Stopped. {} matches in {} files were found before you stopped.",
-                pages::number_text(s.matches),
-                pages::number_text(s.groups.len())
-            ),
+            &crate::i18n::trf!("Stopped · matches: {matches} · files: {files}", matches = pages::number_text(s.matches), files = pages::number_text(s.groups.len())),
         ),
         _ => {}
     }
@@ -580,21 +559,21 @@ pub(crate) fn results_pane(ui: &mut Ui, s: &mut State, narrow: bool, intents: &m
             let under = query
                 .path
                 .as_ref()
-                .map(|p| format!(" under {}", crate::tree::path_label(p.as_bytes())))
+                .map(|p| crate::i18n::trf!(" under {path}", path = crate::tree::path_label(p.as_bytes())))
                 .unwrap_or_default();
             let place = if query.source == FileSearchSource::Checkout {
-                format!("in {label}")
+                crate::i18n::trf!("in {label}", label)
             } else {
-                format!("at {label}")
+                crate::i18n::trf!("at {label}", label)
             };
             let note = if query.source == FileSearchSource::Checkout {
-                "Binary files aren't searched."
+                crate::i18n::tr("Binary files aren't searched.")
             } else {
-                "Binary files and Git LFS content aren't searched."
+                crate::i18n::tr("Binary files and Git LFS content aren't searched.")
             };
-            centered(ui, &format!("No matches{under} {place}"), note, widgets);
+            centered(ui, &crate::i18n::trf!("No matches{under} {place}", under, place), note, widgets);
         } else if s.ran.is_none() && !s.running() {
-            centered(ui, "Search inside files", "The checkout or the revision shown, grouped by file.", widgets);
+            centered(ui, crate::i18n::tr("Search inside files"), crate::i18n::tr("The checkout or the revision shown, grouped by file."), widgets);
         }
         return;
     }
@@ -615,7 +594,7 @@ pub(crate) fn results_pane(ui: &mut Ui, s: &mut State, narrow: bool, intents: &m
                         ui.painter().text(
                             pos2(rect.left() + 52.0, rect.center().y),
                             Align2::LEFT_CENTER,
-                            format!("Showing the first {FILE_SEARCH_FILE_MATCHES} matches in this file"),
+                            crate::i18n::trf!("Showing the first {limit} matches in this file", limit = FILE_SEARCH_FILE_MATCHES),
                             FontId::proportional(12.0),
                             FAINT(),
                         );
@@ -691,13 +670,13 @@ fn file_row(ui: &mut Ui, s: &mut State, g: usize, intents: &mut Vec<Intent>, wid
     }
     let mut tags: Vec<(String, Color32)> = Vec::new();
     if group.detail.lfs_pointer {
-        tags.push(("Git LFS pointer".into(), BLUE()));
+        tags.push((crate::i18n::tr("Git LFS pointer").into(), BLUE()));
     }
     if group.detail.size.is_some_and(|n| n as usize > TREE_FILE_LIMIT) {
         tags.push((size(group.detail.size.unwrap()), AMBER()));
     }
     if group.not_utf8 {
-        tags.push(("Not UTF-8".into(), MUTED()));
+        tags.push((crate::i18n::tr("Not UTF-8").into(), MUTED()));
     }
     let tag_width: f32 = tags.iter().map(|(t, _)| t.len() as f32 * 6.4 + 22.0).sum();
     job.wrap = text::TextWrapping::truncate_at_width((right - x - tag_width - 8.0).max(40.0));
@@ -755,7 +734,7 @@ fn line_row(
     let galley = ui.painter().layout_job(job);
     ui.painter().galley(pos2(rect.left() + 54.0, rect.center().y - galley.size().y / 2.0), galley, TEXT());
     widgets.insert(format!("files-match-{g}-{l}"), (&r).into());
-    let r = r.on_hover_text(format!("Line {}", line.number));
+    let r = r.on_hover_text(crate::i18n::trf!("Line {number}", number = line.number));
     if r.clicked() {
         emit(intents, crate::tree::TreeIntent::OpenMatch(g, l));
     }
@@ -766,20 +745,20 @@ fn line_row(
             widgets.insert(key.into(), (&r).into());
             r.clicked()
         };
-        if item(ui, widgets, "files-match-menu-open", "Open at this line") {
+        if item(ui, widgets, "files-match-menu-open", crate::i18n::tr("Open at this line")) {
             emit(intents, crate::tree::TreeIntent::OpenMatch(g, l));
             ui.close();
         }
-        if item(ui, widgets, "files-match-menu-commits", "Find in commits") {
+        if item(ui, widgets, "files-match-menu-commits", crate::i18n::tr("Find in commits")) {
             intents.push(Intent::FindInCommits(s.groups[g].file.path.clone()));
             ui.close();
         }
         ui.separator();
-        if item(ui, widgets, "files-match-menu-copy-line", "Copy line") {
+        if item(ui, widgets, "files-match-menu-copy-line", crate::i18n::tr("Copy line")) {
             ui.ctx().copy_text(line.text.clone());
             ui.close();
         }
-        if item(ui, widgets, "files-match-menu-copy-path", "Copy path") {
+        if item(ui, widgets, "files-match-menu-copy-path", crate::i18n::tr("Copy path")) {
             ui.ctx().copy_text(path);
             ui.close();
         }
@@ -832,7 +811,7 @@ pub(crate) fn viewer(ui: &mut Ui, s: &mut State, narrow: bool, intents: &mut Vec
     let no_results = s.groups.is_empty();
     let Some(opened) = &mut s.opened else {
         Frame::new().inner_margin(Margin::symmetric(24, 8)).show(ui, |ui| {
-            pages::empty(ui, if no_results { "Matches open here, at their line." } else { "Select a match to open the file at that line." });
+            pages::empty(ui, if no_results { crate::i18n::tr("Matches open here, at their line.") } else { crate::i18n::tr("Select a match to open the file at that line.") });
         });
         return;
     };
@@ -840,7 +819,7 @@ pub(crate) fn viewer(ui: &mut Ui, s: &mut State, narrow: bool, intents: &mut Vec
     let (dir, name) = label.rsplit_once('/').map_or(("", label.as_str()), |(d, n)| (d, n));
     pages::strip(ui, |ui| {
         if narrow {
-            let r = ui.button("Show results");
+            let r = ui.button(crate::i18n::tr("Show results"));
             widgets.insert("files-show-results".into(), (&r).into());
             if r.clicked() {
                 emit(intents, crate::tree::TreeIntent::ShowResults);
@@ -855,38 +834,38 @@ pub(crate) fn viewer(ui: &mut Ui, s: &mut State, narrow: bool, intents: &mut Vec
         widgets.insert("files-open-label".into(), (&r).into());
         match &opened.source {
             FileSearchSource::Checkout => {
-                pages::pill(ui, "Checkout", VIOLET());
+                pages::pill(ui, crate::i18n::tr("Checkout"), VIOLET());
             }
             FileSearchSource::Commit(id) => {
-                pages::pill(ui, &format!("at {}", &id.as_str()[..12.min(id.as_str().len())]), pages::INFO());
+                pages::pill(ui, &crate::i18n::trf!("at {label}", label = &id.as_str()[..12.min(id.as_str().len())]), pages::INFO());
             }
         }
         if let Some(content) = &opened.content {
             let meta = if content.window {
                 crate::tree::size(content.bytes)
             } else {
-                format!("{} line{} · {}", content.lines.len(), if content.lines.len() == 1 { "" } else { "s" }, crate::tree::size(content.bytes))
+                crate::i18n::trf!("Lines: {count} · {size}", count = content.lines.len(), size = crate::tree::size(content.bytes))
             };
             ui.label(RichText::new(meta).size(12.0).color(FAINT()));
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let r = ui.button("Find in commits").on_hover_text("Commits that changed this text in this file");
+            let r = ui.button(crate::i18n::tr("Find in commits")).on_hover_text(crate::i18n::tr("Commits that changed this text in this file"));
             widgets.insert("files-find-in-commits".into(), (&r).into());
             if r.clicked() {
                 intents.push(Intent::FindInCommits(opened.path.clone()));
             }
             let down = ui.add_enabled(selected != next, Button::new("↓").min_size(vec2(26.0, 24.0)));
             widgets.insert("files-match-next".into(), (&down).into());
-            if down.on_hover_text("Next match").clicked() {
+            if down.on_hover_text(crate::i18n::tr("Next match")).clicked() {
                 emit(intents, crate::tree::TreeIntent::StepMatch(1));
             }
             let up = ui.add_enabled(selected != previous, Button::new("↑").min_size(vec2(26.0, 24.0)));
             widgets.insert("files-match-previous".into(), (&up).into());
-            if up.on_hover_text("Previous match").clicked() {
+            if up.on_hover_text(crate::i18n::tr("Previous match")).clicked() {
                 emit(intents, crate::tree::TreeIntent::StepMatch(-1));
             }
             let of = if capped { format!("{in_file}+") } else { in_file.to_string() };
-            ui.label(RichText::new(format!("Match {} of {of}", opened.line + 1)).size(12.0).color(FAINT()));
+            ui.label(RichText::new(crate::i18n::trf!("Match {number} of {total}", number = opened.line + 1, total = of)).size(12.0).color(FAINT()));
         });
     });
     if let Some(error) = &opened.error {
@@ -894,35 +873,30 @@ pub(crate) fn viewer(ui: &mut Ui, s: &mut State, narrow: bool, intents: &mut Vec
         return;
     }
     let Some(content) = &opened.content else {
-        Frame::new().inner_margin(Margin::symmetric(24, 12)).show(ui, |ui| pages::loading(ui, "Opening the file"));
+        Frame::new().inner_margin(Margin::symmetric(24, 12)).show(ui, |ui| pages::loading(ui, crate::i18n::tr("Opening the file")));
         return;
     };
     let notes = Frame::new().inner_margin(Margin::symmetric(12, 6)).show(ui, |ui| {
         ui.set_width(ui.available_width());
         if lfs {
-            pages::callout(ui, BLUE(), "Git LFS pointer. The file's content is stored outside Git, so only this pointer was searched.");
+            pages::callout(ui, BLUE(), crate::i18n::tr("Git LFS pointer. The file's content is stored outside Git, so only this pointer was searched."));
         }
         if content.window {
             let last = content.first + content.lines.len().saturating_sub(1);
             pages::callout(
                 ui,
                 BLUE(),
-                &format!(
-                    "Large file: showing lines {} to {}, around line {}",
-                    pages::number_text(content.first),
-                    pages::number_text(last),
-                    pages::number_text(opened.number as usize)
-                ),
+                &crate::i18n::trf!("Large file: showing lines {first} to {last}, around line {line}", first = pages::number_text(content.first), last = pages::number_text(last), line = pages::number_text(opened.number as usize)),
             );
         }
         if content.lossy {
-            pages::callout(ui, MUTED(), "Not UTF-8: bytes that aren't valid UTF-8 show as \u{fffd}.");
+            pages::callout(ui, MUTED(), crate::i18n::tr("Not UTF-8: invalid bytes are shown as �."));
         }
         if content.limited {
-            pages::callout(ui, AMBER(), "Preview limited to 50,000 lines and 8 KiB per line.");
+            pages::callout(ui, AMBER(), crate::i18n::tr("Preview limited to 50,000 lines and 8 KiB per line."));
         }
         if content.kind == HistoricalFileKind::Binary {
-            pages::note(ui, "This file is binary now, so its text can't be shown.");
+            pages::note(ui, crate::i18n::tr("This file is binary now, so its text can't be shown."));
             return false;
         }
         true

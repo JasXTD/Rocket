@@ -88,7 +88,7 @@ pub fn branch_items(branches: &[Branch], filter: &str) -> Vec<Item> {
             name: branch_name(b).to_vec(),
             label: display(branch_name(b)),
             detail: match &b.upstream {
-                Some(upstream) => format!("{} · tracks {}", short(&b.target), display(upstream)),
+                Some(upstream) => crate::i18n::trf!("{commit} · tracks {upstream}", commit = short(&b.target), upstream = display(upstream)),
                 None => short(&b.target).into(),
             },
             kind: None,
@@ -172,7 +172,7 @@ fn select_buttons(
     let mut changed = false;
     let r = ui.add_enabled(
         enabled && items.iter().any(|i| !selected.contains(&i.name)),
-        Button::new("Select all").small(),
+        Button::new(crate::i18n::tr("Select all")).small(),
     );
     control(widgets, format!("dialog-{key}-all"), &r, ui.clip_rect());
     if r.clicked() {
@@ -185,7 +185,7 @@ fn select_buttons(
     }
     let r = ui.add_enabled(
         enabled && !selected.is_empty(),
-        Button::new("Clear").small(),
+        Button::new(crate::i18n::tr("Clear")).small(),
     );
     control(widgets, format!("dialog-{key}-none"), &r, ui.clip_rect());
     if r.clicked() {
@@ -372,7 +372,7 @@ impl Rocket {
             };
             batch.invalidate();
             let Some(snapshot) = snapshot else {
-                d.error = Some("Refresh the remote list first.".into());
+                d.error = Some(crate::i18n::tr("Refresh the remote list first.").into());
                 return;
             };
             let names = batch.selected.clone();
@@ -458,12 +458,11 @@ impl Rocket {
                 for preview in &review.ready {
                     r.applied(preview);
                 }
-                let count = plural(review.ready.len(), "tag", "tags");
-                r.done = Some(format!("Published {count} to {name} and verified."));
+                r.done = Some(crate::i18n::trf!("Published and verified · tags: {count} · {remote}", count = review.ready.len(), remote = name));
                 return true;
             }
             r.stale = true;
-            r.notice = Some(format!("{report}\nRead again before another change."));
+            r.notice = Some(crate::i18n::trf!("{report}\nRead again before another change.", report));
             if !outcome.command_succeeded {
                 d.error = Some(outcome.summary.clone());
             }
@@ -475,8 +474,8 @@ impl Rocket {
             self.start_tag_read();
         } else if let Some(batch) = &mut s.batch {
             batch.invalidate();
-            d.error = Some(format!(
-                "{report}\nReturn to the list and refresh before retrying."
+            d.error = Some(crate::i18n::trf!(
+                "{report}\nReturn to the list and refresh before retrying.", report
             ));
         }
         true
@@ -505,7 +504,7 @@ impl Rocket {
         };
         let name = remotes
             .get(*remote_index)
-            .map_or_else(|| "the remote".into(), |r| display(r));
+            .map_or_else(|| crate::i18n::tr("the remote").into(), |r| display(r));
         // As for one tag: a review that belongs to another tab is dropped.
         if *owner != tab && !s.applying {
             return;
@@ -515,13 +514,13 @@ impl Rocket {
         let stale = remote && s.remote.stale;
         let mut f = Flags::default();
         let subtitle = if remote {
-            format!("Sends the tags you pick to {name} so others can fetch them.")
+            crate::i18n::trf!("Sends the tags you pick to {remote} so others can fetch them.", remote = name)
         } else {
-            "Removes the tags you pick from this repository. The commits stay.".into()
+            crate::i18n::tr("Removes the tags you pick from this repository. The commits stay.").into()
         };
         let head = pages::ReviewHeader {
             image: Icon::Tag,
-            title: if remote { "Publish tags" } else { "Delete tags" },
+            title: if remote { crate::i18n::tr("Publish tags") } else { crate::i18n::tr("Delete tags") },
             subtitle: &subtitle,
             danger: !remote,
         };
@@ -570,7 +569,7 @@ impl Rocket {
                             .horizontal(|ui| {
                                 ui.add_enabled_ui(!waiting, |ui| {
                                     let width = (ui.available_width() - 150.0).max(120.0);
-                                    let r = search_field(ui, filter, "Filter tags", width);
+                                    let r = search_field(ui, filter, crate::i18n::tr("Filter tags"), width);
                                     control(widgets, "dialog-batch-filter", &r, ui.clip_rect());
                                 });
                                 select_buttons(ui, "batch", &items, selected, MAX_TAG_BATCH, !waiting, widgets)
@@ -586,18 +585,15 @@ impl Rocket {
                             widgets,
                         );
                         if items.is_empty() {
-                            pages::empty(ui, "No tags match the filter.");
+                            pages::empty(ui, crate::i18n::tr("No tags match the filter."));
                         }
                         pages::note(
                             ui,
-                            &format!(
-                                "At most {MAX_TAG_BATCH} at once{}",
-                                if remote {
-                                    format!(" · only tags {name} does not have are listed")
-                                } else {
-                                    String::new()
-                                }
-                            ),
+                            &if remote {
+                                crate::i18n::trf!("At most {limit} at once · only tags {remote} does not have are listed", limit = MAX_TAG_BATCH, remote = name)
+                            } else {
+                                crate::i18n::trf!("At most {limit} at once", limit = MAX_TAG_BATCH)
+                            },
                         );
                         if changed {
                             *error = None;
@@ -610,8 +606,8 @@ impl Rocket {
                         if remote {
                             let b = s.remote.batch.as_ref().unwrap();
                             if let Some(review) = &b.review {
-                                let title = format!("Publishes {}", plural(review.ready.len(), "tag", "tags"));
-                                let note = format!(" · to {name} · nothing there is replaced");
+                                let title = crate::i18n::trf!("Tags to publish: {count}", count = review.ready.len());
+                                let note = crate::i18n::trf!(" · to {remote} · nothing there is replaced", remote = name);
                                 review_list(ui, review, (&title, &note), |p| {
                                     let entry = p.entry();
                                     let detail = match &entry.local {
@@ -624,14 +620,14 @@ impl Rocket {
                                     (display(&entry.name), detail)
                                 });
                                 if let Some(snapshot) = &s.remote.snapshot {
-                                    pages::note(ui, &format!("To {}", snapshot.destination_display()));
+                                    pages::note(ui, &crate::i18n::trf!("To {destination}", destination = snapshot.destination_display()));
                                 }
                             }
                         } else {
                             let b = s.batch.as_ref().unwrap();
                             if let Some(review) = &b.review {
-                                let title = format!("Deletes {}", plural(review.ready.len(), "tag", "tags"));
-                                let note = " · each kept in refs/rocket/deleted-tags · commits stay";
+                                let title = crate::i18n::trf!("Tags to delete: {count}", count = review.ready.len());
+                                let note = crate::i18n::tr(" · each kept in refs/rocket/deleted-tags · commits stay");
                                 review_list(ui, review, (&title, note), |p| {
                                     let details = p.details();
                                     let detail = match &details.commit {
@@ -646,12 +642,12 @@ impl Rocket {
                             pages::callout(
                                 ui,
                                 AMBER(),
-                                "Clear the refused tags, or refresh the list, then review again.",
+                                crate::i18n::tr("Clear the refused tags, or refresh the list, then review again."),
                             );
                         }
                         // Changing the tags shows its status and Stop in the footer.
                         if waiting && !applying {
-                            pages::waiting(ui, "Reviewing the selected tags…");
+                            pages::waiting(ui, crate::i18n::tr("Reviewing the selected tags…"));
                         }
                         if let Some(text) = error.as_ref() {
                             pages::callout(ui, RED(), text);
@@ -665,33 +661,33 @@ impl Rocket {
                     }
                     pages::Part::Footer => {
                         let go = ready && !waiting && !stale && writable && error.is_none();
-                        let label = if count == 0 { "tags".to_owned() } else { plural(count, "tag", "tags") };
                         let r = if remote {
-                            pages::primary(ui, go, &format!("Publish {label}"))
+                            let label = if count == 0 { crate::i18n::tr("Publish tags").into() } else { crate::i18n::trf!("Publish tags ({count})", count) };
+                            pages::primary(ui, go, &label)
                         } else {
-                            pages::danger(ui, go, &format!("Delete {label}"))
+                            let label = if count == 0 { crate::i18n::tr("Delete tags").into() } else { crate::i18n::trf!("Delete tags ({count})", count) };
+                            pages::danger(ui, go, &label)
                         };
                         control(widgets, "dialog-submit", &r, ui.clip_rect());
                         f.submit = r.clicked();
                         let can_review = !waiting && count > 0 && !stale;
                         let r = if has_review || error.is_some() {
-                            ui.add_enabled(can_review, Button::new("Review again"))
+                            ui.add_enabled(can_review, Button::new(crate::i18n::tr("Review again")))
                         } else {
-                            pages::primary(ui, can_review, "Review")
+                            pages::primary(ui, can_review, crate::i18n::tr("Review"))
                         };
                         control(widgets, "dialog-batch-review", &r, ui.clip_rect());
                         f.review = r.clicked();
-                        let verb = if remote { "publish" } else { "delete" };
                         let status = if waiting {
-                            "Reviewing".to_owned()
+                            crate::i18n::tr("Reviewing").to_owned()
                         } else if error.is_some() || (has_review && !ready) {
-                            "Fix the problem above, then review again".to_owned()
+                            crate::i18n::tr("Fix the problem above, then review again").to_owned()
                         } else if count == 0 {
-                            format!("Pick the tags to {verb}")
+                            if remote { crate::i18n::tr("Pick the tags to publish") } else { crate::i18n::tr("Pick the tags to delete") }.into()
                         } else if ready {
-                            format!("{count} selected · reviewed · nothing has changed yet")
+                            crate::i18n::trf!("{count} selected · reviewed · nothing has changed yet", count)
                         } else {
-                            format!("{count} selected · review before you {verb}")
+                            if remote { crate::i18n::trf!("{count} selected · review before you publish", count) } else { crate::i18n::trf!("{count} selected · review before you delete", count) }
                         };
                         pages::footer_status(ui, false, &status);
                     }
@@ -732,7 +728,7 @@ impl Rocket {
             if self.write.is_none() {
                 s.applying = false;
                 *error =
-                    Some("Could not start. Wait for the repository, then review again.".into());
+                    Some(crate::i18n::tr("Could not start. Wait for the repository, then review again.").into());
             }
         }
         self.dialog = Some(d);
@@ -770,7 +766,7 @@ fn review_list<P>(
                 if review.ready.len() > SUMMARY_NAMES {
                     pages::note(
                         ui,
-                        &format!("and {} more", review.ready.len() - SUMMARY_NAMES),
+                        &crate::i18n::trf!("More: {count}", count = review.ready.len() - SUMMARY_NAMES),
                     );
                 }
             },

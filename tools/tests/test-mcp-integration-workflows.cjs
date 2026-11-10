@@ -18,13 +18,17 @@ fs.writeFileSync(path.join(repo,'資料.txt'),'staged\n');git(['add','-A']);fs.a
 const local=()=>({head:git(['rev-parse','HEAD']),index:hash(path.join(repo,'.git/index')),config:hash(path.join(repo,'.git/config')),file:hash(path.join(repo,'資料.txt')),untracked:hash(path.join(repo,'untracked.txt'))}),before=local();
 let service,client,state,mode='ok',closedAt=null;const requests=[],report={passed:false,root,cases:[],cancel:[],before};
 const delay=ms=>new Promise(r=>setTimeout(r,ms)),writes=()=>requests.filter(r=>r.method!=='GET').length;
-let version=1,issueSummary='Original issue 資料',trimTransitions=false,extraRequired=false;
+const identifier='jira-contract@example.invalid',cloudId='01234567-89ab-cdef-0123-456789abcdef';
+let version=1,issueSummary='Original issue 資料',trimTransitions=false,extraRequired=false,descriptionRequired=false,gateway=false;
+const updated=()=>new Date(Date.UTC(2026,9,29,11,20,version)).toISOString().replace('Z','+0000');
 let richDescription={type:'doc',version:1,content:[{type:'paragraph',content:[{type:'text',text:'Keep this rich description',marks:[{type:'strong'}]},{type:'mention',attrs:{id:'synthetic-user'}}]}]};
 const originalDescription=JSON.stringify(richDescription),nextToken='cursor/第二?x=1';
 const server=http.createServer(async(req,res)=>{try{
  let data='';for await(const c of req)data+=c;requests.push({method:req.method,path:req.url,body:data});
- assert.equal(req.headers.authorization,'Bearer '+token);
- const url=new URL(req.url,'http://127.0.0.1'),pathname=url.pathname;
+ assert.equal(req.headers.authorization,'Basic '+Buffer.from(identifier+':'+token).toString('base64'));
+ const url=new URL(req.url,'http://127.0.0.1'),prefix=gateway?'/ex/jira/'+cloudId:'';
+ assert(url.pathname.startsWith(prefix+'/rest/api/3/'),'unexpected Jira API root');
+ const pathname=url.pathname.slice(prefix.length);
  const send=(status,body)=>{res.writeHead(status,{'Content-Type':'application/json'});res.end(status===204?'':JSON.stringify(body));};
  if(mode==='slow-read'&&req.method==='GET'||mode==='slow-write'&&req.method!=='GET'||mode==='slow-check'&&url.searchParams.get('fields')==='updated'){res.on('close',()=>closedAt=performance.now());return;}
  if(mode==='auth')return send(401,{message:token+' '+privateText});
@@ -35,12 +39,16 @@ const server=http.createServer(async(req,res)=>{try{
    const next=url.searchParams.get('nextPageToken');if(next)assert.equal(next,nextToken);
    return send(200,{issues:[{key:next?'ROCKET-8':'ROCKET-7',fields:{summary:issueSummary,status:{name:'Open'},assignee:{displayName:'Fixture'}}}],isLast:!!next,...(!next?{nextPageToken:nextToken}:{})});
   }
-  if(pathname.endsWith('/issuetypes'))return send(200,{issueTypes:[{id:'10001',name:'Task'}]});
-  if(pathname.endsWith('/comment'))return send(200,{total:1,comments:[{author:{displayName:'Fixture'},created:'2026-10-29T11:20:00.000+0000',body:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Synthetic comment'}]}]}}]});
-  if(pathname.includes('/createmeta/'))return send(200,{isLast:true,fields:[{fieldId:'summary',name:'Summary',required:true,hasDefaultValue:false},...(extraRequired?[{fieldId:'customfield_123',name:'Required custom field',required:true,hasDefaultValue:false}]:[])]});
+  if(pathname.endsWith('/issuetypes'))return send(200,{startAt:0,maxResults:50,total:1,issueTypes:[{id:'10001',name:'Task',subtask:false}]});
+  if(pathname.endsWith('/comment')){assert.equal(url.searchParams.get('orderBy'),'-created');assert.equal(url.searchParams.get('maxResults'),'5');return send(200,{startAt:0,maxResults:5,total:1,comments:[{author:{displayName:'Fixture'},created:'2026-10-29T11:20:00.000+0000',body:{type:'doc',version:1,content:[{type:'paragraph',content:[{type:'text',text:'Synthetic comment'}]}]}}]});}
+  if(pathname.includes('/createmeta/')){
+   const fields=[{fieldId:'summary',name:'Summary',required:true,hasDefaultValue:false},...(extraRequired?[{fieldId:'customfield_123',name:'Required custom field',required:true,hasDefaultValue:false}]:[]),...(descriptionRequired?[{fieldId:'description',name:'Description',required:true,hasDefaultValue:false}]:[])];
+   const startAt=Number(url.searchParams.get('startAt'));assert.equal(url.searchParams.get('maxResults'),'50');assert(startAt>=0&&startAt<fields.length);
+   return send(200,{startAt,maxResults:1,total:fields.length,fields:fields.slice(startAt,startAt+1)});
+  }
   if(pathname.endsWith('/editmeta'))return send(200,{fields:{summary:{operations:['set']},description:{operations:['set']}}});
   if(pathname.endsWith('/transitions'))return send(200,{transitions:[...(!trimTransitions?[{id:'31',name:'Done',fields:{},isAvailable:true}]:[]),{id:'11',name:'Open',fields:{},isAvailable:true},{id:'99',name:'Needs custom field',fields:{custom:{required:true}},isAvailable:true},{id:'91',name:'Unavailable',isAvailable:false}]});
-  if(/^\/rest\/api\/3\/issue\/ROCKET-\d+$/.test(pathname))return send(200,{key:pathname.split('/').at(-1),fields:{summary:issueSummary,description:richDescription,status:{name:'Open'},...(mode==='missing-marker'?{}:{updated:'v'+version})}});
+  if(/^\/rest\/api\/3\/issue\/ROCKET-\d+$/.test(pathname))return send(200,{key:pathname.split('/').at(-1),fields:{summary:issueSummary,description:richDescription,status:{name:'Open'},...(mode==='missing-marker'?{}:{updated:updated()})}});
   throw Error('Unexpected fixture read '+pathname);
  }
  const body=JSON.parse(data);
@@ -51,8 +59,8 @@ const server=http.createServer(async(req,res)=>{try{
   version++;return send(204,{});
  }
  if(pathname.endsWith('/transitions')){assert(['31','11'].includes(body.transition.id));assert.deepEqual(Object.keys(body),['transition']);version++;return send(204,{});}
- if(pathname.endsWith('/comment')){assert(body.body.content);return send(201,{id:'44'});}
- assert.equal(pathname,'/rest/api/3/issue');assert(body.fields.summary);return send(201,{id:'1007',key:'ROCKET-7'});
+ if(pathname.endsWith('/comment')){assert.equal(body.body.type,'doc');assert.equal(body.body.version,1);assert(body.body.content);return send(201,{id:'44',body:body.body});}
+ assert.equal(pathname,'/rest/api/3/issue');assert(body.fields.summary);if(descriptionRequired){assert.equal(body.fields.description.type,'doc');assert.equal(body.fields.description.version,1);assert(body.fields.description.content[0].content[0].text);}return send(201,{id:'1007',key:'ROCKET-7',self:'https://fixture.example.invalid/rest/api/3/issue/1007'});
 }catch(e){report.server_error=String(e.stack||e);res.writeHead(500);res.end('{}');}});
 
 const pass=s=>{report.cases.push(s);console.error('PASS '+s);};
@@ -71,14 +79,14 @@ async function resize(w,h){await stable();await client.tool('rocket_resize',{wid
 async function openPanel(){await click('menu-view');await click('view-goto');await click('goto-integrations');await settled();}
 async function config(){if(control('int-configure'))await click('int-configure');await settled();}
 async function clearChangedDraft(){if(state.integrations.draft_blocked){assert(state.integrations.draft_saved);await click('int-clear-draft');await click('int-clear-confirm');assert(!state.integrations.draft_blocked);assert(!state.integrations.draft_saved);}}
-async function panel(){const id=state.integrations.selected;await click('dialog-close');await click('view-ext-'+id);await settled();}
+async function panel(){await show(state.integrations.selected);}
 // The list, from anywhere in Preferences → Extensions.
 async function list(){await stable();if(state.integrations.details)await click('int-back');}
 async function reload(){await list();await click('int-reload');}
 // An extension's details in Preferences.
 async function pick(id){await list();await click('int-package-'+id);}
 // An enabled extension's page, from Preferences or another page.
-async function show(id){await stable();if(control('dialog-close'))await click('dialog-close');await click('view-ext-'+id);await settled();}
+async function show(id){await stable();if(control('dialog-close'))await click('dialog-close');await click('menu-view');await click('view-goto');await click('goto-ext-'+id);await settled();}
 // Saves the form, then reviews or turns on whatever isn't running yet.
 async function approve(){await stable();if(control('int-save')){await click('int-save');await stable();if(control('int-save'))return;}const id=state.integrations.selected;if(state.integrations.needs_review){await click(control('int-review')?'int-review':'int-review-'+id);await click('int-review-approve');}else if(!state.integrations.extension_enabled){await click(control('int-enable')?'int-enable':'int-enable-'+id);if(state.integrations.prompt)await click('int-review-approve');}}
 async function installJira(){await list();await click('int-enable-jira');await click('int-review-approve');}
@@ -115,10 +123,13 @@ async function run(){try{
  await config();await click('int-allow-repository');await approve();assert(!state.integrations.repository_allowed);await panel();await clearChangedDraft();await click('int-run');assert(state.integrations.widget_ids.includes('context_off'));
  pass('Repository context is off by default, explicitly granted/revoked, metadata-only, refreshed after external changes and cancellable without repository mutations');
 
- await config();await installJira();await type('int-server','https://jira.example.invalid');await click('int-auth-bearer');await type('int-token',token);await click('int-remember');await click('int-allow-write');await approve();await panel();await click('int-run');assert(!state.integrations.error);
+ await config();await installJira();await type('int-server','https://jira.example.invalid');await click('int-auth-basic');await type('int-username',identifier);await type('int-token',token);await click('int-remember');await click('int-allow-write');await approve();await panel();await click('int-run');assert(!state.integrations.error);
  const query='project = ROCKET AND text ~ "資料"';await type('int-ui-search_0',query);await click('int-ui-search');assert.equal(new URL(requests.at(-1).path,'http://fixture').searchParams.get('jql'),query);
  await click('int-ui-next_page');assert.equal(new URL(requests.at(-1).path,'http://fixture').searchParams.get('nextPageToken'),nextToken);await reveal('int-ui-next_page');assert(!control('int-ui-next_page').enabled);await click('int-ui-previous_page');assert.equal(new URL(requests.at(-1).path,'http://fixture').searchParams.get('nextPageToken'),null);
  pass('Jira JQL search and bounded token pagination encode Unicode and reset page cursors correctly');
+
+ await config();await type('int-server','https://gateway.example.invalid');await type('int-setting-cloud',cloudId);await approve();await panel();await clearChangedDraft();gateway=true;await click('int-run');assert(!state.integrations.error);assert(requests.at(-1).path.startsWith('/ex/jira/'+cloudId+'/rest/api/3/search/jql?'));
+ pass('Synthetic identifier/token auth stays in the native broker; scoped Cloud ID routes all subsequent reads, checks and writes through the gateway path');
 
  await click('int-ui-issues-ROCKET-7');assert(!state.integrations.error);assert(state.integrations.widget_ids.includes('comment_body_ROCKET-7'));await click('int-ui-edit_open');assert(state.integrations.widget_ids.includes('edit_summary_ROCKET-7'));
  await type('int-ui-edit_summary_ROCKET-7',privateText);let n=writes();await click('int-ui-edit_issue');assert(state.integrations.review);assert.equal(writes(),n);await capture('checked-review');await click('int-preview-back');assert.equal(writes(),n);await click('int-ui-edit_issue');await click('int-preview-submit');assert(!state.integrations.error);assert.equal(writes(),n+1);assert.equal(issueSummary,privateText);assert.equal(JSON.stringify(richDescription),originalDescription);
@@ -141,9 +152,9 @@ async function run(){try{
  pass('Transitions respect available operations and required-field limits; changed choices discard stale selections before a reviewed transition');
 
  await click('int-ui-edit_open');await click('int-ui-replace_description_ROCKET-7');await type('int-ui-edit_description_ROCKET-7','Replacement 資料 é');await click('int-ui-edit_issue');await click('int-preview-submit');assert(!state.integrations.error);assert.equal(richDescription.content[0].content[0].text,'Replacement 資料 é');
- await click('int-ui-pane_cancel');await click('int-ui-create_open');await type('int-ui-summary','New issue 資料');extraRequired=true;n=writes();await click('int-ui-create');assert(!state.integrations.review);assert.equal(writes(),n);extraRequired=false;await click('int-ui-create');await click('int-preview-submit');assert(!state.integrations.error);
+ await click('int-ui-pane_cancel');await click('int-ui-create_open');await type('int-ui-summary','New issue 資料');extraRequired=true;n=writes();await click('int-ui-create');assert(!state.integrations.review);assert(!state.integrations.error);assert.equal(writes(),n);assert(requests.some(r=>r.path.includes('/issuetypes/10001?maxResults=50&startAt=1')));extraRequired=false;descriptionRequired=true;await click('int-ui-create');assert(!state.integrations.review);assert(!state.integrations.error);assert.equal(writes(),n);await type('int-ui-description','Required body 資料');await click('int-ui-create');assert(state.integrations.review);await click('int-preview-submit');assert(!state.integrations.error);
  await click('int-run');await type('int-ui-'+state.integrations.widget_ids.find(id=>id.startsWith('comment_body_')),privateText);await click('int-ui-comment');await click('int-preview-submit');assert(!state.integrations.error);
- pass('Explicit description replacement, create-field requirements, reviewed creation and Unicode comments use supported Jira payloads');
+ pass('Explicit description replacement, server-capped paged required fields, required Description, reviewed creation and Unicode comments use supported Jira payloads');
 
  mode='missing-marker';await click('int-run');await click('int-ui-edit_open');await reveal('int-ui-edit_issue');assert(!control('int-ui-edit_issue').enabled);mode='ok';await click('int-run');
  for(const [m,code] of [['auth','integration_unauthorized'],['reject','integration_forbidden'],['rate','integration_rate_limited']]){mode=m;await click('int-run');assert.equal(state.integrations.error,code);assert(state.integrations.has_view);}mode='ok';
@@ -154,7 +165,7 @@ async function run(){try{
  assert(!report.server_error,report.server_error);assert.deepEqual(local(),before);const logs=[];
  function walk(p){for(const f of fs.readdirSync(p,{withFileTypes:true})){const file=path.join(p,f.name);if(f.isDirectory())walk(file);else if(/^rocket(?:\.\d+)?\.jsonl$/.test(f.name))logs.push(fs.readFileSync(file,'utf8'));}}walk(root);
  const records=logs.join('\n').split(/\r?\n/).filter(Boolean).map(JSON.parse),text=JSON.stringify(records);assert(records.length);assert(records.every(r=>!r.dropped_before));
- for(const secret of[token,privateText,'PRIVATE retained edit','PRIVATE diagnostic payload','Keep this rich description',nextToken])assert(!text.includes(secret),'private data in diagnostics');
+ for(const secret of[token,identifier,privateText,'PRIVATE retained edit','PRIVATE diagnostic payload','Keep this rich description',nextToken])assert(!text.includes(secret),'private data in diagnostics');
  for(const op of['integration-validate','integration-validation-result','integration-run','integration-submit'])assert(records.some(r=>r.operation===op),'missing '+op);
  for(const code of['integration_lua_syntax','integration_stale','integration_outcome_unknown'])assert(records.some(r=>r.failure_code===code),'missing '+code);
  report.logs=records.length;report.requests=requests.length;report.local_unchanged=true;report.passed=true;

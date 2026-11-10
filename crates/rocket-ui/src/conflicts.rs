@@ -129,24 +129,24 @@ fn marker_labels(text: &str) -> Option<(String, String)> {
 /// What Ours and Theirs are in the operation under way; they are Git's index sides.
 fn roles(state: Option<&OperationState>) -> (&'static str, &'static str) {
     match state {
-        Some(s) if s.rebase => ("what your commit goes on top of", "your commit"),
-        Some(s) if s.mail_import => ("your branch", "the patch"),
-        Some(s) if s.cherry_pick => ("your branch", "picked commit"),
-        Some(s) if s.revert => ("your branch", "commit being reverted"),
-        _ => ("your branch", "incoming"),
+        Some(s) if s.rebase => (crate::i18n::tr("what your commit goes on top of"), crate::i18n::tr("your commit")),
+        Some(s) if s.mail_import => (crate::i18n::tr("your branch"), crate::i18n::tr("the patch")),
+        Some(s) if s.cherry_pick => (crate::i18n::tr("your branch"), crate::i18n::tr("picked commit")),
+        Some(s) if s.revert => (crate::i18n::tr("your branch"), crate::i18n::tr("commit being reverted")),
+        _ => (crate::i18n::tr("your branch"), "incoming"),
     }
 }
 /// Ours and Theirs in a sentence, for the conflict strip in Changes.
 pub(crate) fn sides(state: Option<&OperationState>) -> String {
     match state {
-        Some(s) if s.rebase => "Ours is what your commit goes on top of. Theirs is your commit.".into(),
+        Some(s) if s.rebase => crate::i18n::tr("Ours is what your commit goes on top of. Theirs is your commit.").into(),
         Some(s) if s.mail_import => match &s.step {
-            Some(step) => format!("Ours is your branch. Theirs is patch {}.", step.at),
-            None => "Ours is your branch. Theirs is the patch.".into(),
+            Some(step) => crate::i18n::trf!("Ours is your branch. Theirs is patch {number}.", number = step.at),
+            None => crate::i18n::tr("Ours is your branch. Theirs is the patch.").into(),
         },
-        Some(s) if s.cherry_pick => "Ours is your branch. Theirs is the commit you picked.".into(),
-        Some(s) if s.revert => "Ours is your branch. Theirs is the file before the commit you're reverting.".into(),
-        _ => "Ours is your branch. Theirs is the incoming branch.".into(),
+        Some(s) if s.cherry_pick => crate::i18n::tr("Ours is your branch. Theirs is the commit you picked.").into(),
+        Some(s) if s.revert => crate::i18n::tr("Ours is your branch. Theirs is the file before the commit you're reverting.").into(),
+        _ => crate::i18n::tr("Ours is your branch. Theirs is the incoming branch.").into(),
     }
 }
 struct Loaded {
@@ -166,7 +166,7 @@ impl State {
         self.selected = 0;
         self.error = None;
         self.notice = Some(
-            "External result imported as a draft. Review and choose Save file or Save and stage."
+            crate::i18n::tr("External result imported as a draft. Review and choose Save file or Save and stage.")
                 .into(),
         );
         self.changed();
@@ -292,7 +292,7 @@ impl State {
         self.selected = 0;
         self.error = None;
         self.jump = self.resolved.first().map(|r| r.range.start);
-        self.notice = Some("AI proposal applied to editor draft. Review and test it, then choose Save file or Save and stage.".into());
+        self.notice = Some(crate::i18n::tr("AI proposal applied to editor draft. Review and test it, then choose Save file or Save and stage.").into());
     }
     /// Puts a resolved conflict's original block back and selects it.
     fn undo(&mut self, index: usize) {
@@ -417,15 +417,16 @@ impl Rocket {
                     return;
                 }
                 let text = state.draft.clone();
-                let label = if stage { "Save and stage" } else { "Save file" };
-                let message = format!(
-                    "{label}: {}\n\nReplace the working file with this result ({} bytes of editor text). {}",
-                    preview.path().display_lossy(),
-                    text.len(),
-                    if stage {
-                        "Stage only this path. This does not commit or continue the surrounding operation."
+                let label = if stage { crate::i18n::tr("Save and stage") } else { crate::i18n::tr("Save file") };
+                let message = crate::i18n::trf!(
+                    "{label}: {path}\n\nReplace the working file with this result ({bytes} bytes of editor text). {effect}",
+                    label,
+                    path = preview.path().display_lossy(),
+                    bytes = text.len(),
+                    effect = if stage {
+                        crate::i18n::tr("Stage only this path. This does not commit or continue the surrounding operation.")
                     } else {
-                        "The index is left unchanged; unfinished conflict markers may remain."
+                        crate::i18n::tr("The index is left unchanged; unfinished conflict markers may remain.")
                     }
                 );
                 self.show_dialog(DialogKind::Confirm(
@@ -470,7 +471,7 @@ impl Rocket {
         state.task = None;
         state.error = None;
         state.whole_error = None;
-        state.notice = Some("Reading file and conflict stages…".into());
+        state.notice = Some(crate::i18n::tr("Reading file and conflict stages…").into());
         if state.path.is_none() {
             state.path = Some(path.clone());
         }
@@ -553,7 +554,7 @@ impl Rocket {
                     }
                     Err(Error::Cancelled) => {
                         s.notice =
-                            Some("Read cancelled. Existing draft retained; reload to retry.".into())
+                            Some(crate::i18n::tr("Read cancelled. Existing draft retained; reload to retry.").into())
                     }
                     Err(error) => s.error = Some(user_error(&error)),
                 }
@@ -598,7 +599,7 @@ impl Rocket {
         }
         if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.id) == owner) {
             tab.conflict.notice =
-                Some("Save cancelled. Draft retained; no file or index write was started.".into());
+                Some(crate::i18n::tr("Save cancelled. Draft retained; no file or index write was started.").into());
         }
     }
     pub(crate) fn finish_conflict_keep(&mut self, owner: Option<u64>, outcome: &Outcome) {
@@ -649,7 +650,7 @@ impl Rocket {
         }
         if let Some(tab) = self.tabs.iter_mut().find(|t| Some(t.id) == owner) {
             tab.conflict.notice =
-                Some("Resolution cancelled; no file or index write was started.".into());
+                Some(crate::i18n::tr("Resolution cancelled; no file or index write was started.").into());
         }
     }
 }
@@ -912,8 +913,8 @@ fn decorate(
     let painter = ui.painter().with_clip_rect(clip);
     paint_numbers(&painter, &lines, origin.x, clip);
     let mut chosen = None;
-    let full = [("conflict-ours", "Use ours", 2), ("conflict-theirs", "Use theirs", 3), ("conflict-both", "Use both", 0)];
-    let short = ["Ours", "Theirs", "Both"];
+    let full = [("conflict-ours", crate::i18n::tr("Use ours"), 2), ("conflict-theirs", crate::i18n::tr("Use theirs"), 3), ("conflict-both", crate::i18n::tr("Use both"), 0)];
+    let short = [crate::i18n::tr("Ours"), crate::i18n::tr("Theirs"), crate::i18n::tr("Both")];
     for (k, ((item, _), (first, _))) in s.items.iter().zip(&spans).enumerate() {
         let Some((top, bottom, line_width)) = lines.get(*first).copied() else { continue };
         if bottom < clip.top() || top > clip.bottom() {
@@ -961,23 +962,23 @@ fn decorate(
             Item::Done(index) => {
                 // Undo at the end, and the conflict's name on a row of the line that leaves room.
                 let Some(resolved) = s.resolved.get(index) else { continue };
-                let w = chip_width(ui, "Undo");
+                let w = chip_width(ui, crate::i18n::tr("Undo"));
                 let at = Rect::from_min_size(pos2(rect.right() - 8.0 - w, middle - height / 2.0), vec2(w, height));
-                let undo = chip(ui, at, "Undo", editable).on_hover_text(format!("Put conflict {} back", k + 1));
+                let undo = chip(ui, at, crate::i18n::tr("Undo"), editable).on_hover_text(crate::i18n::trf!("Put conflict {number} back", number = k + 1));
                 register(ui, widgets, &format!("conflict-undo-{index}"), undo.interact_rect, editable);
                 if editable && undo.clicked() {
                     chosen = Some(Pick::Undo(index));
                 }
                 let used = match resolved.choice {
                     AI => " · AI",
-                    2 => " · resolved · used ours",
-                    3 => " · resolved · used theirs",
-                    _ => " · resolved · used both",
+                    2 => crate::i18n::tr(" · resolved · used ours"),
+                    3 => crate::i18n::tr(" · resolved · used theirs"),
+                    _ => crate::i18n::tr(" · resolved · used both"),
                 };
-                let brief = if resolved.choice == AI { used } else { " · resolved" };
+                let brief = if resolved.choice == AI { used } else { crate::i18n::tr(" · resolved") };
                 for detail in [used, brief, ""] {
                     let mut job = text::LayoutJob::default();
-                    job.append(&format!("Conflict {}", k + 1), 0.0, TextFormat::simple(semibold(11.5), TEXT()));
+                    job.append(&crate::i18n::trf!("Conflict {number}", number = k + 1), 0.0, TextFormat::simple(semibold(11.5), TEXT()));
                     job.append(detail, 0.0, TextFormat::simple(FontId::proportional(11.5), MUTED()));
                     let galley = ui.painter().layout_job(job);
                     // A check mark, then the words.
@@ -997,10 +998,10 @@ fn decorate(
 /// A side pane's choice, pointing at Result when it stands beside it.
 fn side_choice(index: usize, beside: bool) -> &'static str {
     match (index, beside) {
-        (0, true) => "Use ours →",
-        (0, false) => "Use ours",
-        (_, true) => "← Use theirs",
-        (_, false) => "Use theirs",
+        (0, true) => crate::i18n::tr("Use ours →"),
+        (0, false) => crate::i18n::tr("Use ours"),
+        (_, true) => crate::i18n::tr("← Use theirs"),
+        (_, false) => crate::i18n::tr("Use theirs"),
     }
 }
 
@@ -1076,7 +1077,7 @@ fn decorate_side(
                 }
             }
             (Item::Done(_), Some(used)) => {
-                let (text, color) = if used { ("Used", GREEN()) } else { ("Not used", MUTED()) };
+                let (text, color) = if used { (crate::i18n::tr("Used"), GREEN()) } else { (crate::i18n::tr("Not used"), MUTED()) };
                 let galley = painter.layout_no_wrap(text.to_owned(), FontId::proportional(11.5), color);
                 let x = rect.right() - 8.0 - galley.size().x;
                 // Only where the line leaves room; the badge's color already tells.
@@ -1143,9 +1144,9 @@ fn column(
     widgets: &mut HashMap<String, UiControl>,
 ) -> PaneOut {
     let (title, detail, access, tint, key) = match index {
-        0 => ("Ours", names[0].as_str(), "Read only", BLUE(), "conflict-ours-scroll"),
-        1 => ("Result", "Saved to the file", "Editable", GREEN(), "conflict-editor-scroll"),
-        _ => ("Theirs", names[1].as_str(), "Read only", VIOLET(), "conflict-theirs-scroll"),
+        0 => (crate::i18n::tr("Ours"), names[0].as_str(), crate::i18n::tr("Read only"), BLUE(), "conflict-ours-scroll"),
+        1 => (crate::i18n::tr("Result"), crate::i18n::tr("Saved to the file"), crate::i18n::tr("Editable"), GREEN(), "conflict-editor-scroll"),
+        _ => (crate::i18n::tr("Theirs"), names[1].as_str(), crate::i18n::tr("Read only"), VIOLET(), "conflict-theirs-scroll"),
     };
     let row_height = ui.text_style_height(&TextStyle::Monospace);
     let row = match index {
@@ -1189,7 +1190,7 @@ fn column(
                             .filter(|((item, _), _)| matches!(item, Item::Done(_)))
                             .map(|(_, (first, _))| *first)
                             .collect();
-                        let room = chip_width(ui, "Undo") + 6.0;
+                        let room = chip_width(ui, crate::i18n::tr("Undo")) + 6.0;
                         let mut layouter = |ui: &Ui, buffer: &dyn TextBuffer, wrap_width: f32| {
                             chip_galley(ui, buffer.as_str(), wrap_width, &undo_lines, room, |text, width| conflict_job(text, &font, width))
                         };
@@ -1218,7 +1219,7 @@ fn column(
                         let mut text: &str = preview
                             .as_deref()
                             .and_then(|p| p.side(if index == 0 { 2 } else { 3 }))
-                            .unwrap_or("This side has no file.");
+                            .unwrap_or(crate::i18n::tr("This side has no file."));
                         let font = TextStyle::Monospace.resolve(ui.style());
                         let ink = ui.visuals().override_text_color.unwrap_or_else(|| ui.visuals().widgets.inactive.text_color());
                         let line_height = ui.fonts_mut(|f| f.row_height(&font)) + ui.spacing().extra_text_line_spacing;
@@ -1314,7 +1315,7 @@ fn rail(ui: &mut Ui, s: &mut State, id: u64, height: f32, row_height: f32, view:
     let (rail, _) = ui.allocate_exact_size(vec2(crate::overview::WIDTH, height.max(24.0)), Sense::hover());
     s.overview_probe = crate::overview::Probe::new(&s.overview, view);
     let overview = crate::overview::show(ui, rail, Id::new(("conflict-overview", id)), &s.overview, view,
-        "Amber: unresolved. Green: resolved in this draft. Click a conflict to select it; drag to scroll. Focus here for arrows, Page Up/Down, Home/End.");
+        crate::i18n::tr("Amber: unresolved. Green: resolved in this draft. Click a conflict to select it; drag to scroll. Focus here for arrows, Page Up/Down, Home/End."));
     if let Some(o) = &overview {
         register(ui, widgets, "conflict-overview", o.response.rect, o.response.enabled());
         if let Some(target) = o.target {
@@ -1355,7 +1356,7 @@ fn rail(ui: &mut Ui, s: &mut State, id: u64, height: f32, row_height: f32, view:
             let mark = rail_mark(s, rail, per_line, index);
             if overview.is_none() {
                 let r = ui.interact(mark, Id::new(("conflict-marker", id, block)), Sense::click())
-                    .on_hover_text(format!("Conflict {} · line {}", index + 1, s.overview_spans[index].0 + 1));
+                    .on_hover_text(crate::i18n::trf!("Conflict {number} · line {line}", number = index + 1, line = s.overview_spans[index].0 + 1));
                 if r.clicked() { jump = Some((*block, range.start)); }
             }
             register(ui, widgets, &format!("conflict-marker-{block}"), mark, true);
@@ -1522,7 +1523,7 @@ fn source(
 ) {
     let text = preview
         .and_then(|p| p.side(part))
-        .unwrap_or("This side has no file, or the preview must be reloaded.");
+        .unwrap_or(crate::i18n::tr("This side has no file, or the preview must be reloaded."));
     ScrollArea::both()
         .id_salt(salt)
         .max_height(height)
@@ -1539,16 +1540,16 @@ fn source(
 }
 /// One reviewed version: binary or text, size, mode and abbreviated object.
 fn describe(version: &ConflictVersion) -> String {
-    if version.gitlink { return format!("Submodule commit · {}", &version.id.as_str()[..12]); }
+    if version.gitlink { return crate::i18n::trf!("Submodule commit · {id}", id = &version.id.as_str()[..12]); }
     if let Some(pointer) = &version.lfs {
-        return format!("LFS · {} bytes · sha256:{} · {}", pointer.size, &pointer.oid[..12], if version.unavailable.is_some() { "unavailable locally" } else { "verified local object" });
+        return crate::i18n::trf!("LFS · {bytes} bytes · sha256:{hash} · {state}", bytes = pointer.size, hash = &pointer.oid[..12], state = if version.unavailable.is_some() { crate::i18n::tr("unavailable locally") } else { crate::i18n::tr("verified local object") });
     }
     format!(
         "{} · {}{} · {}",
-        if version.binary { "Binary" } else { "Text" },
+        if version.binary { crate::i18n::tr("Binary") } else { crate::i18n::tr("Text") },
         size(version.size),
         if version.executable {
-            " · executable"
+            crate::i18n::tr(" · executable")
         } else {
             ""
         },
@@ -1556,22 +1557,22 @@ fn describe(version: &ConflictVersion) -> String {
     )
 }
 fn working_label(review: &WholeConflictPreview) -> String {
-    if review.kind() == ConflictKind::Submodule { return "Checkout and all nested files are left unchanged".into(); }
+    if review.kind() == ConflictKind::Submodule { return crate::i18n::tr("Checkout and all nested files are left unchanged").into(); }
     let Some(bytes) = review.working_size() else {
-        return "Absent".into();
+        return crate::i18n::tr("Absent").into();
     };
     format!(
         "{} · {}{}",
         if review.working_binary() {
-            "Binary"
+            crate::i18n::tr("Binary")
         } else {
-            "Text"
+            crate::i18n::tr("Text")
         },
         size(bytes),
         if review.working_matches(2) {
-            " · holds ours"
+            crate::i18n::tr(" · holds ours")
         } else if review.working_matches(3) {
-            " · holds theirs"
+            crate::i18n::tr(" · holds theirs")
         } else {
             ""
         }
@@ -1579,48 +1580,53 @@ fn working_label(review: &WholeConflictPreview) -> String {
 }
 fn deleted_by(review: &WholeConflictPreview) -> &'static str {
     match (review.version(2).is_some(), review.version(3).is_some()) {
-        (false, false) => "Both sides deleted this file",
-        (false, true) => "Ours deleted this file",
-        (true, false) => "Theirs deleted this file",
-        (true, true) => "Binary file",
+        (false, false) => crate::i18n::tr("Both sides deleted this file"),
+        (false, true) => crate::i18n::tr("Ours deleted this file"),
+        (true, false) => crate::i18n::tr("Theirs deleted this file"),
+        (true, true) => crate::i18n::tr("Binary file"),
+    }
+}
+fn kept_label(keep: ConflictKeep) -> &'static str {
+    match keep {
+        ConflictKeep::Ours => crate::i18n::tr("our version"),
+        ConflictKeep::Theirs => crate::i18n::tr("their version"),
+        ConflictKeep::Deletion => crate::i18n::tr("the deletion"),
     }
 }
 /// The reviewed confirmation for keeping one whole version.
 fn keep_message(review: &WholeConflictPreview, keep: ConflictKeep, unsaved: bool) -> String {
     let (title, name, stage) = match keep {
-        ConflictKeep::Ours => ("Keep ours", "our version", Some(2)),
-        ConflictKeep::Theirs => ("Keep theirs", "their version", Some(3)),
-        ConflictKeep::Deletion => ("Keep deletion", "the deletion", None),
+        ConflictKeep::Ours => (crate::i18n::tr("Keep ours"), crate::i18n::tr("our version"), Some(2)),
+        ConflictKeep::Theirs => (crate::i18n::tr("Keep theirs"), crate::i18n::tr("their version"), Some(3)),
+        ConflictKeep::Deletion => (crate::i18n::tr("Keep deletion"), crate::i18n::tr("the deletion"), None),
     };
     let kept = stage
         .and_then(|s| review.version(s))
         .map_or_else(|| name.to_owned(), |v| format!("{name} ({})", describe(v)));
     let working = working_label(review);
     let effect = if review.kind() == ConflictKind::Submodule {
-        format!("Stage {kept} in the parent repository only. The submodule checkout, local edits and nested files stay unchanged. It may still show an unstaged commit difference afterward. Original index and stages are retained in recovery.")
+        crate::i18n::trf!("Stage {kept} in the parent repository only. The submodule checkout, local edits and nested files stay unchanged. It may still show an unstaged commit difference afterward. Original index and stages are retained in recovery.", kept)
     } else { match review.planned_change(keep) {
         Some(WholeFileChange::Replaced) => {
-            format!("Replace the working file ({working}) with {kept}, then stage only this path.")
+            crate::i18n::trf!("Replace the working file ({working}) with {kept}, then stage only this path.", working, kept)
         }
         Some(WholeFileChange::Created) => {
-            format!("Create the missing working file from {kept}, then stage only this path.")
+            crate::i18n::trf!("Create the missing working file from {kept}, then stage only this path.", kept)
         }
-        Some(WholeFileChange::Removed) => format!(
-            "Move the working file ({working}) into recovery, then stage the deletion of only this path."
-        ),
+        Some(WholeFileChange::Removed) => crate::i18n::trf!("Move the working file ({working}) into recovery, then stage the deletion of only this path.", working),
         None if keep == ConflictKeep::Deletion => {
-            "The working file is already absent; only the deletion of this path is staged.".into()
+            crate::i18n::tr("The working file is already absent; only the deletion of this path is staged.").into()
         }
         None => {
-            format!("The working file already holds {kept}; only this path's index entry changes.")
+            crate::i18n::trf!("The working file already holds {kept}; only this path's index entry changes.", kept)
         }
     } };
-    let effect = if review.kind() == ConflictKind::Lfs { format!("{effect}\n\nRead the verified local LFS object directly, retain replaced working bytes in recovery, and stage only the exact reviewed pointer. No automatic fetch. The status refresh uses normal Git behavior.") } else { effect };
+    let effect = if review.kind() == ConflictKind::Lfs { crate::i18n::trf!("{effect}\n\nRead the verified local LFS object directly, retain replaced working bytes in recovery, and stage only the exact reviewed pointer. No automatic fetch. The status refresh uses normal Git behavior.", effect) } else { effect };
     format!(
         "{title}: {}\n\n{effect}{}",
         review.path().display_lossy(),
         if unsaved {
-            "\n\nYour unsaved conflict-editor text for this file will be discarded."
+            crate::i18n::tr("\n\nYour unsaved conflict-editor text for this file will be discarded.")
         } else {
             ""
         }
@@ -1635,11 +1641,11 @@ fn keep_buttons(
     widgets: &mut HashMap<String, UiControl>,
 ) {
     for (key, label, keep) in [
-        ("conflict-keep-ours", "Keep ours", ConflictKeep::Ours),
-        ("conflict-keep-theirs", "Keep theirs", ConflictKeep::Theirs),
+        ("conflict-keep-ours", crate::i18n::tr("Keep ours"), ConflictKeep::Ours),
+        ("conflict-keep-theirs", crate::i18n::tr("Keep theirs"), ConflictKeep::Theirs),
         (
             "conflict-keep-deletion",
-            "Keep deletion",
+            crate::i18n::tr("Keep deletion"),
             ConflictKeep::Deletion,
         ),
     ] {
@@ -1670,7 +1676,7 @@ fn version_card(
                     if let Some(failure) = version.unavailable { ui.colored_label(AMBER(), failure.guidance()); }
                     if review.working_matches(stage) {
                         ui.label(
-                            RichText::new("The working file holds this version")
+                            RichText::new(crate::i18n::tr("The working file holds this version"))
                                 .size(12.0)
                                 .color(GREEN()),
                         );
@@ -1678,7 +1684,7 @@ fn version_card(
                 }
                 None => {
                     ui.label(
-                        RichText::new("Deleted on this side")
+                        RichText::new(crate::i18n::tr("Deleted on this side"))
                             .size(12.5)
                             .color(AMBER()),
                     );
@@ -1699,14 +1705,14 @@ fn whole_panel(
         .id_salt(("conflict-whole", id))
         .auto_shrink([false, false])
         .show(ui, |ui| {
-            pages::caption(ui, "Keep one whole version");
+            pages::caption(ui, crate::i18n::tr("Keep one whole version"));
             match review.kind() {
-                ConflictKind::Submodule => { ui.colored_label(AMBER(), "Index only: keep the chosen commit in the parent. Checkout, local edits and nested files stay intact. Update the checkout separately in Submodules if needed."); }
-                ConflictKind::Lfs => { ui.colored_label(MUTED(), "Read a verified local LFS object directly, back up replaced working bytes, then stage its exact pointer. No automatic fetch."); }
+                ConflictKind::Submodule => { ui.colored_label(AMBER(), crate::i18n::tr("Index only: keep the chosen commit in the parent. Checkout, local edits and nested files stay intact. Update the checkout separately in Submodules if needed.")); }
+                ConflictKind::Lfs => { ui.colored_label(MUTED(), crate::i18n::tr("Read a verified local LFS object directly, back up replaced working bytes, then stage its exact pointer. No automatic fetch.")); }
                 ConflictKind::File => (),
             }
             ui.add_space(6.0);
-            let cards = [(2, "OURS · stage 2", BLUE()), (3, "THEIRS · stage 3", VIOLET())];
+            let cards = [(2, crate::i18n::tr("OURS · stage 2"), BLUE()), (3, crate::i18n::tr("THEIRS · stage 3"), VIOLET())];
             if ui.available_width() > 560.0 {
                 ui.columns(2, |cols| {
                     for (col, (stage, caption, tint)) in cols.iter_mut().zip(cards) {
@@ -1723,13 +1729,13 @@ fn whole_panel(
             pages::well(ui, |ui| {
                 pages::field(
                     ui,
-                    "Base · stage 1",
+                    crate::i18n::tr("Base · stage 1"),
                     &review
                         .version(1)
-                        .map_or_else(|| "None: added on both sides".into(), describe),
+                        .map_or_else(|| crate::i18n::tr("None: added on both sides").into(), describe),
                     false,
                 );
-                pages::field(ui, "Working file", &working_label(review), false);
+                pages::field(ui, crate::i18n::tr("Working file"), &working_label(review), false);
             });
             ui.add_space(8.0);
             ui.horizontal_wrapped(|ui| keep_buttons(ui, review, enabled, intents, widgets));
@@ -1803,9 +1809,9 @@ pub(crate) fn view(
                     widgets,
                     "conflict-cancel-save",
                     if cancelling {
-                        "Checking cancellation"
+                        crate::i18n::tr("Checking cancellation")
                     } else {
-                        "Stop saving"
+                        crate::i18n::tr("Stop saving")
                     },
                     !cancelling,
                 ) {
@@ -1813,12 +1819,12 @@ pub(crate) fn view(
                 }
                 ui.spinner();
             } else {
-                let r = pages::primary(ui, bound && s.blocks.is_resolved(), "Save and stage");
+                let r = pages::primary(ui, bound && s.blocks.is_resolved(), crate::i18n::tr("Save and stage"));
                 register(ui, widgets, "conflict-stage", r.interact_rect, r.enabled());
                 if r.clicked() {
                     intents.push(Intent::Conflict(ConflictIntent::Save(true)));
                 }
-                if button(ui, widgets, "conflict-save", "Save file", bound) {
+                if button(ui, widgets, "conflict-save", crate::i18n::tr("Save file"), bound) {
                     intents.push(Intent::Conflict(ConflictIntent::Save(false)));
                 }
             }
@@ -1826,35 +1832,35 @@ pub(crate) fn view(
                 ui,
                 widgets,
                 "conflict-reload",
-                "Reload",
+                crate::i18n::tr("Reload"),
                 editable && s.path.is_some(),
             ) {
                 intents.push(Intent::Conflict(ConflictIntent::Reload(
                     s.path.clone().unwrap(),
                 )));
             }
-            if button(ui, widgets, "conflict-external", "Merge tool", bound) {
+            if button(ui, widgets, "conflict-external", crate::i18n::tr("Merge tool"), bound) {
                 intents.push(Intent::Tool(crate::external_tools::ToolIntent::Prepare(
                     ExternalToolKind::Merge,
                 )));
             }
             let reason = if s.preview.is_none() {
-                "AI resolve needs a text conflict"
+                crate::i18n::tr("AI resolve needs a text conflict")
             } else if s.blocks.is_resolved() {
-                "No conflicts left in this file"
+                crate::i18n::tr("No conflicts left in this file")
             } else {
-                "AI resolve is not available right now"
+                crate::i18n::tr("AI resolve is not available right now")
             };
             let r = crate::ai_conflict::resolve_button(ui, bound && !s.blocks.is_resolved()).on_disabled_hover_text(reason);
             register(ui, widgets, "conflict-ai", r.interact_rect, r.enabled());
             if r.clicked() {
                 intents.push(Intent::Conflict(ConflictIntent::Ai(crate::ai_conflict::Action::Open)));
             }
-            if s.running() && button(ui, widgets, "conflict-cancel", "Stop", true) {
+            if s.running() && button(ui, widgets, "conflict-cancel", crate::i18n::tr("Stop"), true) {
                 intents.push(Intent::Conflict(ConflictIntent::Cancel));
             }
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                let back = pages::ghost(ui, true, "← Changes");
+                let back = pages::ghost(ui, true, crate::i18n::tr("← Changes"));
                 register(
                     ui,
                     widgets,
@@ -1870,50 +1876,43 @@ pub(crate) fn view(
                     .as_ref()
                     .filter(|w| s.preview.is_none() || w.deleted())
                     .map(|w| {
-                        if w.kind() == ConflictKind::Submodule { "Submodule" }
-                        else if w.kind() == ConflictKind::Lfs { "Git LFS" }
+                        if w.kind() == ConflictKind::Submodule { crate::i18n::tr("Submodule") }
+                        else if w.kind() == ConflictKind::Lfs { crate::i18n::tr("Git LFS") }
                         else if w.deleted() {
-                            "One side deleted"
+                            crate::i18n::tr("One side deleted")
                         } else {
-                            "Binary"
+                            crate::i18n::tr("Binary")
                         }
                     });
                 let (pill, color) = if let Some(keep) = s.kept {
-                    (format!("Kept {}", keep.label()), GREEN())
+                    (crate::i18n::trf!("Kept: {version}", version = kept_label(keep)), GREEN())
                 } else if s.blocks.malformed {
-                    ("Markers?".to_owned(), AMBER())
+                    (crate::i18n::tr("Markers?").to_owned(), AMBER())
                 } else if count > 0 && !s.resolved.is_empty() {
-                    (format!("{count} of {} left", count + s.resolved.len()), AMBER())
+                    (crate::i18n::trf!("Remaining: {count} / {total}", count, total = count + s.resolved.len()), AMBER())
                 } else if count > 0 {
                     (
-                        format!("{count} conflict{}", if count == 1 { "" } else { "s" }),
+                        crate::i18n::trf!("Conflicts: {count}", count),
                         RED(),
                     )
                 } else if let Some(label) = whole_pill {
                     (label.to_owned(), AMBER())
                 } else if s.preview.is_some() {
-                    ("Resolved".to_owned(), GREEN())
+                    (crate::i18n::tr("Resolved").to_owned(), GREEN())
                 } else {
                     (String::new(), FAINT())
                 };
                 let hover = if s.kept.is_some() {
-                    "Resolved by keeping one whole version. Return to Changes to continue."
+                    crate::i18n::tr("Resolved by keeping one whole version. Return to Changes to continue.")
                         .to_owned()
                 } else if whole_pill.is_some() && count == 0 && !s.blocks.malformed {
-                    "Git cannot merge this file line by line. Keep one whole version.".to_owned()
+                    crate::i18n::tr("Git cannot merge this file line by line. Keep one whole version.").to_owned()
                 } else {
                     let resolved = match s.resolved.len() {
                         0 => String::new(),
-                        n => format!(", {n} resolved here"),
+                        n => crate::i18n::trf!("; resolved here: {count}", count = n),
                     };
-                    format!(
-                        "{count} complete conflict blocks{resolved}{}",
-                        if s.blocks.malformed {
-                            "; incomplete markers also remain"
-                        } else {
-                            ""
-                        }
-                    )
+                    crate::i18n::trf!("Complete conflict blocks: {count}{resolved}{incomplete}", count, resolved, incomplete = if s.blocks.malformed { crate::i18n::tr("; incomplete markers also remain") } else { "" })
                 };
                 let pills = if pill.is_empty() {
                     0.0
@@ -1945,7 +1944,7 @@ pub(crate) fn view(
                         None => {
                             ui.add(
                                 Label::new(
-                                    RichText::new("Select a conflicted file in Changes")
+                                    RichText::new(crate::i18n::tr("Select a conflicted file in Changes"))
                                         .color(MUTED()),
                                 )
                                 .truncate(),
@@ -1957,7 +1956,7 @@ pub(crate) fn view(
                     pages::pill(ui, &pill, color).on_hover_text(hover);
                 }
                 if s.dirty {
-                    pages::pill(ui, "Unsaved", AMBER());
+                    pages::pill(ui, crate::i18n::tr("Unsaved"), AMBER());
                 }
                 if !tall && let Some(notice) = &s.notice {
                     ui.small("ⓘ").on_hover_text(notice);
@@ -1971,7 +1970,7 @@ pub(crate) fn view(
             ui.set_width(ui.available_width());
             if text_mode {
                 ui.horizontal_wrapped(|ui| {
-                    let parts = [(0, "Result"), (1, "Base"), (2, "Ours"), (3, "Theirs")];
+                    let parts = [(0, crate::i18n::tr("Result")), (1, crate::i18n::tr("Base")), (2, crate::i18n::tr("Ours")), (3, crate::i18n::tr("Theirs"))];
                     let items: Vec<_> = parts.iter().map(|p| (p.1, s.part == p.0)).collect();
                     for ((part, _), r) in parts.into_iter().zip(pages::segments(ui, &items)) {
                         register(
@@ -1992,7 +1991,7 @@ pub(crate) fn view(
                         if delta > 0 {
                             ui.label(
                                 RichText::new(if s.blocks.malformed {
-                                    "Markers?".into()
+                                    crate::i18n::tr("Markers?").into()
                                 } else {
                                     // Numbered like the panes' badges, resolved ones included.
                                     let place = s.items.iter().position(|(item, _)| *item == Item::Open(s.selected));
@@ -2005,7 +2004,7 @@ pub(crate) fn view(
                                 .size(12.0)
                                 .color(FAINT()),
                             )
-                            .on_hover_text("Conflict block selected in the result");
+                            .on_hover_text(crate::i18n::tr("Conflict block selected in the result"));
                         }
                         if button(ui, widgets, key, label, count > 0) {
                             s.selected =
@@ -2015,7 +2014,7 @@ pub(crate) fn view(
                         }
                     }
                     let mut linked = !s.unlinked;
-                    let r = ui.checkbox(&mut linked, "Linked scrolling");
+                    let r = ui.checkbox(&mut linked, crate::i18n::tr("Linked scrolling"));
                     register(ui, widgets, "conflict-linked", r.interact_rect, r.enabled());
                     if r.changed() {
                         s.unlinked = !linked;
@@ -2027,7 +2026,7 @@ pub(crate) fn view(
             // choices sit beside it. Binary conflicts show them in the body.
             if let Some(w) = whole.as_ref().filter(|_| s.preview.is_some()) {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("Whole file").font(semibold(12.0)).color(TEXT()));
+                    ui.label(RichText::new(crate::i18n::tr("Whole file")).font(semibold(12.0)).color(TEXT()));
                     ui.label(RichText::new(deleted_by(w)).size(12.0).color(AMBER()));
                     keep_buttons(ui, w, editable, intents, widgets);
                 });
@@ -2074,14 +2073,7 @@ pub(crate) fn view(
                 pages::callout(
                     ui,
                     GREEN(),
-                    &format!(
-                        "Resolved by keeping {}. Return to Changes to continue or abort the operation.",
-                        match keep {
-                            ConflictKeep::Ours => "ours",
-                            ConflictKeep::Theirs => "theirs",
-                            ConflictKeep::Deletion => "the deletion",
-                        }
-                    ),
+                    &crate::i18n::trf!("Resolved by keeping {version}. Return to Changes to continue or abort the operation.", version = kept_label(keep)),
                 );
                 return;
             }

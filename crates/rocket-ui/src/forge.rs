@@ -1,5 +1,6 @@
 //! Hosting is a background page; global task ownership keeps a submitted request's
 //! result available even if navigation closes the page. No Git checkout changes.
+use crate::i18n::{tr, trf, trn};
 use crate::{
     app::*,
     backend::user_error,
@@ -157,9 +158,9 @@ impl State {
             self.stopping = true;
             self.notice = Some(
                 if matches!(self.operation, "create" | "publish" | "pull-submit" | "pull-merge-submit" | "pull-thread-submit") {
-                    "Stopping… The server may already have received the request."
+                    tr("Stopping… The server may already have received the request.")
                 } else {
-                    "Stopping…"
+                    tr("Stopping…")
                 }
                 .into(),
             );
@@ -175,7 +176,7 @@ impl State {
     }
     fn repo(&self) -> rocket_git::Result<ForgeRepository> {
         let session = self.session.as_ref().ok_or_else(|| {
-            rocket_git::Error::InvalidInput("Connect a hosting account first.".into())
+            rocket_git::Error::InvalidInput(tr("Connect a hosting account first.").into())
         })?;
         ForgeRepository::new(session.config().clone(), &self.repository)
     }
@@ -284,31 +285,31 @@ impl Rocket {
         match result {
             Ok(Done::PullThreads(threads)) if !stopped => {
                 s.pull.threads.checked=s.pull.threads.unknown&&s.pull.repository.as_ref()==Some(threads.repository())&&s.pull.number==threads.number();
-                s.pull.threads.snapshot=Some(Arc::new(threads));s.notice=Some("Discussion threads refreshed.".into());
+                s.pull.threads.snapshot=Some(Arc::new(threads));s.notice=Some(tr("Discussion threads refreshed.").into());
             }
             Ok(Done::PullThreadPreview(preview)) if !stopped => {s.pull.threads.preview=Some(Arc::new(preview));}
-            Ok(Done::PullThreadSubmitted) => {s.pull.threads.body.clear();s.pull.threads.action=None;s.pull.threads.preview=None;s.pull.threads.unknown=false;s.notice=Some("Thread action confirmed by the server. Refresh threads to view it.".into());}
+            Ok(Done::PullThreadSubmitted) => {s.pull.threads.body.clear();s.pull.threads.action=None;s.pull.threads.preview=None;s.pull.threads.unknown=false;s.notice=Some(tr("Thread action confirmed by the server. Refresh threads to view it.").into());}
             Ok(Done::PullDetails(details)) if !stopped => {
                 s.pull.checked_unknown = s.pull.unknown.as_ref().is_some_and(|(repo, n)| repo == details.repository() && *n == details.summary().number) && details.reviews.error.is_none() && !details.reviews.limited;
                 s.pull.details = Some(Arc::new(*details));
                 s.pull.merge.reconcile(s.pull.details.as_ref().unwrap());
                 drafts::rebind(s);
                 s.pull.file = 0;
-                s.notice = Some("PR details refreshed.".into());
+                s.notice = Some(tr("PR details refreshed.").into());
                 // The Checks tab reads the refreshed head again.
                 s.pull.ci_for = None;
             }
             Ok(Done::PullReview(preview)) if !stopped => { s.pull.preview = Some(Arc::new(preview)); s.notice = None; }
             Ok(Done::PullMergePreview(preview)) if !stopped => { s.pull.merge.preview = Some(Arc::new(preview)); s.notice = None; }
             Ok(Done::PullMerged(result)) => {
-                s.notice = Some(format!("The provider confirmed the merge at {}. Local files and branches are unchanged; refresh the PR.",result.commit));
+                s.notice = Some(trf!("The provider confirmed the merge at {commit}. Local files and branches are unchanged; refresh the PR.", commit = result.commit));
                 s.pull.merge.result = Some(result.commit); s.pull.merge.preview = None;
                 s.pull.merge.submission = None; s.pull.merge.unknown = None;
             }
             Ok(Done::PullSubmitted(review)) => {
-                let reference = if review.id == 0 { "Review action".into() } else { format!("Review #{}", review.id) };
-                let revision = review.commit.as_ref().map(|id| format!(" on commit {id}")).unwrap_or_default();
-                s.notice = Some(format!("{reference} confirmed by the provider{revision}. Your local repository is unchanged."));
+                let reference = if review.id == 0 { tr("Review action").into() } else { trf!("Review #{number}", number = review.id) };
+                let revision = review.commit.as_ref().map(|id| trf!(" on commit {id}", id)).unwrap_or_default();
+                s.notice = Some(trf!("{reference} confirmed by the provider{revision}. Your local repository is unchanged.", reference, revision));
                 s.pull.submitted = Some(review);
                 s.pull.preview = None;
                 s.pull.body.clear();
@@ -326,10 +327,7 @@ impl Rocket {
                 s.notice = None;
             }
             Ok(Done::Created(item)) => {
-                s.notice = Some(format!(
-                    "Created pull request #{}. Your local repository is unchanged.",
-                    item.number
-                ));
+                s.notice = Some(trf!("Created pull request #{number}. Your local repository is unchanged.", number = item.number));
                 s.created = Some(item);
                 s.preview = None;
                 s.uncertain = false;
@@ -340,7 +338,7 @@ impl Rocket {
                 s.snapshot = loaded.snapshot;
                 s.accounts_loaded = true;
                 s.notice =
-                    Some("Saved accounts loaded. Select one to connect, or add an account.".into());
+                    Some(tr("Saved accounts loaded. Select one to connect, or add an account.").into());
             }
             Ok(Done::Connected(session, loaded)) => {
                 if let Some(loaded) = loaded {
@@ -351,14 +349,15 @@ impl Rocket {
                 s.token.clear();
                 if stopped {
                     s.notice =
-                        Some("Connection stopped. Any completed account save is retained.".into());
+                        Some(tr("Connection stopped. Any completed account save is retained.").into());
                 } else {
-                    s.notice = Some(format!(
-                        "Connected as {}. Git and SSH credentials are unchanged.{}{}",
-                        session.login(),
-                        if session.temporary_browser_session() { " Temporary Bitbucket browser session; sign in again when it expires. No browser token was saved. PR permissions depend on the consent grant; use an API token if access is denied." } else { "" },
-                        if session.config().provider() == ForgeProvider::GitHubEnterprise { format!(" GitHub Enterprise Server: {}.", session.enterprise_version().unwrap_or("version not reported")) } else if session.config().provider() == ForgeProvider::AzureServer { format!(" Selected Azure REST API {}.", session.config().azure_api_version()) } else { String::new() }
-                    ));
+                    let session_note = if session.temporary_browser_session() { tr(" Temporary Bitbucket browser session; sign in again when it expires. No browser token was saved. PR permissions depend on the consent grant; use an API token if access is denied.") } else { "" };
+                    let server_note = if session.config().provider() == ForgeProvider::GitHubEnterprise {
+                        trf!(" GitHub Enterprise Server: {version}.", version = session.enterprise_version().unwrap_or(tr("version not reported")))
+                    } else if session.config().provider() == ForgeProvider::AzureServer {
+                        trf!(" Selected Azure REST API {version}.", version = session.config().azure_api_version())
+                    } else { String::new() };
+                    s.notice = Some(trf!("Connected as {login}. Git and SSH credentials are unchanged.{session_note}{server_note}", login = session.login(), session_note, server_note));
                     if let Some(repository) = detected {
                         s.repository = repository;
                     }
@@ -383,7 +382,7 @@ impl Rocket {
                 }
                 s.next = page.next;
                 s.loaded = true;
-                s.notice=Some(if s.uncertain{"List refreshed. Inspect the provider before deciding whether another create request is necessary."}else{"Hosting results refreshed."}.into());
+                s.notice=Some(if s.uncertain{tr("List refreshed. Inspect the provider before deciding whether another create request is necessary.")}else{tr("Hosting results refreshed.")}.into());
             }
             Ok(Done::Review(preview)) if !stopped => {
                 s.preview = Some(Arc::new(preview));
@@ -393,7 +392,7 @@ impl Rocket {
                 if op=="pull-thread-submit"{s.pull.threads.preview=None;}
                 if op == "pull-submit" { s.pull.preview = None; s.pull.submission = None; }
                 if op == "pull-merge-submit" { s.pull.merge.preview = None; s.pull.merge.submission = None; }
-                s.notice = Some("Cancelled. Existing results are retained.".into());
+                s.notice = Some(tr("Cancelled. Existing results are retained.").into());
             }
             Err(error) => {
                 if op=="pull-thread-submit"{s.pull.threads.preview=None;s.pull.threads.unknown=matches!(error,Error::Forge(ForgeFailure::PullReviewUnknown));s.pull.threads.checked=false;}
@@ -461,11 +460,11 @@ impl Rocket {
         s.failed = "";
         s.notice = None;
         if !s.enabled {
-            s.error = Some("Hosting access is disabled in this window.".into());
+            s.error = Some(tr("Hosting access is disabled in this window.").into());
             return;
         }
         if s.account_check_only && (!matches!(action, "load" | "browser") || s.remember) {
-            s.error = Some("This live acceptance window only verifies browser sign-in with Remember disabled. Hosting writes and saved credentials are disabled.".into());
+            s.error = Some(tr("This live acceptance window only verifies browser sign-in with Remember disabled. Hosting writes and saved credentials are disabled.").into());
             return;
         }
         let task = (|| -> rocket_git::Result<WriteTask<Done>> {
@@ -481,13 +480,13 @@ impl Rocket {
                 "forget" => {
                     let Some(index) = s.selected_account else {
                         return Err(rocket_git::Error::InvalidInput(
-                            "Select a saved account first.".into(),
+                            tr("Select a saved account first.").into(),
                         ));
                     };
                     let mut accounts = s.accounts.clone();
                     if index >= accounts.len() {
                         return Err(rocket_git::Error::InvalidInput(
-                            "Saved account selection changed.".into(),
+                            tr("Saved account selection changed.").into(),
                         ));
                     }
                     accounts.remove(index);
@@ -520,7 +519,7 @@ impl Rocket {
                         || s.label.chars().any(char::is_control)
                     {
                         return Err(rocket_git::Error::InvalidInput(
-                            "Give this account a name up to 128 bytes.".into(),
+                            tr("Give this account a name up to 128 bytes.").into(),
                         ));
                     }
                     let mut account = Account {
@@ -536,7 +535,7 @@ impl Rocket {
                     let remember = s.remember && !(browser && s.provider == ForgeProvider::Bitbucket);
                     if remember && !s.accounts_loaded {
                         return Err(rocket_git::Error::InvalidInput(
-                            "Load saved accounts successfully before changing them.".into(),
+                            tr("Load saved accounts successfully before changing them.").into(),
                         ));
                     }
                     let mut accounts = s.accounts.clone();
@@ -547,7 +546,7 @@ impl Rocket {
                             .enumerate()
                             .any(|(i, a)| Some(i) != s.selected_account && a.label == account.label)
                         {
-                            return Err(rocket_git::Error::InvalidInput("That saved account name is already in use. Select it to edit, or use a new name.".into()));
+                            return Err(rocket_git::Error::InvalidInput(tr("That saved account name is already in use. Select it to edit, or use a new name.").into()));
                         }
                         if let Some(index) = s.selected_account.filter(|i| *i < accounts.len()) {
                             accounts[index] = account.clone();
@@ -556,7 +555,7 @@ impl Rocket {
                         }
                     }
                     s.operation = "connect";
-                    if browser { s.notice=Some("Waiting for browser sign-in through Git Credential Manager. Existing Git credentials are not read or replaced.".into()); }
+                    if browser { s.notice=Some(tr("Waiting for browser sign-in through Git Credential Manager. Existing Git credentials are not read or replaced.").into()); }
                     Ok(WriteTask::spawn(move |cancel| {
                         let session = if browser {
                             let (session, token) = backend.forge_browser_connect(config, &cancel)?;
@@ -598,7 +597,7 @@ impl Rocket {
                     let append = action == "more";
                     let cursor = if append {
                         s.next.clone().ok_or_else(|| {
-                            rocket_git::Error::InvalidInput("There are no more pages.".into())
+                            rocket_git::Error::InvalidInput(tr("There are no more pages.").into())
                         })?
                     } else {
                         ForgeCursor::default()
@@ -615,7 +614,7 @@ impl Rocket {
                 }
                 "review" => {
                     if s.uncertain {
-                        return Err(rocket_git::Error::InvalidInput("Check the previous request's remote outcome before starting another review.".into()));
+                        return Err(rocket_git::Error::InvalidInput(tr("Check the previous request's remote outcome before starting another review.").into()));
                     }
                     let draft = ForgeDraft {
                         repository: s.repo()?,
@@ -639,10 +638,10 @@ impl Rocket {
                 }
                 "create" => {
                     let preview = s.preview.clone().ok_or_else(|| {
-                        rocket_git::Error::InvalidInput("Review this pull request first.".into())
+                        rocket_git::Error::InvalidInput(tr("Review this pull request first.").into())
                     })?;
                     let session = s.session.clone().ok_or_else(|| {
-                        rocket_git::Error::InvalidInput("Connect an account first.".into())
+                        rocket_git::Error::InvalidInput(tr("Connect an account first.").into())
                     })?;
                     s.operation = "create";
                     Ok(WriteTask::spawn(move |cancel| {
@@ -654,7 +653,7 @@ impl Rocket {
                     })?)
                 }
                 _ => Err(rocket_git::Error::InvalidInput(
-                    "Unknown hosting action.".into(),
+                    tr("Unknown hosting action.").into(),
                 )),
             }
         })();
@@ -733,20 +732,20 @@ impl Rocket {
             ui,
             &[
                 pages::TabItem {
-                    label: if compact { "Pulls" } else { "Pull requests" },
+                    label: if compact { tr("Pulls") } else { tr("Pull requests") },
                     count: count(Section::Pulls),
                     selected: matches!(s.section, Section::Pulls | Section::PullDetail),
                     enabled: !busy,
                     key: "hosting-tab-pulls",
                 },
                 pages::TabItem {
-                    label: if azure { "Work items" } else { "Issues" },
+                    label: if azure { tr("Work items") } else { tr("Issues") },
                     count: count(Section::Issues),
                     selected: s.section == Section::Issues,
                     enabled: !busy,
                     key: "hosting-tab-issues",
                 },
-                pages::TabItem { label: "Saved drafts", count: Some(s.drafts.records.len()), selected: s.section==Section::Drafts, enabled: !busy, key: "hosting-tab-drafts" },
+                pages::TabItem { label: tr("Saved drafts"), count: Some(s.drafts.records.len()), selected: s.section==Section::Drafts, enabled: !busy, key: "hosting-tab-drafts" },
             ],
             widgets,
         );
@@ -767,8 +766,8 @@ impl Rocket {
                                 ui,
                                 widgets,
                                 RED(),
-                                "Hosting is disabled",
-                                "This MCP window requires an explicit loopback API fixture.",
+                                tr("Hosting is disabled"),
+                                tr("This MCP window requires an explicit loopback API fixture."),
                                 None,
                             );
                         }
@@ -840,8 +839,8 @@ impl Rocket {
                 ui,
                 widgets,
                 RED(),
-                "Hosting is disabled",
-                "This MCP window requires an explicit loopback API fixture.",
+                tr("Hosting is disabled"),
+                tr("This MCP window requires an explicit loopback API fixture."),
                 None,
             );
         }
@@ -934,9 +933,9 @@ fn hosting_header(
             ui.horizontal(|ui| {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    *close = btn(ui, widgets, "dialog-cancel", "Close", !busy);
+                    *close = btn(ui, widgets, "dialog-cancel", tr("Close"), !busy);
                     // These open their forms below; the old tab names still reach them.
-                    let r = pages::primary(ui, !busy && s.session.is_some(), if compact { "New PR" } else { "New pull request" });
+                    let r = pages::primary(ui, !busy && s.session.is_some(), if compact { tr("New PR") } else { tr("New pull request") });
                     control(widgets, "hosting-tab-create", &r, ui.clip_rect());
                     if r.clicked() {
                         *start = Some(Section::Create);
@@ -944,11 +943,11 @@ fn hosting_header(
                     let publish = !busy
                         && s.session.as_ref().is_some_and(|x| x.config().provider() == ForgeProvider::GitHub)
                         && !s.account_check_only;
-                    if btn(ui, widgets, "hosting-tab-publish", if compact { "Publish" } else { "Publish repository" }, publish) {
+                    if btn(ui, widgets, "hosting-tab-publish", if compact { tr("Publish") } else { tr("Publish repository") }, publish) {
                         *start = Some(Section::Publish);
                     }
                     if busy {
-                        let label = if s.stopping { "Stopping" } else { "Stop" };
+                        let label = if s.stopping { tr("Stopping") } else { tr("Stop") };
                         if btn(ui, widgets, "hosting-cancel", label, !s.stopping) {
                             s.cancel();
                         }
@@ -961,23 +960,23 @@ fn hosting_header(
                         ui.add_space(4.0);
                         ui.vertical(|ui| {
                             ui.spacing_mut().item_spacing.y = 3.0;
-                            ui.label(RichText::new("Hosting").font(semibold(18.0)));
+                            ui.label(RichText::new(tr("Hosting")).font(semibold(18.0)));
                             ui.horizontal_wrapped(|ui| {
                                 ui.spacing_mut().item_spacing.x = 8.0;
                                 tag(ui, provider.label());
                                 ui.add(Label::new(RichText::new(host(&server)).color(MUTED())).truncate());
                                 let (dot, text) = match &login {
-                                    Some(login) => (GREEN(), format!("Signed in as {login}")),
-                                    None => (FAINT(), "Not signed in".to_owned()),
+                                    Some(login) => (GREEN(), trf!("Signed in as {login}", login)),
+                                    None => (FAINT(), tr("Not signed in").to_owned()),
                                 };
                                 let (rect, _) = ui.allocate_exact_size(vec2(7.0, 7.0), Sense::hover());
                                 ui.painter().circle_filled(rect.center(), 3.5, dot);
                                 ui.add(Label::new(RichText::new(text).color(MUTED())).truncate());
                                 // Accounts live in Preferences; the old tab's name still reaches them.
-                                let r = ui.add_enabled(!busy, Button::new(RichText::new("Accounts").color(BLUE())).frame(false));
+                                let r = ui.add_enabled(!busy, Button::new(RichText::new(tr("Accounts")).color(BLUE())).frame(false));
                                 control(widgets, "hosting-accounts", &r, ui.clip_rect());
                                 control(widgets, "hosting-tab-accounts", &r, ui.clip_rect());
-                                *accounts |= r.on_hover_text("Preferences → Accounts").clicked();
+                                *accounts |= r.on_hover_text(tr("Preferences → Accounts")).clicked();
                             });
                         });
                     });
@@ -1008,29 +1007,29 @@ fn list_section(
     let azure = s.provider.is_azure();
     let issues = s.section == Section::Issues;
     let things = match (issues, azure) {
-        (false, _) => "pull requests",
-        (true, true) => "work items",
-        (true, false) => "issues",
+        (false, _) => tr("pull requests"),
+        (true, true) => tr("work items"),
+        (true, false) => tr("issues"),
     };
     if matches!(s.provider, ForgeProvider::Bitbucket | ForgeProvider::BitbucketServer) && issues {
         notice_line(
             ui,
-            if s.provider == ForgeProvider::BitbucketServer { "Bitbucket Server / Data Center has no native issues API. Jira integration is separate. Pull requests remain available." } else { "Bitbucket Cloud retired its native issue tracker in August 2026. Pull requests remain available." },
+            if s.provider == ForgeProvider::BitbucketServer { tr("Bitbucket Server / Data Center has no native issues API. Jira integration is separate. Pull requests remain available.") } else { tr("Bitbucket Cloud retired its native issue tracker in August 2026. Pull requests remain available.") },
         );
         return;
     }
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(10.0, 8.0);
-        let label = if azure { "Project / repository" } else { "Owner / repository" };
+        let label = if azure { tr("Project / repository") } else { tr("Owner / repository") };
         out.changed |= icon_field(ui, widgets, "hosting-repository", Icon::Folder, label, &mut s.repository, 230.0, !busy).changed();
         if azure && issues {
-            let hint = "Exact work-item state (empty for all)";
+            let hint = tr("Exact work-item state (empty for all)");
             out.changed |= icon_field(ui, widgets, "hosting-work-state", Icon::Sliders, hint, &mut s.work_state, 230.0, !busy).changed();
         } else {
             let states = [
-                (ForgeState::Open, "Open", "open"),
-                (ForgeState::Closed, if issues { "Closed" } else { "Closed and merged" }, "closed"),
-                (ForgeState::All, "All", "all"),
+                (ForgeState::Open, tr("Open"), "open"),
+                (ForgeState::Closed, if issues { tr("Closed") } else { tr("Closed and merged") }, "closed"),
+                (ForgeState::All, tr("All"), "all"),
             ];
             let items: Vec<(&str, bool)> = states.iter().map(|(state, label, _)| (*label, s.state == *state)).collect();
             let responses = ui.add_enabled_ui(!busy, |ui| pages::segments(ui, &items)).inner;
@@ -1045,16 +1044,16 @@ fn list_section(
         // In a wrapping row available_width() is the whole row: measure what is left of it.
         let left = ui.max_rect().right() - ui.cursor().left();
         let width = (left - 40.0).max(180.0);
-        icon_field(ui, widgets, "hosting-filter", Icon::Search, &format!("Filter loaded {things}"), &mut s.filter, width, true);
+        icon_field(ui, widgets, "hosting-filter", Icon::Search, &trf!("Filter loaded {things}", things), &mut s.filter, width, true);
         let r = crate::chrome::icon_button(ui, Icon::Refresh, !busy && s.session.is_some(), false, 30.0)
-            .on_hover_text("Refresh");
+            .on_hover_text(tr("Refresh"));
         control(widgets, "hosting-refresh", &r, ui.clip_rect());
         if r.clicked() {
             out.action = Some("refresh");
         }
     });
     if let Some(error) = s.error.clone() {
-        let retry = (s.failed == "list" && s.session.is_some()).then_some(("hosting-error-refresh", "Refresh", !busy));
+        let retry = (s.failed == "list" && s.session.is_some()).then_some(("hosting-error-refresh", tr("Refresh"), !busy));
         if banner(ui, widgets, RED(), &failure_title(s.failed, &error, things), &error, retry) {
             out.action = Some("refresh");
         }
@@ -1073,18 +1072,18 @@ fn list_section(
             ui,
             widgets,
             AMBER(),
-            "The previous pull request may have been created",
-            &format!("Check Pull requests for {context} before creating another request."),
+            tr("The previous pull request may have been created"),
+            &trf!("Check Pull requests for {context} before creating another request.", context),
             // Disabled until the list shows the repository the request went to.
-            Some(("hosting-acknowledge", "I checked the remote outcome", ready)),
+            Some(("hosting-acknowledge", tr("I checked the remote outcome"), ready)),
         ) {
             s.uncertain = false;
             s.uncertain_repo = None;
-            s.notice = Some("You can start a new review if another pull request is needed.".into());
+            s.notice = Some(tr("You can start a new review if another pull request is needed.").into());
         }
     }
     let repository = match s.repository.trim() {
-        "" => "this repository".to_owned(),
+        "" => tr("this repository").to_owned(),
         name => name.to_owned(),
     };
     if s.session.is_none() {
@@ -1096,15 +1095,12 @@ fn list_section(
                 ui.set_width(ui.available_width());
                 ui.vertical_centered(|ui| {
                     ui.spacing_mut().item_spacing.y = 8.0;
-                    ui.label(RichText::new(format!("Sign in to see {things} for {repository}")).font(semibold(13.5)));
+                    ui.label(RichText::new(trf!("Sign in to see {things} for {repository}", things, repository)).font(semibold(13.5)));
                     ui.label(
-                        RichText::new(format!(
-                            "Add a {} account in Preferences, or choose a saved one.",
-                            s.provider.label()
-                        ))
+                        RichText::new(trf!("Add a {provider} account in Preferences, or choose a saved one.", provider = s.provider.label()))
                         .color(HINT()),
                     );
-                    let r = pages::primary(ui, !busy, "Open Accounts");
+                    let r = pages::primary(ui, !busy, tr("Open Accounts"));
                     control(widgets, "hosting-go-accounts", &r, ui.clip_rect());
                     out.accounts |= r.clicked();
                 });
@@ -1113,9 +1109,9 @@ fn list_section(
     }
     if !s.loaded {
         let text = if busy {
-            format!("Loading {things} for {repository}")
+            trf!("Loading {things} for {repository}", things, repository)
         } else {
-            format!("Refresh to load {things} for {repository}.")
+            trf!("Refresh to load {things} for {repository}.", things, repository)
         };
         ui.label(RichText::new(text).color(HINT()));
         return;
@@ -1142,9 +1138,9 @@ fn list_card(
             ui.spacing_mut().item_spacing.y = 0.0;
             if visible.is_empty() {
                 let text = if s.items.is_empty() {
-                    format!("No {things} here on the loaded pages.")
+                    trf!("No {things} here on the loaded pages.", things)
                 } else {
-                    format!("No loaded {things} match the filter.")
+                    trf!("No loaded {things} match the filter.", things)
                 };
                 Frame::new().inner_margin(Margin::symmetric(14, 14)).show(ui, |ui| {
                     ui.set_width(ui.available_width());
@@ -1172,20 +1168,20 @@ fn list_card(
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if btn(ui, widgets, "hosting-more", "Load more", !busy && s.next.is_some()) {
+                            if btn(ui, widgets, "hosting-more", tr("Load more"), !busy && s.next.is_some()) {
                                 out.action = Some("more");
                             }
                             let shown = if visible.len() < s.items.len() {
-                                format!("Showing {} of {} loaded", visible.len(), s.items.len())
+                                trf!("Showing {shown} of {loaded} loaded", shown = visible.len(), loaded = s.items.len())
                             } else {
-                                format!("Showing {}", s.items.len())
+                                trf!("Showing {shown}", shown = s.items.len())
                             };
                             let rest = if s.error.as_deref().is_some_and(|e| e.starts_with("hosting_invalid_pagination")) {
-                                "the next page could not be loaded"
+                                tr("the next page could not be loaded")
                             } else if s.next.is_some() {
-                                "more on the server"
+                                tr("more on the server")
                             } else {
-                                "all loaded"
+                                tr("all loaded")
                             };
                             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                                 ui.add(Label::new(RichText::new(format!("{shown} · {rest}")).size(12.5).color(HINT())).truncate());
@@ -1221,11 +1217,11 @@ fn item_row(
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
                 let r = crate::chrome::icon_button(ui, Icon::External, true, false, 28.0)
-                    .on_hover_text("Open in browser");
+                    .on_hover_text(tr("Open in browser"));
                 control(widgets, format!("hosting-item-{index}"), &r, ui.clip_rect());
                 open = r.clicked();
                 if let Some(enabled) = details {
-                    show = btn(ui, widgets, &format!("hosting-details-{index}"), "Details", enabled);
+                    show = btn(ui, widgets, &format!("hosting-details-{index}"), tr("Details"), enabled);
                 }
                 pages::pill(ui, &state, color);
                 ui.with_layout(Layout::top_down(Align::Min), |ui| {
@@ -1242,7 +1238,7 @@ fn item_row(
                         background: CHIP(),
                         ..TextFormat::simple(FontId::monospace(11.5), TEXT_SOFT())
                     };
-                    meta.append(if item.author.is_empty() { "Unknown author" } else { &item.author }, 0.0, plain.clone());
+                    meta.append(if item.author.is_empty() { tr("Unknown author") } else { &item.author }, 0.0, plain.clone());
                     if !item.source.is_empty() {
                         meta.append("  ·  ", 0.0, plain.clone());
                         meta.append(&format!(" {} ", item.source), 0.0, branch.clone());
@@ -1275,6 +1271,15 @@ fn state_look(state: &str) -> (String, Color32) {
         "closed" | "declined" | "abandoned" | "removed" => RED(),
         _ => BLUE(),
     };
+    let translated = match lower.as_str() {
+        "open" | "opened" => Some(tr("Open")), "closed" => Some(tr("Closed")),
+        "active" => Some(tr("Active")), "new" => Some(tr("New")),
+        "merged" => Some(tr("Merged")), "completed" => Some(tr("Completed")),
+        "done" => Some(tr("Done")), "resolved" => Some(tr("Resolved")),
+        "declined" => Some(tr("Declined")), "abandoned" => Some(tr("Abandoned")),
+        "removed" => Some(tr("Removed")), _ => None,
+    };
+    if let Some(word) = translated { return (word.to_owned(), color); }
     let word = if lower == "opened" { "open".to_owned() } else { lower };
     let mut chars = word.chars();
     let shown = chars
@@ -1294,7 +1299,7 @@ fn create_section(
 ) {
     let edit = !busy && s.preview.is_none();
     if let Some(error) = s.error.clone() {
-        banner(ui, widgets, RED(), &failure_title(s.failed, &error, "pull requests"), &error, None);
+        banner(ui, widgets, RED(), &failure_title(s.failed, &error, tr("pull requests")), &error, None);
     }
     if let Some(n) = &s.notice {
         notice_line(ui, n);
@@ -1304,8 +1309,8 @@ fn create_section(
             ui,
             widgets,
             RED(),
-            "Outcome unknown",
-            "Refresh Pull requests and check the remote before creating another request.",
+            tr("Outcome unknown"),
+            tr("Refresh Pull requests and check the remote before creating another request."),
             None,
         );
     }
@@ -1314,13 +1319,13 @@ fn create_section(
         ui.set_max_width(ui.available_width().min(720.0));
         ui.spacing_mut().item_spacing.y = 12.0;
         let width = ui.available_width();
-        form_field(ui, widgets, ("hosting-repository", "Repository", &format!("on {server}")), &mut s.repository, width, edit, false);
+        form_field(ui, widgets, ("hosting-repository", tr("Repository"), &trf!("on {server}", server)), &mut s.repository, width, edit, false);
         if s.session.as_ref().is_some_and(|x|x.config().provider().is_github()) {
-            let r = ui.add_enabled(edit,Checkbox::new(&mut s.from_fork,"Use a different source repository (fork)"));
+            let r = ui.add_enabled(edit,Checkbox::new(&mut s.from_fork,tr("Use a different source repository (fork)")));
             control(widgets,"hosting-from-fork",&r,ui.clip_rect());
             if s.from_fork {
-                form_field(ui,widgets,("hosting-source-repository","Source repository","owner/repository, in the same GitHub fork network"),&mut s.source_repository,width,edit,false);
-                ui.colored_label(MUTED(),"The Repository field above is the target. Branches must already be pushed; Rocket does not create a fork or push files.");
+                form_field(ui,widgets,("hosting-source-repository",tr("Source repository"),tr("owner/repository, in the same GitHub fork network")),&mut s.source_repository,width,edit,false);
+                ui.colored_label(MUTED(),tr("The Repository field above is the target. Branches must already be pushed; Rocket does not create a fork or push files."));
             }
         }
         // Names on one row and fields on the next, so the arrow sits between the fields.
@@ -1331,9 +1336,9 @@ fn create_section(
                 ui.spacing_mut().item_spacing.x = 0.0;
                 ui.allocate_ui_with_layout(vec2(half + 32.0, 16.0), Layout::left_to_right(Align::Center), |ui| {
                     ui.set_width(half + 32.0);
-                    label(ui, "From", "");
+                    label(ui, tr("From"), "");
                 });
-                label(ui, "Into", "");
+                label(ui, tr("Into"), "");
             });
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
@@ -1344,10 +1349,10 @@ fn create_section(
                 branch_field(ui, widgets, "hosting-target", &mut s.target, targets, half, edit);
             });
         });
-        form_field(ui, widgets, ("hosting-title", "Title", ""), &mut s.title, width, edit, false);
+        form_field(ui, widgets, ("hosting-title", tr("Title"), ""), &mut s.title, width, edit, false);
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 5.0;
-            label(ui, "Description", "(optional)");
+            label(ui, tr("Description"), tr("(optional)"));
             let r = ui.add_enabled(
                 edit,
                 TextEdit::multiline(&mut s.body).desired_rows(4).desired_width(width),
@@ -1375,8 +1380,8 @@ fn create_section(
                                 ui.painter().circle_stroke(mark.center(), 6.0, Stroke::new(1.4, GREEN()));
                                 icon(ui.painter(), mark.shrink(3.5), Icon::Check, GREEN());
                                 ui.vertical(|ui| {
-                                    ui.add(Label::new(RichText::new(format!("Opens a pull request in {}", draft.repository.path())).font(semibold(13.0))).wrap());
-                                    ui.add(Label::new(RichText::new(format!("on {}", host(draft.repository.config().server()))).size(12.0).color(HINT())).wrap());
+                                    ui.add(Label::new(RichText::new(trf!("Opens a pull request in {repository}", repository = draft.repository.path())).font(semibold(13.0))).wrap());
+                                    ui.add(Label::new(RichText::new(trf!("on {server}", server = host(draft.repository.config().server()))).size(12.0).color(HINT())).wrap());
                                 });
                             });
                         });
@@ -1386,24 +1391,24 @@ fn create_section(
                         ui.set_width(ui.available_width());
                         ui.spacing_mut().item_spacing.y = 6.0;
                         if preview.source_repository() != &draft.repository {
-                            ui.add(Label::new(format!("Source: {} → Target: {}",preview.source_repository().path(),draft.repository.path())).wrap());
-                            ui.colored_label(MUTED(),"Both tips are rechecked before creation. GitHub has no atomic compare-and-create condition; inspect any uncertain outcome before retrying.");
+                            ui.add(Label::new(trf!("Source: {source} → Target: {target}", source = preview.source_repository().path(), target = draft.repository.path())).wrap());
+                            ui.colored_label(MUTED(),tr("Both tips are rechecked before creation. GitHub has no atomic compare-and-create condition; inspect any uncertain outcome before retrying."));
                         }
                         for (name, branch, id) in [
-                            ("From", &draft.source, preview.source_id()),
-                            ("Into", &draft.target, preview.target_id()),
+                            (tr("From"), &draft.source, preview.source_id()),
+                            (tr("Into"), &draft.target, preview.target_id()),
                         ] {
                             ui.horizontal(|ui| {
                                 key_label(ui, name);
                                 let mut job = text::LayoutJob::default();
                                 job.append(branch, 0.0, TextFormat::simple(FontId::monospace(12.5), TEXT()));
-                                job.append(" at ", 0.0, TextFormat::simple(FontId::proportional(12.5), FAINT()));
+                                job.append(tr(" at "), 0.0, TextFormat::simple(FontId::proportional(12.5), FAINT()));
                                 job.append(&short(id), 0.0, TextFormat::simple(FontId::monospace(12.5), TEXT()));
                                 ui.label(job).on_hover_text(id);
                             });
                         }
                         ui.horizontal(|ui| {
-                            key_label(ui, "Title");
+                            key_label(ui, tr("Title"));
                             ui.add(Label::new(&draft.title).wrap());
                         });
                     });
@@ -1412,23 +1417,23 @@ fn create_section(
         ui.allocate_ui_with_layout(vec2(ui.available_width(), CONTROL), Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             if s.preview.is_some() {
-                let r = pages::primary(ui, !busy && !s.uncertain, "Create pull request");
+                let r = pages::primary(ui, !busy && !s.uncertain, tr("Create pull request"));
                 control(widgets, "hosting-create", &r, ui.clip_rect());
                 if r.clicked() {
                     out.action = Some("create");
                 }
-                if btn(ui, widgets, "hosting-back", "Back to edit", !busy) {
+                if btn(ui, widgets, "hosting-back", tr("Back to edit"), !busy) {
                     s.preview = None;
                 }
             } else {
-                let r = pages::primary(ui, !busy && s.session.is_some() && !s.uncertain, "Review pull request");
+                let r = pages::primary(ui, !busy && s.session.is_some() && !s.uncertain, tr("Review pull request"));
                 control(widgets, "hosting-review", &r, ui.clip_rect());
                 if r.clicked() {
                     out.action = Some("review");
                 }
             }
             if let Some(item) = &s.created {
-                let r = pages::tool(ui, Icon::External, &format!("Open pull request #{}", item.number), true);
+                let r = pages::tool(ui, Icon::External, &trf!("Open pull request #{number}", number = item.number), true);
                 control(widgets, "hosting-created", &r, ui.clip_rect());
                 if r.clicked() {
                     out.open = Some(item.url.clone());
@@ -1528,12 +1533,12 @@ fn saved_accounts(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiCo
                 .inner_margin(Margin::symmetric(12, 8))
                 .show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("SAVED ACCOUNTS").font(semibold(11.0)).color(HINT()));
+                    ui.label(RichText::new(tr("SAVED ACCOUNTS")).font(semibold(11.0)).color(HINT()));
                 });
             if s.accounts.is_empty() {
                 Frame::new().inner_margin(Margin::symmetric(12, 10)).show(ui, |ui| {
                     ui.set_width(ui.available_width());
-                    let text = if s.accounts_loaded { "No saved accounts." } else { "Saved accounts are not loaded." };
+                    let text = if s.accounts_loaded { tr("No saved accounts.") } else { tr("Saved accounts are not loaded.") };
                     ui.label(RichText::new(text).size(12.5).color(HINT()));
                 });
             }
@@ -1560,11 +1565,11 @@ fn saved_accounts(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiCo
             Frame::new().inner_margin(Margin::symmetric(8, 6)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
-                    let r = pages::ghost(ui, !busy, "+ New account");
+                    let r = pages::ghost(ui, !busy, tr("+ New account"));
                     control(widgets, "hosting-new-account", &r, ui.clip_rect());
                     fresh = r.clicked();
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let r = pages::ghost(ui, !busy, "Reload");
+                        let r = pages::ghost(ui, !busy, tr("Reload"));
                         control(widgets, "hosting-load-accounts", &r, ui.clip_rect());
                         reload = r.clicked();
                     });
@@ -1607,7 +1612,7 @@ fn account_row(ui: &mut Ui, name: &str, line: &str, selected: bool, connected: b
     } else if hot {
         ui.painter().rect_filled(rect, 0.0, LIST_HOT());
     }
-    let (status, color) = if connected { ("Connected", GREEN()) } else { ("Saved", HINT()) };
+    let (status, color) = if connected { (tr("Connected"), GREEN()) } else { (tr("Saved"), HINT()) };
     let status = ui
         .painter()
         .layout_no_wrap(status.to_owned(), FontId::proportional(12.0), color);
@@ -1653,13 +1658,13 @@ fn account_form(
                 let title = match s.selected_account.and_then(|i| s.accounts.get(i)) {
                     Some(a) if !a.label.trim().is_empty() => a.label.clone(),
                     Some(a) => a.provider.label().to_owned(),
-                    None => "New account".to_owned(),
+                    None => tr("New account").to_owned(),
                 };
                 ui.label(RichText::new(title).font(semibold(14.0)));
                 let (text, color) = match (&s.session, s.selected_account) {
-                    (Some(_), _) => ("Connected", GREEN()),
-                    (None, Some(_)) => ("Not signed in", AMBER()),
-                    (None, None) => ("Not saved", HINT()),
+                    (Some(_), _) => (tr("Connected"), GREEN()),
+                    (None, Some(_)) => (tr("Not signed in"), AMBER()),
+                    (None, None) => (tr("Not saved"), HINT()),
                 };
                 pages::pill(ui, text, color);
             });
@@ -1668,7 +1673,7 @@ fn account_form(
             let mut picked = None;
             ui.add_enabled_ui(!busy, |ui| {
                 ui.spacing_mut().item_spacing.y = 6.0;
-                for (group, own_server) in [("Cloud", false), ("Self-hosted", true)] {
+                for (group, own_server) in [(tr("Cloud"), false), (tr("Self-hosted"), true)] {
                     ui.horizontal_wrapped(|ui| {
                         ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
                         let (rect, _) = ui.allocate_exact_size(vec2(80.0, 24.0), Sense::hover());
@@ -1702,8 +1707,8 @@ fn account_form(
             let two = width >= 2.0 * 140.0 + 12.0;
             let column = if two { half } else { width };
             let token_only = matches!(s.provider, ForgeProvider::GitHubEnterprise | ForgeProvider::AzureServer);
-            let server_label = match s.provider { ForgeProvider::Azure => "Organization URL", ForgeProvider::AzureServer => "Collection URL", _ => "Server URL" };
-            let user_label = if s.provider == ForgeProvider::Bitbucket { "Atlassian email" } else { "Username" };
+            let server_label = match s.provider { ForgeProvider::Azure => tr("Organization URL"), ForgeProvider::AzureServer => tr("Collection URL"), _ => tr("Server URL") };
+            let user_label = if s.provider == ForgeProvider::Bitbucket { tr("Atlassian email") } else { tr("Username") };
             let mut account_changed = false;
             let mut field = |ui: &mut Ui, (key, name, hint): (&str, &str, &str), value: &mut String, password: bool| {
                 form_field(ui, widgets, (key, name, hint), value, column, !busy, password)
@@ -1714,33 +1719,33 @@ fn account_form(
                 if two {
                     ui.horizontal_top(|ui| {
                         ui.spacing_mut().item_spacing.x = 12.0;
-                        field(ui, ("hosting-label", "Profile name", ""), &mut s.label, false);
+                        field(ui, ("hosting-label", tr("Profile name"), ""), &mut s.label, false);
                         account_changed |= field(ui, ("hosting-server", server_label, s.provider.default_server()), &mut s.server, false);
                     });
                 } else {
-                    field(ui, ("hosting-label", "Profile name", ""), &mut s.label, false);
+                    field(ui, ("hosting-label", tr("Profile name"), ""), &mut s.label, false);
                     account_changed |= field(ui, ("hosting-server", server_label, s.provider.default_server()), &mut s.server, false);
                 }
-                account_changed |= form_field(ui, widgets, ("hosting-token", "Personal access token", ""), &mut s.token, width, !busy, true);
+                account_changed |= form_field(ui, widgets, ("hosting-token", tr("Personal access token"), ""), &mut s.token, width, !busy, true);
             } else if two {
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
-                    field(ui, ("hosting-label", "Profile name", ""), &mut s.label, false);
+                    field(ui, ("hosting-label", tr("Profile name"), ""), &mut s.label, false);
                     account_changed |= field(ui, ("hosting-server", server_label, ""), &mut s.server, false);
                 });
                 ui.horizontal_top(|ui| {
                     ui.spacing_mut().item_spacing.x = 12.0;
-                    account_changed |= field(ui, ("hosting-username", user_label, "(optional)"), &mut s.username, false);
-                    account_changed |= field(ui, ("hosting-token", "Access token", ""), &mut s.token, true);
+                    account_changed |= field(ui, ("hosting-username", user_label, tr("(optional)")), &mut s.username, false);
+                    account_changed |= field(ui, ("hosting-token", tr("Access token"), ""), &mut s.token, true);
                 });
             } else {
-                field(ui, ("hosting-label", "Profile name", ""), &mut s.label, false);
+                field(ui, ("hosting-label", tr("Profile name"), ""), &mut s.label, false);
                 account_changed |= field(ui, ("hosting-server", server_label, ""), &mut s.server, false);
-                account_changed |= field(ui, ("hosting-username", user_label, "(optional)"), &mut s.username, false);
-                account_changed |= field(ui, ("hosting-token", "Access token", ""), &mut s.token, true);
+                account_changed |= field(ui, ("hosting-username", user_label, tr("(optional)")), &mut s.username, false);
+                account_changed |= field(ui, ("hosting-token", tr("Access token"), ""), &mut s.token, true);
             }
             if s.provider == ForgeProvider::AzureServer {
-                ui.label(RichText::new("REST API compatibility").size(12.5).color(HINT()));
+                ui.label(RichText::new(tr("REST API compatibility")).size(12.5).color(HINT()));
                 ui.horizontal_wrapped(|ui| {
                     for (version, id, label) in [("6.0", "6-0", "2020 (6.0)"), ("7.0", "7-0", "2022 (7.0)"), ("7.1", "7-1", "2022.1+ (7.1)")] {
                         let r = ui.add_enabled(!busy, Button::new(label).selected(s.azure_api_version == version));
@@ -1758,39 +1763,39 @@ fn account_form(
             }
             // The token each service needs, in a line; the guide has the details.
             let scopes = match s.provider {
-                ForgeProvider::GitHub => "Token: read access to repository metadata, issues and pull requests; write access to create them.",
-                ForgeProvider::GitHubEnterprise => "A token from this server, and its HTTPS address without /api/v3.",
-                ForgeProvider::GitLab => "Token scope read_api to browse; api to create merge requests.",
-                ForgeProvider::Bitbucket => "Atlassian API token with repository and pull request access. Browser sessions last an hour and are not saved.",
-                ForgeProvider::BitbucketServer => "Personal HTTP access token. Include any context path in the server URL.",
-                ForgeProvider::AzureServer => "The collection URL with any virtual directory, and a PAT from that server.",
-                ForgeProvider::Azure => "PAT with Code (Read) and Work Items (Read); Code (Read & write) to create pull requests.",
-                ForgeProvider::Gitea => "Token with repository and issue read access; repository write access to create pull requests.",
+                ForgeProvider::GitHub => tr("Token: read access to repository metadata, issues and pull requests; write access to create them."),
+                ForgeProvider::GitHubEnterprise => tr("A token from this server, and its HTTPS address without /api/v3."),
+                ForgeProvider::GitLab => tr("Token scope read_api to browse; api to create merge requests."),
+                ForgeProvider::Bitbucket => tr("Atlassian API token with repository and pull request access. Browser sessions last an hour and are not saved."),
+                ForgeProvider::BitbucketServer => tr("Personal HTTP access token. Include any context path in the server URL."),
+                ForgeProvider::AzureServer => tr("The collection URL with any virtual directory, and a PAT from that server."),
+                ForgeProvider::Azure => tr("PAT with Code (Read) and Work Items (Read); Code (Read & write) to create pull requests."),
+                ForgeProvider::Gitea => tr("Token with repository and issue read access; repository write access to create pull requests."),
             };
             pages::with_guide_link(ui, &[scopes], 12.5, HINT(), widgets, "hosting-guide");
-            let r = ui.add_enabled(!busy, checkbox(&mut s.remember, "Remember on this computer"));
+            let r = ui.add_enabled(!busy, checkbox(&mut s.remember, tr("Remember on this computer")));
             control(widgets, "hosting-remember", &r, ui.clip_rect());
             // Keep every action in one wrapping layout so narrow forms cannot
             // paint the right-aligned buttons on top of Forget saved account.
             ui.with_layout(Layout::right_to_left(Align::Min).with_main_wrap(true), |ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                let r = pages::primary(ui, !busy && s.enabled, "Connect and verify");
+                let r = pages::primary(ui, !busy && s.enabled, tr("Connect and verify"));
                 control(widgets, "hosting-connect", &r, ui.clip_rect());
                 if r.clicked() {
                     out.action = Some("connect");
                 }
                 if matches!(s.provider, ForgeProvider::GitHub | ForgeProvider::Bitbucket)
-                    && btn(ui, widgets, "hosting-browser", "Sign in with browser", !busy && s.enabled)
+                    && btn(ui, widgets, "hosting-browser", tr("Sign in with browser"), !busy && s.enabled)
                 {
                     out.action = Some("browser");
                 }
-                if btn(ui, widgets, "hosting-disconnect", "Disconnect", !busy && s.session.is_some()) {
+                if btn(ui, widgets, "hosting-disconnect", tr("Disconnect"), !busy && s.session.is_some()) {
                     s.session = None;
                     s.token.clear();
                     s.clear_results();
-                    s.notice = Some("Session disconnected. Saved profiles are unchanged.".into());
+                    s.notice = Some(tr("Session disconnected. Saved profiles are unchanged.").into());
                 }
-                let r = pages::danger_ghost(ui, !busy && s.selected_account.is_some(), "Forget saved account");
+                let r = pages::danger_ghost(ui, !busy && s.selected_account.is_some(), tr("Forget saved account"));
                 control(widgets, "hosting-forget", &r, ui.clip_rect());
                 if r.clicked() {
                     out.action = Some("forget");
@@ -1803,13 +1808,13 @@ fn account_form(
 fn failure_title(operation: &str, error: &str, things: &str) -> String {
     let code = split_code(error).0.unwrap_or_default();
     match operation {
-        "list" if code == "hosting_invalid_pagination" => format!("Couldn't load more {things}"),
-        "list" => format!("Couldn't load {things}"),
-        "review" => "Couldn't review the pull request".into(),
-        "create" if code == "hosting_outcome_unknown" => "The pull request may have been created".into(),
-        "create" => "Couldn't create the pull request".into(),
-        "connect" => "Couldn't connect".into(),
-        "accounts" => "Couldn't use the saved accounts".into(),
+        "list" if code == "hosting_invalid_pagination" => trf!("Couldn't load more {things}", things),
+        "list" => trf!("Couldn't load {things}", things),
+        "review" => tr("Couldn't review the pull request").into(),
+        "create" if code == "hosting_outcome_unknown" => tr("The pull request may have been created").into(),
+        "create" => tr("Couldn't create the pull request").into(),
+        "connect" => tr("Couldn't connect").into(),
+        "accounts" => tr("Couldn't use the saved accounts").into(),
         _ => String::new(),
     }
 }

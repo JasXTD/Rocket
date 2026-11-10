@@ -185,19 +185,18 @@ fn folders(
         }
     }
     // Up to three files are named; more are counted in their folder.
-    let about = |own: &(usize, Vec<String>), place: String| {
+    let about = |own: &(usize, Vec<String>)| {
         if own.0 <= 3 {
             let mut names = own.1.clone();
             names.sort_by_key(|n| n.to_lowercase());
             names.join(", ")
         } else {
-            place
+            String::new()
         }
     };
     let own: Vec<(usize, String)> = files
         .iter()
-        .enumerate()
-        .map(|(i, f)| (f.0, if f.0 == 0 { String::new() } else { about(f, format!("in {}", folder_name(&data.nodes[i]))) }))
+        .map(|f| (f.0, about(f)))
         .collect();
     let mut children: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     let mut roots = Vec::new();
@@ -261,11 +260,23 @@ fn folders(
         groups.push(FileGroup {
             folder: None,
             files: top.0,
-            about: about(&top, "in the top folder".into()),
+            about: about(&top),
             at: pos2(0., next * FOLDER_ROW),
         });
     }
     groups
+}
+
+/// Keep cached layout language-neutral. Switching Preferences must update the
+/// caption on the next frame without another Git read or moving the graph.
+pub(super) fn group_about(group: &FileGroup, data: &RepositoryMap) -> String {
+    if group.files <= 3 {
+        group.about.clone()
+    } else if let Some(folder) = group.folder {
+        trf!("in {folder}", folder = folder_name(&data.nodes[folder]))
+    } else {
+        tr("in the top folder").into()
+    }
 }
 
 fn world_bounds(s: &MapPage) -> Rect {
@@ -310,24 +321,23 @@ fn line_job(text: String, size: f32, color: Color32, width: f32) -> text::Layout
 /// Kind icon, its tint, title and the line of numbers under it.
 pub(super) fn card_text(s: &MapPage, data: &RepositoryMap, i: usize) -> (Icon, Color32, String, String) {
     let n = &data.nodes[i];
-    let plural = |count: usize, one: &str, many: &str| format!("{} {}", pages::number_text(count), if count == 1 { one } else { many });
     match n.kind {
         MapNodeKind::Crate if s.alternate => {
             let uses = s.projected_links.iter().filter(|e| e.kind == MapLinkKind::DependsOn && e.from == i).count();
             let used = s.projected_links.iter().filter(|e| e.kind == MapLinkKind::DependsOn && e.to == i).count();
-            let mut parts = vec![plural(n.files, "file", "files")];
+            let mut parts = vec![trn!(n.files, "{n} file", "{n} files")];
             if uses > 0 {
-                parts.push(format!("uses {uses}"));
+                parts.push(trf!("uses {count}", count = uses));
             }
             if used > 0 {
-                parts.push(format!("used by {used}"));
+                parts.push(trf!("used by {count}", count = used));
             }
             (Icon::Package, TEAL(), label(&n.label), parts.join(" · "))
         }
-        MapNodeKind::Directory | MapNodeKind::Crate => (Icon::Folder, TEAL(), folder_name(n), plural(n.files, "file", "files")),
+        MapNodeKind::Directory | MapNodeKind::Crate => (Icon::Folder, TEAL(), folder_name(n), trn!(n.files, "{n} file", "{n} files")),
         MapNodeKind::File => (Icon::File, MUTED(), label(&n.label), n.path.as_ref().map(|p| label(p)).unwrap_or_default()),
-        MapNodeKind::Person => (Icon::User, VIOLET(), label(&n.label), format!("{} · {}", plural(n.count, "commit", "commits"), plural(n.files, "file", "files"))),
-        MapNodeKind::Area => (Icon::Folder, TEAL(), label(&n.label), plural(n.count, "commit", "commits")),
+        MapNodeKind::Person => (Icon::User, VIOLET(), label(&n.label), format!("{} · {}", trn!(n.count, "{n} commit", "{n} commits"), trn!(n.files, "{n} file", "{n} files"))),
+        MapNodeKind::Area => (Icon::Folder, TEAL(), label(&n.label), trn!(n.count, "{n} commit", "{n} commits")),
         MapNodeKind::Commit => (
             Icon::Commit,
             BLUE(),
@@ -434,21 +444,21 @@ pub(super) fn canvas(
     }
     let Some(data) = s.data.clone() else {
         empty(&painter, rect, if s.running() {
-            "Reading the repository"
+            tr("Reading the repository")
         } else if s.error.is_some() {
-            "No map yet. Check the message above and retry"
+            tr("No map yet. Check the message above and retry")
         } else {
-            "Choose Refresh to read this map"
+            tr("Choose Refresh to read this map")
         });
         return;
     };
     if s.visible.is_empty() && s.file_groups.is_empty() {
         empty(&painter, rect, if !s.query.is_empty() {
-            "No match. Search looks at names, paths, authors and commit IDs"
+            tr("No match. Search looks at names, paths, authors and commit IDs")
         } else if data.nodes.is_empty() {
-            "Nothing committed in this scope"
+            tr("Nothing committed in this scope")
         } else {
-            "Nothing to show here. Try the other view or a wider scope"
+            tr("Nothing to show here. Try the other view or a wider scope")
         });
         return;
     }
@@ -491,7 +501,7 @@ pub(super) fn canvas(
             painter.line_segment([from, to], Stroke::new(width, color));
             if s.zoom >= 0.6 {
                 let middle = from + (to - from) / 2.;
-                let text = format!("{} {}", pages::number_text(edge.weight), if edge.weight == 1 { "file" } else { "files" });
+                let text = trn!(edge.weight, "{n} file", "{n} files");
                 let galley = painter.layout_no_wrap(text, FontId::proportional(10.), if active { BLUE() } else { MUTED() });
                 painter.rect_filled(Rect::from_center_size(middle, galley.size() + vec2(12., 4.)), 8., VIEW_BG());
                 painter.galley(middle - galley.size() / 2., galley, MUTED());
@@ -543,10 +553,10 @@ pub(super) fn canvas(
             let ink = painter.with_clip_rect(r.shrink(4.).intersect(rect));
             let icon_rect = Rect::from_min_size(r.left_top() + vec2(9., 10.) * s.zoom, vec2(13., 13.) * s.zoom);
             icon(&ink, icon_rect, Icon::File, HINT());
-            let title = format!("{} {}", pages::number_text(count), if count == 1 { "file" } else { "files" });
+            let title = trn!(count, "{n} file", "{n} files");
             ink.galley(r.left_top() + vec2(28., 8.) * s.zoom, ink.layout_job(title_job(title, s.zoom, r.width() - 36. * s.zoom)), TEXT());
             if s.zoom > 0.7 {
-                ink.galley(r.left_top() + vec2(9., 36.) * s.zoom, ink.layout_job(line_job(group.about.clone(), 11. * s.zoom, HINT(), r.width() - 18. * s.zoom)), HINT());
+                ink.galley(r.left_top() + vec2(9., 36.) * s.zoom, ink.layout_job(line_job(group_about(group, &data), 11. * s.zoom, HINT(), r.width() - 18. * s.zoom)), HINT());
             }
         }
     }
@@ -622,11 +632,20 @@ pub(super) fn canvas(
     if covered {
         return;
     }
-    legend(ui, s, &data, rect);
+    // A fixed English-width bar clips longer translated labels. Measure the
+    // actual button text/padding and reserve the same space for the legend.
+    let fit_label = tr("Fit");
+    let focus_label = tr("Focus");
+    let buttons_width: f32 = ["−", "+", fit_label, focus_label].into_iter().map(|text| {
+        let galley = WidgetText::from(text).into_galley(ui, Some(TextWrapMode::Extend), f32::INFINITY, TextStyle::Button);
+        (galley.size().x + 2. * ui.spacing().button_padding.x).max(ui.spacing().interact_size.x)
+    }).sum();
+    let bar_width = buttons_width + 40. + 4. * 4. + 6.;
     let bar = Rect::from_min_max(
-        pos2((rect.right() - 236.).max(rect.left() + 6.), rect.bottom() - 40.),
+        pos2((rect.right() - 10. - bar_width).max(rect.left() + 6.), rect.bottom() - 40.),
         rect.right_bottom() - vec2(10., 8.),
     );
+    legend(ui, s, &data, rect, bar.left() - 8.);
     painter.rect(bar, 8., PANEL(), Stroke::new(1., CARD_STROKE()), StrokeKind::Inside);
     ui.scope_builder(
         UiBuilder::new()
@@ -634,6 +653,7 @@ pub(super) fn canvas(
             .layout(Layout::left_to_right(Align::Center)),
         |ui| {
             ui.spacing_mut().item_spacing.x = 4.;
+            ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
             if button(ui, widgets, "map-zoom-out", "−", true) {
                 zoom_at(s, 0.8, rect.size() / 2.);
             }
@@ -641,10 +661,10 @@ pub(super) fn canvas(
             if button(ui, widgets, "map-zoom-in", "+", true) {
                 zoom_at(s, 1.25, rect.size() / 2.);
             }
-            if button(ui, widgets, "map-fit", "Fit", true) {
+            if button(ui, widgets, "map-fit", fit_label, true) {
                 fit(s, rect);
             }
-            if button(ui, widgets, "map-focus", "Focus", s.selected.is_some()) {
+            if button(ui, widgets, "map-focus", focus_label, s.selected.is_some()) {
                 s.focus = true;
             }
         },
@@ -654,23 +674,23 @@ fn empty(painter: &Painter, rect: Rect, text: &str) {
     painter.text(rect.center(), Align2::CENTER_CENTER, text, FontId::proportional(13.), MUTED());
 }
 /// What the map shows, in the corner.
-fn legend(ui: &Ui, s: &MapPage, data: &RepositoryMap, rect: Rect) {
+fn legend(ui: &Ui, s: &MapPage, data: &RepositoryMap, rect: Rect, max_right: f32) {
     let text = match data.kind {
         MapKind::Code if s.alternate => {
             let links = s.projected_links.iter().filter(|e| e.kind == MapLinkKind::DependsOn).count();
-            format!("{} packages · {} dependencies · arrows point to what is used", s.visible.len(), links)
+            trf!("Packages {packages} · dependencies {links} · arrows point to what is used", packages = s.visible.len(), links = links)
         }
         MapKind::Code => {
             let total = data.nodes.iter().filter(|n| matches!(n.kind, MapNodeKind::Directory | MapNodeKind::Crate)).count();
-            format!("{} of {} folders shown · files are listed in Details", s.visible.len(), total)
+            trf!("Folders {shown} of {total} shown · files are listed in Details", shown = s.visible.len(), total = total)
         }
-        MapKind::People => format!("{} people · lines join people who changed the same files", s.visible.len()),
-        MapKind::History => format!("{} commits", s.visible.len()),
+        MapKind::People => trf!("People {count} · lines join people who changed the same files", count = s.visible.len()),
+        MapKind::History => trn!(s.visible.len(), "{n} commit", "{n} commits"),
     };
     let painter = ui.painter().with_clip_rect(rect);
     let galley = painter.layout_no_wrap(text, FontId::proportional(12.), MUTED());
     let r = Rect::from_min_size(rect.left_bottom() + vec2(10., -40.), vec2(galley.size().x + 22., 32.));
-    if r.right() > rect.right() - 250. {
+    if r.right() > max_right {
         return;
     }
     painter.rect(r, 8., PANEL(), Stroke::new(1., CARD_STROKE()), StrokeKind::Inside);

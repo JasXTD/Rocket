@@ -38,7 +38,7 @@ pub(crate) fn checklist(
         pages::callout(
             ui,
             AMBER(),
-            "Selected files are unavailable while a staged deletion, rename or conflict exists. Unstage it in Changes first, or save all changes.",
+            crate::i18n::tr("Selected files are unavailable while a staged deletion, rename or conflict exists. Unstage it in Changes first, or save all changes."),
         );
         return;
     }
@@ -50,12 +50,12 @@ pub(crate) fn checklist(
         }
     }
     ui.horizontal(|ui| {
-        let all = ui.small_button("Select all");
+        let all = ui.small_button(crate::i18n::tr("Select all"));
         pages::control(widgets, "dialog-stash-all", &all, ui.clip_rect());
         if all.clicked() {
             *selected = files.iter().map(|e| e.path.clone()).collect();
         }
-        let none = ui.small_button("Clear");
+        let none = ui.small_button(crate::i18n::tr("Clear"));
         pages::control(widgets, "dialog-stash-none", &none, ui.clip_rect());
         if none.clicked() {
             selected.retain(|p| files.iter().any(|e| e.staged() && &e.path == p));
@@ -103,10 +103,10 @@ pub(crate) fn checklist(
     );
     pages::note(
         ui,
-        &format!(
-            "{} of {} files selected; staged files are always saved.",
-            selected.len(),
-            files.len()
+        &crate::i18n::trf!(
+            "Selected files: {selected} / {total}; staged files are always saved.",
+            selected = selected.len(),
+            total = files.len()
         ),
     );
 }

@@ -33,23 +33,23 @@ impl Operation {
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::Refresh => "Full refresh",
-            Self::History => "History · first 200",
-            Self::Diff => "Commit diff",
+            Self::Refresh => crate::i18n::tr("Full refresh"),
+            Self::History => crate::i18n::tr("History · first 200"),
+            Self::Diff => crate::i18n::tr("Commit diff"),
         }
     }
     /// The operation's name in the timings table and the running status.
     fn title(self) -> &'static str {
         match self {
-            Self::Refresh => "Full refresh",
-            Self::History => "History",
-            Self::Diff => "Commit diff",
+            Self::Refresh => crate::i18n::tr("Full refresh"),
+            Self::History => crate::i18n::tr("History"),
+            Self::Diff => crate::i18n::tr("Commit diff"),
         }
     }
     /// What the operation reads, after its name in the table.
     fn detail(self) -> &'static str {
         match self {
-            Self::History => "first 200 commits",
+            Self::History => crate::i18n::tr("first 200 commits"),
             Self::Refresh | Self::Diff => "",
         }
     }
@@ -263,10 +263,10 @@ impl Rocket {
         pages::header(
             ui,
             Icon::Activity,
-            "Repository benchmark",
-            "Local read timings · 3 passes · read only",
+            crate::i18n::tr("Repository benchmark"),
+            crate::i18n::tr("Local read timings · 3 passes · read only"),
             |ui| {
-                let r = pages::ghost(ui, true, "Close");
+                let r = pages::ghost(ui, true, crate::i18n::tr("Close"));
                 pages::control(widgets, "benchmark-close", &r, ui.clip_rect());
                 close |= r.clicked();
                 // Stop takes Run's place while the benchmark runs.
@@ -274,15 +274,15 @@ impl Rocket {
                     let r = pages::danger_ghost(
                         ui,
                         !s.stopping,
-                        if s.stopping { "Stopping" } else { "Stop" },
+                        if s.stopping { crate::i18n::tr("Stopping") } else { crate::i18n::tr("Stop") },
                     );
                     pages::control(widgets, "benchmark-stop", &r, ui.clip_rect());
                     if r.clicked() {
                         s.cancel();
                     }
                 } else {
-                    let r = pages::primary(ui, ready, "Run benchmark")
-                        .on_disabled_hover_text("Waiting for other repository operations to finish");
+                    let r = pages::primary(ui, ready, crate::i18n::tr("Run benchmark"))
+                        .on_disabled_hover_text(crate::i18n::tr("Waiting for other repository operations to finish"));
                     pages::control(widgets, "benchmark-run", &r, ui.clip_rect());
                     start = r.clicked();
                 }
@@ -331,19 +331,19 @@ impl State {
     /// The run's status for the Timings bar: its text, colour and whether it is still going.
     fn status(&self, ready: bool) -> (String, Color32, bool) {
         if self.stopping {
-            return ("Stopping".into(), AMBER(), true);
+            return (crate::i18n::tr("Stopping").into(), AMBER(), true);
         }
         if self.running() {
-            let read = self.report.active.map_or("Preparing", Operation::title);
+            let read = self.report.active.map_or(crate::i18n::tr("Preparing"), Operation::title);
             let pass = self.report.pass.max(1);
-            return (format!("Pass {pass} of {PASSES} · {read}"), BLUE(), true);
+            return (crate::i18n::trf!("Pass {pass} of {total} · {read}", pass, total = PASSES, read), BLUE(), true);
         }
         let (text, color) = match self.report.outcome {
-            "complete" => ("Complete", GREEN()),
-            "cancelled" => ("Stopped", pages::NEUTRAL()),
-            "failed" => ("Failed", RED()),
-            _ if !ready => ("Waiting for other operations", pages::NEUTRAL()),
-            _ => ("Ready", pages::NEUTRAL()),
+            "complete" => (crate::i18n::tr("Complete"), GREEN()),
+            "cancelled" => (crate::i18n::tr("Stopped"), pages::NEUTRAL()),
+            "failed" => (crate::i18n::tr("Failed"), RED()),
+            _ if !ready => (crate::i18n::tr("Waiting for other operations"), pages::NEUTRAL()),
+            _ => (crate::i18n::tr("Ready"), pages::NEUTRAL()),
         };
         (text.into(), color, false)
     }
@@ -356,27 +356,23 @@ impl State {
         let skipped = self.report.samples.iter().filter(|s| s.elapsed_us.is_none()).count();
         let reads = self.report.samples.len() - skipped;
         let progress = if self.report.samples.is_empty() && !running {
-            "Not run yet".to_owned()
+            crate::i18n::tr("Not run yet").to_owned()
         } else {
-            let skipped = if skipped > 0 { format!(" · {skipped} skipped") } else { String::new() };
-            format!(
-                "{reads} of {} reads{skipped} · {:.1} s",
-                PASSES * Operation::ALL.len(),
-                self.report.elapsed_ms as f64 / 1000.0
-            )
+            let skipped = if skipped > 0 { crate::i18n::trf!(" · skipped: {skipped}", skipped) } else { String::new() };
+            crate::i18n::trf!("Reads: {reads} / {total}{skipped} · {seconds} s", reads, total = PASSES * Operation::ALL.len(), skipped, seconds = format!("{:.1}", self.report.elapsed_ms as f64 / 1000.0))
         };
         let mut lines: Vec<(Color32, String)> = Vec::new();
         if self.report.outcome == "failed" && !running {
-            lines.push((RED(), self.error.clone().unwrap_or_else(|| "See Activity & diagnostics.".into())));
+            lines.push((RED(), self.error.clone().unwrap_or_else(|| crate::i18n::tr("See Activity & diagnostics.").into())));
         }
         if self.report.changed {
-            lines.push((AMBER(), "The repository changed during this run. Run again before comparing timings.".into()));
+            lines.push((AMBER(), crate::i18n::tr("The repository changed during this run. Run again before comparing timings.").into()));
         }
         if self.report.observation_unavailable {
-            lines.push((AMBER(), "Change observation was unavailable, so stability could not be checked.".into()));
+            lines.push((AMBER(), crate::i18n::tr("Change observation was unavailable, so stability could not be checked.").into()));
         }
         if self.report.samples.iter().any(|s| s.limited) {
-            lines.push((AMBER(), "A read reached its limit; its timing covers the bounded result only.".into()));
+            lines.push((AMBER(), crate::i18n::tr("A read reached its limit; its timing covers the bounded result only.").into()));
         }
         card_frame(ui, |ui| {
             bar(ui, &status, color, spinning, &progress);
@@ -390,9 +386,9 @@ impl State {
             }
             card_foot(ui, None, |ui| {
                 let (image, label) = if self.copied {
-                    (Icon::Check, "Copied")
+                    (Icon::Check, crate::i18n::tr("Copied"))
                 } else {
-                    (Icon::Copy, "Copy summary")
+                    (Icon::Copy, crate::i18n::tr("Copy summary"))
                 };
                 let enabled = !running && !self.report.samples.is_empty();
                 // The tool paints its own ink, so it is dimmed here while there is nothing to copy.
@@ -421,7 +417,7 @@ impl State {
 fn bar(ui: &mut Ui, status: &str, color: Color32, spinning: bool, progress: &str) {
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
     response.widget_info(|| {
-        WidgetInfo::labeled(WidgetType::Label, true, format!("Timings: {status}, {progress}"))
+        WidgetInfo::labeled(WidgetType::Label, true, crate::i18n::trf!("Timings: {status}, {progress}", status, progress))
     });
     ui.painter()
         .rect_filled(rect, CornerRadius { nw: 7, ne: 7, sw: 0, se: 0 }, CARD());
@@ -430,7 +426,7 @@ fn bar(ui: &mut Ui, status: &str, color: Color32, spinning: bool, progress: &str
     let inner = rect.shrink2(vec2(14.0, 0.0));
     let title = ui
         .painter()
-        .layout_no_wrap("Timings".into(), semibold(13.0), TEXT());
+        .layout_no_wrap(crate::i18n::tr("Timings").into(), semibold(13.0), TEXT());
     let title_width = title.size().x;
     ui.painter()
         .galley(pos2(inner.left(), rect.center().y - title.size().y / 2.0), title, TEXT());
@@ -477,11 +473,11 @@ fn table(ui: &mut Ui, report: &Report, running: bool) {
     ui.painter().text(
         pos2(head.left() + 14.0, head.center().y),
         Align2::LEFT_CENTER,
-        "Operation",
+        crate::i18n::tr("Operation"),
         font.clone(),
         HINT(),
     );
-    for (column, label) in ["First", "Repeat median", "Range"].into_iter().enumerate() {
+    for (column, label) in [crate::i18n::tr("First"), crate::i18n::tr("Repeat median"), crate::i18n::tr("Range")].into_iter().enumerate() {
         ui.painter().text(
             pos2(head.left() + ends[column + 1] - 14.0, head.center().y),
             Align2::RIGHT_CENTER,
@@ -528,11 +524,11 @@ fn table(ui: &mut Ui, report: &Report, running: bool) {
             ui.painter().text(
                 pos2(row.left() + ends[0] + 14.0, row.center().y),
                 Align2::LEFT_CENTER,
-                "Skipped · no commits yet",
+                crate::i18n::tr("Skipped · no commits yet"),
                 FontId::proportional(13.0),
                 FAINT(),
             );
-            format!("{}: skipped, no commits yet", operation.title())
+            crate::i18n::trf!("{operation}: skipped, no commits yet", operation = operation.title())
         } else {
             let cells = [
                 first.map(ms),
@@ -580,14 +576,8 @@ fn table(ui: &mut Ui, report: &Report, running: bool) {
                     }
                 }
             }
-            let shown = |cell: &Option<String>| cell.clone().unwrap_or_else(|| "none yet".into());
-            format!(
-                "{}: first {}, repeat median {}, range {}",
-                operation.title(),
-                shown(&cells[0]),
-                shown(&cells[1]),
-                shown(&cells[2])
-            )
+            let shown = |cell: &Option<String>| cell.clone().unwrap_or_else(|| crate::i18n::tr("none yet").into());
+            crate::i18n::trf!("{operation}: first {first}, repeat median {median}, range {range}", operation = operation.title(), first = shown(&cells[0]), median = shown(&cells[1]), range = shown(&cells[2]))
         };
         response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &summary));
         if index + 1 < Operation::ALL.len() {
@@ -600,6 +590,20 @@ fn table(ui: &mut Ui, report: &Report, running: bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn translated_benchmark_labels_leave_diagnostic_protocol_unchanged() {
+        let report = Report { outcome: "complete", ..Default::default() };
+        let expected = report.summary();
+        for language in crate::i18n::Language::ALL.into_iter().skip(1) {
+            crate::i18n::scoped(language, || {
+                assert_ne!(Operation::Refresh.title(), "Full refresh", "{language:?}");
+                assert_eq!(Operation::Refresh.code(), "refresh");
+                assert_eq!(Operation::Refresh.log_label(), "benchmark-refresh");
+                assert_eq!(report.summary(), expected, "{language:?}");
+            });
+        }
+    }
 
     /// The text the Timings card paints for `state`.
     fn painted(state: &mut State, ready: bool) -> Vec<String> {

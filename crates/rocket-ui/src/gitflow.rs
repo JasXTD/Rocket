@@ -8,6 +8,7 @@ use crate::{
 };
 use eframe::egui::*;
 use rocket_git::*;
+use crate::i18n::{tr, trf, trn};
 use std::sync::Arc;
 
 /// What the Git Flow dialog was opened for.
@@ -126,7 +127,7 @@ impl Rocket {
                     Err(e) => dialog.error = Some(user_error(&e)),
                 }
             }
-            _ => dialog.error = Some("Open a repository first.".into()),
+            _ => dialog.error = Some(crate::i18n::tr("Open a repository first.").into()),
         }
     }
     pub(crate) fn poll_gitflow(&mut self) {
@@ -185,7 +186,7 @@ impl Rocket {
                 .find(|t| Some(t.id) == dialog.owner)
                 .map(|t| t.path.clone()),
         ) else {
-            dialog.error = Some("Open a repository first.".into());
+            dialog.error = Some(crate::i18n::tr("Open a repository first.").into());
             return;
         };
         let spawned = match state.request {
@@ -209,7 +210,7 @@ impl Rocket {
             }
             Request::Finish => {
                 let Some(branch) = state.branch.clone() else {
-                    dialog.error = Some("Choose a branch to finish.".into());
+                    dialog.error = Some(tr("Choose a branch to finish.").into());
                     return;
                 };
                 let options = state.options.clone();
@@ -245,11 +246,7 @@ impl Rocket {
         } else {
             state.applying = false;
             state.preview = None;
-            dialog.error = Some(format!(
-                "{}\n{}\nReview again before retrying.",
-                outcome.summary,
-                outcome.details.join("\n")
-            ));
+            dialog.error = Some(trf!("{summary}\n{details}\nReview again before retrying.", summary = outcome.summary, details = outcome.details.join("\n")));
         }
     }
     pub(crate) fn cancel_gitflow_reads(&mut self) {
@@ -295,12 +292,12 @@ impl Rocket {
                         pages::callout(ui, RED(), error);
                     }
                     if state.loading_state() {
-                        pages::waiting(ui, "Reading Git Flow settings and branches…");
+                        pages::waiting(ui, tr("Reading Git Flow settings and branches…"));
                         return;
                     }
                     let initialized = state.state.as_ref().is_some_and(|s| s.config.is_some());
                     if request != Request::Init && !initialized {
-                        pages::callout(ui, AMBER(), GitFlowFailure::NotInitialized.guidance());
+                        pages::callout(ui, AMBER(), tr("Git Flow is not set up for this repository. Use Repository > Git Flow > Initialize first."));
                         return;
                     }
                     changed |= match request {
@@ -313,13 +310,13 @@ impl Rocket {
                         dialog.error = None;
                     }
                     if state.reviewing() {
-                        pages::waiting(ui, "Reviewing branches, checkout and settings…");
+                        pages::waiting(ui, tr("Reviewing branches, checkout and settings…"));
                     }
                     match &state.preview {
                         Some(Preview::Init(p)) => init_review(ui, p),
                         Some(Preview::Start(p)) => start_review(ui, p),
                         Some(Preview::Finish(p)) => finish_review(ui, p),
-                        None if !waiting => pages::note(ui, "Review first."),
+                        None if !waiting => pages::note(ui, tr("Review first.")),
                         None => {}
                     }
                 }
@@ -340,7 +337,7 @@ impl Rocket {
                     let initialized = state.state.as_ref().is_some_and(|s| s.config.is_some());
                     let r = ui.add_enabled(
                         idle && !waiting && (initialized || request == Request::Init),
-                        Button::new("Review"),
+                        Button::new(crate::i18n::tr("Review")),
                     );
                     pages::control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                     refresh = r.clicked();
@@ -364,7 +361,7 @@ impl Rocket {
             if self.write.is_none() {
                 state.applying = false;
                 dialog.error = Some(
-                    "Git Flow could not start. Wait for the repository and review again.".into(),
+                    tr("Git Flow could not start. Wait for the repository and review again.").into(),
                 );
             }
         }
@@ -382,29 +379,29 @@ impl Rocket {
 fn heading(request: Request) -> (String, &'static str) {
     match request {
         Request::Init => (
-            "Initialize Git Flow".into(),
-            "Store git-flow's branch names and prefixes in this repository's Git config.",
+            tr("Initialize Git Flow").into(),
+            tr("Store git-flow's branch names and prefixes in this repository's Git config."),
         ),
         Request::Start(kind) => (
-            format!("Start {}", kind.title()),
+            start_label(kind).into(),
             match kind {
-                GitFlowKind::Feature => "A feature branch from the development branch.",
-                GitFlowKind::Release => "A release branch from the development branch.",
-                GitFlowKind::Hotfix => "A hotfix branch from the production branch.",
-                GitFlowKind::Support => "A long-lived support branch from a chosen commit.",
+                GitFlowKind::Feature => tr("A feature branch from the development branch."),
+                GitFlowKind::Release => tr("A release branch from the development branch."),
+                GitFlowKind::Hotfix => tr("A hotfix branch from the production branch."),
+                GitFlowKind::Support => tr("A long-lived support branch from a chosen commit."),
             },
         ),
         Request::Finish => (
-            "Finish Git Flow branch".into(),
-            "Review every merge, tag and deletion before anything runs.",
+            crate::i18n::tr("Finish Git Flow branch").into(),
+            tr("Review every merge, tag and deletion before anything runs."),
         ),
     }
 }
 fn submit_label(request: Request) -> String {
     match request {
-        Request::Init => "Initialize".into(),
-        Request::Start(kind) => format!("Start {}", kind.label()),
-        Request::Finish => "Finish".into(),
+        Request::Init => tr("Initialize").into(),
+        Request::Start(kind) => start_label(kind).into(),
+        Request::Finish => tr("Finish").into(),
     }
 }
 fn default_message(state: &DialogState) -> String {
@@ -412,6 +409,22 @@ fn default_message(state: &DialogState) -> String {
         .chosen()
         .filter(|b| b.kind.tagged())
         .map_or_else(String::new, |b| format!("{} {}", b.kind.title(), b.name))
+}
+fn start_label(kind: GitFlowKind) -> &'static str {
+    match kind {
+        GitFlowKind::Feature => tr("Start feature"),
+        GitFlowKind::Release => tr("Start release"),
+        GitFlowKind::Hotfix => tr("Start hotfix"),
+        GitFlowKind::Support => tr("Start support"),
+    }
+}
+fn kind_label(kind: GitFlowKind) -> &'static str {
+    match kind {
+        GitFlowKind::Feature => tr("Feature"),
+        GitFlowKind::Release => tr("Release"),
+        GitFlowKind::Hotfix => tr("Hotfix"),
+        GitFlowKind::Support => tr("Support"),
+    }
 }
 fn short(id: &ObjectId) -> &str {
     &id.as_str()[..9]
@@ -448,15 +461,15 @@ fn init_inputs(
         pages::callout(
             ui,
             AMBER(),
-            "Some gitflow.* settings exist, but not a complete setup. Review the values below.",
+            tr("Some gitflow.* settings exist, but not a complete setup. Review the values below."),
         );
     }
     let c = &mut state.config;
     let mut changed = false;
-    pages::caption(ui, "Branches");
+    pages::caption(ui, crate::i18n::tr("Branches"));
     changed |= text_row(
         ui,
-        "Production releases",
+        tr("Production releases"),
         &mut c.master,
         "main",
         "dialog-gitflow-master",
@@ -465,17 +478,17 @@ fn init_inputs(
     );
     changed |= text_row(
         ui,
-        "Next release development",
+        tr("Next release development"),
         &mut c.develop,
         "develop",
         "dialog-gitflow-develop",
         enabled,
         widgets,
     );
-    pages::caption(ui, "Prefixes");
+    pages::caption(ui, tr("Prefixes"));
     changed |= text_row(
         ui,
-        "Feature branches",
+        tr("Feature branches"),
         &mut c.feature,
         "feature/",
         "dialog-gitflow-feature",
@@ -484,7 +497,7 @@ fn init_inputs(
     );
     changed |= text_row(
         ui,
-        "Release branches",
+        tr("Release branches"),
         &mut c.release,
         "release/",
         "dialog-gitflow-release",
@@ -493,7 +506,7 @@ fn init_inputs(
     );
     changed |= text_row(
         ui,
-        "Hotfix branches",
+        tr("Hotfix branches"),
         &mut c.hotfix,
         "hotfix/",
         "dialog-gitflow-hotfix",
@@ -502,7 +515,7 @@ fn init_inputs(
     );
     changed |= text_row(
         ui,
-        "Support branches",
+        tr("Support branches"),
         &mut c.support,
         "support/",
         "dialog-gitflow-support",
@@ -511,9 +524,9 @@ fn init_inputs(
     );
     changed |= text_row(
         ui,
-        "Version tags",
+        tr("Version tags"),
         &mut c.version_tag,
-        "(none) or v",
+        tr("(none) or v"),
         "dialog-gitflow-version-tag",
         enabled,
         widgets,
@@ -530,9 +543,9 @@ fn start_inputs(
 ) -> bool {
     let prefix = state.config.prefix(kind).to_owned();
     let (label, hint) = if kind.versioned() {
-        ("Version", "1.2.0")
+        (crate::i18n::tr("Version"), "1.2.0")
     } else {
-        ("Feature name", "login")
+        (tr("Feature name"), "login")
     };
     let mut changed = text_row(
         ui,
@@ -544,12 +557,12 @@ fn start_inputs(
         widgets,
     );
     if !state.name.is_empty() {
-        pages::note(ui, &format!("Branch: {prefix}{}", state.name));
+        pages::note(ui, &trf!("Branch: {prefix}{name}", name = state.name, prefix));
     }
     if kind == GitFlowKind::Support {
         changed |= text_row(
             ui,
-            "Start from (branch, tag or commit)",
+            tr("Start from (branch, tag or commit)"),
             &mut state.base,
             &state.config.master.clone(),
             "dialog-gitflow-base",
@@ -567,7 +580,7 @@ fn finish_inputs(
     widgets: &mut std::collections::HashMap<String, UiControl>,
 ) -> bool {
     let mut changed = false;
-    pages::caption(ui, "Branch to finish");
+    pages::caption(ui, tr("Branch to finish"));
     let branches: Vec<(String, GitFlowKind)> = state
         .finishable()
         .iter()
@@ -576,7 +589,7 @@ fn finish_inputs(
     if branches.is_empty() {
         pages::note(
             ui,
-            "There are no feature, release or hotfix branches. Start one first.",
+            tr("There are no feature, release or hotfix branches. Start one first."),
         );
         return false;
     }
@@ -584,7 +597,7 @@ fn finish_inputs(
         let selected = state.branch.as_deref() == Some(branch.as_str());
         let r = ui.add_enabled(
             enabled,
-            RadioButton::new(selected, format!("{branch}  ·  {}", kind.label())),
+            RadioButton::new(selected, format!("{branch}  ·  {}", kind_label(*kind))),
         );
         pages::control(
             widgets,
@@ -599,13 +612,13 @@ fn finish_inputs(
         }
     }
     let kind = state.chosen().map(|b| b.kind);
-    pages::caption(ui, "Options");
+    pages::caption(ui, tr("Options"));
     if kind == Some(GitFlowKind::Feature) {
         let r = ui.add_enabled(
             enabled,
             checkbox(
                 &mut state.options.no_ff,
-                "Always create a merge commit (no fast-forward)",
+                tr("Always create a merge commit (no fast-forward)"),
             ),
         );
         pages::control(widgets, "dialog-gitflow-no-ff", &r, ui.clip_rect());
@@ -615,13 +628,13 @@ fn finish_inputs(
         enabled,
         checkbox(
             &mut state.options.delete_branch,
-            "Delete the branch afterwards",
+            tr("Delete the branch afterwards"),
         ),
     );
     pages::control(widgets, "dialog-gitflow-delete", &r, ui.clip_rect());
     changed |= r.changed();
     if kind.is_some_and(GitFlowKind::tagged) {
-        ui.label("Tag message");
+        ui.label(tr("Tag message"));
         let r = ui.add_enabled(
             enabled,
             TextEdit::multiline(&mut state.options.tag_message)
@@ -636,33 +649,30 @@ fn finish_inputs(
 }
 
 fn init_review(ui: &mut Ui, p: &GitFlowInitPreview) {
-    pages::caption(ui, "What will happen");
+    pages::caption(ui, tr("What will happen"));
     pages::well(ui, |ui| {
         if p.changes().is_empty() {
-            pages::field(ui, "Settings", "Already set exactly like this", false);
+            pages::field(ui, crate::i18n::tr("Settings"), tr("Already set exactly like this"), false);
         }
         for (key, value) in p.changes() {
-            let value = if value.is_empty() { "(empty)" } else { value };
-            pages::field(ui, "Set", &format!("{key} = {value}"), true);
+            let value = if value.is_empty() { tr("(empty)") } else { value };
+            pages::field(ui, tr("Set"), &format!("{key} = {value}"), true);
         }
         let develop = &p.config().develop;
         let line = match p.develop() {
-            GitFlowDevelop::Exists(id) => format!("{develop} exists at {}", short(id)),
+            GitFlowDevelop::Exists(id) => trf!("{develop} exists at {commit}", commit = short(id), develop),
             GitFlowDevelop::Create {
                 source,
                 target,
                 track: false,
-            } => format!("Create {develop} at {} from {source}", short(target)),
-            GitFlowDevelop::Create { source, target, .. } => format!(
-                "Create {develop} at {} from {source}, tracking it",
-                short(target)
-            ),
+            } => trf!("Create {develop} at {commit} from {source}", commit = short(target), develop, source),
+            GitFlowDevelop::Create { source, target, .. } => trf!("Create {develop} at {commit} from {source}, tracking it", commit = short(target), develop, source),
         };
-        pages::field(ui, "Development", &line, false);
+        pages::field(ui, tr("Development"), &line, false);
         pages::field(
             ui,
-            "Production",
-            &format!("{} at {}", p.config().master, short(p.production())),
+            tr("Production"),
+            &trf!("{master} at {commit}", master = p.config().master, commit = short(p.production())),
             false,
         );
     });
@@ -670,59 +680,50 @@ fn init_review(ui: &mut Ui, p: &GitFlowInitPreview) {
         pages::callout(
             ui,
             BLUE(),
-            "Git Flow is already set up with these values. Nothing would change.",
+            tr("Git Flow is already set up with these values. Nothing would change."),
         );
     }
 }
 
 fn start_review(ui: &mut Ui, p: &GitFlowStartPreview) {
-    pages::caption(ui, "What will happen");
+    pages::caption(ui, tr("What will happen"));
     pages::well(ui, |ui| {
-        pages::field(ui, "Create", p.branch(), true);
+        pages::field(ui, tr("Create"), p.branch(), true);
         pages::field(
             ui,
-            "Starts at",
+            crate::i18n::tr("Starts at"),
             &format!("{} ({})", p.base(), short(p.base_id())),
             false,
         );
         if let Some(tag) = p.tag() {
             pages::field(
                 ui,
-                "Version tag",
-                &format!("{tag} (made when finished)"),
+                tr("Version tag"),
+                &trf!("{tag} (made when finished)", tag),
                 false,
             );
         }
-        pages::field(ui, "Then", &format!("Switch to {}", p.branch()), false);
+        pages::field(ui, crate::i18n::tr("Then"), &trf!("Switch to {branch}", branch = p.branch()), false);
     });
     if p.carried() > 0 {
         pages::callout(
             ui,
             AMBER(),
-            &format!(
-                "{} changed tracked file{} come along to the new branch. Git refuses the switch if they would be overwritten.",
-                p.carried(),
-                if p.carried() == 1 { "" } else { "s" }
-            ),
+            &trn!(p.carried(), "{n} changed tracked file comes along to the new branch. Git refuses the switch if it would be overwritten.", "{n} changed tracked files come along to the new branch. Git refuses the switch if they would be overwritten."),
         );
     }
     if let Some(n) = p.unpushed().filter(|n| *n > 0) {
         pages::callout(
             ui,
             BLUE(),
-            &format!(
-                "{} has {n} commit{} that origin/{} lacks. Nothing is pushed.",
-                p.base(),
-                if n == 1 { "" } else { "s" },
-                p.base()
-            ),
+            &trn!(n, "{base} has {n} commit that origin/{base} lacks. Nothing is pushed.", "{base} has {n} commits that origin/{base} lacks. Nothing is pushed.", base = p.base()),
         );
     }
-    pages::note(ui, "Nothing is pushed.");
+    pages::note(ui, tr("Nothing is pushed."));
 }
 
 fn finish_review(ui: &mut Ui, p: &GitFlowFinishPreview) {
-    pages::caption(ui, "What will happen");
+    pages::caption(ui, tr("What will happen"));
     let tags: Vec<&str> = p
         .steps()
         .iter()
@@ -734,7 +735,7 @@ fn finish_review(ui: &mut Ui, p: &GitFlowFinishPreview) {
     pages::well(ui, |ui| {
         for (i, step) in p.steps().iter().enumerate() {
             let line = match step {
-                GitFlowStep::Switch { branch } => format!("Switch to {branch}."),
+                GitFlowStep::Switch { branch } => trf!("Switch to {branch}.", branch),
                 GitFlowStep::Merge {
                     branch,
                     tip,
@@ -743,26 +744,13 @@ fn finish_review(ui: &mut Ui, p: &GitFlowFinishPreview) {
                     fast_forward,
                     message,
                 } => match (mode, fast_forward) {
-                    (MergeMode::AllowFastForward, true) => format!(
-                        "Fast-forward {into} to {branch} ({}); no merge commit (--ff).",
-                        short(tip)
-                    ),
-                    (MergeMode::AllowFastForward, false) => format!(
-                        "Merge {branch} ({}) into {into} (--ff): a merge commit \"{message}\", as {into} has moved on.",
-                        short(tip)
-                    ),
-                    _ => format!(
-                        "Merge {branch} ({}) into {into} with a merge commit (--no-ff): \"{message}\".",
-                        short(tip)
-                    ),
+                    (MergeMode::AllowFastForward, true) => trf!("Fast-forward {into} to {branch} ({commit}); no merge commit (--ff).", commit = short(tip), into, branch),
+                    (MergeMode::AllowFastForward, false) => trf!("Merge {branch} ({commit}) into {into} (--ff): a merge commit \"{message}\", as {into} has moved on.", commit = short(tip), branch, into, message),
+                    _ => trf!("Merge {branch} ({commit}) into {into} with a merge commit (--no-ff): \"{message}\".", commit = short(tip), branch, into, message),
                 },
-                GitFlowStep::Tag { name, message } => format!(
-                    "Create annotated tag {name} on {}'s new commit: \"{}\".",
-                    p.config().master,
-                    message.lines().next().unwrap_or_default()
-                ),
+                GitFlowStep::Tag { name, message } => trf!("Create annotated tag {name} on {master}'s new commit: \"{message}\".", master = p.config().master, message = message.lines().next().unwrap_or_default(), name),
                 GitFlowStep::Delete { branch } => {
-                    format!("Delete {branch} with Git's safe delete (git branch -d).")
+                    trf!("Delete {branch} with Git's safe delete (git branch -d).", branch)
                 }
             };
             ui.add(Label::new(RichText::new(format!("{}. {line}", i + 1)).size(12.5)).wrap());
@@ -770,43 +758,24 @@ fn finish_review(ui: &mut Ui, p: &GitFlowFinishPreview) {
     });
     for note in p.notes() {
         let text = match note {
-            GitFlowNote::Merged { into } => format!(
-                "{} is already merged into {into}; that merge is skipped.",
-                p.branch()
-            ),
-            GitFlowNote::Tagged { name, target } => format!(
-                "Tag {name} already marks {}; tagging is skipped.",
-                short(target)
-            ),
-            GitFlowNote::Unpushed { branch, commits } => format!(
-                "{branch} has {commits} commit{} that origin/{branch} lacks.",
-                if *commits == 1 { "" } else { "s" }
-            ),
-            GitFlowNote::ReleaseBranch { branch } => format!(
-                "{branch} exists. Classic git-flow merges this hotfix into {} only; merge it into {branch} yourself if that release needs it.",
-                p.config().develop
-            ),
+            GitFlowNote::Merged { into } => trf!("{branch} is already merged into {into}; that merge is skipped.", branch = p.branch(), into),
+            GitFlowNote::Tagged { name, target } => trf!("Tag {name} already marks {commit}; tagging is skipped.", commit = short(target), name),
+            GitFlowNote::Unpushed { branch, commits } => trn!(*commits, "{branch} has {n} commit that origin/{branch} lacks.", "{branch} has {n} commits that origin/{branch} lacks.", branch),
+            GitFlowNote::ReleaseBranch { branch } => trf!("{branch} exists. Classic git-flow merges this hotfix into {develop} only; merge it into {branch} yourself if that release needs it.", develop = p.config().develop, branch),
         };
         pages::callout(ui, BLUE(), &text);
     }
     match p.keep() {
-        Some(GitFlowKeep::Requested) => pages::note(ui, &format!("{} is kept.", p.branch())),
+        Some(GitFlowKeep::Requested) => pages::note(ui, &trf!("{branch} is kept.", branch = p.branch())),
         Some(GitFlowKeep::CheckedOut(path)) => pages::callout(
             ui,
             AMBER(),
-            &format!(
-                "{} is kept: it is checked out in {}, where Git refuses to delete it.",
-                p.branch(),
-                crate::views::display_path(path)
-            ),
+            &trf!("{branch} is kept: it is checked out in {folder}, where Git refuses to delete it.", branch = p.branch(), folder = crate::views::display_path(path)),
         ),
         Some(GitFlowKeep::Unpushed(upstream)) => pages::callout(
             ui,
             AMBER(),
-            &format!(
-                "{} is kept: {upstream} lacks some of its commits, so Git's safe delete would refuse it. Push it or delete it later.",
-                p.branch()
-            ),
+            &trf!("{branch} is kept: {upstream} lacks some of its commits, so Git's safe delete would refuse it. Push it or delete it later.", branch = p.branch(), upstream),
         ),
         None => {}
     }
@@ -814,15 +783,11 @@ fn finish_review(ui: &mut Ui, p: &GitFlowFinishPreview) {
     if p.kind().tagged() {
         pushed.insert(0, p.config().master.clone());
     }
-    pushed.extend(tags.iter().map(|t| format!("tag {t}")));
+    pushed.extend(tags.iter().map(|t| trf!("tag {t}", t)));
     pages::callout(
         ui,
         BLUE(),
-        &format!(
-            "Ends on {}. Nothing is pushed: push {} yourself when ready.",
-            p.ends_on().unwrap_or("the current branch"),
-            pushed.join(", ")
-        ),
+        &trf!("Ends on {branch}. Nothing is pushed: push {references} yourself when ready.", branch = p.ends_on().unwrap_or(crate::i18n::tr("the current branch")), references = pushed.join(", ")),
     );
 }
 
@@ -834,14 +799,14 @@ pub(crate) fn init_outcome(out: &mut Outcome, report: GitFlowInitReport) {
         out.branch(branch);
     }
     if let Some(config) = report.config {
-        ok &= out.observe("Write Git Flow settings", config).is_some();
+        ok &= out.observe(tr("Write Git Flow settings"), config).is_some();
     }
-    let state = out.observe("Read Git Flow settings", report.state);
+    let state = out.observe(tr("Read Git Flow settings"), report.state);
     out.command_succeeded = ok && state.as_ref().is_some_and(|s| s.config.is_some());
     out.summary = if out.command_succeeded {
-        "Git Flow initialized in this repository's config; nothing switched or pushed.".into()
+        tr("Git Flow initialized in this repository's config; nothing switched or pushed.").into()
     } else {
-        "Git Flow was not fully initialized. Review the details, then Initialize again.".into()
+        tr("Git Flow was not fully initialized. Review the details, then Initialize again.").into()
     };
 }
 
@@ -860,26 +825,16 @@ pub(crate) fn start_outcome(
             ok
         }
         Some(Err(error)) => {
-            out.observe::<()>("Switch branch", Err(error));
+            out.observe::<()>(crate::i18n::tr("Switch branch"), Err(error));
             false
         }
         None => false,
     };
     out.command_succeeded = created && switched;
     out.summary = match (created, switched) {
-        (true, true) => format!(
-            "Started {} from {}; nothing pushed.",
-            preview.branch(),
-            preview.base()
-        ),
-        (true, false) => format!(
-            "Created {}, but did not switch to it. Review the details before retrying.",
-            preview.branch()
-        ),
-        _ => format!(
-            "{} was not created. Review the details before retrying.",
-            preview.branch()
-        ),
+        (true, true) => trf!("Started {branch} from {base}; nothing pushed.", branch = preview.branch(), base = preview.base()),
+        (true, false) => trf!("Created {branch}, but did not switch to it. Review the details before retrying.", branch = preview.branch()),
+        _ => trf!("{branch} was not created. Review the details before retrying.", branch = preview.branch()),
     };
 }
 
@@ -913,33 +868,30 @@ pub(crate) fn finish_outcome(
                 ok
             }
             Err(error) => {
-                part.observe::<()>("Step", Err(error));
+                part.observe::<()>(tr("Step"), Err(error));
                 false
             }
         };
         let label = step_label(&step);
         if succeeded {
             done += 1;
-            out.details.push(format!("Done: {label}"));
+            out.details.push(trf!("Done: {label}", label));
         } else {
-            out.details.push(format!("Stopped: {label}"));
+            out.details.push(trf!("Stopped: {label}", label));
             out.details.extend(part.details);
         }
         out.raw_output.push_str(&part.raw_output);
     }
     if !report.skipped.is_empty() {
-        out.details.push(format!(
-            "Not run: {}",
-            report
+        out.details.push(trf!("Not run: {steps}", steps = report
                 .skipped
                 .iter()
                 .map(step_label)
                 .collect::<Vec<_>>()
-                .join("; ")
-        ));
+                .join("; ")));
     }
-    let state = out.observe("Refresh operation", report.state);
-    out.observe("Refresh branches", report.branches);
+    let state = out.observe(tr("Refresh operation"), report.state);
+    out.observe(tr("Refresh branches"), report.branches);
     if let Some(failure) = report.failure {
         out.details
             .push(format!("[{}] {}", failure.code(), failure.guidance()));
@@ -947,31 +899,22 @@ pub(crate) fn finish_outcome(
     out.command_succeeded = done == total && report.failure.is_none() && !report.cancelled;
     out.recovery_pending = conflicts || state.is_some_and(|s| !s.is_idle());
     out.summary = if out.command_succeeded {
-        format!("Finished {}; nothing pushed.", preview.branch())
+        trf!("Finished {branch}; nothing pushed.", branch = preview.branch())
     } else if conflicts {
-        format!(
-            "Finishing {} stopped at a merge with conflicts. Resolve them in Changes and Continue merge, then Finish again.",
-            preview.branch()
-        )
+        trf!("Finishing {branch} stopped at a merge with conflicts. Resolve them in Changes and Continue merge, then Finish again.", branch = preview.branch())
     } else if report.cancelled {
-        format!(
-            "Finishing {} was cancelled after {done} of {total} steps; cancellation is not rollback.",
-            preview.branch()
-        )
+        trf!("Finishing {branch} was cancelled after {done} of {total} steps; cancellation is not rollback.", branch = preview.branch(), done, total)
     } else {
-        format!(
-            "Finishing {} stopped after {done} of {total} steps. Review the details, then Finish again to continue.",
-            preview.branch()
-        )
+        trf!("Finishing {branch} stopped after {done} of {total} steps. Review the details, then Finish again to continue.", branch = preview.branch(), done, total)
     };
 }
 
 fn step_label(step: &GitFlowStep) -> String {
     match step {
-        GitFlowStep::Switch { branch } => format!("switch to {branch}"),
-        GitFlowStep::Merge { branch, into, .. } => format!("merge {branch} into {into}"),
-        GitFlowStep::Tag { name, .. } => format!("create tag {name}"),
-        GitFlowStep::Delete { branch } => format!("delete {branch}"),
+        GitFlowStep::Switch { branch } => trf!("switch to {branch}", branch),
+        GitFlowStep::Merge { branch, into, .. } => trf!("merge {branch} into {into}", branch, into),
+        GitFlowStep::Tag { name, .. } => trf!("create tag {name}", name),
+        GitFlowStep::Delete { branch } => trf!("delete {branch}", branch),
     }
 }
 

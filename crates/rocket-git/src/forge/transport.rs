@@ -280,7 +280,10 @@ impl ForgeSession {
                 if response.body.len() > 256 * 1024 { return fail(ForgeFailure::InvalidResponse); }
                 Json::String(std::str::from_utf8(response.body).map_err(|_| Error::Forge(ForgeFailure::InvalidResponse))?.to_owned())
             } else if (self.config.provider()==ForgeProvider::Gitea && operation=="hosting-merge-submit" && mutation && matches!(response.status,200|204) && response.body.is_empty())
-                || (operation==super::checks::RERUN && mutation && matches!(response.status,201|202|204) && response.body.iter().all(u8::is_ascii_whitespace)) { Json::Null } else {json::parse(response.body).ok_or(Error::Forge(if mutation{ForgeFailure::OutcomeUnknown}else{ForgeFailure::InvalidResponse}))?};
+                || (operation==super::checks::RERUN && mutation && matches!(response.status,201|202|204) && response.body.iter().all(u8::is_ascii_whitespace))
+                // These state-change APIs confirm with 204. The thread adapter
+                // still reads back the selected discussion before success.
+                || (operation=="hosting-thread-submit" && mutation && response.status==204 && step=="change_review_thread_state" && matches!(self.config.provider(),ForgeProvider::Gitea|ForgeProvider::Bitbucket) && response.body.iter().all(u8::is_ascii_whitespace)) { Json::Null } else {json::parse(response.body).ok_or(Error::Forge(if mutation{ForgeFailure::OutcomeUnknown}else{ForgeFailure::InvalidResponse}))?};
             Ok((value,response.headers))
         });
         self.runner.step(operation, self.config.provider().diagnostic_step(), || {

@@ -5,6 +5,7 @@ use crate::{
     app::*,
     backend::{Outcome, user_error},
     folder_browser::PickTarget,
+    i18n::{tr, trf, trn},
     pages::{self, control},
     style::*,
 };
@@ -92,10 +93,10 @@ impl Editor {
     /// Why the list cannot be saved, if it cannot.
     pub fn problem(&self) -> Option<String> {
         if self.transfer.is_some() || self.imported.is_some() {
-            return Some("Finish or cancel the import or export first.".into());
+            return Some(crate::i18n::tr("Finish or cancel the import or export first.").into());
         }
         if self.list.len() > MAX_CUSTOM_COMMANDS {
-            return Some(format!("Keep at most {MAX_CUSTOM_COMMANDS} commands."));
+            return Some(trf!("Keep at most {limit} commands.", limit = MAX_CUSTOM_COMMANDS));
         }
         self.list.iter().find_map(|c| {
             c.validate()
@@ -170,11 +171,7 @@ impl Editor {
         let log = log.cloned();
         self.clear_messages();
         self.exporting = (!import).then(|| {
-            format!(
-                "Exported {} to {}.",
-                counted(commands.len(), "command", "commands"),
-                file_name(&path)
-            )
+            trn!(commands.len(), "Exported {n} command to {file}.", "Exported {n} commands to {file}.", file = file_name(&path))
         });
         let task = ReadTask::spawn(move |c| {
             let work = || {
@@ -440,20 +437,20 @@ fn toolbar(ui: &mut Ui, e: &mut Editor, widgets: &mut HashMap<String, UiControl>
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         let width = (ui.available_width() - 320.0).clamp(160.0, 280.0);
-        let r = search_field(ui, &mut e.filter, "Find a command", width);
+        let r = search_field(ui, &mut e.filter, crate::i18n::tr("Find a command"), width);
         control(widgets, "dialog-commands-filter", &r, ui.clip_rect());
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
             let room = e.list.len() < MAX_CUSTOM_COMMANDS;
-            let r = pages::primary(ui, room && !busy, "New command");
+            let r = pages::primary(ui, room && !busy, crate::i18n::tr("New command"));
             control(widgets, "dialog-commands-new", &r, ui.clip_rect());
             if r.clicked() {
                 new_command(e);
             }
             // Right to left: Export at the right, Import before it.
             for (step, label, key) in [
-                (Step::Export, "Export", "dialog-commands-show-export"),
-                (Step::Import, "Import", "dialog-commands-show-import"),
+                (Step::Export, crate::i18n::tr("Export"), "dialog-commands-show-export"),
+                (Step::Import, crate::i18n::tr("Import"), "dialog-commands-show-import"),
             ] {
                 let on = e.step == step;
                 let r = ui.add_enabled(
@@ -503,7 +500,7 @@ fn table(
         ui.painter()
             .hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, CARD_LINE()));
         let name_width = name_column(rect.width());
-        for (x, title) in [(12.0, "COMMAND"), (name_width + 12.0, "RUNS")] {
+        for (x, title) in [(12.0, crate::i18n::tr("COMMAND")), (name_width + 12.0, crate::i18n::tr("RUNS"))] {
             ui.painter().text(
                 pos2(rect.left() + x, rect.center().y),
                 Align2::LEFT_CENTER,
@@ -543,7 +540,7 @@ fn table(
             Frame::new()
                 .inner_margin(Margin::symmetric(12, 14))
                 .show(ui, |ui| {
-                    ui.label(RichText::new("No command matches.").color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("No command matches.")).color(HINT()));
                 });
         }
     });
@@ -561,11 +558,11 @@ fn group_heading(ui: &mut Ui, kind: CommandScope, count: usize) {
     ui.painter()
         .hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, CARD_LINE()));
     let title = match kind {
-        CommandScope::Repository => "REPOSITORY MENU",
-        CommandScope::Commit => "COMMITS · RIGHT-CLICK",
-        CommandScope::File => "FILES · RIGHT-CLICK",
-        CommandScope::Branch => "BRANCHES · RIGHT-CLICK",
-        CommandScope::Submodule => "SUBMODULES · RIGHT-CLICK",
+        CommandScope::Repository => crate::i18n::tr("REPOSITORY MENU"),
+        CommandScope::Commit => crate::i18n::tr("COMMITS · RIGHT-CLICK"),
+        CommandScope::File => crate::i18n::tr("FILES · RIGHT-CLICK"),
+        CommandScope::Branch => crate::i18n::tr("BRANCHES · RIGHT-CLICK"),
+        CommandScope::Submodule => crate::i18n::tr("SUBMODULES · RIGHT-CLICK"),
     };
     let galley = ui
         .painter()
@@ -648,13 +645,13 @@ fn runs_job(c: &CustomCommand) -> text::LayoutJob {
     };
     if c.action == CommandAction::Url {
         return match c.program.trim() {
-            "" => missing("No web link yet"),
+            "" => missing(crate::i18n::tr("No web link yet")),
             url => highlighted_in(&custom_command_display(url), font, MUTED()),
         };
     }
     let program = file_name(Path::new(c.program.trim()));
     if program.is_empty() {
-        return missing("No program yet");
+        return missing(crate::i18n::tr("No program yet"));
     }
     let line = format!("{program} {}", c.argument_lines().join(" "));
     highlighted_in(&custom_command_display(line.trim_end()), font, MUTED())
@@ -662,7 +659,7 @@ fn runs_job(c: &CustomCommand) -> text::LayoutJob {
 
 fn new_command(e: &mut Editor) {
     e.list.push(CustomCommand {
-        name: "New command".into(),
+        name: crate::i18n::tr("New command").into(),
         ..Default::default()
     });
     e.selected = Some(e.list.len() - 1);
@@ -726,12 +723,12 @@ fn insert_chips(
         .collect();
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
-        ui.label(RichText::new("Insert").size(12.0).color(HINT()));
+        ui.label(RichText::new(crate::i18n::tr("Insert")).size(12.0).color(HINT()));
         for (n, (token, whole_line)) in tokens.iter().enumerate() {
             let r = token_chip(ui, token).on_hover_text(if *whole_line {
-                "A checkbox takes a whole line; unchecked leaves the line out."
+                crate::i18n::tr("A checkbox takes a whole line; unchecked leaves the line out.")
             } else {
-                "Inserted at the cursor"
+                crate::i18n::tr("Inserted at the cursor")
             });
             control(widgets, format!("dialog-commands-insert-{n}"), &r, ui.clip_rect());
             if r.clicked() {
@@ -783,30 +780,30 @@ fn edit_panel(
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 12.0;
                         let half = (ui.available_width() - 12.0) / 2.0;
-                        label_cell(ui, "Name", FORM_LABEL);
+                        label_cell(ui, crate::i18n::tr("Name"), FORM_LABEL);
                         let r = text_field(ui, &mut command.name, half - FORM_LABEL - 12.0, "");
                         control(widgets, "dialog-commands-name", &r, ui.clip_rect());
-                        label_cell(ui, "Submenu", 64.0);
+                        label_cell(ui, crate::i18n::tr("Submenu"), 64.0);
                         let width = ui.available_width();
-                        let r = text_field(ui, &mut command.group, width, "None · e.g. Tools / Review");
+                        let r = text_field(ui, &mut command.group, width, crate::i18n::tr("None · e.g. Tools / Review"));
                         control(widgets, "dialog-commands-group", &r, ui.clip_rect());
                     });
                 } else {
-                    form_row(ui, "Name", |ui| {
+                    form_row(ui, crate::i18n::tr("Name"), |ui| {
                         let width = ui.available_width();
                         let r = text_field(ui, &mut command.name, width, "");
                         control(widgets, "dialog-commands-name", &r, ui.clip_rect());
                     });
-                    form_row(ui, "Submenu", |ui| {
+                    form_row(ui, crate::i18n::tr("Submenu"), |ui| {
                         let width = ui.available_width();
-                        let r = text_field(ui, &mut command.group, width, "None · e.g. Tools / Review");
+                        let r = text_field(ui, &mut command.group, width, crate::i18n::tr("None · e.g. Tools / Review"));
                         control(widgets, "dialog-commands-group", &r, ui.clip_rect());
                     });
                 }
-                form_row(ui, "Shows in", |ui| {
+                form_row(ui, crate::i18n::tr("Shows in"), |ui| {
                     let items: Vec<(&str, bool)> = CommandScope::ALL
                         .iter()
-                        .map(|s| (s.label(), command.scope == *s))
+                        .map(|s| (scope_label(*s), command.scope == *s))
                         .collect();
                     for (kind, r) in CommandScope::ALL.into_iter().zip(pages::segments(ui, &items)) {
                         control(widgets, format!("dialog-commands-scope-{}", kind.key()), &r, ui.clip_rect());
@@ -815,8 +812,8 @@ fn edit_panel(
                         }
                     }
                 });
-                form_row(ui, "Runs", |ui| {
-                    let options = [(CommandAction::Program, "A program"), (CommandAction::Url, "A web link")];
+                form_row(ui, crate::i18n::tr("Runs"), |ui| {
+                    let options = [(CommandAction::Program, crate::i18n::tr("A program")), (CommandAction::Url, crate::i18n::tr("A web link"))];
                     let items: Vec<(&str, bool)> =
                         options.iter().map(|(a, l)| (*l, command.action == *a)).collect();
                     for ((action, _), r) in options.into_iter().zip(pages::segments(ui, &items)) {
@@ -831,7 +828,7 @@ fn edit_panel(
                 });
                 let url = command.action == CommandAction::Url;
                 let id = Id::new(("custom-command-arguments", index));
-                form_row(ui, if url { "Web link" } else { "Program" }, |ui| {
+                form_row(ui, if url { crate::i18n::tr("Web link") } else { crate::i18n::tr("Program") }, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
                         let buttons = if url { 0.0 } else { 2.0 * 76.0 + 16.0 };
@@ -854,14 +851,14 @@ fn edit_panel(
                         );
                         control(widgets, "dialog-commands-program", &r, ui.clip_rect());
                         if !url {
-                            let b = ui.add_sized([76.0, CONTROL], Button::new("Browse"));
+                            let b = ui.add_sized([76.0, CONTROL], Button::new(crate::i18n::tr("Browse")));
                             control(widgets, "dialog-commands-program-browse", &b, ui.clip_rect());
                             if b.clicked() {
                                 out.browse = Some(PickTarget::CommandProgram(index));
                             }
                             let b = ui.add_enabled(
                                 runnable_path(Path::new(&command.program)),
-                                Button::new("Check").min_size(vec2(76.0, CONTROL)),
+                                Button::new(crate::i18n::tr("Check")).min_size(vec2(76.0, CONTROL)),
                             );
                             control(widgets, "dialog-commands-program-check", &b, ui.clip_rect());
                             request_check = b.clicked();
@@ -869,7 +866,7 @@ fn edit_panel(
                     });
                     if url {
                         ui.label(
-                            RichText::new("Values are URL-encoded and the host stays fixed; every open is reviewed first.")
+                            RichText::new(crate::i18n::tr("Values are URL-encoded and the host stays fixed; every open is reviewed first."))
                                 .size(12.0)
                                 .color(HINT()),
                         );
@@ -880,17 +877,17 @@ fn edit_panel(
                     }
                 });
                 if !url {
-                    form_row(ui, "Arguments", |ui| {
+                    form_row(ui, crate::i18n::tr("Arguments"), |ui| {
                         let r = arguments_editor(ui, &mut command.arguments, id);
                         control(widgets, "dialog-commands-arguments", &r, ui.clip_rect());
                         insert_chips(ui, command, id, widgets);
                     });
                 }
-                form_row(ui, "Asks first", |ui| {
+                form_row(ui, crate::i18n::tr("Asks first"), |ui| {
                     if command.inputs.is_empty() {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Nothing").color(HINT()));
-                            let r = pages::ghost(ui, true, "Add a question");
+                            ui.label(RichText::new(crate::i18n::tr("Nothing")).color(HINT()));
+                            let r = pages::ghost(ui, true, crate::i18n::tr("Add a question"));
                             control(widgets, "dialog-commands-add-input", &r, ui.clip_rect());
                             if r.clicked() {
                                 add_input(command);
@@ -898,14 +895,14 @@ fn edit_panel(
                         });
                     } else {
                         inputs_table(ui, command, widgets);
-                        let r = pages::ghost(ui, command.inputs.len() < MAX_INPUTS, "Add a question");
+                        let r = pages::ghost(ui, command.inputs.len() < MAX_INPUTS, crate::i18n::tr("Add a question"));
                         control(widgets, "dialog-commands-add-input", &r, ui.clip_rect());
                         if r.clicked() {
                             add_input(command);
                         }
                     }
                 });
-                form_row(ui, if url { "Opens" } else { "Runs as" }, |ui| match preview(command) {
+                form_row(ui, if url { crate::i18n::tr("Opens") } else { crate::i18n::tr("Runs as") }, |ui| match preview(command) {
                     Ok(arguments) => {
                         if url {
                             ui.add(
@@ -925,10 +922,10 @@ fn edit_panel(
                     Layout::right_to_left(Align::Center),
                     |ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
-                        let r = pages::danger_ghost(ui, true, "Delete");
+                        let r = pages::danger_ghost(ui, true, crate::i18n::tr("Delete"));
                         control(widgets, "dialog-commands-delete", &r, ui.clip_rect());
                         delete = r.clicked();
-                        let r = pages::ghost(ui, room, "Duplicate");
+                        let r = pages::ghost(ui, room, crate::i18n::tr("Duplicate"));
                         control(widgets, "dialog-commands-duplicate", &r, ui.clip_rect());
                         duplicate = r.clicked();
                     },
@@ -952,7 +949,7 @@ fn edit_panel(
     }
     if duplicate {
         let mut copy = e.list[index].clone();
-        copy.name = format!("{} copy", copy.name.trim());
+        copy.name = trf!("{name} copy", name = copy.name.trim());
         e.list.insert(index + 1, copy);
         e.selected = Some(index + 1);
         return true;
@@ -969,24 +966,24 @@ fn runnable_path(path: &Path) -> bool {
 fn program_line(ui: &mut Ui, program: &str, checked: Option<std::result::Result<ProgramCheck, String>>, requested: bool) {
     let path = Path::new(program);
     let (image, color, text) = if program.trim().is_empty() {
-        (None, HINT(), "The full path of the .exe this command runs.".to_owned())
+        (None, HINT(), crate::i18n::tr("The full path of the .exe this command runs.").to_owned())
     } else if !path.is_absolute() {
-        (Some(Icon::Warning), AMBER(), "Use the full path, starting with the drive.".to_owned())
+        (Some(Icon::Warning), AMBER(), crate::i18n::tr("Use the full path, starting with the drive.").to_owned())
     } else if !runnable_path(path) {
-        (Some(Icon::Warning), AMBER(), "Choose a local .exe path without hidden characters, network shares or device namespaces.".to_owned())
+        (Some(Icon::Warning), AMBER(), crate::i18n::tr("Choose a local .exe path without hidden characters, network shares or device namespaces.").to_owned())
     } else {
         match checked {
-            Some(Ok(ProgramCheck::Found)) => (Some(Icon::Check), GREEN(), format!("{} found", custom_command_display(&file_name(path)))),
+            Some(Ok(ProgramCheck::Found)) => (Some(Icon::Check), GREEN(), trf!("{program} found", program = custom_command_display(&file_name(path)))),
             Some(Ok(ProgramCheck::Missing)) => (
                 Some(Icon::Warning),
                 AMBER(),
-                "No file at this path. Check it, or choose the program with Browse.".to_owned(),
+                crate::i18n::tr("No file at this path. Check it, or choose the program with Browse.").to_owned(),
             ),
-            Some(Err(reason)) => (None, HINT(), format!("Could not check this path: {reason}")),
+            Some(Err(reason)) => (None, HINT(), trf!("Could not check this path: {reason}", reason)),
             // Keeps the line's height while the check runs, so the form does not jump.
-            None if !requested => (None, HINT(), "Not checked. Choose Check to inspect this path.".to_owned()),
-            None => (None, HINT(), "Checking the path".to_owned()),
-            Some(Ok(ProgramCheck::Invalid)) => (Some(Icon::Warning), AMBER(), "This program path is not allowed.".to_owned()),
+            None if !requested => (None, HINT(), crate::i18n::tr("Not checked. Choose Check to inspect this path.").to_owned()),
+            None => (None, HINT(), crate::i18n::tr("Checking the path").to_owned()),
+            Some(Ok(ProgramCheck::Invalid)) => (Some(Icon::Warning), AMBER(), crate::i18n::tr("This program path is not allowed.").to_owned()),
             Some(Ok(ProgramCheck::Outside)) => return,
         }
     };
@@ -1193,7 +1190,7 @@ fn add_input(command: &mut CustomCommand) {
         .unwrap();
     command.inputs.push(CommandInput {
         key,
-        label: "Input".into(),
+        label: crate::i18n::tr("Input").into(),
         required: true,
         ..Default::default()
     });
@@ -1201,10 +1198,20 @@ fn add_input(command: &mut CustomCommand) {
 
 fn kind_label(kind: CommandInputKind) -> &'static str {
     match kind {
-        CommandInputKind::Text => "Text",
-        CommandInputKind::Branch => "Branch",
-        CommandInputKind::File => "File",
-        CommandInputKind::Checkbox => "Checkbox",
+        CommandInputKind::Text => crate::i18n::tr("Text"),
+        CommandInputKind::Branch => crate::i18n::tr("Branch"),
+        CommandInputKind::File => crate::i18n::tr("File"),
+        CommandInputKind::Checkbox => crate::i18n::tr("Checkbox"),
+    }
+}
+
+fn scope_label(scope: CommandScope) -> &'static str {
+    match scope {
+        CommandScope::Repository => tr("Repository"),
+        CommandScope::Commit => tr("Commit"),
+        CommandScope::File => tr("File"),
+        CommandScope::Branch => tr("Branch"),
+        CommandScope::Submodule => tr("Submodule"),
     }
 }
 
@@ -1231,7 +1238,7 @@ fn inputs_table(ui: &mut Ui, command: &mut CustomCommand, widgets: &mut HashMap<
                     ui.set_width(ui.available_width());
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = gap;
-                        for (title, width) in ["Key", "Label", "Kind", "Default", "Required / adds", ""].iter().zip(widths) {
+                        for (title, width) in [crate::i18n::tr("Key"), crate::i18n::tr("Label"), crate::i18n::tr("Kind"), crate::i18n::tr("Default"), crate::i18n::tr("Required / adds"), ""].iter().zip(widths) {
                             cell(ui, width, 18.0, |ui| {
                                 ui.label(RichText::new(*title).font(semibold(11.5)).color(HINT()));
                             });
@@ -1287,7 +1294,7 @@ fn inputs_table(ui: &mut Ui, command: &mut CustomCommand, widgets: &mut HashMap<
                             cell(ui, widths[3], 26.0, |ui| {
                                 if input.kind == CommandInputKind::Checkbox {
                                     let mut on = input.default_value == "true";
-                                    let r = ui.checkbox(&mut on, "On");
+                                    let r = ui.checkbox(&mut on, crate::i18n::tr("On"));
                                     control(widgets, id("default"), &r, ui.clip_rect());
                                     if r.changed() {
                                         input.default_value = on.to_string();
@@ -1296,7 +1303,7 @@ fn inputs_table(ui: &mut Ui, command: &mut CustomCommand, widgets: &mut HashMap<
                                     let mut edit = TextEdit::singleline(&mut input.default_value)
                                         .vertical_align(Align::Center)
                                         .char_limit(4096)
-                                        .hint_text("Empty");
+                                        .hint_text(crate::i18n::tr("Empty"));
                                     if input.kind != CommandInputKind::Text {
                                         edit = edit.font(TextStyle::Monospace);
                                     }
@@ -1316,13 +1323,13 @@ fn inputs_table(ui: &mut Ui, command: &mut CustomCommand, widgets: &mut HashMap<
                                     );
                                     control(widgets, id("checked"), &r, ui.clip_rect());
                                 } else {
-                                    let r = ui.checkbox(&mut input.required, "Required");
+                                    let r = ui.checkbox(&mut input.required, crate::i18n::tr("Required"));
                                     control(widgets, id("required"), &r, ui.clip_rect());
                                 }
                             });
                             cell(ui, widths[5], 26.0, |ui| {
                                 let r = crate::chrome::icon_button(ui, Icon::Close, true, false, 24.0)
-                                    .on_hover_text("Remove input");
+                                    .on_hover_text(crate::i18n::tr("Remove input"));
                                 control(widgets, id("remove"), &r, ui.clip_rect());
                                 if r.clicked() {
                                     remove = Some(i);
@@ -1369,7 +1376,7 @@ fn preview(command: &CustomCommand) -> std::result::Result<Vec<Vec<(String, bool
     let part = |text: &str, placeholder: bool, total: &mut usize| -> std::result::Result<_, String> {
         *total += text.len();
         if *total > CUSTOM_ARGUMENT_LIMIT {
-            return Err("The expanded command line exceeds 32000 bytes.".into());
+            return Err(crate::i18n::tr("The expanded command line exceeds 32000 bytes.").into());
         }
         Ok((text.to_owned(), placeholder))
     };
@@ -1410,7 +1417,7 @@ fn command_chips(ui: &mut Ui, program: &str, arguments: &[Vec<(String, bool)>]) 
             let text: String = parts.iter().map(|(t, _)| t.as_str()).collect();
             let r = argument_chip(ui, parts, false);
             // Escapes can be wider than the raw value. Always expose the complete argument.
-            r.on_hover_text(format!("Argument {}: {}", n + 1, custom_command_display(&text)));
+            r.on_hover_text(trf!("Argument {number}: {value}", number = n + 1, value = custom_command_display(&text)));
         }
     });
 }
@@ -1421,7 +1428,7 @@ fn argument_chip(ui: &mut Ui, parts: &[(String, bool)], program: bool) -> Respon
     let mut job = text::LayoutJob::default();
     let ink = if program { ACCENT_TEXT() } else { TEXT() };
     if parts.iter().all(|(t, _)| t.is_empty()) {
-        job.append("empty", 0.0, TextFormat { italics: true, ..TextFormat::simple(FontId::proportional(12.0), HINT()) });
+        job.append(crate::i18n::tr("empty"), 0.0, TextFormat { italics: true, ..TextFormat::simple(FontId::proportional(12.0), HINT()) });
     }
     for (text, placeholder) in parts {
         job.append(&custom_command_display(text), 0.0, TextFormat::simple(font.clone(), if *placeholder { BLUE() } else { ink }));
@@ -1442,18 +1449,18 @@ fn empty_state(ui: &mut Ui, e: &mut Editor, widgets: &mut HashMap<String, UiCont
             ui.spacing_mut().item_spacing.y = 8.0;
             let (rect, _) = ui.allocate_exact_size(vec2(26.0, 26.0), Sense::hover());
             icon(ui.painter(), rect, Icon::Console, FAINT());
-            ui.label(RichText::new("No custom commands yet").font(semibold(14.0)));
+            ui.label(RichText::new(crate::i18n::tr("No custom commands yet")).font(semibold(14.0)));
             ui.scope(|ui| {
                 ui.set_max_width(360.0);
                 ui.add(
                     Label::new(
-                        RichText::new("Run your own programs from the Repository menu and right-click menus.")
+                        RichText::new(crate::i18n::tr("Run your own programs from the Repository menu and right-click menus."))
                             .color(HINT()),
                     )
                     .wrap(),
                 );
             });
-            let widths: Vec<f32> = ["New command", "Import"]
+            let widths: Vec<f32> = [crate::i18n::tr("New command"), crate::i18n::tr("Import")]
                 .iter()
                 .map(|t| {
                     ui.painter()
@@ -1468,12 +1475,12 @@ fn empty_state(ui: &mut Ui, e: &mut Editor, widgets: &mut HashMap<String, UiCont
                 Layout::left_to_right(Align::Center),
                 |ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
-                    let r = pages::primary(ui, true, "New command");
+                    let r = pages::primary(ui, true, crate::i18n::tr("New command"));
                     control(widgets, "dialog-commands-empty-new", &r, ui.clip_rect());
                     if r.clicked() {
                         new_command(e);
                     }
-                    let r = ui.button("Import");
+                    let r = ui.button(crate::i18n::tr("Import"));
                     control(widgets, "dialog-commands-empty-import", &r, ui.clip_rect());
                     if r.clicked() {
                         e.step = Step::Import;
@@ -1522,7 +1529,7 @@ fn path_row(
             e.clear_messages();
         }
         let b = ui
-            .add_enabled_ui(idle, |ui| ui.add_sized([browse, CONTROL], Button::new("Browse")))
+            .add_enabled_ui(idle, |ui| ui.add_sized([browse, CONTROL], Button::new(crate::i18n::tr("Browse"))))
             .inner;
         control(widgets, "dialog-commands-share-browse", &b, ui.clip_rect());
         if b.clicked() {
@@ -1546,15 +1553,15 @@ fn working(ui: &mut Ui, e: &mut Editor, widgets: &mut HashMap<String, UiControl>
     ui.horizontal(|ui| {
         ui.add(Spinner::new().size(14.0));
         ui.label(RichText::new(text).color(MUTED()));
-        let r = ui.button("Stop");
+        let r = ui.button(crate::i18n::tr("Stop"));
         control(widgets, "dialog-commands-transfer-cancel", &r, ui.clip_rect());
         if r.clicked() {
             let exporting = e.exporting.take().is_some();
             e.transfer = None;
             e.notice = Some(if exporting {
-                "Cancelled. Check the folder: a finished export may already be there.".into()
+                crate::i18n::tr("Cancelled. Check the folder: a finished export may already be there.").into()
             } else {
-                "Import cancelled. Your commands are unchanged.".into()
+                crate::i18n::tr("Import cancelled. Your commands are unchanged.").into()
             });
         }
     });
@@ -1574,7 +1581,7 @@ fn step_buttons(
         let r = pages::primary(ui, ready, label);
         control(widgets, key, &r, ui.clip_rect());
         go = r.clicked();
-        let r = ui.button("Back");
+        let r = ui.button(crate::i18n::tr("Back"));
         control(widgets, "dialog-commands-back", &r, ui.clip_rect());
         if r.clicked() {
             e.step = Step::Edit;
@@ -1593,20 +1600,20 @@ fn import_step(
     scope: Option<&Path>,
     log: Option<&DiagnosticLog>,
 ) {
-    step_title(ui, "Import commands", "Choose a definitions file. Nothing runs during import.");
+    step_title(ui, crate::i18n::tr("Import commands"), crate::i18n::tr("Choose a definitions file. Nothing runs during import."));
     path_row(ui, e, widgets, out, PickTarget::CommandImport, r"C:\Users\you\Documents\rocket-commands.json");
     failure(ui, e);
     if let Some(n) = &e.notice {
         status_line(ui, None, HINT(), n);
     }
     if e.transfer.is_some() {
-        working(ui, e, widgets, "Reading the file");
+        working(ui, e, widgets, crate::i18n::tr("Reading the file"));
     } else if e.imported.is_some() {
         ui.add_space(4.0);
         import_review(ui, e, widgets);
     } else {
         let ready = !e.exchange_path.trim().is_empty();
-        if step_buttons(ui, e, widgets, ("Review file", "dialog-commands-import", ready)) {
+        if step_buttons(ui, e, widgets, (crate::i18n::tr("Review file"), "dialog-commands-import", ready)) {
             e.start_transfer(true, scope, log);
         }
     }
@@ -1643,7 +1650,7 @@ fn import_review(ui: &mut Ui, e: &mut Editor, widgets: &mut HashMap<String, UiCo
             check_mark(ui);
             ui.add(
                 Label::new(
-                    RichText::new(format!("{} in {file}", counted(incoming.len(), "command", "commands")))
+                    RichText::new(trn!(incoming.len(), "{n} command in {file}", "{n} commands in {file}", file))
                         .font(semibold(13.0)),
                 )
                 .truncate(),
@@ -1670,7 +1677,7 @@ fn import_review(ui: &mut Ui, e: &mut Editor, widgets: &mut HashMap<String, UiCo
                             .on_hover_text(definition(c));
                     });
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let (text, color) = if *new { ("New", GREEN()) } else { ("Same name", AMBER()) };
+                        let (text, color) = if *new { (crate::i18n::tr("New"), GREEN()) } else { (crate::i18n::tr("Same name"), AMBER()) };
                         ui.label(RichText::new(text).size(12.0).color(color));
                     });
                 });
@@ -1679,21 +1686,21 @@ fn import_review(ui: &mut Ui, e: &mut Editor, widgets: &mut HashMap<String, UiCo
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 let note = if !room {
-                    format!("Rocket keeps at most {MAX_CUSTOM_COMMANDS} commands; adding these would make {total}.")
-                } else if skipped == 1 {
-                    "1 has the same type, group and name as a command you have and is skipped.".to_owned()
-                } else if skipped > 1 {
-                    format!("{skipped} have the same type, group and name as commands you have and are skipped.")
+                    trf!("Rocket keeps at most {limit} commands; adding these would make {total}.", limit = MAX_CUSTOM_COMMANDS, total)
+                } else if skipped > 0 {
+                    trn!(skipped,
+                        "{n} has the same type, group and name as a command you have and is skipped.",
+                        "{n} have the same type, group and name as commands you have and are skipped.")
                 } else {
-                    "Added commands are kept once you save commands.".to_owned()
+                    crate::i18n::tr("Added commands are kept once you save commands.").to_owned()
                 };
                 let ready = room && adding > 0;
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let label = if adding == 0 { "Add commands".to_owned() } else { format!("Add {}", counted(adding, "command", "commands")) };
+                    let label = if adding == 0 { tr("Add commands").to_owned() } else { trn!(adding, "Add {n} command", "Add {n} commands") };
                     let r = pages::primary(ui, ready, &label);
                     control(widgets, "dialog-commands-import-accept", &r, ui.clip_rect());
                     accept = r.clicked();
-                    let r = ui.button("Cancel import");
+                    let r = ui.button(crate::i18n::tr("Cancel import"));
                     control(widgets, "dialog-commands-import-cancel", &r, ui.clip_rect());
                     cancel = r.clicked();
                     let color = if room && skipped == 0 { HINT() } else { AMBER() };
@@ -1708,20 +1715,21 @@ fn import_review(ui: &mut Ui, e: &mut Editor, widgets: &mut HashMap<String, UiCo
         e.accept_import();
     } else if cancel {
         e.imported = None;
-        e.notice = Some("Import cancelled. Your commands are unchanged.".into());
+        e.notice = Some(crate::i18n::tr("Import cancelled. Your commands are unchanged.").into());
     }
 }
 
 /// A definition in full, for the review's tooltip.
 fn definition(c: &CustomCommand) -> String {
-    if c.action==CommandAction::Url {return format!("HTTPS URL template: {}\nValues are encoded; each open requires review.",custom_command_display(&c.program));}
-    let mut text = format!("Program: {}\nArguments:", custom_command_display(&c.program));
+    if c.action==CommandAction::Url {return trf!("HTTPS URL template: {url}\nValues are encoded; each open requires review.", url = custom_command_display(&c.program));}
+    let mut text = trf!("Program: {program}\nArguments:", program = custom_command_display(&c.program));
     for line in c.argument_lines() {
         text.push_str("\n  ");
         text.push_str(&custom_command_display(line));
     }
     for i in &c.inputs {
-        text.push_str(&format!("\nInput {{input:{}}}: {} ({})", custom_command_display(&i.key), custom_command_display(&i.label), kind_label(i.kind).to_lowercase()));
+        let token = format!("{{input:{}}}", custom_command_display(&i.key));
+        text.push_str(&trf!("\nInput {token}: {label} ({kind})", token, label = custom_command_display(&i.label), kind = kind_label(i.kind)));
     }
     text
 }
@@ -1737,11 +1745,10 @@ fn export_step(
 ) {
     let count = e.list.len();
     let about = match count {
-        0 => "There are no commands to export yet.".to_owned(),
-        1 => "Writes the command to a new file. An existing file is never replaced.".to_owned(),
-        n => format!("Writes all {n} commands to a new file. An existing file is never replaced."),
+        0 => crate::i18n::tr("There are no commands to export yet.").to_owned(),
+        n => trn!(n, "Writes {n} command to a new file. An existing file is never replaced.", "Writes all {n} commands to a new file. An existing file is never replaced."),
     };
-    step_title(ui, "Export commands", &about);
+    step_title(ui, crate::i18n::tr("Export commands"), &about);
     path_row(ui, e, widgets, out, PickTarget::CommandExport, r"C:\Users\you\Documents\rocket-commands.json");
     let path = e.exchange_path.trim().to_owned();
     let problem = e.problem();
@@ -1751,43 +1758,43 @@ fn export_step(
         status_line(ui, Some(Icon::Check), GREEN(), n);
     } else if e.transfer.is_none() {
         if let Some(problem) = problem.as_ref().filter(|_| count > 0) {
-            status_line(ui, Some(Icon::Warning), AMBER(), &format!("Fix this first: {problem}"));
+            status_line(ui, Some(Icon::Warning), AMBER(), &trf!("Fix this first: {problem}", problem));
         } else if path.is_empty() {
-            status_line(ui, None, HINT(), "The full path of a new .json file.");
+            status_line(ui, None, HINT(), crate::i18n::tr("The full path of a new .json file."));
         } else if !Path::new(&path).is_absolute() {
-            status_line(ui, Some(Icon::Warning), AMBER(), "Use the full path, starting with the drive.");
+            status_line(ui, Some(Icon::Warning), AMBER(), crate::i18n::tr("Use the full path, starting with the drive."));
         } else {
             let (image, color, text) = match e.destination.status(ui.ctx(), &path, scope, check_export) {
                 Some(Ok(ExportTarget::New)) => {
                     let folder = Path::new(&path).parent().map(file_name).unwrap_or_default();
-                    (Some(Icon::Check), GREEN(), format!("New file in {folder}"))
+                    (Some(Icon::Check), GREEN(), trf!("New file in {folder}", folder))
                 }
                 Some(Ok(ExportTarget::Exists)) => (
                     Some(Icon::Warning),
                     AMBER(),
-                    "A file with this name already exists. Rocket never replaces it; choose another name.".to_owned(),
+                    crate::i18n::tr("A file with this name already exists. Rocket never replaces it; choose another name.").to_owned(),
                 ),
                 Some(Ok(ExportTarget::MissingFolder)) => {
-                    (Some(Icon::Warning), AMBER(), "This folder does not exist.".to_owned())
+                    (Some(Icon::Warning), AMBER(), crate::i18n::tr("This folder does not exist.").to_owned())
                 }
                 Some(Ok(ExportTarget::Outside)) => (
                     Some(Icon::Warning),
                     AMBER(),
-                    "Choose a file inside the test repositories folder.".to_owned(),
+                    crate::i18n::tr("Choose a file inside the test repositories folder.").to_owned(),
                 ),
-                Some(Err(reason)) => (None, HINT(), format!("Could not check this path: {reason}")),
+                Some(Err(reason)) => (None, HINT(), trf!("Could not check this path: {reason}", reason)),
                 None => (None, HINT(), String::new()),
             };
             status_line(ui, image, color, &text);
         }
     }
     if e.transfer.is_some() {
-        working(ui, e, widgets, "Writing the file");
+        working(ui, e, widgets, crate::i18n::tr("Writing the file"));
     } else {
         let ready = count > 0 && !path.is_empty() && problem.is_none();
         let label = match count {
-            0 | 1 => "Export command".to_owned(),
-            n => format!("Export {n} commands"),
+            0 | 1 => crate::i18n::tr("Export command").to_owned(),
+            n => trn!(n, "Export {n} command", "Export {n} commands"),
         };
         if step_buttons(ui, e, widgets, (&label, "dialog-commands-export", ready)) {
             e.start_transfer(false, scope, log);
@@ -1807,30 +1814,30 @@ pub(crate) fn footer(
     ui.spacing_mut().item_spacing.x = 8.0;
     let problem = e.problem();
     let ready = problem.is_none() && e.changed();
-    let r = pages::primary(ui, ready, "Save commands");
+    let r = pages::primary(ui, ready, crate::i18n::tr("Save commands"));
     control(widgets, "dialog-commands-save", &r, ui.clip_rect());
     let save = r.clicked() || (ready && ui.input_mut(|i| i.consume_key(crate::shortcuts::primary_modifiers(), Key::Enter)));
     let mut discard = false;
     if e.changed() && e.transfer.is_none() {
-        let r = ui.button("Discard");
+        let r = ui.button(crate::i18n::tr("Discard"));
         control(widgets, "dialog-commands-discard", &r, ui.clip_rect());
         discard = r.clicked();
     }
     let (working, dot, color, text) = if e.transfer.is_some() {
-        let text = if e.exporting.is_some() { "Writing the definitions file" } else { "Reading the definitions file" };
+        let text = if e.exporting.is_some() { crate::i18n::tr("Writing the definitions file") } else { crate::i18n::tr("Reading the definitions file") };
         (true, false, HINT(), text.to_owned())
     } else if e.imported.is_some() {
-        (false, false, HINT(), "Review the import, then add or cancel it".to_owned())
+        (false, false, HINT(), crate::i18n::tr("Review the import, then add or cancel it").to_owned())
     } else if warn && e.changed() {
-        (false, true, AMBER(), "Save or discard your command changes first".to_owned())
+        (false, true, AMBER(), crate::i18n::tr("Save or discard your command changes first").to_owned())
     } else if let Some(problem) = problem {
         (false, false, AMBER(), problem)
     } else if e.changed() {
-        (false, true, AMBER(), format!("Unsaved changes · {}", unsaved(e)))
+        (false, true, AMBER(), trf!("Unsaved changes · {changes}", changes = unsaved(e)))
     } else {
         let text = match e.list.len() {
-            0 => "No commands yet".to_owned(),
-            n => format!("{} saved", counted(n, "command", "commands")),
+            0 => crate::i18n::tr("No commands yet").to_owned(),
+            n => trn!(n, "{n} command saved", "{n} commands saved"),
         };
         (false, false, HINT(), text)
     };
@@ -1852,9 +1859,9 @@ pub(crate) fn footer(
 fn unsaved(e: &Editor) -> String {
     let (now, before) = (e.list.len(), e.saved.len());
     if now > before {
-        format!("{} added", now - before)
+        trn!(now - before, "{n} added", "{n} added")
     } else if now < before {
-        format!("{} removed", before - now)
+        trn!(before - now, "{n} removed", "{n} removed")
     } else {
         let edited: Vec<&CustomCommand> = e
             .list
@@ -1864,8 +1871,8 @@ fn unsaved(e: &Editor) -> String {
             .map(|(a, _)| a)
             .collect();
         match edited.as_slice() {
-            [one] => format!("{} edited", display_name(one)),
-            many => format!("{} edited", many.len()),
+            [one] => trf!("{command} edited", command = display_name(one)),
+            many => trn!(many.len(), "{n} edited", "{n} edited"),
         }
     }
 }
@@ -1880,7 +1887,7 @@ fn check_mark(ui: &mut Ui) {
 /// The name a command shows, never blank.
 fn display_name(c: &CustomCommand) -> String {
     custom_command_display(match c.name.trim() {
-        "" => "Unnamed command",
+        "" => crate::i18n::tr("Unnamed command"),
         name => name,
     })
 }
@@ -1888,10 +1895,6 @@ fn display_name(c: &CustomCommand) -> String {
 fn file_name(path: &Path) -> String {
     path.file_name()
         .map_or_else(|| crate::views::display_path(path), |n| n.to_string_lossy().into_owned())
-}
-
-fn counted(n: usize, one: &str, many: &str) -> String {
-    if n == 1 { format!("1 {one}") } else { format!("{n} {many}") }
 }
 
 /// A definition problem in plain words, without the error type's prefixes.
@@ -1919,19 +1922,19 @@ fn exchange_failure(error: &Error) -> (String, Option<String>) {
     let detail = Some(user_error(error));
     let message = match error {
         Error::Io { source, .. } => match source.kind() {
-            std::io::ErrorKind::NotFound => "No file or folder at this path. Check it, or choose it with Browse.",
+            std::io::ErrorKind::NotFound => crate::i18n::tr("No file or folder at this path. Check it, or choose it with Browse."),
             std::io::ErrorKind::AlreadyExists => {
-                "A file with this name already exists. Rocket never replaces it; choose another name."
+                crate::i18n::tr("A file with this name already exists. Rocket never replaces it; choose another name.")
             }
-            std::io::ErrorKind::PermissionDenied => "Windows denied access to this file or its folder.",
-            _ => "Rocket could not use this file.",
+            std::io::ErrorKind::PermissionDenied => crate::i18n::tr("Windows denied access to this file or its folder."),
+            _ => crate::i18n::tr("Rocket could not use this file."),
         }
         .to_owned(),
         Error::InvalidInput(text) if text.starts_with("command_definitions_invalid") => {
-            "This is not a definitions file Rocket accepts: it needs version 1, at most 20 commands, at most 8 inputs per command and no other fields.".to_owned()
+            crate::i18n::tr("This is not a definitions file Rocket accepts: it needs version 1, at most 20 commands, at most 8 inputs per command and no other fields.").to_owned()
         }
         Error::InvalidInput(_) => plain(error),
-        Error::Cancelled => return ("Cancelled.".into(), None),
+        Error::Cancelled => return (crate::i18n::tr("Cancelled.").into(), None),
         _ => return (user_error(error), None),
     };
     (message, detail)
@@ -1964,7 +1967,7 @@ pub(crate) fn form(
                     CommandInputKind::Checkbox => {
                         let mut checked = value == "true";
                         let mut job = text::LayoutJob::default();
-                        job.append("adds ", 0.0, TextFormat::simple(FontId::proportional(12.5), HINT()));
+                        job.append(crate::i18n::tr("adds "), 0.0, TextFormat::simple(FontId::proportional(12.5), HINT()));
                         job.append(&custom_command_display(&input.checked_value), 0.0, TextFormat::simple(FontId::monospace(12.0), MUTED()));
                         ui.horizontal(|ui| {
                             ui.set_min_height(CONTROL);
@@ -2007,7 +2010,7 @@ pub(crate) fn form(
                                     }
                                 }
                                 CommandInputKind::File => {
-                                    let r = ui.add_sized([76.0, CONTROL], Button::new("Browse"));
+                                    let r = ui.add_sized([76.0, CONTROL], Button::new(crate::i18n::tr("Browse")));
                                     control(widgets, format!("{key}-browse"), &r, ui.clip_rect());
                                     if r.clicked() {
                                         browse = Some((index, value.clone()));
@@ -2017,7 +2020,7 @@ pub(crate) fn form(
                             }
                         });
                         if blocking {
-                            ui.label(RichText::new("Required").size(12.0).color(AMBER()));
+                            ui.label(RichText::new(crate::i18n::tr("Required")).size(12.0).color(AMBER()));
                         }
                     }
                 }
@@ -2069,7 +2072,7 @@ enum Plan {
 
 fn plan(command: &CustomCommand, context: &CommandContext, values: &BTreeMap<String, String>) -> Plan {
     if let Err(e) = command.validate() {
-        return Plan::Blocked(format!("{} Fix it in Custom commands.", plain(&e)));
+        return Plan::Blocked(trf!("{error} Fix it in Custom commands.", error = plain(&e)));
     }
     let value = |i: &CommandInput| values.get(&i.key).cloned().unwrap_or_else(|| i.default_value.clone());
     if let Some(input) = command.inputs.iter().find(|i| missing(command, i, &value(i))) {
@@ -2090,23 +2093,23 @@ pub(crate) fn confirmation(
     values: &BTreeMap<String, String>,
 ) -> Option<(PathBuf, Vec<OsString>)> {
     let Some(command) = command else {
-        pages::callout(ui, AMBER(), "This command was removed. Close and choose again.");
+        pages::callout(ui, AMBER(), crate::i18n::tr("This command was removed. Close and choose again."));
         return None;
     };
     let Some(context) = context else {
-        pages::callout(ui, AMBER(), "Open a repository first.");
+        pages::callout(ui, AMBER(), crate::i18n::tr("Open a repository first."));
         return None;
     };
     let plan = plan(command, context, values);
     if context.historical_file {
-        pages::callout(ui,HINT(),"Historical selection: {commit} is the selected revision; {path} is its relative path. {file} names the current checkout path, which may differ or no longer exist.");
+        pages::callout(ui,HINT(),crate::i18n::tr("Historical selection: {commit} is the selected revision; {path} is its relative path. {file} names the current checkout path, which may differ or no longer exist."));
     }
     if command.action==CommandAction::Url {
-        pages::callout(ui,HINT(),"Open this exact address in your default browser. The selected values shown below will be sent to that website.");
+        pages::callout(ui,HINT(),crate::i18n::tr("Open this exact address in your default browser. The selected values shown below will be sent to that website."));
         match &plan {
             Plan::Url(url)=>{ui.add(Label::new(RichText::new(custom_command_display(url)).monospace()).wrap());}
             Plan::Blocked(reason)=>{ui.add(Label::new(RichText::new(reason).color(AMBER())).wrap());}
-            _=>{ui.label("Fill in the required inputs to review the destination.");}
+            _=>{ui.label(crate::i18n::tr("Fill in the required inputs to review the destination."));}
         }
         return None;
     }
@@ -2117,7 +2120,7 @@ pub(crate) fn confirmation(
     pages::titled_card(
         ui,
         |ui| {
-            ui.label(RichText::new("What will run").font(semibold(13.0)));
+            ui.label(RichText::new(crate::i18n::tr("What will run")).font(semibold(13.0)));
             let shown = crate::repository_forms::fit_path(ui, &program, ui.available_width());
             ui.add(Label::new(RichText::new(shown).monospace().size(12.0).color(HINT())).truncate())
                 .on_hover_text(&program);
@@ -2129,16 +2132,15 @@ pub(crate) fn confirmation(
                     .map(|a| vec![(a.to_string_lossy().into_owned(), false)])
                     .collect();
                 command_chips(ui, &command.program, &parts);
-                ui.weak("Hidden characters and backslashes are shown as escapes. Original values are passed to the program.");
+                ui.weak(crate::i18n::tr("Hidden characters and backslashes are shown as escapes. Original values are passed to the program."));
                 ui.add_space(2.0);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 4.0;
                     let count = match arguments.len() {
-                        0 => "No arguments".to_owned(),
-                        1 => "1 literal argument".to_owned(),
-                        n => format!("{n} literal arguments"),
+                        0 => crate::i18n::tr("No arguments").to_owned(),
+                        n => trn!(n, "{n} literal argument", "{n} literal arguments"),
                     };
-                    ui.label(RichText::new(format!("{count} · in")).size(12.0).color(HINT()));
+                    ui.label(RichText::new(trf!("{arguments} · in", arguments = count)).size(12.0).color(HINT()));
                     let folder = custom_command_display(&crate::views::display_path(&context.repository));
                     let shown = crate::repository_forms::fit_path(ui, &folder, ui.available_width());
                     ui.add(Label::new(RichText::new(shown).monospace().size(12.0).color(HINT())).truncate())
@@ -2147,7 +2149,7 @@ pub(crate) fn confirmation(
             }
             Plan::Url(_) => unreachable!("URL confirmation returned above"),
             Plan::Missing(_) => {
-                ui.label(RichText::new("Fill in the required inputs to see the exact command line.").color(HINT()));
+                ui.label(RichText::new(crate::i18n::tr("Fill in the required inputs to see the exact command line.")).color(HINT()));
             }
             Plan::Blocked(reason) => {
                 ui.add(Label::new(RichText::new(reason).color(AMBER())).wrap());
@@ -2167,13 +2169,13 @@ pub(crate) fn run_status(
     values: &BTreeMap<String, String>,
 ) -> String {
     match (command, context) {
-        (None, _) => "This command was removed".into(),
-        (_, None) => "Open a repository first".into(),
+        (None, _) => crate::i18n::tr("This command was removed").into(),
+        (_, None) => crate::i18n::tr("Open a repository first").into(),
         (Some(command), Some(context)) => match plan(command, context, values) {
-            Plan::Ready(_) => "Stop in Activity ends what the command started".into(),
-            Plan::Url(_) => "Opens after confirmation; browser navigation cannot be cancelled here".into(),
-            Plan::Missing(label) => format!("Fill in {} to run", custom_command_display(&label)),
-            Plan::Blocked(_) => "Nothing runs until this is resolved".into(),
+            Plan::Ready(_) => crate::i18n::tr("Stop in Activity ends what the command started").into(),
+            Plan::Url(_) => crate::i18n::tr("Opens after confirmation; browser navigation cannot be cancelled here").into(),
+            Plan::Missing(label) => trf!("Fill in {input} to run", input = custom_command_display(&label)),
+            Plan::Blocked(_) => crate::i18n::tr("Nothing runs until this is resolved").into(),
         },
     }
 }
@@ -2183,19 +2185,19 @@ pub(crate) fn outcome(out: &mut Outcome, name: &str, report: CustomCommandReport
     out.summary = match &report.exit {
         Ok(Some(0)) => {
             out.command_succeeded = true;
-            format!("{name} finished.")
+            trf!("{name} finished.", name)
         }
-        Ok(Some(code)) => format!("{name} exited with code {code}."),
-        Ok(None) => format!("{name} ended without an exit code."),
+        Ok(Some(code)) => trf!("{name} exited with code {code}.", name, code),
+        Ok(None) => trf!("{name} ended without an exit code.", name),
         Err(Error::Cancelled) => {
-            format!("{name} was stopped, with the programs it started.")
+            trf!("{name} was stopped, with the programs it started.", name)
         }
         Err(e) => {
             out.details.push(user_error(e));
-            format!("{name} did not run to completion.")
+            trf!("{name} did not run to completion.", name)
         }
     };
-    for (label, bytes) in [("Output", &report.stdout), ("Errors", &report.stderr)] {
+    for (label, bytes) in [(crate::i18n::tr("Output"), &report.stdout), (crate::i18n::tr("Errors"), &report.stderr)] {
         if !bytes.is_empty() {
             out.details.push(format!("{label}:"));
             out.details.extend(
@@ -2207,9 +2209,8 @@ pub(crate) fn outcome(out: &mut Outcome, name: &str, report: CustomCommandReport
         }
     }
     if report.truncated {
-        out.details.push(format!(
-            "Only the first {} KiB of each stream is kept.",
-            CUSTOM_OUTPUT_LIMIT / 1024
+        out.details.push(trf!(
+            "Only the first {limit} KiB of each stream is kept.", limit = CUSTOM_OUTPUT_LIMIT / 1024
         ));
     }
     out.raw_output
@@ -2218,7 +2219,7 @@ pub(crate) fn outcome(out: &mut Outcome, name: &str, report: CustomCommandReport
         .push_str(&String::from_utf8_lossy(&report.stderr));
     if let Err(e) = report.status {
         out.details
-            .push(format!("Refresh changes: {}", user_error(&e)));
+            .push(trf!("Refresh changes: {error}", error = user_error(&e)));
     }
 }
 
@@ -2644,7 +2645,7 @@ pub(crate) fn context_menu(ui: &mut Ui, commands: &[CustomCommand], scope: Comma
     context: &CommandContext, intents: &mut Vec<crate::app::Intent>, widgets: &mut HashMap<String, UiControl>) {
     if !commands.iter().any(|c| c.scope == scope) { return; }
     ui.separator();
-    ui.label(RichText::new(format!("{} commands",scope.label())).size(11.0).color(HINT()));
+    ui.label(RichText::new(trf!("{scope} commands", scope = scope_label(scope))).size(11.0).color(HINT()));
     let available = match scope {
             CommandScope::Repository => true,
             CommandScope::Commit => context.commit.is_some(),

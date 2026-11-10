@@ -16,8 +16,8 @@ fs.writeFileSync(path.join(repo,'a.txt'),'committed\n');git(['add','-A']);git(['
 let service,client,state;const requests=[],report={passed:false,root,cases:[]};
 const delay=ms=>new Promise(r=>setTimeout(r,ms));
 const answer=url=>{const p=url.split('?')[0];
- if(p.endsWith('/issuetypes'))return{issueTypes:[{id:'10001',name:'Task'},{id:'10002',name:'Bug'}]};
- if(p.includes('/createmeta/'))return{isLast:true,fields:[]};
+ if(p.endsWith('/issuetypes'))return{startAt:0,maxResults:50,total:2,issueTypes:[{id:'10001',name:'Task'},{id:'10002',name:'Bug'}]};
+ if(p.includes('/createmeta/'))return{startAt:0,maxResults:50,total:0,fields:[]};
  if(p.endsWith('/editmeta'))return{fields:{summary:{operations:['set']},description:{operations:['set']}}};
  if(p.endsWith('/transitions'))return{transitions:[{id:'31',name:'In review',fields:{},isAvailable:true},{id:'41',name:'Done',fields:{},isAvailable:true}]};
  if(p.endsWith('/comment'))return{total:2,comments:[{author:{displayName:'Ada Park'},created:'2026-10-29T11:20:00.000+0000',body:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Reproduced on staging. The second redirect drops the host.'}]}]}},{author:{displayName:'Lin Chen'},created:'2026-10-28T16:42:00.000+0000',body:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Could this share the fix in ROCKET-3?'}]}]}}]};

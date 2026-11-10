@@ -52,7 +52,7 @@ impl Rocket {
         let scope = self.lfs_lock_source_scope.clone();
         let remote = s.remote.clone();
         if remote.is_empty() {
-            d.error = Some("Add a remote before reading LFS locks.".into());
+            d.error = Some(crate::i18n::tr("Add a remote before reading LFS locks.").into());
             return;
         }
         if let Some(action) = locks.action.clone() {
@@ -139,15 +139,15 @@ impl Rocket {
         let force = action.force();
         let (title, subtitle) = match &action {
             LfsLockAction::Lock(_) => (
-                "Lock this file",
-                "Other accounts see the lock until you unlock it.",
+                crate::i18n::tr("Lock this file"),
+                crate::i18n::tr("Other accounts see the lock until you unlock it."),
             ),
             LfsLockAction::Unlock { force: true, .. } => (
-                "Force unlock this lock?",
-                "This removes a lock that belongs to another account.",
+                crate::i18n::tr("Force unlock this lock?"),
+                crate::i18n::tr("This removes a lock that belongs to another account."),
             ),
             LfsLockAction::Unlock { .. } => {
-                ("Unlock your file", "Releases your lock on the server.")
+                (crate::i18n::tr("Unlock your file"), crate::i18n::tr("Releases your lock on the server."))
             }
         };
         let head = pages::ReviewHeader {
@@ -172,20 +172,20 @@ impl Rocket {
                 pages::Part::Body => {
                     let l = &mut s.locks;
                     if let Some(p) = &l.preview {
-                        pages::caption(ui, "What will happen");
-                        pages::field(ui, "File", p.action().path(), true);
+                        pages::caption(ui, crate::i18n::tr("What will happen"));
+                        pages::field(ui, crate::i18n::tr("File"), p.action().path(), true);
                         pages::field(
                             ui,
-                            "Server",
+                            crate::i18n::tr("Server"),
                             &format!("{} · {}", p.remote(), p.source()),
                             true,
                         );
                         if let LfsLockAction::Unlock { lock, .. } = p.action() {
                             pages::field(
                                 ui,
-                                "Lock owner",
+                                crate::i18n::tr("Lock owner"),
                                 if lock.owner.is_empty() {
-                                    "Unavailable"
+                                    crate::i18n::tr("Unavailable")
                                 } else {
                                     &lock.owner
                                 },
@@ -193,31 +193,31 @@ impl Rocket {
                             );
                             pages::field(
                                 ui,
-                                "Lock ID",
+                                crate::i18n::tr("Lock ID"),
                                 &format!("{} · {}", lock.id, lock.locked_at),
                                 true,
                             );
                         }
                         pages::field(
                             ui,
-                            "Your files",
-                            "Contents, staging and commits stay as they are",
+                            crate::i18n::tr("Your files"),
+                            crate::i18n::tr("Contents, staging and commits stay as they are"),
                             false,
                         );
                         if p.makes_writable() {
                             pages::callout(
                                 ui,
                                 AMBER(),
-                                "Git LFS will make this selected read-only file writable after locking.",
+                                crate::i18n::tr("Git LFS will make this selected read-only file writable after locking."),
                             );
                         }
                         if p.action().force() {
-                            pages::callout(ui, AMBER(), "This removes another account's lock.");
+                            pages::callout(ui, AMBER(), crate::i18n::tr("This removes another account's lock."));
                             let r = ui.add_enabled(
                                 !waiting,
                                 checkbox(
                                     &mut l.force_confirmed,
-                                    "I understand this removes another account's lock.",
+                                    crate::i18n::tr("I understand this removes another account's lock."),
                                 ),
                             );
                             control(widgets, "dialog-lfs-lock-force-confirm", &r, ui.clip_rect());
@@ -228,7 +228,7 @@ impl Rocket {
                     }
                     // A running operation shows its status and Stop in the footer.
                     if waiting && !s.applying {
-                        pages::waiting(ui, "Reading server locks and verifying ownership…");
+                        pages::waiting(ui, crate::i18n::tr("Reading server locks and verifying ownership…"));
                     }
                     if let Some(error) = &d.error {
                         pages::callout(ui, RED(), error);
@@ -244,9 +244,9 @@ impl Rocket {
                         .as_ref()
                         .is_some_and(|p| !p.action().force() || l.force_confirmed);
                     let label = match l.action {
-                        Some(LfsLockAction::Lock(_)) => "Lock file",
-                        Some(LfsLockAction::Unlock { force: true, .. }) => "Force unlock",
-                        _ => "Unlock file",
+                        Some(LfsLockAction::Lock(_)) => crate::i18n::tr("Lock file"),
+                        Some(LfsLockAction::Unlock { force: true, .. }) => crate::i18n::tr("Force unlock"),
+                        _ => crate::i18n::tr("Unlock file"),
                     };
                     let enabled = !waiting && writable && ready && d.error.is_none();
                     let r = if force {
@@ -256,7 +256,7 @@ impl Rocket {
                     };
                     control(widgets, "dialog-submit", &r, ui.clip_rect());
                     f.submit = r.clicked();
-                    let r = ui.add_enabled(!waiting, Button::new("Review again"));
+                    let r = ui.add_enabled(!waiting, Button::new(crate::i18n::tr("Review again")));
                     control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                     f.refresh |= r.clicked();
                 }

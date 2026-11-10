@@ -64,8 +64,8 @@ fn hunk_label(text: &str) -> String {
     };
     let new = side('+').filter(|&(_, count)| count > 0).or_else(|| side('-')).or(side('+'));
     match new {
-        Some((start, 0 | 1)) => format!("@@ line {start}"),
-        Some((start, count)) => format!("@@ lines {start}–{}", start + count - 1),
+        Some((start, 0 | 1)) => crate::i18n::trf!("@@ line {start}", start),
+        Some((start, count)) => crate::i18n::trf!("@@ lines {start}–{end}", start, end = start + count - 1),
         None => text.to_owned(),
     }
 }
@@ -84,11 +84,11 @@ fn hunk_marks(lines: &[Line], at: usize, marks: &BTreeSet<usize>) -> (usize, usi
 /// What a stash hunk tag says, and its colour.
 fn stash_tag(chosen: usize, all: usize) -> (&'static str, Color32) {
     if chosen == all {
-        ("Goes into the stash", BLUE())
+        (crate::i18n::tr("Goes into the stash"), BLUE())
     } else if chosen == 0 {
-        ("Stays in the file", MUTED())
+        (crate::i18n::tr("Stays in the file"), MUTED())
     } else {
-        ("Partly stashed", AMBER())
+        (crate::i18n::tr("Partly stashed"), AMBER())
     }
 }
 
@@ -145,7 +145,7 @@ fn list(
         ui.add_space(6.0);
         ui.horizontal(|ui| {
             ui.add_space(12.0);
-            ui.label(RichText::new("No line changes to show.").size(12.0).color(FAINT()));
+            ui.label(RichText::new(crate::i18n::tr("No line changes to show.")).size(12.0).color(FAINT()));
         });
         ui.add_space(6.0);
         return;

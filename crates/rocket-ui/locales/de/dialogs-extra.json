@@ -1,0 +1,8 @@
+{
+  "Created by Xetro": "Entwickelt von Xetro",
+  "Version {version} · a native Rust Git workspace": "Version {version} · nativer Git-Arbeitsbereich in Rust",
+  "Free and open-source software under the {license} license.": "Freie und quelloffene Software unter der Lizenz {license}.",
+  "What changed in each Rocket build.": "Änderungen in jeder Rocket-Version.",
+  "{version} · this build": "{version} · diese Version",
+  "This build": "Diese Version"
+}

@@ -7,6 +7,7 @@ use crate::{
 };
 use eframe::egui::*;
 use rocket_git::*;
+use crate::i18n::{tr, trf, trn};
 use std::sync::Arc;
 pub mod automatic;
 
@@ -62,7 +63,7 @@ impl Rocket {
                     Err(e) => d.error = Some(user_error(&e)),
                 }
             }
-            _ => d.error = Some("Open a repository first.".into()),
+            _ => d.error = Some(crate::i18n::tr("Open a repository first.").into()),
         }
     }
     pub(crate) fn start_bisect_auto_read(&mut self) {
@@ -136,8 +137,8 @@ impl Rocket {
             "rocket-bisect",
             pages::ReviewHeader {
                 image: Icon::Branch,
-                title: "Bisect · find a regression",
-                subtitle: "Test manually or run a reviewed command, then restore the original checkout.",
+                title: tr("Bisect · find a regression"),
+                subtitle: tr("Test manually or run a reviewed command, then restore the original checkout."),
                 danger: false,
             },
             &mut self.frame_widgets,
@@ -153,7 +154,7 @@ impl Rocket {
                     }
                     // A running step shows its progress in the footer.
                     if s.task.is_some() {
-                        pages::waiting(ui, "Reading the checkout and bisect state…");
+                        pages::waiting(ui, tr("Reading the checkout and bisect state…"));
                     }
                     if let Some(session) = &s.session {
                         if session.phase == BisectPhase::Found
@@ -161,54 +162,54 @@ impl Rocket {
                         {
                             found_card(ui, target.as_str());
                         }
-                        pages::caption(ui, "Session");
+                        pages::caption(ui, tr("Session"));
                         pages::well(ui, |ui| {
-                            pages::field(ui, "State", phase_label(session.phase), false);
+                            pages::field(ui, tr("State"), phase_label(session.phase), false);
                             pages::field(
                                 ui,
-                                "Return to",
+                                tr("Return to"),
                                 &format!("{} · {}", head_text(&session.original), short(head_commit(&session.original))),
                                 false,
                             );
-                            pages::field(ui, "Checked out", short(head_commit(&session.current)), true);
+                            pages::field(ui, tr("Checked out"), short(head_commit(&session.current)), true);
                             if let Some(target) = &session.target
                                 && session.phase != BisectPhase::Found
                             {
-                                pages::field(ui, "Selected revision", short(target.as_str()), true);
+                                pages::field(ui, tr("Selected revision"), short(target.as_str()), true);
                             }
                             pages::field(
                                 ui,
-                                "Candidates",
+                                tr("Candidates"),
                                 &session.candidates.len().to_string(),
                                 false,
                             );
-                            pages::field(ui, "Recovery ref", &session.recovery_reference, true);
+                            pages::field(ui, tr("Recovery ref"), &session.recovery_reference, true);
                         });
                         if session.phase == BisectPhase::Inconclusive {
                             pages::callout(
                                 ui,
                                 AMBER(),
-                                "Skipped revisions leave several possible first bad commits. No single culprit was found.",
+                                tr("Skipped revisions leave several possible first bad commits. No single culprit was found."),
                             );
                             for id in session.candidates.iter().take(100) {
                                 ui.monospace(id.as_str());
                             }
                             if session.candidates.len() > 100 {
-                                pages::note(ui, "Showing the first 100 possible commits.");
+                                pages::note(ui, tr("Showing the first 100 possible commits."));
                             }
                         }
                         if session.phase == BisectPhase::CheckoutPending {
                             pages::callout(
                                 ui,
                                 AMBER(),
-                                "The selected revision is not checked out. Resume checkout without recording another decision, or restore the original checkout.",
+                                tr("The selected revision is not checked out. Resume checkout without recording another decision, or restore the original checkout."),
                             );
                         }
                         if session.phase == BisectPhase::RestoreOnly {
                             pages::callout(
                                 ui,
                                 AMBER(),
-                                "Setup or decision recording was interrupted. Restore the original checkout before starting a new search.",
+                                tr("Setup or decision recording was interrupted. Restore the original checkout before starting a new search."),
                             );
                         }
                         let finished = matches!(session.phase, BisectPhase::Found | BisectPhase::Inconclusive);
@@ -217,31 +218,31 @@ impl Rocket {
                             for (action, label, key, enabled) in [
                                 (
                                     BisectAction::Good,
-                                    "Good",
+                                    tr("Good"),
                                     "dialog-bisect-good",
                                     session.can_mark(),
                                 ),
                                 (
                                     BisectAction::Bad,
-                                    "Bad",
+                                    tr("Bad"),
                                     "dialog-bisect-bad",
                                     session.can_mark(),
                                 ),
                                 (
                                     BisectAction::Skip,
-                                    "Skip",
+                                    tr("Skip"),
                                     "dialog-bisect-skip",
                                     session.can_mark(),
                                 ),
                                 (
                                     BisectAction::Resume,
-                                    "Resume checkout",
+                                    tr("Resume checkout"),
                                     "dialog-bisect-resume",
                                     session.phase == BisectPhase::CheckoutPending,
                                 ),
                                 (
                                     BisectAction::Restore,
-                                    "Restore original",
+                                    tr("Restore original"),
                                     "dialog-bisect-restore",
                                     true,
                                 ),
@@ -261,12 +262,12 @@ impl Rocket {
                             }
                         });
                         if !session.decisions.is_empty() {
-                            pages::caption(ui, "Decisions");
+                            pages::caption(ui, tr("Decisions"));
                             for decision in session.decisions.iter().rev().take(30) {
-                                let outcome = decision.action.label().trim_start_matches("bisect-");
-                                let color = match outcome {
-                                    "good" => GREEN(),
-                                    "bad" => RED(),
+                                let outcome = match decision.action { BisectAction::Good => tr("Good"), BisectAction::Bad => tr("Bad"), BisectAction::Skip => tr("Skip"), other => action_label(other) };
+                                let color = match decision.action {
+                                    BisectAction::Good => GREEN(),
+                                    BisectAction::Bad => RED(),
                                     _ => HINT(),
                                 };
                                 ui.horizontal(|ui| {
@@ -281,10 +282,10 @@ impl Rocket {
                         for (value, label, key) in [
                             (
                                 &mut d.first,
-                                "Known good commit",
+                                tr("Known good commit"),
                                 "dialog-bisect-good-input",
                             ),
-                            (&mut d.second, "Known bad commit", "dialog-bisect-bad-input"),
+                            (&mut d.second, tr("Known bad commit"), "dialog-bisect-bad-input"),
                         ] {
                             ui.label(label);
                             let r = ui.add_enabled(
@@ -298,19 +299,19 @@ impl Rocket {
                     changed|=s.automatic.fields(ui,widgets,waiting||!idle);
                     s.automatic.results(ui);
                     if let Some(p) = &s.preview {
-                        pages::caption(ui, "Review this step");
+                        pages::caption(ui, tr("Review this step"));
                         pages::well(ui, |ui| {
-                            pages::field(ui, "Action", action_label(p.action()), false);
-                            pages::field(ui, "Return checkout", &head_text(p.original()), false);
-                            pages::field(ui, "Return commit", head_commit(p.original()), true);
+                            pages::field(ui, tr("Action"), action_label(p.action()), false);
+                            pages::field(ui, tr("Return checkout"), &head_text(p.original()), false);
+                            pages::field(ui, tr("Return commit"), head_commit(p.original()), true);
                             if p.action() == BisectAction::Start {
-                                pages::field(ui, "Known good", p.good().as_str(), true);
-                                pages::field(ui, "Known bad", p.bad().as_str(), true);
-                                pages::field(ui, "Candidates", &p.candidates().to_string(), false);
+                                pages::field(ui, tr("Known good"), p.good().as_str(), true);
+                                pages::field(ui, tr("Known bad"), p.bad().as_str(), true);
+                                pages::field(ui, tr("Candidates"), &p.candidates().to_string(), false);
                             } else if let Some(session) = p.session() {
                                 pages::field(
                                     ui,
-                                    "Reviewed checkout",
+                                    tr("Reviewed checkout"),
                                     head_commit(&session.current),
                                     true,
                                 );
@@ -325,22 +326,22 @@ impl Rocket {
                             },
                             match p.action() {
                                 BisectAction::Start => {
-                                    "Save the original checkout and begin checking revisions out with a detached HEAD."
+                                    tr("Save the original checkout and begin checking revisions out with a detached HEAD.")
                                 }
                                 BisectAction::Good => {
-                                    "Record that the bug is absent at this exact commit, then check out Git's next revision."
+                                    tr("Record that the bug is absent at this exact commit, then check out Git's next revision.")
                                 }
                                 BisectAction::Bad => {
-                                    "Record that the bug is present at this exact commit, then check out Git's next revision."
+                                    tr("Record that the bug is present at this exact commit, then check out Git's next revision.")
                                 }
                                 BisectAction::Skip => {
-                                    "Leave this commit unclassified. Skipping can make the final result inconclusive."
+                                    tr("Leave this commit unclassified. Skipping can make the final result inconclusive.")
                                 }
                                 BisectAction::Resume => {
-                                    "Complete the pending checkout. No new Good, Bad or Skip decision is recorded."
+                                    tr("Complete the pending checkout. No new Good, Bad or Skip decision is recorded.")
                                 }
                                 BisectAction::Restore => {
-                                    "Return to the saved branch or detached commit, then clear this search."
+                                    tr("Return to the saved branch or detached commit, then clear this search.")
                                 }
                             },
                         );
@@ -353,18 +354,18 @@ impl Rocket {
                     let r = pages::primary(
                         ui,
                         idle && !waiting && (s.preview.is_some()||s.automatic.preview.is_some()) && !changed,
-                        if s.automatic.preview.is_some(){"Run automated bisect"}else{s.preview
+                        if s.automatic.preview.is_some(){tr("Run automated bisect")}else{s.preview
                             .as_ref()
-                            .map_or("Apply reviewed step", |p| action_label(p.action()))},
+                            .map_or(tr("Apply reviewed step"), |p| action_label(p.action()))},
                     );
                     pages::control(widgets, "dialog-submit", &r, ui.clip_rect());
                     submit = r.clicked();
                     let r = ui.add_enabled(
                         idle && !waiting,
-                        Button::new(if s.automatic.enabled&&s.loaded&&s.session.as_ref().is_none_or(BisectSession::can_mark){"Review test command"}else if s.session.is_some() || !s.loaded {
-                            "Refresh session"
+                        Button::new(if s.automatic.enabled&&s.loaded&&s.session.as_ref().is_none_or(BisectSession::can_mark){tr("Review test command")}else if s.session.is_some() || !s.loaded {
+                            tr("Refresh session")
                         } else {
-                            "Review range"
+                            tr("Review range")
                         }),
                     );
                     pages::control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
@@ -378,14 +379,14 @@ impl Rocket {
                         }
                     }
                     if s.task.is_some() {
-                        let r = ui.button("Stop");
+                        let r = ui.button(crate::i18n::tr("Stop"));
                         pages::control(widgets, "dialog-bisect-cancel-read", &r, ui.clip_rect());
                         if r.clicked() {
                             s.task = None;
                             s.preview = None;
                             s.automatic.preview = None;
                             d.error =
-                                Some("Read cancelled. The repository was not changed.".into());
+                                Some(tr("Read cancelled. The repository was not changed.").into());
                         }
                     }
                 }
@@ -407,14 +408,14 @@ impl Rocket {
         if submit&&let(Some(owner),Some(preview))=(d.owner,s.automatic.preview.clone()) {
             s.applying=true;s.notice=None;
             self.execute(owner,Action::BisectAuto{preview,progress:s.automatic.progress.clone(),storage:self.state_directory.join("bisect-output")});
-            if self.write.is_none(){s.applying=false;d.error=Some("Wait for repository work to finish, then review again.".into());}
+            if self.write.is_none(){s.applying=false;d.error=Some(tr("Wait for repository work to finish, then review again.").into());}
         } else if submit && let (Some(owner), Some(preview)) = (d.owner, s.preview.clone()) {
             s.applying = true;
             s.notice = None;
             self.execute(owner, Action::Bisect(preview));
             if self.write.is_none() {
                 s.applying = false;
-                d.error = Some("Wait for repository work to finish, then review again.".into());
+                d.error = Some(tr("Wait for repository work to finish, then review again.").into());
             }
         }
         if !dismiss {
@@ -431,21 +432,21 @@ impl Rocket {
 }
 pub fn phase_label(phase: BisectPhase) -> &'static str {
     match phase {
-        BisectPhase::Testing => "Ready to test",
-        BisectPhase::CheckoutPending => "Checkout pending",
-        BisectPhase::Found => "First bad commit found",
-        BisectPhase::Inconclusive => "Inconclusive · skipped candidates",
-        BisectPhase::RestoreOnly => "Interrupted · restore available",
+        BisectPhase::Testing => tr("Ready to test"),
+        BisectPhase::CheckoutPending => tr("Checkout pending"),
+        BisectPhase::Found => tr("First bad commit found"),
+        BisectPhase::Inconclusive => tr("Inconclusive · skipped candidates"),
+        BisectPhase::RestoreOnly => tr("Interrupted · restore available"),
     }
 }
 fn action_label(action: BisectAction) -> &'static str {
     match action {
-        BisectAction::Start => "Start bisect",
-        BisectAction::Good => "Mark good & continue",
-        BisectAction::Bad => "Mark bad & continue",
-        BisectAction::Skip => "Skip & continue",
-        BisectAction::Resume => "Resume checkout",
-        BisectAction::Restore => "Restore original checkout",
+        BisectAction::Start => crate::i18n::tr("Start bisect"),
+        BisectAction::Good => tr("Mark good & continue"),
+        BisectAction::Bad => tr("Mark bad & continue"),
+        BisectAction::Skip => tr("Skip & continue"),
+        BisectAction::Resume => tr("Resume checkout"),
+        BisectAction::Restore => tr("Restore original checkout"),
     }
 }
 /// A commit ID as people read it; the full ID stays in the hover text.
@@ -463,10 +464,10 @@ fn found_card(ui: &mut Ui, id: &str) {
             ui.set_width(ui.available_width());
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
-                ui.label(RichText::new("First bad commit").font(semibold(14.0)).color(RED()));
+                ui.label(RichText::new(tr("First bad commit")).font(semibold(14.0)).color(RED()));
                 ui.label(RichText::new(short(id)).monospace().size(13.0)).on_hover_text(id);
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("Copy ID").clicked() {
+                    if ui.button(tr("Copy ID")).clicked() {
                         ui.ctx().copy_text(id.to_owned());
                     }
                 });

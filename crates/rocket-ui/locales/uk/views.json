@@ -16,7 +16,11 @@
   "Changes require an available working tree.": "Для змін потрібне доступне робоче дерево.",
   "Checked out at": "Активна в",
   "Cherry-pick commit": "Перенести коміт",
-  "Cherry-pick {n} commits": "Перенести коміти ({n})",
+  "Cherry-pick {n} commits": {
+    "one": "Перенести {n} коміт",
+    "few": "Перенести {n} коміти",
+    "many": "Перенести {n} комітів"
+  },
   "Choose what the commit search looks at": "Виберіть, де шукати коміти",
   "Clear recent messages": "Очистити нещодавні повідомлення",
   "Clear the path": "Очистити шлях",
@@ -27,10 +31,18 @@
   "Collapse merge": "Згорнути злиття",
   "Collapse {group}": "Згорнути «{group}»",
   "Commit & Push": "Коміт і надсилання",
-  "Commit & Push {n} staged files": { "one": "Закомітити й надіслати {n} файл", "few": "Закомітити й надіслати {n} файли", "many": "Закомітити й надіслати {n} файлів" },
+  "Commit & Push {n} staged files": {
+    "one": "Закомітити й надіслати {n} файл",
+    "few": "Закомітити й надіслати {n} файли",
+    "many": "Закомітити й надіслати {n} файлів"
+  },
   "Commit date": "За датою коміту",
   "Commit template unavailable": "Шаблон коміту недоступний",
-  "Commit {n} staged files": { "one": "Закомітити {n} файл", "few": "Закомітити {n} файли", "many": "Закомітити {n} файлів" },
+  "Commit {n} staged files": {
+    "one": "Закомітити {n} файл",
+    "few": "Закомітити {n} файли",
+    "many": "Закомітити {n} файлів"
+  },
   "Compare selected commits": "Порівняти вибрані коміти",
   "Compare with HEAD": "Порівняти з HEAD",
   "Conflict": "Конфлікт",
@@ -146,7 +158,11 @@
   "Resume continues with older commits.": "«Поновити» продовжить пошук у старіших комітах.",
   "Retry Git discovery": "Повторити пошук Git",
   "Revert commit": "Відкотити коміт",
-  "Revert {n} commits": "Відкотити коміти ({n})",
+  "Revert {n} commits": {
+    "one": "Відкотити {n} коміт",
+    "few": "Відкотити {n} коміти",
+    "many": "Відкотити {n} комітів"
+  },
   "Review an amended latest commit with the staged changes": "Перевірити виправлений останній коміт із проіндексованими змінами",
   "Review stopping tracking while keeping the local file. Unstage selected changes first.": "Перевірити припинення відстеження зі збереженням локального файлу. Спершу приберіть вибрані зміни з індексу.",
   "Save, switch & restore…": "Сховати, перемкнутися й відновити…",
@@ -206,17 +222,49 @@
   "tracks {upstream}": "відстежує {upstream}",
   "{ahead} ahead · {behind} behind": "попереду: {ahead} · позаду: {behind}",
   "{checked} commits checked": "Перевірено комітів: {checked}",
-  "{found} commits": { "one": "{found} коміт", "few": "{found} коміти", "many": "{found} комітів" },
-  "{found} commits · {checked} checked": { "one": "{found} коміт · перевірено {checked}", "few": "{found} коміти · перевірено {checked}", "many": "{found} комітів · перевірено {checked}" },
+  "{found} commits": {
+    "one": "{found} коміт",
+    "few": "{found} коміти",
+    "many": "{found} комітів"
+  },
+  "{found} commits · {checked} checked": {
+    "one": "{found} коміт · перевірено {checked}",
+    "few": "{found} коміти · перевірено {checked}",
+    "many": "{found} комітів · перевірено {checked}"
+  },
   "{hidden} commits of this merge are hidden. Click, or press → on the row, to show them.": "Прихованих комітів цього злиття: {hidden}. Клацніть або натисніть → на рядку, щоб показати їх.",
   "{local} local · {tracking} remote-tracking · on {head}": "локальних: {local} · віддалених: {tracking} · на {head}",
-  "{n} URLs": { "one": "{n} URL", "few": "{n} URL", "many": "{n} URL" },
-  "{n} branches": { "one": "{n} гілка", "few": "{n} гілки", "many": "{n} гілок" },
+  "{n} URLs": {
+    "one": "{n} URL",
+    "few": "{n} URL",
+    "many": "{n} URL"
+  },
+  "{n} branches": {
+    "one": "{n} гілка",
+    "few": "{n} гілки",
+    "many": "{n} гілок"
+  },
   "{n} configured · editing a remote does not contact its server": "Налаштовано: {n} · зміна віддаленого репозиторію не звертається до його сервера",
-  "{n} files": { "one": "{n} файл", "few": "{n} файли", "many": "{n} файлів" },
-  "{n} files · drop to stage": { "one": "{n} файл · відпустіть, щоб додати до індексу", "few": "{n} файли · відпустіть, щоб додати до індексу", "many": "{n} файлів · відпустіть, щоб додати до індексу" },
-  "{n} files · drop to unstage": { "one": "{n} файл · відпустіть, щоб прибрати з індексу", "few": "{n} файли · відпустіть, щоб прибрати з індексу", "many": "{n} файлів · відпустіть, щоб прибрати з індексу" },
-  "{n} remote-tracking branches": { "one": "{n} віддалена гілка", "few": "{n} віддалені гілки", "many": "{n} віддалених гілок" },
+  "{n} files": {
+    "one": "{n} файл",
+    "few": "{n} файли",
+    "many": "{n} файлів"
+  },
+  "{n} files · drop to stage": {
+    "one": "{n} файл · відпустіть, щоб додати до індексу",
+    "few": "{n} файли · відпустіть, щоб додати до індексу",
+    "many": "{n} файлів · відпустіть, щоб додати до індексу"
+  },
+  "{n} files · drop to unstage": {
+    "one": "{n} файл · відпустіть, щоб прибрати з індексу",
+    "few": "{n} файли · відпустіть, щоб прибрати з індексу",
+    "many": "{n} файлів · відпустіть, щоб прибрати з індексу"
+  },
+  "{n} remote-tracking branches": {
+    "one": "{n} віддалена гілка",
+    "few": "{n} віддалені гілки",
+    "many": "{n} віддалених гілок"
+  },
   "{n} selected · drag to the other group": "Вибрано: {n} · перетягніть до іншої групи",
   "{order} order: parents follow their children. All branches combines local and remote-tracking branches, plus HEAD.": "{order}: батьківські коміти йдуть після дочірніх. «Усі гілки» — це локальні та віддалені гілки, а також HEAD.",
   "{progress} · current phase {percent}%": "{progress} · поточний етап {percent}%",

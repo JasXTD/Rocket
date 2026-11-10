@@ -1,6 +1,10 @@
 # Rocket CLI
 
-## Hosting commands (unreleased)
+This guide covers the commands shipped in [Rocket 0.92.2](docs/releases/0.92.2.md).
+The portable packages include `rocket-cli` (`rocket-cli.exe` on Windows).
+Platform requirements and provider-specific limits still apply.
+
+## Hosting commands
 
 `hosting account`, `hosting list`, `hosting pull NUMBER`, `hosting create`,
 `hosting review NUMBER` and `hosting merge NUMBER` reuse Rocket's hosting API
@@ -99,12 +103,11 @@ $repo = Read-Host 'Full path to an existing Git repository'
 .\target\release\rocket-cli.exe --repo "$repo" --json status
 ```
 
-This document describes the current source tree. Use `rocket-cli --version` and
-`rocket-cli --help` to check an installed portable package's command set; building
-the source does not replace previously published ZIPs. Sections marked unreleased
-describe source additions, not a promise that an older package includes them.
+Use `rocket-cli --version` and `rocket-cli --help` to check an installed portable
+package's version and command set. Older packages may lack commands described here;
+building the source does not replace an existing portable installation.
 
-## Commit & Push and save/switch/restore (unreleased)
+## Commit & Push and save/switch/restore
 
 Both commands require a preview followed by its `review_sha256`. Preview does not
 commit, stash, switch or push. Apply recreates the review and refuses changed
@@ -134,7 +137,7 @@ recovery data; inspect status before applying or dropping the stash. Neither com
 automatically retries or rolls back writes. Cancellation retains exit code 130 and
 fresh local observations; local status never proves what happened on a remote.
 
-## Conflicts, line staging, bisect, remote tags and stash selection (unreleased)
+## Conflicts, line staging, bisect, remote tags and stash selection
 
 These commands reuse the desktop's reviewed backend operations. A read command
 prints the review; the write repeats that review in its own process and compares
@@ -245,7 +248,7 @@ FULL_ID` needs a clean working tree. It backs up every stash under
 `recovery_namespace` first, applies with the index and drops only that entry; JSON
 adds `removed` and `recovery_reference`.
 
-## Undo, commit operations, rebase start, reset and history reads (unreleased)
+## Undo, commit operations, rebase start, reset and history reads
 
 These commands follow the same review-and-pin pattern. Every write here holds
 repository write ownership through its revalidation, the write and the fresh
@@ -325,7 +328,7 @@ false when the window ended first. `compare BASE TARGET`, or `compare BASE` with
 `--staged` or `--worktree`, lists changed files with `change`, `original_path` and
 `similarity`; `target` is null for a local comparison.
 
-## Maintenance, identity, Git LFS and SSH keys (unreleased)
+## Maintenance, identity, Git LFS and SSH keys
 
 The same review-and-pin pattern applies; writes hold repository write ownership as
 the desktop does.
@@ -404,7 +407,7 @@ configuration from before that binding (`ssh_no_matching_recovery` otherwise).
 Each save keeps a backup in `recovery_directory`. Creating, importing, unlocking or
 removing keys stays in the desktop, because those involve passphrases and ssh-agent.
 
-## Code search (unreleased)
+## Code search
 
 These reads use the desktop's code search. They never write and take no repository
 write ownership.
@@ -614,77 +617,77 @@ existing destination-publication guards.
 | `commit-url REV [--remote NAME] [--provider PROVIDER --server HTTPS_URL]` | Print the commit's web page on its host, without opening a browser or contacting the host |
 | `review commit REV`, `review file REV --path PATH [--blame]` | Open a pinned, read-only review in the adjacent `rocket.exe` |
 | `diff [--staged \| --base REV --target REV] [--context N] [-- PATH...]` | Worktree, staged or commit-to-commit patch |
-| `hunks [--staged] -- PATH` | Changed-line IDs and patch SHA-256 of one file's change (unreleased) |
-| `blame REV --path PATH [--first N] [--size N]` | Line authorship at a commit (unreleased) |
-| `file-history PATH [--revision REV] [--limit N]` | Commits that changed a file, following renames (unreleased) |
-| `search TEXT [--kind text\|path\|content] [--all \| --revision REV]` `[--regex] [--match-case] [--path PATH]` | One bounded history search window; the last three need `--kind content` (unreleased) |
-| `grep PATTERN [--revision REV] [--regex] [--match-case] [--path PATH]` | Matching lines in the checkout's files or a commit's (unreleased) |
-| `compare BASE (TARGET \| --staged \| --worktree)` | Changed files between commits or against local changes (unreleased) |
-| `reflog [--scope head\|all\|deleted-branches\|retained\|unreachable] [--limit N]` | Reflog, deleted-branch, retained or unreachable commits (unreleased) |
-| `verify commit REV`, `verify tag NAME` `[--require-valid]`, `signing show` | Signature status and signing settings (unreleased) |
-| `identity show`, `identity set [--name NAME] [--email EMAIL] [--preview]` | Repository-local user.name and user.email (unreleased) |
-| `lfs status`, `lfs locks REMOTE` | LFS files, tracking rules and server locks (unreleased) |
-| `lfs track PATTERN [--literal]`, `lfs untrack --line N --expect TEXT` `[--preview]` | Add or remove one `.gitattributes` LFS rule (unreleased) |
-| `lfs fetch REMOTE`, `lfs push REMOTE`, `lfs checkout -- PATH` `[--preview]` | LFS object transfers and pointer checkout (unreleased) |
-| `lfs lock PATH --remote REMOTE`, `lfs unlock PATH --remote REMOTE --expect LOCK_ID` `[--preview]` | Server file locks; your own locks only (unreleased) |
-| `ssh keys`, `ssh check ALIAS` | Public keys, Rocket profiles and their effective SSH settings (unreleased) |
-| `ssh use ALIAS`, `ssh restore` `(--preview \| --expect-config SHA256)` | This repository's `core.sshCommand` (unreleased) |
-| `stage \| unstage --lines ID,... --expect-patch SHA256 -- PATH` | Stage or unstage reviewed lines; index only (unreleased) |
+| `hunks [--staged] -- PATH` | Changed-line IDs and patch SHA-256 of one file's change |
+| `blame REV --path PATH [--first N] [--size N]` | Line authorship at a commit |
+| `file-history PATH [--revision REV] [--limit N]` | Commits that changed a file, following renames |
+| `search TEXT [--kind text\|path\|content] [--all \| --revision REV]` `[--regex] [--match-case] [--path PATH]` | One bounded history search window; the last three need `--kind content` |
+| `grep PATTERN [--revision REV] [--regex] [--match-case] [--path PATH]` | Matching lines in the checkout's files or a commit's |
+| `compare BASE (TARGET \| --staged \| --worktree)` | Changed files between commits or against local changes |
+| `reflog [--scope head\|all\|deleted-branches\|retained\|unreachable] [--limit N]` | Reflog, deleted-branch, retained or unreachable commits |
+| `verify commit REV`, `verify tag NAME` `[--require-valid]`, `signing show` | Signature status and signing settings |
+| `identity show`, `identity set [--name NAME] [--email EMAIL] [--preview]` | Repository-local user.name and user.email |
+| `lfs status`, `lfs locks REMOTE` | LFS files, tracking rules and server locks |
+| `lfs track PATTERN [--literal]`, `lfs untrack --line N --expect TEXT` `[--preview]` | Add or remove one `.gitattributes` LFS rule |
+| `lfs fetch REMOTE`, `lfs push REMOTE`, `lfs checkout -- PATH` `[--preview]` | LFS object transfers and pointer checkout |
+| `lfs lock PATH --remote REMOTE`, `lfs unlock PATH --remote REMOTE --expect LOCK_ID` `[--preview]` | Server file locks; your own locks only |
+| `ssh keys`, `ssh check ALIAS` | Public keys, Rocket profiles and their effective SSH settings |
+| `ssh use ALIAS`, `ssh restore` `(--preview \| --expect-config SHA256)` | This repository's `core.sshCommand` |
+| `stage \| unstage --lines ID,... --expect-patch SHA256 -- PATH` | Stage or unstage reviewed lines; index only |
 | `init DESTINATION [--branch NAME]` | Initialize a new or existing project folder without replacing its files |
 | `stage (--all \| -- PATH...)` | Stage selected paths or explicitly all changes |
 | `unstage (--all \| -- PATH...)` | Unstage selected paths or explicitly all changes |
 | `commit --message MESSAGE` | Commit staged changes; `-m` is an alias |
-| `undo-commit --branch NAME --expect COMMIT_ID --index-sha256 SHA256 [--preview]` | Undo a commit made by `commit`, keeping its changes staged (unreleased) |
-| `amend --message MESSAGE --expect HEAD_ID [--preview]` | Replace HEAD with the staged changes and a new message (unreleased) |
-| `cherry-pick \| revert ID... [--mainline N] [--expect HEAD_ID] [--preview]` | Reviewed commit operations; `continue`, `skip` or `abort` recover them (unreleased) |
-| `reset --soft \| --mixed \| --hard ID --expect HEAD_ID [--preview]` | Move the branch, keeping a recovery ref; refuses work it would discard (unreleased) |
+| `undo-commit --branch NAME --expect COMMIT_ID --index-sha256 SHA256 [--preview]` | Undo a commit made by `commit`, keeping its changes staged |
+| `amend --message MESSAGE --expect HEAD_ID [--preview]` | Replace HEAD with the staged changes and a new message |
+| `cherry-pick \| revert ID... [--mainline N] [--expect HEAD_ID] [--preview]` | Reviewed commit operations; `continue`, `skip` or `abort` recover them |
+| `reset --soft \| --mixed \| --hard ID --expect HEAD_ID [--preview]` | Move the branch, keeping a recovery ref; refuses work it would discard |
 | `branch list` | Local and remote-tracking branches |
 | `branch create NAME [--start REV]` | Create a branch at the selected commit |
 | `branch switch NAME` | Switch to an existing local branch, protecting local edits |
 | `branch rename OLD NEW` | Rename without replacing an existing branch |
 | `branch delete NAME` | Delete a merged local branch; no force flag |
-| `branch delete-remote REMOTE BRANCH --expect ID [--preview]` | Delete a server branch at the reviewed object (unreleased) |
-| `branch fast-forward [--preview] [-- BRANCH...]` | Fast-forward branches to their upstream (unreleased) |
+| `branch delete-remote REMOTE BRANCH --expect ID [--preview]` | Delete a server branch at the reviewed object |
+| `branch fast-forward [--preview] [-- BRANCH...]` | Fast-forward branches to their upstream |
 | `stash list` | List indices, immutable IDs and subjects |
 | `stash save [--message MESSAGE] [--include-untracked]` | Save a stash; `-m`/`-u` are aliases |
 | `stash apply FULL_ID [--index]` | Apply the selected stash, optionally restoring its index |
 | `stash drop INDEX --expect FULL_ID` | Delete only if the index still names that exact stash |
-| `stash save [--message M] [--include-untracked] -- PATH...` | Save only these files (unreleased) |
-| `stash save --message M --lines ID,... --expect-patch SHA256 [--preview] -- PATH` | Save reviewed lines as a stash, then remove them from the file (unreleased) |
-| `stash show FULL_ID [--part tracked\|index\|untracked]` | Files, patches, hunks and line IDs of a stash (unreleased) |
-| `stash apply FULL_ID [--part P] [--hunks N,... \| --lines ID,... --expect-patch SHA256] [--preview] -- PATH...` | Apply selected files or changes; index and stash kept (unreleased) |
-| `stash pop INDEX --expect FULL_ID [--preview]` | Apply with index and drop, after a backup ref (unreleased) |
-| `conflict show PATH` | Versions, conflict blocks and working-file SHA-256 (unreleased) |
-| `conflict resolve PATH --expect-sha256 SHA256 (--choose N=SIDE,... \| --result FILE) [--stage] [--preview]` | Save a checked resolution with recovery copies (unreleased) |
-| `conflict keep PATH --side ours\|theirs\|deletion --expect BLOB_ID\|missing [--preview]` | Keep one whole version (unreleased) |
-| `conflict mark-resolved -- PATH` | Stage an edited file without conflict markers (unreleased) |
-| `bisect status`, `bisect start GOOD BAD`, `bisect good\|bad\|skip --expect COMMIT_ID`, `bisect resume\|restore` | Manual bisect with the desktop's state and recovery (unreleased) |
-| `bisect run (GOOD BAD \| --continue) --test-timeout SECS (--preview \| --expect-sha256 SHA256) -- PROGRAM [ARG...]` | Automatic bisect with a reviewed executable (unreleased) |
+| `stash save [--message M] [--include-untracked] -- PATH...` | Save only these files |
+| `stash save --message M --lines ID,... --expect-patch SHA256 [--preview] -- PATH` | Save reviewed lines as a stash, then remove them from the file |
+| `stash show FULL_ID [--part tracked\|index\|untracked]` | Files, patches, hunks and line IDs of a stash |
+| `stash apply FULL_ID [--part P] [--hunks N,... \| --lines ID,... --expect-patch SHA256] [--preview] -- PATH...` | Apply selected files or changes; index and stash kept |
+| `stash pop INDEX --expect FULL_ID [--preview]` | Apply with index and drop, after a backup ref |
+| `conflict show PATH` | Versions, conflict blocks and working-file SHA-256 |
+| `conflict resolve PATH --expect-sha256 SHA256 (--choose N=SIDE,... \| --result FILE) [--stage] [--preview]` | Save a checked resolution with recovery copies |
+| `conflict keep PATH --side ours\|theirs\|deletion --expect BLOB_ID\|missing [--preview]` | Keep one whole version |
+| `conflict mark-resolved -- PATH` | Stage an edited file without conflict markers |
+| `bisect status`, `bisect start GOOD BAD`, `bisect good\|bad\|skip --expect COMMIT_ID`, `bisect resume\|restore` | Manual bisect with the desktop's state and recovery |
+| `bisect run (GOOD BAD \| --continue) --test-timeout SECS (--preview \| --expect-sha256 SHA256) -- PROGRAM [ARG...]` | Automatic bisect with a reviewed executable |
 | `merge start REV [--ff-only \| --no-ff \| --squash \| --no-commit]` | Guarded merge; squash and no-commit prepare changes without advancing HEAD |
 | `merge continue --message MESSAGE`, `merge abort` | Recover an existing merge |
 | `remote list` | Names, fetch mappings and URL counts; URLs are omitted |
 | `remote add NAME URL` | Add local remote configuration; does not fetch |
 | `remote set-url NAME URL [--push]` | Replace one local URL after checking its current configuration |
 | `remote remove NAME` | Remove local remote settings/tracking refs; never the server repository |
-| `remote rename OLD NEW [--preview]` | Rename a remote and its tracking refs (unreleased) |
-| `remote prune REMOTE [--preview] [-- REF...]` | Remove tracking refs the server no longer has (unreleased) |
-| `fetch REMOTE` | Explicit fetch with refreshed status and branches; `--tags` (unreleased) adds all remote tags |
+| `remote rename OLD NEW [--preview]` | Rename a remote and its tracking refs |
+| `remote prune REMOTE [--preview] [-- REF...]` | Remove tracking refs the server no longer has |
+| `fetch REMOTE` | Explicit fetch with refreshed status and branches; `--tags` adds all remote tags |
 | `pull [--ff-only \| --merge \| --rebase] [--preview]` | Fetch configured upstream; default fast-forward-only, explicit merge/rebase integration or preview |
 | `rebase continue \| skip \| abort [--preview]` | Recover a paused pull rebase through a fresh guarded review |
-| `rebase start TARGET [--interactive] [--plan FILE] (--preview \| --expect-original ID --expect-onto ID)` | Reviewed rebase, optionally with a data-only plan (unreleased) |
+| `rebase start TARGET [--interactive] [--plan FILE] (--preview \| --expect-original ID --expect-onto ID)` | Reviewed rebase, optionally with a data-only plan |
 | `push REMOTE LOCAL_BRANCH REMOTE_BRANCH [--set-upstream]` | Explicit single-branch push with an authoritative remote-outcome field |
 | `push-lease REMOTE LOCAL_BRANCH REMOTE_BRANCH --preview` | Review one lease-protected replacement; apply with `--source` and `--expect` full IDs |
 | `push-atomic REMOTE --preview -- LOCAL:REMOTE...` | Review atomic publication; apply with four-field mappings described above |
-| `tag list [--limit N]`, `tag inspect NAME` | Bounded local tag list and exact tag details; `--order name\|newest` (unreleased) |
-| `tag create NAME REV [--message MESSAGE] [--preview]` | Lightweight or annotated local tag; `--sign` (unreleased) signs it |
+| `tag list [--limit N]`, `tag inspect NAME` | Bounded local tag list and exact tag details; `--order name\|newest` |
+| `tag create NAME REV [--message MESSAGE] [--preview]` | Lightweight or annotated local tag; `--sign` signs it |
 | `tag delete NAME --expect TAG_OBJECT_ID [--preview]` | Guarded local deletion with a recovery ref |
-| `tag remote REMOTE` | Tags advertised by the push destination, compared with local tags (unreleased) |
-| `tag publish NAME --remote REMOTE --source TAG_OBJECT_ID [--preview]` | Publish a tag the remote does not have (unreleased) |
-| `tag delete-remote NAME --remote REMOTE --expect REMOTE_TAG_ID [--preview]` | Delete a remote tag only at the reviewed ID (unreleased) |
+| `tag remote REMOTE` | Tags advertised by the push destination, compared with local tags |
+| `tag publish NAME --remote REMOTE --source TAG_OBJECT_ID [--preview]` | Publish a tag the remote does not have |
+| `tag delete-remote NAME --remote REMOTE --expect REMOTE_TAG_ID [--preview]` | Delete a remote tag only at the reviewed ID |
 | `worktree list` | Registered checkout paths, branches, lock state and IDs |
 | `worktree create PATH --branch NAME [--start REV] [--existing] [--preview]` | Protected linked checkout creation |
 | `worktree remove PATH --expect HEAD_ID [--preview]` | Clean linked checkout removal with recovery details |
-| `worktree move PATH DESTINATION`, `worktree repair PATH --at FOLDER`, `worktree prune PATH` with `--expect HEAD_ID [--preview]` | Move, re-link or unregister a linked worktree (unreleased) |
+| `worktree move PATH DESTINATION`, `worktree repair PATH --at FOLDER`, `worktree prune PATH` with `--expect HEAD_ID [--preview]` | Move, re-link or unregister a linked worktree |
 | `clone (--local PATH \| --url URL) DESTINATION` | Clone and publish without replacing an existing destination |
 
 All command flags accept separate values, for example `--limit 50`; `--limit=50`
@@ -737,7 +740,7 @@ and `merge-abort` for recovery. Reviewed pushes use `force-push`/`force-push-pre
 and `atomic-push`/`atomic-push-preview`. Tags and worktrees use `tags`,
 `tag-inspect`, `tag-preview`, `tag-create`, `tag-delete`, `worktrees`,
 `worktree-preview`, `worktree-create` and `worktree-remove`. Syntax failures use `usage`.
-The unreleased commands use `hunks`, `stage-selection`, `unstage-selection`,
+Conflict, selection, bisect and remote-tag commands use `hunks`, `stage-selection`, `unstage-selection`,
 `conflict-show`, `conflict-preview`, `conflict-save`, `conflict-keep`,
 `mark-resolved`, `bisect-status`, `bisect-preview`, `bisect-start`, `bisect-good`,
 `bisect-bad`, `bisect-skip`, `bisect-resume`, `bisect-restore`,
@@ -934,7 +937,7 @@ its fetch report. Cancellation is not rollback; inspect the final observations.
 For merge conflicts, resolve files, `stage -- PATH...`, then
 `merge continue --message MESSAGE`; `merge abort` uses the existing protected
 recovery path. For rebase conflicts, resolve and stage, then `rebase continue`.
-The unreleased `conflict resolve`, `conflict keep` and `conflict mark-resolved`
+The `conflict resolve`, `conflict keep` and `conflict mark-resolved`
 commands resolve and stage with the desktop editor's checks and recovery copies.
 `rebase skip` discards the stopped commit's tracked changes and skips that commit;
 `rebase abort` restores the original checkout under the backend's recovery checks.

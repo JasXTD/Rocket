@@ -8,7 +8,7 @@ impl Rocket {
         let owner = self.tab().map(|t| t.id);
         if self.dependencies.setup_page {
             let back = ui.add(
-                Button::new(RichText::new("‹ Back to protections").color(BLUE())).frame(false),
+                Button::new(RichText::new(crate::i18n::tr("‹ Back to protections")).color(BLUE())).frame(false),
             );
             pages::control(
                 &mut self.frame_widgets,
@@ -33,10 +33,10 @@ impl Rocket {
 
         let protection_editable = self.secret_protection_editable && !self.busy();
         preferences::card_frame(ui, |ui| {
-            let changed = protection_header(ui, "Secret protection", |ui| {
+            let changed = protection_header(ui, crate::i18n::tr("Secret protection"), |ui| {
                 let response = ui
                     .add_enabled_ui(protection_editable, |ui| {
-                        switch(ui, &mut self.secret_protection, "Enable secret protection")
+                        switch(ui, &mut self.secret_protection, crate::i18n::tr("Enable secret protection"))
                     })
                     .inner;
                 pages::control(
@@ -54,9 +54,9 @@ impl Rocket {
                 status(
                     ui,
                     if self.secret_protection {
-                        "Blocks commits & pushes"
+                        crate::i18n::tr("Blocks commits & pushes")
                     } else {
-                        "Protection is off"
+                        crate::i18n::tr("Protection is off")
                     },
                     if self.secret_protection {
                         GREEN()
@@ -66,25 +66,26 @@ impl Rocket {
                 );
                 help(
                     ui,
-                    "Checks credentials in messages, staged changes and outgoing history.",
+                    crate::i18n::tr("Checks credentials in messages, staged changes and outgoing history."),
                 );
                 if !self.secret_protection {
                     help(
                         ui,
-                        "General secret checks are off. The AI API-key guard has its own switch below.",
+                        crate::i18n::tr("General secret checks are off. The AI API-key guard has its own switch below."),
                     );
                 }
                 if !self.secret_protection_editable {
                     help(
                         ui,
-                        "Only the user can change this in the normal Rocket application.",
+                        crate::i18n::tr("Only the user can change this in the normal Rocket application."),
                     );
                 }
             });
             preferences::divider(ui);
             preferences::card_note(ui, |ui| {
-                let response = ui.collapsing("What gets checked?", |ui| {
-                    help(ui, "Passwords, private keys, supported tokens and sensitive .env files. Valid environment placeholders remain allowed.");
+                let response = CollapsingHeader::new(crate::i18n::tr("What gets checked?"))
+                    .id_salt("security-secret-coverage").show(ui, |ui| {
+                    help(ui, crate::i18n::tr("Passwords, private keys, supported tokens and sensitive .env files. Valid environment placeholders remain allowed."));
                 });
                 pages::control(
                     &mut self.frame_widgets,
@@ -95,10 +96,10 @@ impl Rocket {
             });
         });
         preferences::card_frame(ui, |ui| {
-            let changed = protection_header(ui, "Guard AI API keys", |ui| {
+            let changed = protection_header(ui, crate::i18n::tr("Guard AI API keys"), |ui| {
                 let response = ui
                     .add_enabled_ui(protection_editable, |ui| {
-                        switch(ui, &mut self.guard_ai_api_keys, "Enable AI API-key guard")
+                        switch(ui, &mut self.guard_ai_api_keys, crate::i18n::tr("Enable AI API-key guard"))
                     })
                     .inner;
                 pages::control(
@@ -116,9 +117,9 @@ impl Rocket {
                 status(
                     ui,
                     if self.guard_ai_api_keys {
-                        "Blocks exposed AI API keys"
+                        crate::i18n::tr("Blocks exposed AI API keys")
                     } else {
-                        "AI key guard is off"
+                        crate::i18n::tr("AI key guard is off")
                     },
                     if self.guard_ai_api_keys {
                         GREEN()
@@ -128,27 +129,28 @@ impl Rocket {
                 );
                 help(
                     ui,
-                    "Checks known key formats in messages, staged files and outgoing history. Runs locally, without contacting providers.",
+                    crate::i18n::tr("Checks known key formats in messages, staged files and outgoing history. Runs locally, without contacting providers."),
                 );
                 if !self.guard_ai_api_keys {
                     help(
                         ui,
-                        "Provider-format checks are off. Secret protection may still block credential assignments.",
+                        crate::i18n::tr("Provider-format checks are off. Secret protection may still block credential assignments."),
                     );
                 }
                 if !self.secret_protection_editable {
                     help(
                         ui,
-                        "Only the user can change this in the normal Rocket application.",
+                        crate::i18n::tr("Only the user can change this in the normal Rocket application."),
                     );
                 }
             });
             preferences::divider(ui);
             preferences::card_note(ui, |ui| {
-                let response = ui.collapsing("Supported key formats", |ui| {
-                    help(ui, "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).");
-                    help(ui, "DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs.");
-                    help(ui, "Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked.");
+                let response = CollapsingHeader::new(crate::i18n::tr("Supported key formats"))
+                    .id_salt("security-ai-key-coverage").show(ui, |ui| {
+                    help(ui, crate::i18n::tr("OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini)."));
+                    help(ui, crate::i18n::tr("DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs."));
+                    help(ui, crate::i18n::tr("Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked."));
                 });
                 pages::control(
                     &mut self.frame_widgets,
@@ -164,22 +166,22 @@ impl Rocket {
         preferences::status_line(
             ui,
             MUTED(),
-            &format!(
-                "When you push: {} {} {}",
-                if self.secret_protection {
-                    "Secrets are checked first."
+            &crate::i18n::trf!(
+                "When you push: {secrets} {keys} {dependencies}",
+                secrets = if self.secret_protection {
+                    crate::i18n::tr("Secrets are checked first.")
                 } else {
-                    "Secret protection is off."
+                    crate::i18n::tr("Secret protection is off.")
                 },
-                if self.guard_ai_api_keys {
-                    "AI key formats are checked."
+                keys = if self.guard_ai_api_keys {
+                    crate::i18n::tr("AI key formats are checked.")
                 } else {
-                    "AI key guard is off."
+                    crate::i18n::tr("AI key guard is off.")
                 },
-                if self.dependencies.before_push {
-                    "OSV scans the pushed tips; warnings pause the push for review."
+                dependencies = if self.dependencies.before_push {
+                    crate::i18n::tr("OSV scans the pushed tips; warnings pause the push for review.")
                 } else {
-                    "Before-push OSV scanning is off."
+                    crate::i18n::tr("Before-push OSV scanning is off.")
                 }
             ),
         );
@@ -204,13 +206,13 @@ impl Rocket {
         let push_editable = editable && !self.working();
         let mut scan_now = false;
         preferences::card_frame(ui, |ui| {
-            protection_header(ui, "Dependency checks", |ui| {
+            protection_header(ui, crate::i18n::tr("Dependency checks"), |ui| {
                 let response = ui
                     .add_enabled_ui(editable, |ui| {
                         switch(
                             ui,
                             &mut self.dependencies.enabled,
-                            "Enable background dependency checks",
+                            crate::i18n::tr("Enable background dependency checks"),
                         )
                     })
                     .inner;
@@ -231,15 +233,15 @@ impl Rocket {
                 self.dependencies.repositories.clear();
             }
             preferences::card_note(ui, |ui| {
-                status(ui, "Background scans · warnings only", MUTED());
+                status(ui, crate::i18n::tr("Background scans · warnings only"), MUTED());
                 help(
                     ui,
-                    "Checks dependency versions against local OSV advisory data.",
+                    crate::i18n::tr("Checks dependency versions against local OSV advisory data."),
                 );
                 if !editable {
                     help(
                         ui,
-                        "Only the user can change this preference or download advisory data in the normal Rocket application.",
+                        crate::i18n::tr("Only the user can change this preference or download advisory data in the normal Rocket application."),
                     );
                 }
             });
@@ -250,8 +252,8 @@ impl Rocket {
                     &mut self.frame_widgets,
                     "pref-dependency-push",
                     &mut self.dependencies.before_push,
-                    "Scan dependencies before pushing",
-                    "Review warnings before Git publishes the committed versions.",
+                    crate::i18n::tr("Scan dependencies before pushing"),
+                    crate::i18n::tr("Review warnings before Git publishes the committed versions."),
                     "",
                 );
             });
@@ -265,7 +267,7 @@ impl Rocket {
                         .into_owned()
                 });
                 ui.label(
-                    RichText::new(repository.unwrap_or_else(|| "No repository selected".into()))
+                    RichText::new(repository.unwrap_or_else(|| crate::i18n::tr("No repository selected").into()))
                         .font(semibold(12.0)),
                 );
                 ui.add_space(5.0);
@@ -278,65 +280,65 @@ impl Rocket {
                 let ready = self.dependencies.setup.ready;
                 let (title, tint) = if running {
                     let title = if self.dependencies.setup.running() {
-                        "Checking the scanner…"
+                        crate::i18n::tr("Checking the scanner…")
                     } else if self
                         .dependencies
                         .job
                         .as_ref()
                         .is_some_and(|job| Some(job.owner) != owner)
                     {
-                        "Checking another repository…"
+                        crate::i18n::tr("Checking another repository…")
                     } else if self.dependencies.job.as_ref().is_some_and(|job| job.update) {
-                        "Downloading advisory data…"
+                        crate::i18n::tr("Downloading advisory data…")
                     } else {
-                        "Scanning dependencies…"
+                        crate::i18n::tr("Scanning dependencies…")
                     };
                     (title.into(), BLUE())
                 } else if !ready {
                     (
                         if self.dependencies.setup.error.is_some() {
-                            "Scanner needs attention"
+                            crate::i18n::tr("Scanner needs attention")
                         } else {
-                            "Set up dependency checks"
+                            crate::i18n::tr("Set up dependency checks")
                         }
                         .into(),
                         MUTED(),
                     )
                 } else if owner.is_none() {
-                    ("Open a repository to scan".into(), MUTED())
+                    (crate::i18n::tr("Open a repository to scan").into(), MUTED())
                 } else if error {
-                    ("Scan incomplete".into(), AMBER())
+                    (crate::i18n::tr("Scan incomplete").into(), AMBER())
                 } else if let Some(report) = &report {
                     report_heading(report)
                 } else if !self.dependencies.enabled {
-                    ("Background checks are off".into(), MUTED())
+                    (crate::i18n::tr("Background checks are off").into(), MUTED())
                 } else {
-                    ("Not scanned yet".into(), MUTED())
+                    (crate::i18n::tr("Not scanned yet").into(), MUTED())
                 };
                 let description = if let Some(report) = &report {
-                    format!(
-                        "{} packages · {} files · checked {}",
-                        report.packages,
-                        report.files,
-                        ago(
+                    crate::i18n::trf!(
+                        "Packages: {packages} · files: {files} · checked {age}",
+                        packages = report.packages,
+                        files = report.files,
+                        age = ago(
                             scan::now().saturating_sub(report.checked),
                             report.checked as i64
                         )
                     )
                 } else {
                     if !ready {
-                        "Choose the scanner, then download advisory data."
+                        crate::i18n::tr("Choose the scanner, then download advisory data.")
                     } else if owner.is_none() {
-                        "Scanner setup is available for your next repository."
+                        crate::i18n::tr("Scanner setup is available for your next repository.")
                     } else {
-                        "Run an offline scan using the advisory data in this profile."
+                        crate::i18n::tr("Run an offline scan using the advisory data in this profile.")
                     }
                     .into()
                 };
                 result_row(ui, &title, tint, &description, |ui| {
                     if running {
                         ui.spinner();
-                        let response = ui.button("Cancel");
+                        let response = ui.button(crate::i18n::tr("Cancel"));
                         pages::control(
                             &mut self.frame_widgets,
                             "dependencies-cancel",
@@ -351,9 +353,9 @@ impl Rocket {
                             ui,
                             true,
                             if self.dependencies.setup.error.is_some() {
-                                "Review setup"
+                                crate::i18n::tr("Review setup")
                             } else {
-                                "Set up scanner"
+                                crate::i18n::tr("Set up scanner")
                             },
                         );
                         pages::control(
@@ -369,7 +371,7 @@ impl Rocket {
                         let response = pages::primary(
                             ui,
                             owner.is_some(),
-                            if error { "Retry scan" } else { "Scan now" },
+                            if error { crate::i18n::tr("Retry scan") } else { crate::i18n::tr("Scan now") },
                         );
                         pages::control(
                             &mut self.frame_widgets,
@@ -391,20 +393,19 @@ impl Rocket {
                         preferences::status_line(
                             ui,
                             AMBER(),
-                            &format!(
-                                "Advisory data is {age} days old. Update it in Scanner & data to check newer advisories."
+                            &crate::i18n::trf!(
+                                "Advisory data is {age} days old. Update it in Scanner & data to check newer advisories.", age
                             ),
                         );
                     }
                     if !report.notes.is_empty() {
-                        let response = ui.collapsing(
-                            format!("Coverage notes ({})", report.notes.len()),
-                            |ui| {
+                        let response = CollapsingHeader::new(
+                            crate::i18n::trf!("Coverage notes ({count})", count = report.notes.len()),
+                        ).id_salt("dependency-coverage").show(ui, |ui| {
                                 for note in &report.notes {
                                     help(ui, note);
                                 }
-                            },
-                        );
+                            });
                         pages::control(
                             &mut self.frame_widgets,
                             "dependency-coverage",
@@ -415,7 +416,7 @@ impl Rocket {
                     if report.findings.is_empty() && !running && !error {
                         help(
                             ui,
-                            "No matches in the local database. Coverage does not guarantee safety.",
+                            crate::i18n::tr("No matches in the local database. Coverage does not guarantee safety."),
                         );
                     }
                     for (index, finding) in report.findings.iter().enumerate() {
@@ -437,7 +438,7 @@ impl Rocket {
                         .show(ui, |ui| {
                             ui.add(Label::new(&finding.summary).wrap());
                             help(ui, &format!("{} · {}", finding.ecosystem, finding.file));
-                            help(ui, "Application reachability has not been checked.");
+                            help(ui, crate::i18n::tr("Application reachability has not been checked."));
                             ui.horizontal_wrapped(|ui| {
                                 for (n, id) in finding.ids.iter().enumerate() {
                                     let response = ui.hyperlink_to(
@@ -464,9 +465,9 @@ impl Rocket {
                             &format!(
                                 "{} · {}",
                                 if finding.fixed.is_empty() {
-                                    "No fixed version published".into()
+                                    crate::i18n::tr("No fixed version published").into()
                                 } else {
-                                    format!("Reported fix: {}", finding.fixed.join(", "))
+                                    crate::i18n::trf!("Reported fix: {versions}", versions = finding.fixed.join(", "))
                                 },
                                 finding.file
                             ),
@@ -481,13 +482,13 @@ impl Rocket {
                     help(
                         ui,
                         &if self.dependencies.setup.ready {
-                            format!("OSV {} verified", rocket_git::OSV_VERSION)
+                            crate::i18n::trf!("OSV {version} verified", version = rocket_git::OSV_VERSION)
                         } else {
-                            "Scanner not configured".into()
+                            crate::i18n::tr("Scanner not configured").into()
                         },
                     );
                     let response = ui.add(
-                        Button::new(RichText::new("Scanner & data").color(BLUE())).frame(false),
+                        Button::new(RichText::new(crate::i18n::tr("Scanner & data")).color(BLUE())).frame(false),
                     );
                     pages::control(
                         &mut self.frame_widgets,
@@ -573,10 +574,9 @@ fn status(ui: &mut Ui, text: &str, color: Color32) {
 }
 fn report_heading(report: &scan::Report) -> (String, Color32) {
     match report.findings.len() {
-        0 if !report.notes.is_empty() => ("No advisory matches · coverage limited".into(), AMBER()),
-        0 if report.packages == 0 => ("No dependencies identified".into(), MUTED()),
-        0 => ("No known advisories found".into(), GREEN()),
-        1 => ("1 advisory needs attention".into(), AMBER()),
-        count => (format!("{count} advisories need attention"), AMBER()),
+        0 if !report.notes.is_empty() => (crate::i18n::tr("No advisory matches · coverage limited").into(), AMBER()),
+        0 if report.packages == 0 => (crate::i18n::tr("No dependencies identified").into(), MUTED()),
+        0 => (crate::i18n::tr("No known advisories found").into(), GREEN()),
+        count => (crate::i18n::trn!(count, "1 advisory needs attention", "{n} advisories need attention"), AMBER()),
     }
 }

@@ -1,5 +1,13 @@
 use super::*;
 
+fn action_label(action: ForgeThreadAction) -> &'static str {
+    match action {
+        ForgeThreadAction::Reply => tr("Reply"),
+        ForgeThreadAction::Resolve => tr("Resolve"),
+        ForgeThreadAction::Unresolve => tr("Reopen"),
+    }
+}
+
 #[derive(Default)]
 pub struct State {
     pub snapshot: Option<Arc<ForgePullThreads>>,
@@ -21,7 +29,7 @@ pub(super) fn start(
         .pull
         .repository
         .clone()
-        .ok_or_else(|| Error::InvalidInput("Select a PR first.".into()))?;
+        .ok_or_else(|| Error::InvalidInput(tr("Select a PR first.").into()))?;
     let number = s.pull.number;
     match action {
         "pull-threads-refresh" => {
@@ -40,7 +48,7 @@ pub(super) fn start(
             if s.pull.threads.unknown || s.pull.unknown.is_some() || s.pull.merge.unknown.is_some()
             {
                 return Err(Error::InvalidInput(
-                    "Check the previous remote outcome first.".into(),
+                    tr("Check the previous remote outcome first.").into(),
                 ));
             }
             let snapshot = s
@@ -48,11 +56,11 @@ pub(super) fn start(
                 .threads
                 .snapshot
                 .clone()
-                .ok_or_else(|| Error::InvalidInput("Load discussion threads first.".into()))?;
-            let index=snapshot.threads.iter().position(|t|t.id==s.pull.threads.selected).ok_or_else(||Error::InvalidInput("Select a loaded thread. Saved text is preserved if its thread is no longer returned.".into()))?;
+                .ok_or_else(|| Error::InvalidInput(tr("Load discussion threads first.").into()))?;
+            let index=snapshot.threads.iter().position(|t|t.id==s.pull.threads.selected).ok_or_else(||Error::InvalidInput(tr("Select a loaded thread. Saved text is preserved if its thread is no longer returned.").into()))?;
             let action =
                 s.pull.threads.action.ok_or_else(|| {
-                    Error::InvalidInput("Choose Reply, Resolve or Reopen.".into())
+                    Error::InvalidInput(tr("Choose Reply, Resolve or Reopen.").into())
                 })?;
             let body = s.pull.threads.body.clone();
             s.pull.threads.preview = None;
@@ -69,7 +77,7 @@ pub(super) fn start(
             if s.pull.threads.unknown || s.pull.unknown.is_some() || s.pull.merge.unknown.is_some()
             {
                 return Err(Error::InvalidInput(
-                    "Check the previous remote outcome first.".into(),
+                    tr("Check the previous remote outcome first.").into(),
                 ));
             }
             let preview = s
@@ -77,7 +85,7 @@ pub(super) fn start(
                 .threads
                 .preview
                 .clone()
-                .ok_or_else(|| Error::InvalidInput("Review the thread action first.".into()))?;
+                .ok_or_else(|| Error::InvalidInput(tr("Review the thread action first.").into()))?;
             s.operation = "pull-thread-submit";
             WriteTask::spawn(move |c| {
                 backend
@@ -87,7 +95,7 @@ pub(super) fn start(
                     .map(|_| Done::PullThreadSubmitted)
             })
         }
-        _ => Err(Error::InvalidInput("Unknown discussion action.".into())),
+        _ => Err(Error::InvalidInput(tr("Unknown discussion action.").into())),
     }
 }
 pub(super) fn section(
@@ -98,24 +106,24 @@ pub(super) fn section(
     out: &mut PageOut,
 ) {
     ui.separator();
-    ui.strong("Review threads");
+    ui.strong(tr("Review threads"));
     if btn(
         ui,
         widgets,
         "hosting-threads-refresh",
-        "Load / refresh threads",
+        tr("Load / refresh threads"),
         !busy,
     ) {
         out.action = Some("pull-threads-refresh");
     }
     let t = &mut s.pull.threads;
     if t.unknown {
-        ui.colored_label(AMBER(),"Thread action outcome unknown. Refresh the threads and inspect this PR on the server before deciding to send again.");
+        ui.colored_label(AMBER(),tr("Thread action outcome unknown. Refresh the threads and inspect this PR on the server before deciding to send again."));
         if btn(
             ui,
             widgets,
             "hosting-thread-acknowledge",
-            "I checked this thread; allow a new preview",
+            tr("I checked this thread; allow a new preview"),
             !busy && t.checked,
         ) {
             t.unknown = false;
@@ -126,25 +134,21 @@ pub(super) fn section(
     if let Some(preview) = &t.preview {
         ui.strong(format!(
             "{} · {}",
-            preview.action().label(),
+            action_label(preview.action()),
             preview.thread().path
         ));
-        ui.label(format!(
-            "PR #{} · {}",
-            preview.number(),
-            &preview.head()[..12]
-        ));
+        ui.label(trf!("PR #{number} · {commit}", number = preview.number(), commit = &preview.head()[..12]));
         ui.add(Label::new(preview.body()).wrap());
-        ui.colored_label(AMBER(),"This changes a remote discussion and may notify participants. Rocket rechecks the thread and commit; the server can still change after that check. Preview expires in two minutes.");
+        ui.colored_label(AMBER(),tr("This changes a remote discussion and may notify participants. Rocket rechecks the thread and commit; the server can still change after that check. Preview expires in two minutes."));
         ui.horizontal_wrapped(|ui| {
-            if btn(ui, widgets, "hosting-thread-back", "Back to draft", !busy) {
+            if btn(ui, widgets, "hosting-thread-back", tr("Back to draft"), !busy) {
                 t.preview = None;
             }
             if btn(
                 ui,
                 widgets,
                 "hosting-thread-submit",
-                "Send reviewed action",
+                tr("Send reviewed action"),
                 !busy && !t.unknown,
             ) {
                 out.action = Some("pull-thread-submit");
@@ -156,27 +160,33 @@ pub(super) fn section(
         if snapshot.limited {
             ui.colored_label(
                 AMBER(),
-                "First 50 threads shown. Open the provider for the complete discussion.",
+                tr("This is a bounded discussion preview. Open the provider for the complete discussion."),
             );
+        }
+        if snapshot.threads.is_empty() {
+            ui.colored_label(MUTED(), tr("No review threads were found in this preview."));
+        }
+        if snapshot.repository().config().provider() == ForgeProvider::Gitea {
+            ui.colored_label(MUTED(), tr("Gitea supports resolving and reopening review comments. Replies require the provider website with the stable API."));
         }
         for (i, thread) in snapshot.threads.iter().enumerate() {
             ui.separator();
             let location = match (thread.start.or(thread.line), thread.line) {
                 (Some(start), Some(end)) if start != end => format!("{start}–{end}"),
                 (_, Some(line)) => line.to_string(),
-                _ => "original location".into(),
+                _ => tr("original location").into(),
             };
             ui.add(
                 Label::new(format!(
                     "{} · {} · {}{}",
-                    thread.path,
+                    if thread.path.is_empty() { tr("General discussion") } else { &thread.path },
                     location,
                     if thread.resolved {
-                        "Resolved"
+                        tr("Resolved")
                     } else {
-                        "Unresolved"
+                        tr("Unresolved")
                     },
-                    if thread.outdated { " · Outdated" } else { "" }
+                    if thread.outdated { tr(" · Outdated") } else { "" }
                 ))
                 .wrap(),
             );
@@ -185,7 +195,7 @@ pub(super) fn section(
                 ui.add(Label::new(&c.body).wrap());
             }
             if thread.limited {
-                ui.colored_label(MUTED(), "First 20 comments shown.");
+                ui.colored_label(MUTED(), tr("This thread is incomplete; use the provider website to reply or change its resolution."));
             }
             ui.horizontal_wrapped(|ui| {
                 let can_select = t.body.is_empty() || t.selected == thread.id;
@@ -193,7 +203,7 @@ pub(super) fn section(
                     (
                         "reply",
                         ForgeThreadAction::Reply,
-                        !thread.comments.is_empty(),
+                        thread.can_reply,
                     ),
                     (
                         "resolve",
@@ -210,11 +220,12 @@ pub(super) fn section(
                         ui,
                         widgets,
                         &format!("hosting-thread-{key}-{i}"),
-                        action.label(),
+                        action_label(action),
                         !busy
                             && !t.unknown
                             && can_select
                             && enabled
+                            && !thread.limited
                             && (t.body.is_empty() || action == ForgeThreadAction::Reply),
                     ) {
                         t.selected = thread.id.clone();
@@ -226,12 +237,12 @@ pub(super) fn section(
     } else {
         ui.colored_label(
             MUTED(),
-            "Load threads to reply or change resolution. Loading does not modify the PR.",
+            tr("Load threads to reply or change resolution. Loading does not modify the PR."),
         );
     }
     if let Some(action) = t.action {
         ui.separator();
-        ui.strong(action.label());
+        ui.strong(action_label(action));
         if action == ForgeThreadAction::Reply {
             let r = ui.add_enabled(
                 !busy,
@@ -239,7 +250,7 @@ pub(super) fn section(
                     .desired_width(f32::INFINITY)
                     .desired_rows(3)
                     .char_limit(8192)
-                    .hint_text("Reply saved locally until submitted"),
+                    .hint_text(tr("Reply saved locally until submitted")),
             );
             control(widgets, "hosting-thread-body", &r, ui.clip_rect());
         }
@@ -248,7 +259,7 @@ pub(super) fn section(
                 ui,
                 widgets,
                 "hosting-thread-preview",
-                "Review thread action",
+                tr("Review thread action"),
                 !busy && !t.unknown,
             ) {
                 out.action = Some("pull-thread-preview");
@@ -257,7 +268,7 @@ pub(super) fn section(
                 ui,
                 widgets,
                 "hosting-thread-discard",
-                "Discard reply draft",
+                tr("Discard reply draft"),
                 !busy && !t.unknown,
             ) {
                 t.body.clear();

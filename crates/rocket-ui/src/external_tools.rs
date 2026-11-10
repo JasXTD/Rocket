@@ -135,9 +135,9 @@ impl Rocket {
                     self.external.imported = true;
                     self.external.notice = Some(
                         if self.external.kind == ExternalToolKind::Editor {
-                            "Session cancelled. Editor saves already made remain in the working tree."
+                            crate::i18n::tr("Session cancelled. Editor saves already made remain in the working tree.")
                         } else {
-                            "Cancelled. No import or repository write. Temporary copies are retained."
+                            crate::i18n::tr("Cancelled. No import or repository write. Temporary copies are retained.")
                         }
                         .into(),
                     );
@@ -158,7 +158,7 @@ impl Rocket {
                         self.external.profiles = self.external.editing.clone();
                         self.external.removing = false;
                         self.external.error = None;
-                        self.external.notice = Some("Tool profiles updated.".into());
+                        self.external.notice = Some(crate::i18n::tr("Tool profiles updated.").into());
                     }
                     Err(e) => self.external.error = Some(user_error(&e)),
                 }
@@ -191,7 +191,7 @@ impl Rocket {
                 }
                 if self.external.profiles != self.external.editing {
                     self.external.error =
-                        Some("Save or discard profile edits before launching.".into());
+                        Some(crate::i18n::tr("Save or discard profile edits before launching.").into());
                     return;
                 }
                 let Some(backend) = self.backend.clone() else {
@@ -205,7 +205,7 @@ impl Rocket {
                     .map(|s| s.repository.clone())
                 else {
                     self.external.error =
-                        Some("The source repository was closed. Open a fresh tool preview.".into());
+                        Some(crate::i18n::tr("The source repository was closed. Open a fresh tool preview.").into());
                     return;
                 };
                 let Some(request) = self.external.pending.take() else {
@@ -215,7 +215,7 @@ impl Rocket {
                 let storage = self.state_directory.join("external-tools");
                 self.external.error = None;
                 self.external.notice =
-                    Some("Preparing copies and running the external tool…".into());
+                    Some(crate::i18n::tr("Preparing copies and running the external tool…").into());
                 self.external.cancelling = false;
                 match WriteTask::spawn(move |cancel| {
                     Ok(repo.run_external_tool(&config, request, &storage, &backend.log, &cancel))
@@ -269,7 +269,7 @@ impl Rocket {
                         self.external.import = Some(task);
                         self.external.error = None;
                         self.external.notice =
-                            Some("Checking the original file and conflict state…".into());
+                            Some(crate::i18n::tr("Checking the original file and conflict state…").into());
                     }
                     Err(e) => self.external.error = Some(user_error(&e)),
                 }
@@ -282,19 +282,19 @@ impl Rocket {
     ) -> rocket_git::Result<(u64, String, ExternalToolRequest, String)> {
         let tab = self
             .tab()
-            .ok_or_else(|| Error::InvalidInput("Open a repository first.".into()))?;
+            .ok_or_else(|| Error::InvalidInput(crate::i18n::tr("Open a repository first.").into()))?;
         let missing = || {
-            Error::InvalidInput("Select a file in Changes or Commit → Files Changed first.".into())
+            Error::InvalidInput(crate::i18n::tr("Select a file in Changes or Commit → Files Changed first.").into())
         };
         let (label, request, draft) = match kind {
             ExternalToolKind::Merge => {
                 let s = &tab.conflict;
                 if s.running() {
-                    return Err(Error::InvalidInput("Wait for the conflict preview.".into()));
+                    return Err(Error::InvalidInput(crate::i18n::tr("Wait for the conflict preview.").into()));
                 }
                 let preview = s.preview.clone().ok_or_else(|| {
                     Error::InvalidInput(
-                        "Open a text conflict in Rocket's conflict editor first.".into(),
+                        crate::i18n::tr("Open a text conflict in Rocket's conflict editor first.").into(),
                     )
                 })?;
                 (
@@ -353,7 +353,7 @@ impl Rocket {
                     )
                 } else if tab.view == View::Compare {
                     if tab.compare.running() {
-                        return Err(Error::InvalidInput("Wait for the comparison to finish.".into()));
+                        return Err(Error::InvalidInput(crate::i18n::tr("Wait for the comparison to finish.").into()));
                     }
                     let loaded = tab.compare.loaded.as_ref().ok_or_else(missing)?;
                     let options = loaded.comparison.file_options(tab.compare.selected.ok_or_else(missing)?)?;
@@ -429,14 +429,14 @@ impl Rocket {
                     self.external.error = report.result.as_ref().err().map(user_error);
                     let notice = if report.result.is_ok() {
                         if report.text.is_some() {
-                            "Tool exited successfully. Review the result before saving."
+                            crate::i18n::tr("Tool exited successfully. Review the result before saving.")
                         } else {
-                            "Tool exited successfully. Repository changes will refresh automatically."
+                            crate::i18n::tr("Tool exited successfully. Repository changes will refresh automatically.")
                         }
                     } else if self.external.kind == ExternalToolKind::Editor {
-                        "Editor stopped or failed. Any saves it already made remain in the working tree."
+                        crate::i18n::tr("Editor stopped or failed. Any saves it already made remain in the working tree.")
                     } else {
-                        "No merge result was imported. Any temporary workspace is retained."
+                        crate::i18n::tr("No merge result was imported. Any temporary workspace is retained.")
                     };
                     self.external.notice = Some(notice.into());
                     self.external.report = Some(report);
@@ -492,9 +492,9 @@ impl Rocket {
         let widgets = &mut self.frame_widgets;
         let s = &mut self.external;
         let kinds = [
-            (ExternalToolKind::Editor, Icon::Pencil, "Open a working file"),
-            (ExternalToolKind::Diff, Icon::Columns, "Compare two versions"),
-            (ExternalToolKind::Merge, Icon::Merge, "Resolve a conflict"),
+            (ExternalToolKind::Editor, Icon::Pencil, crate::i18n::tr("Open a working file")),
+            (ExternalToolKind::Diff, Icon::Columns, crate::i18n::tr("Compare two versions")),
+            (ExternalToolKind::Merge, Icon::Merge, crate::i18n::tr("Resolve a conflict")),
         ];
         let columns = if ui.available_width() < 600.0 { 1 } else { 3 };
         let mut picked = None;
@@ -502,9 +502,14 @@ impl Rocket {
             for (i, (kind, image, purpose)) in kinds.into_iter().enumerate() {
                 let ui = &mut cols[i % columns];
                 let count = s.editing.0[kind.index()].entries.len();
-                let detail = format!("{count} {}", if count == 1 { "profile" } else { "profiles" });
-                let r = kind_card(ui, image, kind.label(), purpose, &detail, s.kind == kind, !session)
-                    .on_disabled_hover_text("Finish or clear the current tool session first");
+                let detail = crate::i18n::trf!("Profiles: {count}", count);
+                let title = match kind {
+                    ExternalToolKind::Editor => crate::i18n::tr("Editor"),
+                    ExternalToolKind::Diff => crate::i18n::tr("Diff"),
+                    ExternalToolKind::Merge => crate::i18n::tr("Merge"),
+                };
+                let r = kind_card(ui, image, title, purpose, &detail, s.kind == kind, !session)
+                    .on_disabled_hover_text(crate::i18n::tr("Finish or clear the current tool session first"));
                 register(ui, widgets, &format!("tools-kind-{}", kind.index()), &r);
                 if r.clicked() {
                     picked = Some(kind);
@@ -538,7 +543,7 @@ impl Rocket {
         if let Some(error) = &state_error {
             status_line(ui, RED(), error);
         } else if saving {
-            ui.label(RichText::new("Saving local settings…").size(12.0).color(HINT()));
+            ui.label(RichText::new(crate::i18n::tr("Saving local settings…")).size(12.0).color(HINT()));
         }
         if let Some(error) = &s.error {
             status_line(ui, RED(), error);
@@ -560,11 +565,18 @@ fn kind_card(
     selected: bool,
     enabled: bool,
 ) -> Response {
+    // Each translated line gets the card's text column; the profile count must
+    // not squeeze the purpose into the space beside it.
+    let text_width = (ui.available_width() - 72.0).max(1.0);
+    let title_galley = ui.painter().layout(title.into(), semibold(13.0), TEXT(), text_width);
+    let purpose_galley = ui.painter().layout(purpose.into(), FontId::proportional(12.0), HINT(), text_width);
+    let detail_galley = ui.painter().layout(detail.into(), FontId::proportional(12.0), MUTED(), text_width);
+    let height = (24.0 + title_galley.size().y + purpose_galley.size().y + detail_galley.size().y + 6.0).max(60.0);
     let response = ui.add_enabled(
         enabled,
         Button::new("")
             .frame(false)
-            .min_size(vec2(ui.available_width(), 60.0)),
+            .min_size(vec2(ui.available_width(), height)),
     );
     let rect = response.rect;
     let painter = ui.painter();
@@ -588,28 +600,12 @@ fn kind_card(
     let tile = Rect::from_min_size(rect.min + vec2(14.0, 14.0), vec2(32.0, 32.0));
     painter.rect_filled(tile, 8.0, if selected { BLUE().gamma_multiply(0.16) } else { HOVER() });
     icon(painter, tile.shrink(8.0), image, if selected { BLUE() } else { MUTED() });
-    painter.text(
-        pos2(tile.right() + 12.0, rect.top() + 21.0),
-        Align2::LEFT_CENTER,
-        title,
-        semibold(13.0),
-        TEXT(),
-    );
-    let detail_width = painter
-        .layout_no_wrap(detail.into(), FontId::proportional(12.0), HINT())
-        .size()
-        .x;
-    let mut job = text::LayoutJob::simple_singleline(purpose.into(), FontId::proportional(12.0), HINT());
-    job.wrap = text::TextWrapping::truncate_at_width((rect.right() - tile.right() - 30.0 - detail_width).max(0.0));
-    let galley = painter.layout_job(job);
-    painter.galley(pos2(tile.right() + 12.0, rect.top() + 32.0), galley, HINT());
-    painter.text(
-        pos2(rect.right() - 14.0, rect.center().y),
-        Align2::RIGHT_CENTER,
-        detail,
-        FontId::proportional(12.0),
-        MUTED(),
-    );
+    let mut at = pos2(tile.right() + 12.0, rect.top() + 12.0);
+    for (galley, color) in [(title_galley, TEXT()), (purpose_galley, HINT()), (detail_galley, MUTED())] {
+        let height = galley.size().y;
+        painter.galley(at, galley, color);
+        at.y += height + 3.0;
+    }
     response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, title));
     response
 }
@@ -617,7 +613,7 @@ fn kind_card(
 fn program_name(executable: &str) -> String {
     let executable = executable.trim();
     if executable.is_empty() {
-        return "No program yet".into();
+        return crate::i18n::tr("No program yet").into();
     }
     std::path::Path::new(executable)
         .file_name()
@@ -641,7 +637,7 @@ fn profile_list(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, s: &mut S
                     bottom: 6,
                 })
                 .show(ui, |ui| {
-                    ui.label(RichText::new("PROFILES").font(semibold(11.0)).color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("PROFILES")).font(semibold(11.0)).color(HINT()));
                 });
             let group = &mut s.editing.0[kind.index()];
             let selected = &mut s.selected[kind.index()];
@@ -672,8 +668,8 @@ fn profile_list(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, s: &mut S
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
                     let can_add = !busy && group.entries.len() < crate::tool_profiles::MAX_PROFILES;
-                    let add = crate::pages::tool(ui, Icon::Plus, "Add", can_add)
-                        .on_disabled_hover_text("Keep at most 16 profiles of each type");
+                    let add = crate::pages::tool(ui, Icon::Plus, crate::i18n::tr("Add"), can_add)
+                        .on_disabled_hover_text(crate::i18n::tr("Keep at most 16 profiles of each type"));
                     register(ui, widgets, "tools-profile-add", &add);
                     if !Popup::is_id_open(ui.ctx(), Popup::default_response_id(&add)) {
                         s.known = None;
@@ -696,7 +692,7 @@ fn profile_list(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, s: &mut S
                             s.removing = false;
                         }
                     });
-                    let duplicate = crate::pages::tool(ui, Icon::Copy, "Duplicate", can_add);
+                    let duplicate = crate::pages::tool(ui, Icon::Copy, crate::i18n::tr("Duplicate"), can_add);
                     register(ui, widgets, "tools-profile-duplicate", &duplicate);
                     if duplicate.clicked() {
                         if let Some(i) = group.add(kind, Some(*selected)) {
@@ -721,7 +717,7 @@ fn known_menu(
     ui.set_width(330.0);
     ui.spacing_mut().item_spacing.y = 0.0;
     let mut chosen = None;
-    for (heading, here) in [("ON THIS COMPUTER", true), ("NOT FOUND", false)] {
+    for (heading, here) in [(crate::i18n::tr("ON THIS COMPUTER"), true), (crate::i18n::tr("NOT FOUND"), false)] {
         let tools: Vec<_> = known.iter().filter(|(_, found)| found.is_some() == here).collect();
         if tools.is_empty() {
             continue;
@@ -744,7 +740,7 @@ fn known_menu(
         ui.separator();
     }
     ui.add_space(2.0);
-    let r = known_row(ui, "     Empty profile", "", true, false);
+    let r = known_row(ui, crate::i18n::tr("     Empty profile"), "", true, false);
     icon(ui.painter(), Rect::from_center_size(pos2(r.rect.left() + 14.0, r.rect.center().y), vec2(12.0, 12.0)), Icon::Plus, HINT());
     register(ui, widgets, "tools-known-empty", &r);
     if r.clicked() {
@@ -765,7 +761,7 @@ fn known_row(ui: &mut Ui, name: &str, file: &str, here: bool, added: bool) -> Re
     painter.text(left, Align2::LEFT_CENTER, name, FontId::proportional(13.0), if here { TEXT() } else { HINT() });
     let right = pos2(rect.right() - 8.0, rect.center().y);
     if added {
-        let width = painter.text(right, Align2::RIGHT_CENTER, "Added", FontId::proportional(12.0), GREEN()).width();
+        let width = painter.text(right, Align2::RIGHT_CENTER, crate::i18n::tr("Added"), FontId::proportional(12.0), GREEN()).width();
         let mark = Rect::from_center_size(pos2(right.x - width - 10.0, right.y), vec2(12.0, 12.0));
         icon(painter, mark, Icon::Check, GREEN());
     } else {
@@ -783,11 +779,19 @@ fn profile_row(
     selected: bool,
     enabled: bool,
 ) -> Response {
+    // The default badge belongs to the name row. Let the program/status use the
+    // whole second row and grow vertically when translated text needs to wrap.
+    let program_galley = ui.painter().layout(
+        program.into(),
+        FontId::monospace(11.0),
+        HINT(),
+        (ui.available_width() - 24.0).max(1.0),
+    );
     let response = ui.add_enabled(
         enabled,
         Button::new("")
             .frame(false)
-            .min_size(vec2(ui.available_width(), 48.0)),
+            .min_size(vec2(ui.available_width(), (35.0 + program_galley.size().y).max(48.0))),
     );
     let rect = response.rect;
     let painter = ui.painter();
@@ -802,9 +806,9 @@ fn profile_row(
         painter.rect_filled(rect, 0.0, HOVER());
     }
     let pill = if default {
-        let galley = painter.layout_no_wrap("Default".into(), semibold(11.0), BLUE());
+        let galley = painter.layout_no_wrap(crate::i18n::tr("Default").into(), semibold(11.0), BLUE());
         let pill = Rect::from_min_size(
-            pos2(rect.right() - 12.0 - galley.size().x - 14.0, rect.center().y - 9.0),
+            pos2(rect.right() - 12.0 - galley.size().x - 14.0, rect.top() + 7.0),
             vec2(galley.size().x + 14.0, 18.0),
         );
         painter.rect_filled(pill, 9.0, BLUE().gamma_multiply(0.14));
@@ -814,15 +818,11 @@ fn profile_row(
         0.0
     };
     let width = (rect.width() - 24.0 - pill).max(0.0);
-    for (y, value, font, color) in [
-        (rect.top() + 16.0, name, semibold(13.0), TEXT()),
-        (rect.top() + 33.0, program, FontId::monospace(11.0), HINT()),
-    ] {
-        let mut job = text::LayoutJob::simple_singleline(value.into(), font, color);
-        job.wrap = text::TextWrapping::truncate_at_width(width);
-        let galley = painter.layout_job(job);
-        painter.galley(pos2(rect.left() + 12.0, y - galley.size().y / 2.0), galley, color);
-    }
+    let mut job = text::LayoutJob::simple_singleline(name.into(), semibold(13.0), TEXT());
+    job.wrap = text::TextWrapping::truncate_at_width(width);
+    let galley = painter.layout_job(job);
+    painter.galley(pos2(rect.left() + 12.0, rect.top() + 16.0 - galley.size().y / 2.0), galley, TEXT());
+    painter.galley(pos2(rect.left() + 12.0, rect.top() + 26.0), program_galley, HINT());
     response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, name));
     response
 }
@@ -834,26 +834,22 @@ fn profile_check(name: &str, config: &ExternalToolConfig, kind: ExternalToolKind
     let placeholders = kind.placeholders();
     if executable.is_empty() {
         if let Some(tool) = known_tools::named(name, kind) {
-            return (AMBER(), format!("{} wasn't found. Browse to {}.", tool.name, tool.file));
+            return (AMBER(), crate::i18n::trf!("{tool} wasn't found. Browse to {file}.", tool = tool.name, file = tool.file));
         }
-        return (AMBER(), "No program yet, so this profile cannot launch.".into());
+        return (AMBER(), crate::i18n::tr("No program yet, so this profile cannot launch.").into());
     }
     let path = std::path::Path::new(executable);
     if !path.is_absolute()
         || (cfg!(windows) && !path.extension().is_some_and(|x| x.eq_ignore_ascii_case("exe")))
     {
-        return (RED(), "Use the full path to the tool's .exe file.".into());
+        return (RED(), crate::i18n::tr("Use the full path to the tool's .exe file.").into());
     }
     let lines: Vec<&str> = config.arguments.lines().filter(|l| !l.is_empty()).collect();
     let missing: Vec<&str> = placeholders.iter().copied().filter(|p| !lines.contains(p)).collect();
     if !missing.is_empty() {
         return (
             RED(),
-            format!(
-                "Add {} on {} own line.",
-                missing.join(" and "),
-                if missing.len() == 1 { "its" } else { "their" }
-            ),
+            crate::i18n::trf!("Add each required placeholder on its own line: {placeholders}.", placeholders = missing.join(", ")),
         );
     }
     if let Some(other) = lines
@@ -862,13 +858,13 @@ fn profile_check(name: &str, config: &ExternalToolConfig, kind: ExternalToolKind
     {
         return (
             RED(),
-            format!("{other} is not a placeholder here. Use {}.", placeholders.join(", ")),
+            crate::i18n::trf!("{other} is not a placeholder here. Use {placeholders}.", other, placeholders = placeholders.join(", ")),
         );
     }
     match config.validate(kind) {
-        Ok(()) if found == Some(false) => (AMBER(), "Program not found. Browse to it again, or remove this profile.".into()),
-        Ok(()) => (GREEN(), format!("Ready · passes {}", placeholders.join(", "))),
-        Err(_) => (RED(), "Use at most 64 arguments, one per line.".into()),
+        Ok(()) if found == Some(false) => (AMBER(), crate::i18n::tr("Program not found. Browse to it again, or remove this profile.").into()),
+        Ok(()) => (GREEN(), crate::i18n::trf!("Ready · passes {placeholders}", placeholders = placeholders.join(", "))),
+        Err(_) => (RED(), crate::i18n::tr("Use at most 64 arguments, one per line.").into()),
     }
 }
 
@@ -953,7 +949,7 @@ fn profile_editor(
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 0.0;
             let profile = &mut group.entries[index];
-            field_row(ui, "Name", |ui| {
+            field_row(ui, crate::i18n::tr("Name"), |ui| {
                 let r = ui.add_enabled(
                     !busy,
                     TextEdit::singleline(&mut profile.name)
@@ -962,35 +958,35 @@ fn profile_editor(
                 );
                 register(ui, widgets, "tools-profile-name", &r);
             });
-            field_row(ui, "Program", |ui| {
+            field_row(ui, crate::i18n::tr("Program"), |ui| {
                 ui.horizontal(|ui| {
                     let r = ui.add_enabled(
                         !busy,
                         TextEdit::singleline(&mut profile.config.executable)
                             .font(FontId::monospace(12.0))
-                            .hint_text("Full path to the tool's .exe")
+                            .hint_text(crate::i18n::tr("Full path to the tool's .exe"))
                             .char_limit(32768)
                             .desired_width((ui.available_width() - 84.0).max(80.0)),
                     );
                     register(ui, widgets, "tools-executable", &r);
-                    let b = ui.add_enabled(!busy, Button::new("Browse"));
+                    let b = ui.add_enabled(!busy, Button::new(crate::i18n::tr("Browse")));
                     register(ui, widgets, "tools-browse", &b);
                     if b.clicked() {
                         browse = Some(PickTarget::ToolProgram(kind, index));
                     }
                 });
             });
-            field_row(ui, "Arguments", |ui| {
+            field_row(ui, crate::i18n::tr("Arguments"), |ui| {
                 arguments_editor(ui, widgets, "tools-arguments", &mut profile.config.arguments, !busy);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
-                    ui.label(RichText::new("Insert").size(12.0).color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("Insert")).size(12.0).color(HINT()));
                     for (i, placeholder) in kind.placeholders().iter().enumerate() {
                         let r = ui.add_enabled(
                             !busy,
                             quiet(Button::new(RichText::new(*placeholder).monospace().size(12.0).color(BLUE()))),
                         )
-                        .on_hover_text(format!("Add {placeholder} as an argument"));
+                        .on_hover_text(crate::i18n::trf!("Add {placeholder} as an argument", placeholder));
                         register(ui, widgets, &format!("tools-insert-{i}"), &r);
                         if r.clicked() {
                             let arguments = &mut profile.config.arguments;
@@ -1013,23 +1009,23 @@ fn profile_editor(
                         if is_default {
                             let (rect, _) = ui.allocate_exact_size(vec2(13.0, 13.0), Sense::hover());
                             icon(ui.painter(), rect, Icon::Check, BLUE());
-                            let what = match kind {
-                                ExternalToolKind::Editor => "files",
-                                ExternalToolKind::Diff => "comparisons",
-                                ExternalToolKind::Merge => "conflicts",
+                            let purpose = match kind {
+                                ExternalToolKind::Editor => crate::i18n::tr("Used by default for files"),
+                                ExternalToolKind::Diff => crate::i18n::tr("Used by default for comparisons"),
+                                ExternalToolKind::Merge => crate::i18n::tr("Used by default for conflicts"),
                             };
-                            ui.label(RichText::new(format!("Used by default for {what}")).size(12.5).color(MUTED()));
+                            ui.label(RichText::new(purpose).size(12.5).color(MUTED()));
                         } else {
-                            make_default = button(ui, widgets, "tools-profile-default", "Make default", !busy);
+                            make_default = button(ui, widgets, "tools-profile-default", crate::i18n::tr("Make default"), !busy);
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if !s.removing {
                                 let r = ui
                                     .add_enabled(
                                         !busy && count > 1,
-                                        quiet(Button::new(RichText::new("Remove profile").color(RED()))),
+                                        quiet(Button::new(RichText::new(crate::i18n::tr("Remove profile")).color(RED()))),
                                     )
-                                    .on_disabled_hover_text("Keep at least one profile");
+                                    .on_disabled_hover_text(crate::i18n::tr("Keep at least one profile"));
                                 register(ui, widgets, "tools-profile-remove", &r);
                                 if r.clicked() {
                                     s.removing = true;
@@ -1049,14 +1045,14 @@ fn profile_editor(
                                 ui.horizontal(|ui| {
                                     ui.add(
                                         Label::new(
-                                            RichText::new("Remove this profile? The program stays installed.")
+                                            RichText::new(crate::i18n::tr("Remove this profile? The program stays installed."))
                                                 .size(12.5)
                                                 .color(RED()),
                                         )
                                         .truncate(),
                                     );
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                        let confirm = crate::pages::danger(ui, !busy, "Remove profile");
+                                        let confirm = crate::pages::danger(ui, !busy, crate::i18n::tr("Remove profile"));
                                         register(ui, widgets, "tools-profile-remove-confirm", &confirm);
                                         if confirm.clicked() {
                                             if let Some(i) = group.remove(index) {
@@ -1064,7 +1060,7 @@ fn profile_editor(
                                             }
                                             s.removing = false;
                                         }
-                                        if button(ui, widgets, "tools-profile-remove-cancel", "Keep profile", !busy) {
+                                        if button(ui, widgets, "tools-profile-remove-cancel", crate::i18n::tr("Keep profile"), !busy) {
                                             s.removing = false;
                                         }
                                     });
@@ -1073,7 +1069,7 @@ fn profile_editor(
                     }
                     ui.add_space(8.0);
                     ui.label(
-                        RichText::new("Use a program that stays open until its window closes.")
+                        RichText::new(crate::i18n::tr("Use a program that stays open until its window closes."))
                             .size(12.0)
                             .color(HINT()),
                     );

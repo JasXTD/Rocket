@@ -12,6 +12,7 @@
 <p align="center">
   <a href="#features">Features</a> ·
   <a href="#platforms">Platforms</a> ·
+  <a href="#command-line-interface">CLI</a> ·
   <a href="#build-and-run">Build and run</a> ·
   <a href="#comparison">Comparison</a> ·
   <a href="#contributing">Contributing</a> ·
@@ -154,8 +155,8 @@ See the [release notes](docs/releases/0.92.2.md) for scope and limitations.
 **Everything else**
 
 - Themes: Clay (the default), Ocean, Dark, Light, System and Custom.
-- **Preferences → General → Languages**: detected system language or your saved
-  choice, with ten preview translations and English fallback for unfinished screens.
+- **Multilingual interface**: English and ten preview translations, with automatic
+  system-language detection and a saved language choice in Preferences.
 - **Command palette**, task-grouped menus, custom commands, and shortcuts and mouse gestures
   with two bindings each.
 - An integrated terminal with your choice of shell.
@@ -169,15 +170,39 @@ See the [release notes](docs/releases/0.92.2.md) for scope and limitations.
 - A JSON [CLI](CLI.md) for Git, hosting and reviewed composed workflows, plus a
   localhost [MCP service](tools/README.md#localhost-mcp) for UI automation.
 
+### Languages
+
+Rocket supports **English, German, Swiss German, French, Swedish, Russian,
+Ukrainian, Arabic, Simplified Chinese, Japanese and Korean**. At first launch it
+detects a supported system language; change it in **Preferences → General →
+Languages** at any time. Your choice is saved for the next launch.
+
+The ten non-English translations are labeled **Preview**. Missing translations
+fall back to English. Repository names, paths, commit messages and other user
+content keep their original text; changing the interface language does not
+translate or modify your repository.
+
 ## Platforms
 
 | Platform | Status |
 | --- | --- |
 | Windows x64 | Main platform, tested mostly on Windows 10. A portable ZIP with Git for Windows 2.56.0.windows.4, Git Credential Manager and Git LFS bundled; no installer or administrator access. |
-| Linux x86_64 | Supported under X11 or Wayland. Uses your system Git. Everyday Git work, the terminal, SSH, hosting, Lua extensions and app updates work. |
-| macOS 15+ on Apple Silicon | Supported, not yet notarized. Native menus, Keychain, system spelling, automatic refresh, a zsh terminal and Lua extensions. Uses your installed Git. |
+| Linux x86_64 | Supported under X11 or Wayland; the portable package requires glibc 2.43+. Uses your system Git. Everyday Git work, the terminal, SSH, hosting, Lua extensions and app updates work. |
+| macOS 15+ on Apple Silicon | Preview, not yet notarized. Native menus, Keychain, system spelling, automatic refresh, a zsh terminal and Lua extensions. Uses your installed Git. |
 
 See [Current limits](#current-limits) for what still differs between platforms.
+
+## Command-line interface
+
+The portable packages include **`rocket-cli`** (`rocket-cli.exe` on Windows). It runs
+without the desktop app and shares Rocket's Rust backend, Git helper, protection checks
+and repository write coordination. Use `--json` for structured results, errors and
+recovery details in scripts.
+
+Commands cover repository inspection, staging and commits, branches, fetch/pull/push,
+hosting PRs and reviews, and selected recovery workflows. The CLI covers a subset of
+the desktop; see the [command reference and examples](CLI.md) for supported operations,
+preview requirements, exit codes and cancellation.
 
 ## Build and run
 
@@ -235,33 +260,54 @@ the rest.
 | | **Rocket** | [**Fork**](https://git-fork.com/) | [**GitKraken Desktop**](https://www.gitkraken.com/git-client) | [**Lazygit**](https://github.com/jesseduffield/lazygit) |
 | :-- | :-: | :-: | :-: | :-: |
 | **Platforms** | | | | |
-| Windows | ✅ | ✅ | ✅ | ✅ |
-| macOS | ✅ Apple Silicon | ✅ | ✅ | ✅ |
-| Linux | ✅ | — | ✅ | ✅ |
-| Interface | Desktop, native Rust | Desktop | Desktop | Terminal |
+| Windows | ✅ x64 | ✅ | ✅ | ✅ |
+| macOS | Preview, Apple Silicon | ✅ | ✅ | ✅ |
+| Linux | ✅ x86_64 | — | ✅ | ✅ |
+| Interface | Native Rust desktop + CLI | Desktop | Desktop + companion CLI | Terminal UI |
 | **Everyday Git** | | | | |
 | Stage hunks and single lines | ✅ | ✅ | ✅ | ✅ |
 | Interactive rebase | ✅ visual | ✅ visual | ✅ visual | ✅ keyboard |
 | Built-in conflict editor | ✅ three columns | ✅ | ✅ | ✅ hunk picker |
 | Linked worktrees | ✅ | ✅ | ✅ | ✅ |
-| Many repositories | ✅ workspaces, Fetch all, Pull all | ✅ workspaces | ✅ workspaces | Recent-repo switcher |
+| Many repositories | ✅ folder scan, workspaces, Fetch all, Pull all | ✅ workspaces | ✅ workspaces | Recent-repo switcher |
 | **AI** | | | | |
-| Commit messages | ✅ Claude Code, Codex | ✅ Claude Code, Codex, Cursor | 💲 GitKraken AI | — |
-| Code review | ✅ | ✅ | In the browser | — |
-| Conflict resolution | ✅ | — | 💲 preview | — |
+| Commit messages | ✅ Claude Code, Codex | ✅ external AI agents | 💲 GitKraken AI | — |
+| Code review | ✅ branch reviews | ✅ external AI agents | GitKraken.dev (browser) | — |
+| Conflict resolution | ✅ reviewed suggestions | — | 💲 preview | — |
 | **Hosting** | | | | |
-| Pull requests | ✅ list, create, review | ✅ list, create | ✅ list, create, merge | ✅ create, open |
-| CI status | ✅ commits and branches, re-run failed jobs | — | ✅ on pull requests | — |
+| Pull requests | ✅ list, create, inline review, merge | ✅ list, create | ✅ list/create; GitHub review/merge | GitHub PR indicators; create/open in browser |
+| CI status | ✅ commits, branches and PR heads; rerun where supported | — | ✅ on pull requests | — |
 | **Extras** | | | | |
-| Extensions | ✅ sandboxed Lua with native panels | Custom commands | — | Custom commands |
+| Command-line interface | ✅ [`rocket-cli`](CLI.md), JSON output | [Open desktop from CLI](https://git-fork.com/blog/posts/fork-1.0.67/) | ✅ companion [`gk`, JSON output](https://help.gitkraken.com/cli/gk-cli-json-output/) | Interactive terminal UI |
+| Custom commands | ✅ contextual commands, input forms, JSON import/export | ✅ contextual commands and input forms | Agent launch/setup commands | ✅ YAML configuration and prompts |
+| Sandboxed UI extensions | ✅ Lua with native panels | — | — | — |
 | Price | Free | $59.99 once, free evaluation | Free for local and public repos, paid plans | Free |
 | License | [MIT](LICENSE-MIT) / [Apache-2.0](LICENSE-APACHE) | Commercial | Commercial | MIT |
 
-✅ built in · 💲 paid plan · — not in the app's documentation
+✅ supported as described · 💲 paid plan · — not documented in the sources checked
 
-Checked on 2026-11-09 against Fork 2.24 (Windows) and 2.71 (macOS), GitKraken Desktop 12.6.1
-and Lazygit 0.66.3, using their official documentation, release notes and pricing pages. This
-compares documented features, not speed or maturity, and features change.
+Updated for **Rocket 0.92.2 on 2026-11-10**. This compares documented capabilities,
+not speed, maturity or identical coverage. Features vary by platform, host and plan;
+AI providers may require a separate subscription. See [Platforms](#platforms) for
+Rocket's package requirements and preview status.
+
+Rocket's [hosting matrix](HOSTING.md) describes merge methods and review limits by
+provider. PR checks use the PR's head commit; Bitbucket Server/Data Center CI is not
+supported. Non-GitHub adapters have mock-API coverage, not live-account acceptance.
+[Custom commands](crates/rocket-ui/src/guide.md#custom-commands) are separate from Lua
+extensions. Lazygit's GitHub PR indicators require the separate `gh` tool and sign-in.
+
+Official comparison sources:
+
+- **Fork:** [features and price](https://git-fork.com/),
+  [Windows release notes](https://git-fork.com/releasenoteswin) and
+  [macOS release notes](https://git-fork.com/releasenotes).
+- **GitKraken:** [PRs and CI status](https://help.gitkraken.com/gitkraken-desktop/pull-requests/),
+  [AI](https://help.gitkraken.com/gitkraken-desktop/gkd-gitkraken-ai/),
+  [custom agent commands](https://help.gitkraken.com/gitkraken-desktop/preferences/) and
+  [pricing](https://www.gitkraken.com/pricing).
+- **Lazygit:** [features](https://github.com/jesseduffield/lazygit) and
+  [custom commands](https://github.com/jesseduffield/lazygit/blob/master/docs/Custom_Command_Keybindings.md).
 
 ## Current limits
 
@@ -277,10 +323,14 @@ compares documented features, not speed or maturity, and features change.
 - **Hosting:** only GitHub's account sign-in has been checked against the real service.
   GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps and Gitea are tested against
   local fixtures. Inline capabilities and limits differ by host; see [Hosting](HOSTING.md).
-- **Languages:** all ten translations are previews. General, Git, Terminal and AI draft
-  settings are localized; some advanced screens still display English.
-- **Stand-ins:** Jira was tested against mock services, and AI resolve against a stand-in
-  program, not real Claude Code or Codex replies.
+- **Languages:** all ten translations remain previews while advanced-screen coverage
+  and wording are reviewed. Untranslated interface text falls back to English;
+  Git/provider diagnostics, extension-authored content and long-form guides can
+  retain their original language.
+- **Integration acceptance:** Jira is checked against its API documentation and mock
+  services, without a live tenant. AI conflict proposals have also been checked with
+  a real Astra response through localhost MCP using synthetic code; the separate
+  Claude Code/Codex CLI provider paths still use stand-ins in acceptance tests.
 - **Partial actions** (single lines, hunks) cover specific text cases; other files need a
   whole-file action. The CLI and MCP service cover a subset of the desktop.
 

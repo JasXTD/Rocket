@@ -28,10 +28,10 @@ impl Mode {
     }
     fn title(&self) -> &'static str {
         match self {
-            Self::Import => "Import patch",
-            Self::Export => "Export patch",
-            Self::Discard(..) => "Discard selected changes",
-            Self::Stash(..) => "Stash selected changes",
+            Self::Import => crate::i18n::tr("Import patch"),
+            Self::Export => crate::i18n::tr("Export patch"),
+            Self::Discard(..) => crate::i18n::tr("Discard selected changes"),
+            Self::Stash(..) => crate::i18n::tr("Stash selected changes"),
         }
     }
 }
@@ -135,9 +135,9 @@ impl Rocket {
                 .first()
                 .map(|f| {
                     let name = f.label.rsplit('/').next().unwrap_or(&f.label);
-                    format!("Selected changes in {name}")
+                    crate::i18n::trf!("Selected changes in {name}", name)
                 })
-                .unwrap_or_else(|| "Selected changes".into()),
+                .unwrap_or_else(|| crate::i18n::tr("Selected changes").into()),
             _ => String::new(),
         };
         d.patch = Some(DialogState {
@@ -247,7 +247,7 @@ impl Rocket {
     /// patch file or pasted patch text, and start its review at once.
     pub(crate) fn import_patch(&mut self, source: PatchSource) {
         if self.tab().is_none() {
-            self.notice = Some("Open a repository first to apply a patch.".into());
+            self.notice = Some(crate::i18n::tr("Open a repository first to apply a patch.").into());
             return;
         }
         self.show_dialog(DialogKind::Patch(Mode::Import));
@@ -314,22 +314,22 @@ impl Rocket {
         let series = export && s.source == 3;
         let head = pages::ReviewHeader {
             image: Icon::File,
-            title: if series { "Export commit series" } else { s.mode.title() },
+            title: if series { crate::i18n::tr("Export commit series") } else { s.mode.title() },
             subtitle: match s.mode {
                 Mode::Import => {
-                    "Applies a patch to your working files. Every file it changes is backed up first."
+                    crate::i18n::tr("Applies a patch to your working files. Every file it changes is backed up first.")
                 }
                 Mode::Export if series => {
-                    "One patch file for each commit, oldest first. Nothing in this repository changes."
+                    crate::i18n::tr("One patch file for each commit, oldest first. Nothing in this repository changes.")
                 }
                 Mode::Export => {
-                    "Save changes as a patch file to share or apply somewhere else. Nothing in this repository changes."
+                    crate::i18n::tr("Save changes as a patch file to share or apply somewhere else. Nothing in this repository changes.")
                 }
                 Mode::Stash(..) => {
-                    "Saves the lines you picked as a stash, then takes them out of the file. Your other changes stay."
+                    crate::i18n::tr("Saves the lines you picked as a stash, then takes them out of the file. Your other changes stay.")
                 }
                 Mode::Discard(..) => {
-                    "Review file changes and any executable-mode updates; recovery copies are kept."
+                    crate::i18n::tr("Review file changes and any executable-mode updates; recovery copies are kept.")
                 }
             },
             // Discarding the selected lines removes them from the working files.
@@ -371,7 +371,7 @@ impl Rocket {
                     if s.running() {
                         pages::waiting(
                             ui,
-                            "Reading source, checking files and building the preview…",
+                            crate::i18n::tr("Reading source, checking files and building the preview…"),
                         );
                     }
                 }
@@ -379,22 +379,18 @@ impl Rocket {
                     cancel = pages::running_footer(ui, widgets, &running, &["dialog-cancel"]);
                 }
                 pages::Part::Footer if s.saved.is_some() => {
-                    pages::footer_status(ui, false, "Saved");
+                    pages::footer_status(ui, false, crate::i18n::tr("Saved"));
                 }
                 pages::Part::Footer => {
                     let label = match (&s.mode, &s.preview) {
                         (Mode::Export, Some(Preview::Series(p))) => {
-                            format!("Save {} patches", p.entries().len())
+                            crate::i18n::trf!("Save patches: {count}", count = p.entries().len())
                         }
-                        (Mode::Export, _) if series => "Save patches".into(),
-                        (Mode::Export, _) => "Save patch".into(),
-                        (Mode::Stash(_, lines), _) => format!(
-                            "Stash {} line{}",
-                            lines.len(),
-                            if lines.len() == 1 { "" } else { "s" }
-                        ),
-                        (Mode::Discard(..), _) => "Back up & discard selected".into(),
-                        (Mode::Import, _) => "Apply patch".into(),
+                        (Mode::Export, _) if series => crate::i18n::tr("Save patches").into(),
+                        (Mode::Export, _) => crate::i18n::tr("Save patch").into(),
+                        (Mode::Stash(_, lines), _) => crate::i18n::trf!("Stash lines: {count}", count = lines.len()),
+                        (Mode::Discard(..), _) => crate::i18n::tr("Back up & discard selected").into(),
+                        (Mode::Import, _) => crate::i18n::tr("Apply patch").into(),
                     };
                     let ready = can_write && !s.running() && !s.applying && s.preview.is_some();
                     let r = if discard && !stashing {
@@ -409,27 +405,27 @@ impl Rocket {
                         && (discard || s.text.is_some() || !s.path.trim().is_empty())
                         && !(stashing && s.message.trim().is_empty());
                     let r = if s.preview.is_some() || d.error.is_some() || discard {
-                        ui.add_enabled(can_review, Button::new("Review again"))
+                        ui.add_enabled(can_review, Button::new(crate::i18n::tr("Review again")))
                     } else {
-                        pages::primary(ui, can_review, "Review")
+                        pages::primary(ui, can_review, crate::i18n::tr("Review"))
                     };
                     register(ui, widgets, "dialog-patch-review", &r);
                     refresh = r.clicked();
                     // Stop the running read; the dialog stays open.
                     let busy = s.running();
                     if busy {
-                        let r = ui.button("Stop");
+                        let r = ui.button(crate::i18n::tr("Stop"));
                         register(ui, widgets, "dialog-cancel", &r);
                         cancel = r.clicked();
                     }
                     let status = if busy {
-                        "Reviewing".to_owned()
+                        crate::i18n::tr("Reviewing").to_owned()
                     } else if d.error.is_some() {
-                        "Fix the problem above, then review again".to_owned()
+                        crate::i18n::tr("Fix the problem above, then review again").to_owned()
                     } else if let Some(preview) = &s.preview {
                         reviewed_status(preview)
                     } else {
-                        "Review to see exactly what will happen".to_owned()
+                        crate::i18n::tr("Review to see exactly what will happen").to_owned()
                     };
                     pages::footer_status(ui, false, &status);
                 }
@@ -444,7 +440,7 @@ impl Rocket {
             s.task = None;
             s.preview = None;
             s.notice =
-                Some("Preview cancelled. No working files or patch output were changed.".into());
+                Some(crate::i18n::tr("Preview cancelled. No working files or patch output were changed.").into());
         }
         self.dialog = if close { None } else { Some(d) };
         if cancel && self.write.is_some() {
@@ -491,7 +487,7 @@ fn saved_strip(ui: &mut Ui, text: &str, widgets: &mut std::collections::HashMap<
                 icon(ui.painter(), mark, Icon::Check, GREEN());
                 ui.label(RichText::new(text).size(12.5).color(GREEN()));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let r = pages::tool(ui, Icon::Folder, "Show in Explorer", true);
+                    let r = pages::tool(ui, Icon::Folder, crate::i18n::tr("Show in Explorer"), true);
                     register(ui, widgets, "dialog-patch-show", &r);
                     clicked = r.clicked();
                 });
@@ -546,28 +542,21 @@ impl Sources {
 /// The footer line once a review is ready.
 fn reviewed_status(preview: &Preview) -> String {
     match preview {
-        Preview::Series(p) => format!(
-            "Reviewed · {} commits · nothing has changed yet",
-            p.entries().len()
-        ),
-        Preview::Export(p) => format!(
-            "Reviewed · {} · {}",
-            files_count(p.paths().len()),
-            size(p.patch().len())
-        ),
-        Preview::Stash(_) => "Reviewed · nothing has changed yet · the file is backed up first".into(),
-        Preview::Apply(_) => "Reviewed · nothing has changed yet".into(),
+        Preview::Series(p) => crate::i18n::trf!("Reviewed · {commits} · nothing has changed yet", commits = crate::i18n::trn!(p.entries().len(), "{n} commit", "{n} commits")),
+        Preview::Export(p) => crate::i18n::trf!("Reviewed · {files} · {size}", files = files_count(p.paths().len()), size = size(p.patch().len())),
+        Preview::Stash(_) => crate::i18n::tr("Reviewed · nothing has changed yet · the file is backed up first").into(),
+        Preview::Apply(_) => crate::i18n::tr("Reviewed · nothing has changed yet").into(),
     }
 }
 
 fn files_count(n: usize) -> String {
-    format!("{n} file{}", if n == 1 { "" } else { "s" })
+    crate::i18n::trn!(n, "{n} file", "{n} files")
 }
 
 /// "1.2 KB", "412 bytes".
 pub(crate) fn size(bytes: usize) -> String {
     match bytes {
-        0..1024 => format!("{bytes} bytes"),
+        0..1024 => crate::i18n::trf!("{bytes} bytes", bytes),
         1024..1_048_576 => format!("{:.1} KB", bytes as f64 / 1024.0),
         _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
     }
@@ -707,15 +696,15 @@ fn import_body(
     widgets: &mut std::collections::HashMap<String, UiControl>,
     enabled: bool,
 ) {
-    form_row(ui, "Patch", |ui| {
+    form_row(ui, crate::i18n::tr("Patch"), |ui| {
         if let Some(text) = s.text.clone() {
             ui.horizontal(|ui| {
                 let (mark, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
                 icon(ui.painter(), mark, Icon::File, MUTED());
-                ui.label(RichText::new("From the clipboard").strong());
+                ui.label(RichText::new(crate::i18n::tr("From the clipboard")).strong());
                 let lines = text.split(|b| *b == b'\n').filter(|l| !l.is_empty()).count();
-                ui.label(RichText::new(format!("· {lines} lines · {}", size(text.len()))).color(HINT()));
-                let r = ui.add_enabled(enabled, Button::new("Use a file instead"));
+                ui.label(RichText::new(crate::i18n::trf!("· lines: {count} · {size}", count = lines, size = size(text.len()))).color(HINT()));
+                let r = ui.add_enabled(enabled, Button::new(crate::i18n::tr("Use a file instead")));
                 register(ui, widgets, "dialog-patch-use-file", &r);
                 if r.clicked() {
                     s.text = None;
@@ -730,7 +719,7 @@ fn import_body(
                     .desired_width(f32::INFINITY)
                     .min_size(vec2(0.0, 30.0))
                     .vertical_align(Align::Center)
-                    .hint_text("C:\\folder\\changes.patch, or drop a patch file on the window"),
+                    .hint_text(crate::i18n::tr("Patch file path, or drop a patch file on the window")),
             );
             register(ui, widgets, "dialog-patch-path", &r);
             if r.changed() {
@@ -771,20 +760,25 @@ fn import_body(
         ui.label(RichText::new(files_count(p.files().len())).strong());
         ui.label(RichText::new(format!("+{added}")).monospace().color(GREEN()));
         ui.label(RichText::new(format!("−{removed}")).monospace().color(RED()));
-        for (letter, what) in [('M', "changed"), ('A', "new"), ('D', "deleted")] {
+        for letter in ['M', 'A', 'D'] {
             let n = letters.iter().filter(|l| **l == letter).count();
             if n > 0 {
-                ui.label(RichText::new(format!("{n} {what}")).color(HINT()));
+                let text = match letter {
+                    'M' => crate::i18n::trf!("{count} changed", count = n),
+                    'A' => crate::i18n::trf!("{count} new", count = n),
+                    _ => crate::i18n::trf!("{count} deleted", count = n),
+                };
+                ui.label(RichText::new(text).color(HINT()));
             }
         }
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(RichText::new("Applies cleanly").color(GREEN()));
+            ui.label(RichText::new(crate::i18n::tr("Applies cleanly")).color(GREEN()));
             let (mark, _) = ui.allocate_exact_size(vec2(13.0, 13.0), Sense::hover());
             icon(ui.painter(), mark, Icon::Check, GREEN());
         });
     });
     if !p.mode_changes().is_empty() {
-        pages::callout(ui, AMBER(), "Executable modes will update Git's index. Existing staged content stays; new executable files are staged. The original index is backed up.");
+        pages::callout(ui, AMBER(), crate::i18n::tr("Executable modes will update Git's index. Existing staged content stays; new executable files are staged. The original index is backed up."));
     }
     files_and_diff(ui, widgets, files, &letters, &mut s.file, "patch-import");
 }
@@ -799,14 +793,14 @@ fn export_body(
     widgets: &mut std::collections::HashMap<String, UiControl>,
     enabled: bool,
 ) {
-    form_row(ui, "Export", |ui| {
+    form_row(ui, crate::i18n::tr("Export"), |ui| {
         ui.add_enabled_ui(enabled, |ui| {
             let count = |n: Option<usize>| n.map_or_else(String::new, |n| format!("  {n}"));
             let sources = [
-                (0, format!("Unstaged{}", count(context.unstaged)), "dialog-patch-source-unstaged"),
-                (1, format!("Staged{}", count(context.staged)), "dialog-patch-source-staged"),
-                (2, "A commit".to_owned(), "dialog-patch-source-commit"),
-                (3, "Commit series".to_owned(), "dialog-patch-source-series"),
+                (0, crate::i18n::trf!("Unstaged{count}", count = count(context.unstaged)), "dialog-patch-source-unstaged"),
+                (1, crate::i18n::trf!("Staged{count}", count = count(context.staged)), "dialog-patch-source-staged"),
+                (2, crate::i18n::tr("A commit").to_owned(), "dialog-patch-source-commit"),
+                (3, crate::i18n::tr("Commit series").to_owned(), "dialog-patch-source-series"),
             ];
             let items: Vec<_> = sources.iter().map(|(i, label, _)| (label.as_str(), s.source == *i)).collect();
             for (r, (i, _, key)) in pages::segments(ui, &items).iter().zip(&sources) {
@@ -821,12 +815,12 @@ fn export_body(
     });
     let series = s.source == 3;
     if s.source == 2 {
-        form_row(ui, "Commit", |ui| {
+        form_row(ui, crate::i18n::tr("Commit"), |ui| {
             let r = ui.add_enabled(
                 enabled,
                 TextEdit::singleline(&mut s.revision)
                     .font(TextStyle::Monospace)
-                    .hint_text("Commit, branch or tag")
+                    .hint_text(crate::i18n::tr("Commit, branch or tag"))
                     .desired_width(f32::INFINITY)
                     .min_size(vec2(0.0, 30.0))
                     .vertical_align(Align::Center),
@@ -853,23 +847,23 @@ fn export_body(
                         }
                     }
                     if context.choices.is_empty() {
-                        pages::note(ui, "Type a commit ID, branch or tag.");
+                        pages::note(ui, crate::i18n::tr("Type a commit ID, branch or tag."));
                     }
                 });
         });
     }
     if series {
-        form_row(ui, "Commits", |ui| {
+        form_row(ui, crate::i18n::tr("Commits"), |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 let half = ((ui.available_width() - 110.0) / 2.0).max(120.0);
-                ui.label(RichText::new("First").color(HINT()));
+                ui.label(RichText::new(crate::i18n::tr("First")).color(HINT()));
                 let (head, choices) = (context.head.as_ref(), &context.choices);
                 if crate::commit_picker::field(ui, &mut s.base, "dialog-patch-base", choices, head, half, enabled, widgets) {
                     s.touched();
                 }
                 ui.label(RichText::new("→").color(FAINT()));
-                ui.label(RichText::new("Last").color(HINT()));
+                ui.label(RichText::new(crate::i18n::tr("Last")).color(HINT()));
                 if crate::commit_picker::field(ui, &mut s.revision, "dialog-patch-revision", choices, head, half, enabled, widgets) {
                     s.touched();
                 }
@@ -892,7 +886,7 @@ fn export_body(
                     removed: files.iter().map(|f| f.removed).sum(),
                 })
                 .collect();
-            let count = if shown.len() == 1 { "1 commit".to_owned() } else { format!("{} commits, oldest first", shown.len()) };
+            let count = crate::i18n::trf!("{commits}, oldest first", commits = crate::i18n::trn!(shown.len(), "{n} commit", "{n} commits"));
             let files = s.shown.get(s.file).map(Vec::as_slice).unwrap_or_default();
             crate::series_view::split(
                 ui,
@@ -907,7 +901,7 @@ fn export_body(
             );
         }
     }
-    form_row(ui, if series { "Save to" } else { "Save as" }, |ui| {
+    form_row(ui, if series { crate::i18n::tr("Save to") } else { crate::i18n::tr("Save as") }, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             let width = if series { ui.available_width() - 76.0 } else { f32::INFINITY };
@@ -924,19 +918,19 @@ fn export_body(
                 s.touched();
             }
             if series {
-                let r = ui.add_enabled(enabled, Button::new("Browse").min_size(vec2(0.0, 30.0)));
+                let r = ui.add_enabled(enabled, Button::new(crate::i18n::tr("Browse")).min_size(vec2(0.0, 30.0)));
                 register(ui, widgets, "dialog-patch-browse", &r);
                 *browse = r.clicked();
             }
         });
         if s.saved.is_some() {
-            pages::note(ui, "Working files and staging didn't change.");
+            pages::note(ui, crate::i18n::tr("Working files and staging didn't change."));
             return;
         }
         if series && let Some(error) = error.filter(|e| e.contains(FOLDER_EXISTS)) {
             // A refusal at saving time comes after the lines about what was saved.
             let text = pages::plain_error(error).replace('\n', ". ");
-            let text = text.find("This folder").map_or(text.as_str(), |at| &text[at..]);
+            let text = text.find(crate::i18n::tr("This folder")).map_or(text.as_str(), |at| &text[at..]);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 let (mark, _) = ui.allocate_exact_size(vec2(13.0, 13.0), Sense::hover());
@@ -949,22 +943,22 @@ fn export_body(
             Some(Preview::Series(p)) => crate::tags::check(
                 ui,
                 true,
-                &format!("New folder · {} patch files go inside", p.entries().len()),
+                &crate::i18n::trf!("New folder · patch files to save inside: {count}", count = p.entries().len()),
             ),
-            Some(Preview::Export(_)) => crate::tags::check(ui, true, "New file"),
+            Some(Preview::Export(_)) => crate::tags::check(ui, true, crate::i18n::tr("New file")),
             _ => pages::note(
                 ui,
                 if series {
-                    "A folder that doesn't exist yet; Rocket creates it."
+                    crate::i18n::tr("A folder that doesn't exist yet; Rocket creates it.")
                 } else {
-                    "A file that doesn't exist yet; existing files are never overwritten."
+                    crate::i18n::tr("A file that doesn't exist yet; existing files are never overwritten.")
                 },
             ),
         }
     });
     if let Some(Preview::Export(p)) = &s.preview {
         if let Some(id) = p.commit() {
-            pages::note(ui, &format!("Pinned to commit {}", id.as_str()));
+            pages::note(ui, &crate::i18n::trf!("Pinned to commit {commit}", commit = id.as_str()));
         }
         let files = s.shown.first().map(Vec::as_slice).unwrap_or_default();
         files_and_diff(ui, widgets, files, &[], &mut s.file, "patch-export");
@@ -982,7 +976,7 @@ fn stash_body(
     let Mode::Stash(review, lines) = &s.mode else {
         return;
     };
-    ui.label(RichText::new("Stash message").size(12.0).color(MUTED()));
+    ui.label(RichText::new(crate::i18n::tr("Stash message")).size(12.0).color(MUTED()));
     let r = ui.add_enabled(
         enabled,
         TextEdit::singleline(&mut s.message)
@@ -1005,8 +999,8 @@ fn stash_body(
     let (folder, name) = file.rsplit_once('/').map_or(("", file.as_str()), |(f, n)| (f, n));
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
-        ui.label(RichText::new(format!("{chosen} of {total} changed lines")).strong());
-        ui.label(RichText::new("in").color(HINT()));
+        ui.label(RichText::new(crate::i18n::trf!("Changed lines: {chosen} of {total}", chosen, total)).strong());
+        ui.label(RichText::new(crate::i18n::tr("in")).color(HINT()));
         let mut job = text::LayoutJob::default();
         if !folder.is_empty() {
             job.append(&format!("{folder}/"), 0.0, TextFormat::simple(FontId::proportional(13.0), FAINT()));
@@ -1014,11 +1008,11 @@ fn stash_body(
         job.append(name, 0.0, TextFormat::simple(FontId::proportional(13.0), TEXT()));
         ui.label(job);
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.label(RichText::new("Stays in the file").size(12.0).color(HINT()));
+            ui.label(RichText::new(crate::i18n::tr("Stays in the file")).size(12.0).color(HINT()));
             let (mark, _) = ui.allocate_exact_size(vec2(10.0, 10.0), Sense::hover());
             ui.painter().rect_filled(mark, 2.0, MUTED().gamma_multiply(0.5));
             ui.add_space(8.0);
-            ui.label(RichText::new("Goes into the stash").size(12.0).color(HINT()));
+            ui.label(RichText::new(crate::i18n::tr("Goes into the stash")).size(12.0).color(HINT()));
             let (mark, _) = ui.allocate_exact_size(vec2(10.0, 10.0), Sense::hover());
             ui.painter().rect_filled(mark, 2.0, BLUE());
         });
@@ -1031,12 +1025,9 @@ fn stash_body(
     pages::note(
         ui,
         &if rest == 0 {
-            format!("Afterwards {name} has none of these changes. Get the stash back from Stashes whenever you like.")
+            crate::i18n::trf!("Afterwards {name} has none of these changes. Get the stash back from Stashes whenever you like.", name)
         } else {
-            format!(
-                "Afterwards {name} keeps the other {rest} changed line{}. Get the stash back from Stashes whenever you like.",
-                if rest == 1 { "" } else { "s" }
-            )
+            crate::i18n::trf!("Afterwards {name} keeps the remaining changed lines: {count}. Get the stash back from Stashes whenever you like.", name, count = rest)
         },
     );
 }
@@ -1048,17 +1039,17 @@ fn discard_body(
     widgets: &mut std::collections::HashMap<String, UiControl>,
 ) {
     if let Mode::Discard(_, lines) = &s.mode {
-        pages::caption(ui, "What will be discarded");
+        pages::caption(ui, crate::i18n::tr("What will be discarded"));
         pages::well(ui, |ui| {
-            pages::field(ui, "Selection", &format!("{} changed lines", lines.len()), false)
+            pages::field(ui, crate::i18n::tr("Selection"), &crate::i18n::trf!("Changed lines: {count}", count = lines.len()), false)
         });
-        pages::note(ui, "Unselected changes are retained.");
+        pages::note(ui, crate::i18n::tr("Unselected changes are retained."));
     }
     let Some(Preview::Apply(p)) = &s.preview else {
         return;
     };
     let paths = s.preview.as_ref().map(Preview::paths).unwrap_or_default();
-    pages::caption(ui, "Files");
+    pages::caption(ui, crate::i18n::tr("Files"));
     pages::well(ui, |ui| {
         ScrollArea::vertical()
             .id_salt("dialog-patch-paths")
@@ -1079,12 +1070,12 @@ fn discard_body(
     if let Some(file) = p.files().get(s.file) {
         if ui.available_width() > 610.0 {
             ui.columns(2, |cols| {
-                file_preview(&mut cols[0], "Current working file", file.before());
-                file_preview(&mut cols[1], "Reviewed result", file.after());
+                file_preview(&mut cols[0], crate::i18n::tr("Current working file"), file.before());
+                file_preview(&mut cols[1], crate::i18n::tr("Reviewed result"), file.after());
             });
         } else {
-            file_preview(ui, "Current working file", file.before());
-            file_preview(ui, "Reviewed result", file.after());
+            file_preview(ui, crate::i18n::tr("Current working file"), file.before());
+            file_preview(ui, crate::i18n::tr("Reviewed result"), file.after());
         }
     }
 }
@@ -1122,12 +1113,12 @@ fn excerpt(bytes: &[u8], characters: usize) -> (String, bool) {
 fn file_preview(ui: &mut Ui, title: &str, bytes: Option<&[u8]>) {
     pages::caption(ui, title);
     let Some(bytes) = bytes else {
-        ui.label(RichText::new("File absent").color(MUTED()));
+        ui.label(RichText::new(crate::i18n::tr("File absent")).color(MUTED()));
         return;
     };
-    pages::note(ui, &format!("{} bytes", bytes.len()));
+    pages::note(ui, &crate::i18n::trf!("{bytes} bytes", bytes = bytes.len()));
     if bytes.contains(&0) || std::str::from_utf8(bytes).is_err() {
-        pages::note(ui,"Binary data · exact bytes are preserved");
+        pages::note(ui,crate::i18n::tr("Binary data · exact bytes are preserved"));
         ui.label(RichText::new(bytes.iter().take(24).map(|b|format!("{b:02x}")).collect::<Vec<_>>().join(" ")).monospace());
         return;
     }
@@ -1139,7 +1130,7 @@ fn file_preview(ui: &mut Ui, title: &str, bytes: Option<&[u8]>) {
             ui.add(
                 Label::new(
                     RichText::new(if text.is_empty() {
-                        "Empty file".into()
+                        crate::i18n::tr("Empty file").into()
                     } else {
                         text
                     })
@@ -1153,7 +1144,7 @@ fn file_preview(ui: &mut Ui, title: &str, bytes: Option<&[u8]>) {
         pages::callout(
             ui,
             AMBER(),
-            "Showing the first 1,800 characters; the whole file is used.",
+            crate::i18n::tr("Showing the first 1,800 characters; the whole file is used."),
         );
     }
 }

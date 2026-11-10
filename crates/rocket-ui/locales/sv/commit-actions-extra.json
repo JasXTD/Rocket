@@ -1,0 +1,115 @@
+{
+  "Open a repository before preparing this operation.": "Öppna ett arkiv innan du förbereder åtgärden.",
+  "The original message is not UTF-8. Enter an explicit replacement message to amend it.": "Det ursprungliga meddelandet är inte UTF-8. Ange ett uttryckligt ersättningsmeddelande för att ändra det.",
+  "Review stopped. Nothing was started.": "Granskningen stoppades. Inget startades.",
+  "Amend changes the commit ID.": "Ändra senaste commit ändrar commit-ID:t.",
+  "Stopping the review…": "Stoppar granskningen…",
+  "Reading the branch and checking for conflicts…": "Läser grenen och söker efter konflikter…",
+  "Reading the branch, staged changes and commit…": "Läser grenen, stagade ändringar och committen…",
+  "Staged changes to include": "Stagade ändringar att inkludera",
+  "Replacement commit message": "Ersättningsmeddelande för commit",
+  "Nothing to undo": "Inget att ångra",
+  "The operation could not start. Wait for the repository, then review again.": "Åtgärden kunde inte starta. Vänta på arkivet och granska sedan igen.",
+  "Finishes the revert.": "Slutför återställningen.",
+  "Finishes the cherry-pick.": "Slutför cherry-pick.",
+  "Amend latest commit": "Ändra senaste commit",
+  "Replaces the latest commit with what's staged and the message below.": "Ersätter den senaste committen med det stagade innehållet och meddelandet nedan.",
+  "Adds a copy of each commit to {branch}, oldest first.": "Lägger till en kopia av varje commit på {branch}, äldst först.",
+  "This commit's changes are already gone from {branch}.": "Ändringarna från denna commit är redan borta från {branch}.",
+  "Adds a commit to {branch} that undoes this one. Nothing leaves history.": "Lägger till en commit på {branch} som ångrar denna. Inget tas bort ur historiken.",
+  "Adds a copy of this commit to {branch}.": "Lägger till en kopia av denna commit på {branch}.",
+  "Saves your fix for {subject}.": "Sparar din korrigering för {subject}.",
+  "Commit {at} of {total} · {subject}": "Commit {at} av {total} · {subject}",
+  "Leaves out {subject}.": "Utelämnar {subject}.",
+  "Does the last commit, then finishes the revert.": "Behandlar den sista committen och slutför sedan återställningen.",
+  "Does the last commit, then finishes the cherry-pick.": "Behandlar den sista committen och slutför sedan cherry-pick.",
+  "Leaves out this commit.": "Utelämnar denna commit.",
+  "Puts {branch} back where it was before the revert.": "Återställer {branch} till läget före återställningen.",
+  "Puts {branch} back where it was before the cherry-pick.": "Återställer {branch} till läget före cherry-pick.",
+  "Ends the revert. {branch} stays where it is, because it moved by hand.": "Avslutar återställningen. {branch} stannar där den är eftersom den flyttades manuellt.",
+  "Ends the cherry-pick. {branch} stays where it is, because it moved by hand.": "Avslutar cherry-pick. {branch} stannar där den är eftersom den flyttades manuellt.",
+  "Stops reverting {subject}. {branch} stays where it is.": "Slutar återställa {subject}. {branch} stannar där den är.",
+  "Stops copying {subject}. {branch} stays where it is.": "Slutar kopiera {subject}. {branch} stannar där den är.",
+  "Stops the revert. {branch} stays where it is.": "Stoppar återställningen. {branch} stannar där den är.",
+  "Stops the cherry-pick. {branch} stays where it is.": "Stoppar cherry-pick. {branch} stannar där den är.",
+  "This is a merge. Which side stays?": "Detta är en merge. Vilken sida ska behållas?",
+  "This is a merge. Copy what it added to which side?": "Detta är en merge. Kopiera det som lades till på vilken sida?",
+  "the branch it merged into": "grenen som mergningen gjordes till",
+  "the branch that came in": "grenen som kom in",
+  "Side {side}": "Sida {side}",
+  "Merging that branch again later won't bring these changes back.": "Att merga grenen igen senare återför inte dessa ändringar.",
+  "{branch} now": "{branch} nu",
+  "Nothing to undo at commit {at} of {total}": "Inget att ångra vid commit {at} av {total}",
+  "Those changes are already gone, so Git stops there. Continue goes on without that commit.": "Ändringarna är redan borta, så Git stannar där. Fortsätt går vidare utan denna commit.",
+  "That's {id} · {subject}, open below.": "Det är {id} · {subject}, öppnad nedan.",
+  "{subject} · copy": "{subject} · kopia",
+  "What the new commit changes": "Det den nya committen ändrar",
+  "What the copy changes": "Det kopian ändrar",
+  "These commits are too big to show here. The check above still covers them.": "Dessa commitar är för stora för att visas här. Kontrollen ovan omfattar dem ändå.",
+  "reverted": "återställd",
+  "not reverted": "inte återställd",
+  "not copied": "inte kopierad",
+  "done by hand": "gjord manuellt",
+  "being reverted": "återställs",
+  "being copied": "kopieras",
+  "Your fix · {staged}": "Din korrigering · {staged}",
+  "{branch} stays at": "{branch} stannar vid",
+  "before it started": "före starten",
+  "where it is now": "där den är nu",
+  "Reflog & Recovery can still find the commits it made.": "Reflog och återställning kan fortfarande hitta de commitar som skapades.",
+  "No conflicts expected.": "Inga konflikter förväntas.",
+  "Conflict expected at commit {stopped_at} of {total}": "Konflikt förväntas vid commit {stopped_at} av {total}",
+  "Conflict expected": "Konflikt förväntas",
+  "Nothing to change at commit {stopped_at} of {total}": "Inget att ändra vid commit {stopped_at} av {total}",
+  "Nothing to change": "Inget att ändra",
+  "Rocket can't tell yet whether this conflicts": "Rocket kan ännu inte avgöra om detta ger konflikter",
+  "Git stops there so you can fix it, then Continue or Abort.": "Git stannar där så att du kan rätta till problemet och sedan fortsätta eller avbryta.",
+  "Git stops so you can fix it, then Continue or Abort.": "Git stannar så att du kan rätta till problemet och sedan fortsätta eller avbryta.",
+  "Those changes are already here, so Git stops there for you to decide.": "Ändringarna finns redan här, så Git stannar där för att låta dig bestämma.",
+  "Those changes are already here, so Git stops for you to decide.": "Ändringarna finns redan här, så Git stannar för att låta dig bestämma.",
+  "No clean result is claimed.": "Inget konfliktfritt resultat garanteras.",
+  "Reviewed · adds {n} commits to {branch} · nothing is pushed": {
+    "one": "Granskat · lägger till {n} commit på {branch} · inget pushas",
+    "other": "Granskat · lägger till {n} commitar på {branch} · inget pushas"
+  },
+  " Then reverts the remaining {n} commits.": {
+    "one": " Återställer sedan den återstående {n} committen.",
+    "other": " Återställer sedan de återstående {n} commitarna."
+  },
+  " Then cherry-picks the remaining {n} commits.": {
+    "one": " Cherry-pickar sedan den återstående {n} committen.",
+    "other": " Cherry-pickar sedan de återstående {n} commitarna."
+  },
+  "Adds {n} commits to {branch} that undo these, newest first. Nothing leaves history.": {
+    "one": "Lägger till {n} commit på {branch} som ångrar denna. Inget tas bort ur historiken.",
+    "other": "Lägger till {n} commitar på {branch} som ångrar dessa, nyast först. Inget tas bort ur historiken."
+  },
+  "Does the other {n} commits, then finishes the revert.": {
+    "one": "Behandlar den återstående {n} committen och slutför sedan återställningen.",
+    "other": "Behandlar de övriga {n} commitarna och slutför sedan återställningen."
+  },
+  "Does the other {n} commits, then finishes the cherry-pick.": {
+    "one": "Behandlar den återstående {n} committen och slutför sedan cherry-pick.",
+    "other": "Behandlar de övriga {n} commitarna och slutför sedan cherry-pick."
+  },
+  "{n} commits, newest first": {
+    "one": "{n} commit, nyast först",
+    "other": "{n} commitar, nyast först"
+  },
+  "{n} commits, oldest first": {
+    "one": "{n} commit, äldst först",
+    "other": "{n} commitar, äldst först"
+  },
+  "{n} files staged": {
+    "one": "{n} fil stagad",
+    "other": "{n} filer stagade"
+  },
+  " The {n} commits after it weren't checked.": {
+    "one": " Den {n} efterföljande committen kontrollerades inte.",
+    "other": " De {n} efterföljande commitarna kontrollerades inte."
+  },
+  "{n} more conflicting paths.": {
+    "one": "{n} ytterligare sökväg med konflikter.",
+    "other": "{n} fler sökvägar med konflikter."
+  }
+}

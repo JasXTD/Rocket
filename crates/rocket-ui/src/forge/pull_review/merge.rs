@@ -1,10 +1,25 @@
 use super::*;
+use crate::i18n::mark;
+
+// The API layer owns these warnings. Register its current static guidance here,
+// while leaving an unfamiliar future warning intact instead of substituting it.
+const MERGE_GUIDANCE: &[&str] = &[
+    mark("The request includes the reviewed head. The project's configured merge method still applies; Rocket does not override it. Target tips can change after Rocket's check, and GitLab enforces its merge rules."),
+    mark("Bitbucket Cloud does not document an expected-head condition for this endpoint. Both tips are rechecked immediately before sending, but either can change afterward. Inspect the final PR before relying on the result."),
+    mark("The server checks the reviewed PR version. Branch tips are rechecked before sending, but can change afterward. Server merge checks remain authoritative."),
+    mark("The request includes the reviewed source commit. Azure may finish asynchronously; an unconfirmed result requires a fresh PR inspection. Target policy is enforced by Azure."),
+    mark("The request includes the reviewed head condition. Rocket also rechecks the target, which can still change after that check. The provider enforces its merge rules."),
+];
 
 fn method_label(provider: ForgeProvider, method: ForgeMergeMethod) -> &'static str {
     if provider == ForgeProvider::GitLab && method == ForgeMergeMethod::Merge {
-        "Merge with project policy"
+        tr("Merge with project policy")
     } else {
-        method.label()
+        match method {
+            ForgeMergeMethod::Merge => tr("Merge commit"),
+            ForgeMergeMethod::Squash => tr("Squash and merge"),
+            ForgeMergeMethod::Rebase => tr("Rebase and merge"),
+        }
     }
 }
 
@@ -25,7 +40,7 @@ impl State {
         if self.checked_unknown && details.summary().merged {
             self.unknown = None;
             self.checked_unknown = false;
-            self.result = Some("The provider now reports this PR merged. The refresh cannot identify which submission merged it.".into());
+            self.result = Some(tr("The provider now reports this PR merged. The refresh cannot identify which submission merged it.").into());
         }
     }
 }
@@ -37,12 +52,12 @@ pub(super) fn start(
 ) -> rocket_git::Result<WriteTask<Done>> {
     if s.pull.merge.unknown.is_some() || s.pull.unknown.is_some() || s.pull.threads.unknown {
         return Err(Error::InvalidInput(
-            "Check the previous submission's outcome before merging.".into(),
+            tr("Check the previous submission's outcome before merging.").into(),
         ));
     }
     if s.pull.has_draft() || s.pull.preview.is_some() {
         return Err(Error::InvalidInput(
-            "Submit or discard the review draft before merging.".into(),
+            tr("Submit or discard the review draft before merging.").into(),
         ));
     }
     let backend = backend.clone();
@@ -51,7 +66,7 @@ pub(super) fn start(
             .pull
             .details
             .clone()
-            .ok_or_else(|| Error::InvalidInput("Load PR details first.".into()))?;
+            .ok_or_else(|| Error::InvalidInput(tr("Load PR details first.").into()))?;
         let method = s.pull.merge.method;
         s.pull.merge.preview = None;
         s.pull.merge.result = None;
@@ -69,7 +84,7 @@ pub(super) fn start(
             .merge
             .preview
             .clone()
-            .ok_or_else(|| Error::InvalidInput("Review the merge first.".into()))?;
+            .ok_or_else(|| Error::InvalidInput(tr("Review the merge first.").into()))?;
         s.pull.merge.submission = Some((preview.repository().clone(), preview.summary().number));
         s.operation = "pull-merge-submit";
         WriteTask::spawn(move |cancel| {
@@ -88,12 +103,12 @@ pub(super) fn recovery(
     busy: bool,
 ) {
     if let Some((repo, number)) = &s.pull.merge.unknown {
-        ui.colored_label(AMBER(), format!("Merge outcome unknown for {} #{number}. The request may have completed on the provider. Refresh that PR and inspect the provider before another attempt.", repo.path()));
+        ui.colored_label(AMBER(), trf!("Merge outcome unknown for {repository} #{number}. The request may have completed on the provider. Refresh that PR and inspect the provider before another attempt.", repository = repo.path(), number));
         if btn(
             ui,
             widgets,
             "hosting-merge-acknowledge",
-            "I checked this PR on the provider; allow a new merge preview",
+            tr("I checked this PR on the provider; allow a new merge preview"),
             !busy && s.pull.merge.checked_unknown,
         ) {
             s.pull.merge.unknown = None;
@@ -119,7 +134,7 @@ pub(super) fn section(
         && !s.pull.has_draft()
         && s.pull.preview.is_none();
     ui.separator();
-    ui.strong("Merge on provider");
+    ui.strong(tr("Merge on provider"));
     if let Some(result) = &s.pull.merge.result {
         ui.add(Label::new(RichText::new(result).color(GREEN())).wrap());
     }
@@ -133,33 +148,31 @@ pub(super) fn section(
         ));
         ui.add(
             Label::new(
-                RichText::new(format!(
-                    "Reviewed head {}\nReviewed base {}",
-                    preview.summary().head,
-                    preview.summary().base
-                ))
+                RichText::new(trf!("Reviewed head {head}\nReviewed base {base}", head = preview.summary().head, base = preview.summary().base))
                 .monospace(),
             )
             .wrap(),
         );
-        ui.colored_label(AMBER(), details.merge_condition());
-        ui.label("This updates the remote target branch. Local files stay unchanged and no branch is deleted.");
+        let condition = details.merge_condition();
+        let guidance = MERGE_GUIDANCE.iter().find(|&&known| known == condition).map_or(condition, |&known| tr(known));
+        ui.colored_label(AMBER(), guidance);
+        ui.label(tr("This updates the remote target branch. Local files stay unchanged and no branch is deleted."));
         ui.horizontal_wrapped(|ui| {
-            if btn(ui, widgets, "hosting-merge-back", "Cancel preview", !busy) {
+            if btn(ui, widgets, "hosting-merge-back", tr("Cancel preview"), !busy) {
                 s.pull.merge.preview = None;
             }
             if btn(
                 ui,
                 widgets,
                 "hosting-merge-submit",
-                "Merge reviewed PR",
+                tr("Merge reviewed PR"),
                 allowed,
             ) {
                 out.action = Some("pull-merge-submit");
             }
         });
     } else if details.summary().merged || details.summary().state != "open" {
-        ui.label("This PR is no longer open for merging.");
+        ui.label(tr("This PR is no longer open for merging."));
     } else {
         ui.horizontal_wrapped(|ui| {
             for method in [
@@ -185,15 +198,15 @@ pub(super) fn section(
                 ui,
                 widgets,
                 "hosting-merge-preview",
-                "Review merge",
+                tr("Review merge"),
                 allowed,
             ) {
                 out.action = Some("pull-merge-preview");
             }
         });
-        ui.colored_label(MUTED(), "Preview rechecks the PR and available readiness data. The server enforces permissions and policy, and may queue a merge. Rocket does not bypass policy or automatically retry requests.");
+        ui.colored_label(MUTED(), tr("Preview rechecks the PR and available readiness data. The server enforces permissions and policy, and may queue a merge. Rocket does not bypass policy or automatically retry requests."));
         if s.pull.has_draft() {
-            ui.colored_label(AMBER(), "Submit or discard your review draft before merging.");
+            ui.colored_label(AMBER(), tr("Submit or discard your review draft before merging."));
         }
     }
 }

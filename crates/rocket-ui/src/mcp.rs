@@ -94,9 +94,9 @@ impl Panel {
             return None;
         }
         match self.job {
-            Action::Load => Some(("Checking", "Checking the server on this computer")),
-            Action::Start => Some(("Starting", "Starting the server")),
-            Action::Stop => Some(("Stopping", "Stopping the server")),
+            Action::Load => Some((crate::i18n::tr("Checking"), crate::i18n::tr("Checking the server on this computer"))),
+            Action::Start => Some((crate::i18n::tr("Starting"), crate::i18n::tr("Starting the server"))),
+            Action::Stop => Some((crate::i18n::tr("Stopping"), crate::i18n::tr("Stopping the server"))),
             Action::Save | Action::Rotate | Action::CopyToken => None,
         }
     }
@@ -147,7 +147,7 @@ impl Panel {
         self.notice = None;
         let proposed = if action == Action::Save {
             let Ok(port) = self.port.trim().parse::<u16>() else {
-                self.error = Some("Enter a port from 1024 to 65535.".into());
+                self.error = Some(crate::i18n::tr("Enter a port from 1024 to 65535.").into());
                 return;
             };
             Some(Config {
@@ -176,29 +176,29 @@ impl Panel {
                         let value = proposed.as_ref().unwrap();
                         control::save(&profile, value)?;
                         config = value.clone();
-                        message = Some("MCP settings saved.".into());
+                        message = Some(crate::i18n::tr("MCP settings saved.").into());
                     }
                     Action::Start => {
                         let executable = std::env::current_exe()?
                             .with_file_name(format!("rocket-mcp{}", std::env::consts::EXE_SUFFIX));
                         control::start(&profile, &executable)?;
-                        message = Some("Local MCP service is running.".into());
+                        message = Some(crate::i18n::tr("Local MCP service is running.").into());
                     }
                     Action::Stop => {
                         control::stop(&profile)?;
-                        message = Some("Local MCP service stopped.".into());
+                        message = Some(crate::i18n::tr("Local MCP service stopped.").into());
                     }
                     Action::Rotate => {
                         control::rotate_token(&profile)?;
                         message = Some(
-                            "Access token rotated. Update clients that stored the previous token."
+                            crate::i18n::tr("Access token rotated. Update clients that stored the previous token.")
                                 .into(),
                         );
                     }
                     Action::CopyToken => {
                         copied = Some(control::token(&profile)?);
                         message = Some(
-                            "Access token copied. Treat the clipboard value as private.".into(),
+                            crate::i18n::tr("Access token copied. Treat the clipboard value as private.").into(),
                         );
                     }
                 }
@@ -248,16 +248,16 @@ impl Panel {
         let error = self.error_for(&[Action::Load, Action::Start, Action::Stop]);
         let (mut check, mut toggle) = (false, false);
         card_frame(ui, |ui| {
-            card_header(ui, "Local MCP server", |ui| {
+            card_header(ui, crate::i18n::tr("Local MCP server"), |ui| {
                 let r = crate::chrome::icon_button(ui, Icon::Refresh, !busy, false, 28.0)
-                    .on_hover_text("Check status");
+                    .on_hover_text(crate::i18n::tr("Check status"));
                 pages::control(widgets, "mcp-status", &r, ui.clip_rect());
                 check = r.clicked();
                 let (text, color) = match work {
                     Some((word, _)) => (word, HINT()),
-                    None if running => ("Running", GREEN()),
-                    None if self.unknown => ("Status unavailable", AMBER()),
-                    None => ("Stopped", MUTED()),
+                    None if running => (crate::i18n::tr("Running"), GREEN()),
+                    None if self.unknown => (crate::i18n::tr("Status unavailable"), AMBER()),
+                    None => (crate::i18n::tr("Stopped"), MUTED()),
                 };
                 pages::pill(ui, text, color);
                 if work.is_some() {
@@ -265,7 +265,7 @@ impl Panel {
                 }
             });
             Frame::new().inner_margin(Margin::symmetric(0, 6)).show(ui, |ui| {
-                text_row(ui, "Endpoint", LABEL, |ui| match &self.config {
+                text_row(ui, crate::i18n::tr("Endpoint"), LABEL, |ui| match &self.config {
                     _ if waiting => placeholder(ui, 220.0, 220.0),
                     Some(config) => {
                         let endpoint = config.endpoint();
@@ -275,32 +275,32 @@ impl Panel {
                                 .size(12.5)
                                 .color(if running { TEXT() } else { HINT() }),
                         );
-                        let r = pages::tool(ui, Icon::Copy, "Copy", true).on_hover_text("Copy endpoint");
+                        let r = pages::tool(ui, Icon::Copy, crate::i18n::tr("Copy"), true).on_hover_text(crate::i18n::tr("Copy endpoint"));
                         pages::control(widgets, "mcp-copy-endpoint", &r, ui.clip_rect());
                         if r.clicked() {
                             ui.ctx().copy_text(endpoint);
                         }
                     }
                     None => {
-                        ui.label(RichText::new("Unknown").color(HINT()));
+                        ui.label(RichText::new(crate::i18n::tr("Unknown")).color(HINT()));
                     }
                 });
-                text_row(ui, "Process", LABEL, |ui| {
+                text_row(ui, crate::i18n::tr("Process"), LABEL, |ui| {
                     if waiting {
                         placeholder(ui, 180.0, 180.0);
                         return;
                     }
                     let (text, color) = if running {
                         let status = &self.status;
-                        let text = format!(
-                            "Rocket {} · process {} · this computer only",
-                            status.version, status.pid
+                        let text = crate::i18n::trf!(
+                            "Rocket {version} · process {pid} · this computer only",
+                            version = status.version, pid = status.pid
                         );
                         (text, MUTED())
                     } else if self.unknown {
-                        ("Unknown".to_owned(), HINT())
+                        (crate::i18n::tr("Unknown").to_owned(), HINT())
                     } else {
-                        ("Not running".to_owned(), HINT())
+                        (crate::i18n::tr("Not running").to_owned(), HINT())
                     };
                     ui.add(Label::new(RichText::new(text).color(color)).truncate());
                 });
@@ -308,11 +308,11 @@ impl Panel {
             messages(ui, error.as_deref(), None);
             card_foot(ui, None, |ui| {
                 let r = if running {
-                    ui.add_enabled(ready, Button::new("Stop server"))
+                    ui.add_enabled(ready, Button::new(crate::i18n::tr("Stop server")))
                 } else {
-                    let r = pages::primary(ui, ready && !edited, "Start server");
+                    let r = pages::primary(ui, ready && !edited, crate::i18n::tr("Start server"));
                     if edited {
-                        r.on_disabled_hover_text("Save or discard the connection changes first")
+                        r.on_disabled_hover_text(crate::i18n::tr("Save or discard the connection changes first"))
                     } else {
                         r
                     }
@@ -321,13 +321,13 @@ impl Panel {
                 toggle = r.clicked();
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     let (text, color) = if self.hosted {
-                        ("Controlled by the service. Change or stop it from the main Rocket window.", AMBER())
+                        (crate::i18n::tr("Controlled by the service. Change or stop it from the main Rocket window."), AMBER())
                     } else if let Some((_, line)) = work {
                         (line, HINT())
                     } else if running {
-                        ("Clients on this computer connect with the access token", HINT())
+                        (crate::i18n::tr("Clients on this computer connect with the access token"), HINT())
                     } else {
-                        ("Tools on this computer can connect once it runs", HINT())
+                        (crate::i18n::tr("Tools on this computer can connect once it runs"), HINT())
                     };
                     ui.add(Label::new(RichText::new(text).size(12.5).color(color)).truncate())
                         .on_hover_text(text);
@@ -357,16 +357,16 @@ impl Panel {
         let notice = self.notice_for(&[Action::Save]);
         let (mut browse, mut save, mut discard) = (false, false, false);
         card_frame(ui, |ui| {
-            card_header(ui, "Connection", |ui| {
+            card_header(ui, crate::i18n::tr("Connection"), |ui| {
                 if running {
-                    ui.label(RichText::new("Stop the server to change these").size(12.0).color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("Stop the server to change these")).size(12.0).color(HINT()));
                     let (rect, _) = ui.allocate_exact_size(vec2(13.0, 13.0), Sense::hover());
                     icon(ui.painter(), rect, Icon::Lock, FAINT());
                 }
             });
             Frame::new().inner_margin(Margin::symmetric(0, 6)).show(ui, |ui| {
                 ui.add_enabled_ui(editable, |ui| {
-                    text_row(ui, "Port", LABEL, |ui| {
+                    text_row(ui, crate::i18n::tr("Port"), LABEL, |ui| {
                         if waiting {
                             placeholder(ui, 120.0, 90.0);
                             return;
@@ -380,7 +380,7 @@ impl Panel {
                         );
                         pages::control(widgets, "mcp-port", &r, ui.clip_rect());
                     });
-                    text_row(ui, "Test repositories", LABEL, |ui| {
+                    text_row(ui, crate::i18n::tr("Test repositories"), LABEL, |ui| {
                         // The field's width is kept while it waits, so Browse never moves.
                         let width = (ui.available_width() - 76.0 - ui.spacing().item_spacing.x).max(80.0);
                         if waiting {
@@ -393,10 +393,10 @@ impl Panel {
                                         .font(FontId::monospace(12.0))
                                         .vertical_align(Align::Center),
                                 )
-                                .on_hover_text("Only marked test repositories in this folder can be controlled.");
+                                .on_hover_text(crate::i18n::tr("Only marked test repositories in this folder can be controlled."));
                             pages::control(widgets, "mcp-root", &r, ui.clip_rect());
                         }
-                        let r = ui.add_sized([76.0, CONTROL], Button::new("Browse"));
+                        let r = ui.add_sized([76.0, CONTROL], Button::new(crate::i18n::tr("Browse")));
                         pages::control(widgets, "mcp-browse", &r, ui.clip_rect());
                         browse = r.clicked();
                     });
@@ -406,10 +406,10 @@ impl Panel {
             // Save and Discard appear once a field is edited.
             if changed.0 || changed.1 {
                 card_foot(ui, Some(AMBER().gamma_multiply(0.05)), |ui| {
-                    let r = pages::primary(ui, editable, "Save");
+                    let r = pages::primary(ui, editable, crate::i18n::tr("Save"));
                     pages::control(widgets, "mcp-save", &r, ui.clip_rect());
                     save = r.clicked();
-                    let r = ui.add_enabled(editable, Button::new("Discard"));
+                    let r = ui.add_enabled(editable, Button::new(crate::i18n::tr("Discard")));
                     pages::control(widgets, "mcp-discard", &r, ui.clip_rect());
                     discard = r.clicked();
                     ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
@@ -417,9 +417,9 @@ impl Panel {
                         let (dot, _) = ui.allocate_exact_size(vec2(7.0, 7.0), Sense::hover());
                         ui.painter().circle_filled(dot.center(), 3.5, AMBER());
                         let text = match changed {
-                            (true, true) => "Port and folder changed",
-                            (true, false) => "Port changed",
-                            _ => "Folder changed",
+                            (true, true) => crate::i18n::tr("Port and folder changed"),
+                            (true, false) => crate::i18n::tr("Port changed"),
+                            _ => crate::i18n::tr("Folder changed"),
                         };
                         ui.label(RichText::new(text).size(12.5).color(AMBER()));
                     });
@@ -457,7 +457,7 @@ impl Panel {
         let notice = self.notice_for(&jobs);
         let (mut copy, mut rotate, mut confirm, mut cancel) = (false, false, false, false);
         card_frame(ui, |ui| {
-            card_header(ui, "Access token", |_| {});
+            card_header(ui, crate::i18n::tr("Access token"), |_| {});
             Frame::new().inner_margin(Margin::symmetric(14, 10)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
                 ui.horizontal(|ui| {
@@ -467,14 +467,14 @@ impl Panel {
                     } else {
                         masked_token(ui);
                     }
-                    let r = ui.add_enabled(ready, Button::new("Copy token"));
+                    let r = ui.add_enabled(ready, Button::new(crate::i18n::tr("Copy token")));
                     pages::control(widgets, "mcp-copy-token", &r, ui.clip_rect());
                     copy = r.clicked();
                     if !confirming {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             let r = ui
-                                .add_enabled(ready && !running, quiet(Button::new("Rotate token")))
-                                .on_disabled_hover_text("Stop the server first");
+                                .add_enabled(ready && !running, quiet(Button::new(crate::i18n::tr("Rotate token"))))
+                                .on_disabled_hover_text(crate::i18n::tr("Stop the server first"));
                             pages::control(widgets, "mcp-rotate", &r, ui.clip_rect());
                             rotate = r.clicked();
                         });
@@ -494,7 +494,7 @@ impl Panel {
                                 ui.set_width(ui.available_width());
                                 ui.horizontal(|ui| {
                                     ui.label(
-                                        RichText::new("Clients using the current token will need the new one.")
+                                        RichText::new(crate::i18n::tr("Clients using the current token will need the new one."))
                                             .size(12.5)
                                             .color(AMBER()),
                                     );
@@ -502,7 +502,7 @@ impl Panel {
                                         let r = ui.add_enabled(
                                             !busy,
                                             Button::new(
-                                                RichText::new("Rotate token")
+                                                RichText::new(crate::i18n::tr("Rotate token"))
                                                     .color(WARN_INK())
                                                     .strong(),
                                             )
@@ -510,7 +510,7 @@ impl Panel {
                                         );
                                         pages::control(widgets, "mcp-rotate-confirm", &r, ui.clip_rect());
                                         confirm = r.clicked();
-                                        let r = ui.button("Cancel");
+                                        let r = ui.button(crate::i18n::tr("Cancel"));
                                         pages::control(widgets, "mcp-rotate-cancel", &r, ui.clip_rect());
                                         cancel = r.clicked();
                                     });
@@ -561,7 +561,7 @@ fn masked_token(ui: &mut Ui) {
         FontId::monospace(12.5),
         MUTED(),
     );
-    response.on_hover_text("Rocket never shows the token");
+    response.on_hover_text(crate::i18n::tr("Rocket never shows the token"));
 }
 
 /// The last action's error or result, under a card's rows.

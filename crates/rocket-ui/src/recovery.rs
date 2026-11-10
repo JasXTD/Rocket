@@ -25,6 +25,16 @@ const SETTLE: Duration = Duration::from_millis(400);
 /// The details pane's width.
 const PANE: f32 = 380.0;
 
+/// Backend progress remains typed; only its UI presentation is translated.
+fn progress_label(stage: &LostCommitProgress) -> String {
+    match stage {
+        LostCommitProgress::Inspecting => crate::i18n::tr("Checking repository history…").into(),
+        LostCommitProgress::Scanning => crate::i18n::tr("Scanning objects not reached by refs or reflogs…").into(),
+        LostCommitProgress::ReadingCommits(count) => crate::i18n::trf!("Reading commit records: {count}…", count),
+        LostCommitProgress::Complete(count) => crate::i18n::trf!("Scan complete · lost commits: {count}", count),
+    }
+}
+
 pub struct RecoveryRead {
     page: ReflogPage,
     lost: Option<Arc<LostCommitScan>>,
@@ -97,28 +107,28 @@ fn scope_note(scope: ReflogScope) -> Option<&'static str> {
     match scope {
         ReflogScope::Head | ReflogScope::AllRefs => None,
         ReflogScope::DeletedBranches => Some(
-            "Branches this worktree switched away from that no longer exist, at the tip each had when you left it.",
+            crate::i18n::tr("Branches this worktree switched away from that no longer exist, at the tip each had when you left it."),
         ),
         ReflogScope::Retained => Some(
-            "Commits Rocket kept before resets, rebases, amends, stopped sequences, tag deletions and worktree removals.",
+            crate::i18n::tr("Commits Rocket kept before resets, rebases, amends, stopped sequences, tag deletions and worktree removals."),
         ),
         ReflogScope::Unreachable => Some(
-            "Commits no branch, tag or reflog reaches, such as dropped stashes. Only a new branch can bring one back.",
+            crate::i18n::tr("Commits no branch, tag or reflog reaches, such as dropped stashes. Only a new branch can bring one back."),
         ),
     }
 }
 
 fn scope_empty(scope: ReflogScope) -> &'static str {
     match scope {
-        ReflogScope::Head | ReflogScope::AllRefs => "No entries in this history yet.",
-        ReflogScope::DeletedBranches => "No deleted branches found in this worktree's history.",
-        ReflogScope::Retained => "Rocket has not kept any commits in this repository.",
-        ReflogScope::Unreachable => "No lost commits found.",
+        ReflogScope::Head | ReflogScope::AllRefs => crate::i18n::tr("No entries in this history yet."),
+        ReflogScope::DeletedBranches => crate::i18n::tr("No deleted branches found in this worktree's history."),
+        ReflogScope::Retained => crate::i18n::tr("Rocket has not kept any commits in this repository."),
+        ReflogScope::Unreachable => crate::i18n::tr("No lost commits found."),
     }
 }
 
 const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    crate::i18n::mark("Jan"), crate::i18n::mark("Feb"), crate::i18n::mark("Mar"), crate::i18n::mark("Apr"), crate::i18n::mark("May"), crate::i18n::mark("Jun"), crate::i18n::mark("Jul"), crate::i18n::mark("Aug"), crate::i18n::mark("Sep"), crate::i18n::mark("Oct"), crate::i18n::mark("Nov"), crate::i18n::mark("Dec"),
 ];
 
 /// The date, time and UTC offset in minutes of a dated reflog selector such as
@@ -146,16 +156,16 @@ fn day_label(day: &str, offset: i32) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
     if date(now, offset).starts_with(day) {
-        return "Today".into();
+        return crate::i18n::tr("Today").into();
     }
     if date(now - 86_400, offset).starts_with(day) {
-        return "Yesterday".into();
+        return crate::i18n::tr("Yesterday").into();
     }
     let month = day.get(5..7).and_then(|m| m.parse::<usize>().ok()).filter(|m| (1..=12).contains(m));
     let number = day.get(8..10).and_then(|d| d.parse::<u32>().ok());
     match (month, number) {
-        (Some(m), Some(n)) if date(now, offset).starts_with(&day[..4]) => format!("{} {n}", MONTHS[m - 1]),
-        (Some(m), Some(n)) => format!("{} {n}, {}", MONTHS[m - 1], &day[..4]),
+        (Some(m), Some(n)) if date(now, offset).starts_with(&day[..4]) => crate::i18n::trf!("{month} {day}", month = crate::i18n::tr(MONTHS[m - 1]), day = n),
+        (Some(m), Some(n)) => crate::i18n::trf!("{month} {day}, {year}", month = crate::i18n::tr(MONTHS[m - 1]), day = n, year = &day[..4]),
         _ => day.to_owned(),
     }
 }
@@ -163,10 +173,10 @@ fn day_label(day: &str, offset: i32) -> String {
 /// The group an entry is listed under, and its time on the right.
 fn when(entry: &ReflogEntry, scope: ReflogScope) -> (String, String) {
     match (scope, selector_time(&entry.selector)) {
-        (ReflogScope::Retained, _) => ("Kept by Rocket".into(), String::new()),
-        (ReflogScope::Unreachable, _) => ("Found by the scan".into(), String::new()),
+        (ReflogScope::Retained, _) => (crate::i18n::tr("Kept by Rocket").into(), String::new()),
+        (ReflogScope::Unreachable, _) => (crate::i18n::tr("Found by the scan").into(), String::new()),
         (_, Some((day, time, offset))) => (day_label(&day, offset), time),
-        (_, None) => ("Earlier".into(), String::new()),
+        (_, None) => (crate::i18n::tr("Earlier").into(), String::new()),
     }
 }
 
@@ -182,15 +192,15 @@ fn describe(entry: &ReflogEntry, scope: ReflogScope) -> (String, Icon) {
             let reference = entry.reference.as_deref().map(display).unwrap_or_default();
             let kind = reference.strip_prefix("refs/rocket/").unwrap_or(&reference);
             let what = match kind.split('/').take(2).collect::<Vec<_>>().as_slice() {
-                ["recovery", "reset"] => "Before a reset",
-                ["recovery", "rebase"] => "Before a rebase",
-                ["recovery", "amend"] => "Before an amend",
-                ["recovery", "sequence"] => "Before a stopped cherry-pick or revert",
-                ["recovery", "mail-import"] => "Before a commit series import",
-                ["deleted-tags", ..] => "A deleted tag",
-                ["removed-worktrees", ..] => "A removed worktree's branch",
-                ["stash", ..] | ["stash-snapshot", ..] => "A stash snapshot",
-                _ => "Kept by Rocket",
+                ["recovery", "reset"] => crate::i18n::tr("Before a reset"),
+                ["recovery", "rebase"] => crate::i18n::tr("Before a rebase"),
+                ["recovery", "amend"] => crate::i18n::tr("Before an amend"),
+                ["recovery", "sequence"] => crate::i18n::tr("Before a stopped cherry-pick or revert"),
+                ["recovery", "mail-import"] => crate::i18n::tr("Before a commit series import"),
+                ["deleted-tags", ..] => crate::i18n::tr("A deleted tag"),
+                ["removed-worktrees", ..] => crate::i18n::tr("A removed worktree's branch"),
+                ["stash", ..] | ["stash-snapshot", ..] => crate::i18n::tr("A stash snapshot"),
+                _ => crate::i18n::tr("Kept by Rocket"),
             };
             (what.into(), Icon::Clock)
         }
@@ -200,26 +210,26 @@ fn describe(entry: &ReflogEntry, scope: ReflogScope) -> (String, Icon) {
             let words = |text: &str| text.trim().to_owned();
             match verb {
                 "reset" => (
-                    format!("Reset to {}", words(rest.strip_prefix("moving to ").unwrap_or(rest))),
+                    crate::i18n::trf!("Reset to {target}", target = words(rest.strip_prefix("moving to ").unwrap_or(rest))),
                     Icon::Refresh,
                 ),
                 "checkout" => match rest.strip_prefix("moving from ").and_then(|r| r.split_once(" to ")) {
-                    Some((_, to)) => (format!("Switched to {}", words(to)), Icon::Branch),
-                    None => ("Switched".into(), Icon::Branch),
+                    Some((_, to)) => (crate::i18n::trf!("Switched to {target}", target = words(to)), Icon::Branch),
+                    None => (crate::i18n::tr("Switched").into(), Icon::Branch),
                 },
-                "commit" => ("Committed".into(), Icon::Commit),
-                "commit (amend)" => ("Amended".into(), Icon::Commit),
-                "commit (initial)" => ("First commit".into(), Icon::Commit),
-                "commit (merge)" => ("Merge commit".into(), Icon::Merge),
-                "pull" => ("Pulled".into(), Icon::Pull),
-                "clone" => ("Cloned".into(), Icon::Fetch),
-                "cherry-pick" => ("Cherry-picked".into(), Icon::Commit),
-                "revert" => ("Reverted".into(), Icon::Commit),
-                "branch" => ("Created a branch".into(), Icon::Branch),
-                _ if verb.starts_with("merge ") => (format!("Merged {}", words(&verb[6..])), Icon::Merge),
-                _ if verb.starts_with("pull") => ("Pulled".into(), Icon::Pull),
+                "commit" => (crate::i18n::tr("Committed").into(), Icon::Commit),
+                "commit (amend)" => (crate::i18n::tr("Amended").into(), Icon::Commit),
+                "commit (initial)" => (crate::i18n::tr("First commit").into(), Icon::Commit),
+                "commit (merge)" => (crate::i18n::tr("Merge commit").into(), Icon::Merge),
+                "pull" => (crate::i18n::tr("Pulled").into(), Icon::Pull),
+                "clone" => (crate::i18n::tr("Cloned").into(), Icon::Fetch),
+                "cherry-pick" => (crate::i18n::tr("Cherry-picked").into(), Icon::Commit),
+                "revert" => (crate::i18n::tr("Reverted").into(), Icon::Commit),
+                "branch" => (crate::i18n::tr("Created a branch").into(), Icon::Branch),
+                _ if verb.starts_with("merge ") => (crate::i18n::trf!("Merged {branch}", branch = words(&verb[6..])), Icon::Merge),
+                _ if verb.starts_with("pull") => (crate::i18n::tr("Pulled").into(), Icon::Pull),
                 _ if verb.starts_with("rebase") => (
-                    if verb.contains("finish") { "Rebased".into() } else { "Rebasing".into() },
+                    if verb.contains("finish") { crate::i18n::tr("Rebased").into() } else { crate::i18n::tr("Rebasing").into() },
                     Icon::Branch,
                 ),
                 _ => {
@@ -288,7 +298,7 @@ impl Rocket {
                 if let Some(scan) = lost {
                     let RecoveryAction::Branch(name) = action else {
                         return Err(Error::InvalidInput(
-                            "Lost commits require a recovery branch".into(),
+                            crate::i18n::tr("Lost commits require a recovery branch").into(),
                         ));
                     };
                     return backend.lost_recovery_preview(&path, &scan, &target, &name, &cancel);
@@ -365,7 +375,7 @@ impl Rocket {
         let Some(s) = &mut d.recovery else { return };
         if let Some(progress) = &s.progress {
             for stage in progress.try_iter() {
-                s.scan_stage = Some(stage.label());
+                s.scan_stage = Some(progress_label(&stage));
             }
         }
         if let Some(result) = s.log_task.as_mut().and_then(ReadTask::try_finish) {
@@ -375,7 +385,7 @@ impl Rocket {
                 Ok(RecoveryRead { page, lost, off }) => {
                     if let Some(scan) = &lost {
                         s.scan_stage =
-                            Some(LostCommitProgress::Complete(scan.commits().len()).label());
+                            Some(progress_label(&LostCommitProgress::Complete(scan.commits().len())));
                     }
                     s.lost_scan = lost;
                     s.off = off;
@@ -404,9 +414,9 @@ impl Rocket {
                         s.scan_stage = None;
                         s.read_notice = Some(
                             if s.lost_scan.is_some() {
-                                "The new scan did not complete. Showing previous completed results."
+                                crate::i18n::tr("The new scan did not complete. Showing previous completed results.")
                             } else {
-                                "No completed scan is available. This is not an empty result."
+                                crate::i18n::tr("No completed scan is available. This is not an empty result.")
                             }
                             .into(),
                         );
@@ -445,10 +455,10 @@ impl Rocket {
         } else {
             s.applying = false;
             s.preview = None;
-            d.error = Some(format!(
-                "{}\n{}\nRefresh and review before retrying.",
-                outcome.summary,
-                outcome.details.join("\n")
+            d.error = Some(crate::i18n::trf!(
+                "{summary}\n{details}\nRefresh and review before retrying.",
+                summary = outcome.summary,
+                details = outcome.details.join("\n")
             ));
         }
     }
@@ -493,8 +503,8 @@ impl Rocket {
         }
         let head = pages::ReviewHeader {
             image: Icon::Clock,
-            title: "Reflog & recovery",
-            subtitle: "Find a commit you moved away from, then make a branch there or move your branch back to it.",
+            title: crate::i18n::tr("Reflog & recovery"),
+            subtitle: crate::i18n::tr("Find a commit you moved away from, then make a branch there or move your branch back to it."),
             danger: false,
         };
         let height = (ctx.content_rect().height() - 340.0).clamp(220.0, 600.0);
@@ -513,11 +523,11 @@ impl Rocket {
                     // Where to look, and a filter.
                     ui.horizontal(|ui| {
                         let scopes = [
-                            (ReflogScope::Head, "This worktree", "head"),
-                            (ReflogScope::AllRefs, "All branches", "all"),
-                            (ReflogScope::DeletedBranches, "Deleted branches", "deleted"),
-                            (ReflogScope::Retained, "Kept by Rocket", "retained"),
-                            (ReflogScope::Unreachable, "Lost commits", "unreachable"),
+                            (ReflogScope::Head, crate::i18n::tr("This worktree"), "head"),
+                            (ReflogScope::AllRefs, crate::i18n::tr("All branches"), "all"),
+                            (ReflogScope::DeletedBranches, crate::i18n::tr("Deleted branches"), "deleted"),
+                            (ReflogScope::Retained, crate::i18n::tr("Kept by Rocket"), "retained"),
+                            (ReflogScope::Unreachable, crate::i18n::tr("Lost commits"), "unreachable"),
                         ];
                         let items: Vec<(&str, bool)> =
                             scopes.iter().map(|(scope, label, _)| (*label, s.scope == *scope)).collect();
@@ -547,7 +557,7 @@ impl Rocket {
                             }
                         });
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            let r = search_field(ui, &mut s.filter, "Filter by message or ID", 240.0);
+                            let r = search_field(ui, &mut s.filter, crate::i18n::tr("Filter by message or ID"), 240.0);
                             control(widgets, "dialog-reflog-filter", &r, ui.clip_rect());
                         });
                     });
@@ -556,11 +566,11 @@ impl Rocket {
                     }
                     if s.scope == ReflogScope::Unreachable && s.log_task.is_some() {
                         let seconds = s.started.map(|t| t.elapsed().as_secs()).unwrap_or(0);
-                        let stage = s.scan_stage.clone().unwrap_or_else(|| "Starting".into());
+                        let stage = s.scan_stage.clone().unwrap_or_else(|| crate::i18n::tr("Starting").into());
                         pages::callout(
                             ui,
                             BLUE(),
-                            &format!("Looking through every object in the repository · {seconds} s · {stage}"),
+                            &crate::i18n::trf!("Looking through every object in the repository · {seconds} s · {stage}", seconds, stage),
                         );
                     }
                     if let Some(notice) = &s.read_notice {
@@ -673,14 +683,14 @@ impl Rocket {
                 }
                 pages::Part::Footer => {
                     if s.log_task.is_some() || s.task.is_some() {
-                        let r = ui.button("Stop");
+                        let r = ui.button(crate::i18n::tr("Stop"));
                         control(widgets, "dialog-recovery-cancel-read", &r, ui.clip_rect());
                         cancel_read = r.clicked();
                     }
                     let label = match (browsing, s.scope) {
-                        (false, _) => "Review again",
-                        (true, ReflogScope::Unreachable) => "Scan again",
-                        (true, _) => "Refresh",
+                        (false, _) => crate::i18n::tr("Review again"),
+                        (true, ReflogScope::Unreachable) => crate::i18n::tr("Scan again"),
+                        (true, _) => crate::i18n::tr("Refresh"),
                     };
                     let r = ui.add_enabled(!waiting, Button::new(label));
                     control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
@@ -689,7 +699,7 @@ impl Rocket {
                         let r = pages::ghost(
                             ui,
                             !waiting && s.limit < 2000 && s.page.as_ref().is_some_and(|p| p.more),
-                            "Show older",
+                            crate::i18n::tr("Show older"),
                         );
                         control(widgets, "dialog-reflog-more", &r, ui.clip_rect());
                         if r.clicked() {
@@ -721,11 +731,11 @@ impl Rocket {
             s.scan_stage = None;
             s.read_notice = Some(
                 if !browsing {
-                    "Review stopped. Review again before making the change."
+                    crate::i18n::tr("Review stopped. Review again before making the change.")
                 } else if s.page.is_some() {
-                    "Scan stopped. Previous completed results are kept."
+                    crate::i18n::tr("Scan stopped. Previous completed results are kept.")
                 } else {
-                    "Scan stopped. No results were published and nothing was changed."
+                    crate::i18n::tr("Scan stopped. No results were published and nothing was changed.")
                 }
                 .into(),
             );
@@ -746,7 +756,7 @@ impl Rocket {
             if self.write.is_none() {
                 s.applying = false;
                 d.error = Some(
-                    "Could not start. Wait for the repository, then review again.".into(),
+                    crate::i18n::tr("Could not start. Wait for the repository, then review again.").into(),
                 );
             }
         }
@@ -782,7 +792,7 @@ fn entry_list(
         if s.log_task.is_some() {
             pages::loading(
                 ui,
-                if s.scope == ReflogScope::Unreachable { "Scanning" } else { "Reading the history" },
+                if s.scope == ReflogScope::Unreachable { crate::i18n::tr("Scanning") } else { crate::i18n::tr("Reading the history") },
             );
         }
         return;
@@ -820,11 +830,11 @@ fn entry_list(
         here |= is_here;
         let off = s.off.as_ref().is_some_and(|o| o.contains(&entry.id));
         let pill = if is_here {
-            Some(("You are here", BLUE()))
+            Some((crate::i18n::tr("You are here"), BLUE()))
         } else if s.scope == ReflogScope::DeletedBranches {
-            Some(("Deleted", AMBER()))
+            Some((crate::i18n::tr("Deleted"), AMBER()))
         } else if off {
-            Some(("Not on any branch", AMBER()))
+            Some((crate::i18n::tr("Not on any branch"), AMBER()))
         } else {
             None
         };
@@ -847,11 +857,11 @@ fn entry_list(
         }
     }
     if shown == 0 {
-        pages::empty(ui, "Nothing matches the filter.");
+        pages::empty(ui, crate::i18n::tr("Nothing matches the filter."));
     }
     if page.more && s.limit == 2000 {
         ui.add_space(6.0);
-        pages::note(ui, "Showing the latest 2,000 entries.");
+        pages::note(ui, crate::i18n::tr("Showing the latest 2,000 entries."));
     }
     if let Some((i, id)) = chosen {
         s.show_diff &= s.target.as_ref() == Some(&id);
@@ -955,7 +965,7 @@ fn patch_files(ui: &mut Ui, patch: &[u8], limit: usize) {
         });
     }
     if parsed.files.len() > limit {
-        pages::note(ui, &format!("and {} more", parsed.files.len() - limit));
+        pages::note(ui, &crate::i18n::trf!("More: {count}", count = parsed.files.len() - limit));
     }
 }
 
@@ -969,7 +979,7 @@ fn patch_text(ui: &mut Ui, patch: &[u8]) {
             pages::well(ui, |ui| {
                 ui.add(Label::new(RichText::new(text.chars().take(16000).collect::<String>()).monospace().size(12.0)).wrap());
                 if text.chars().count() > 16000 {
-                    pages::note(ui, "Showing the first 16,000 characters.");
+                    pages::note(ui, crate::i18n::tr("Showing the first 16,000 characters."));
                 }
             });
         });
@@ -977,12 +987,11 @@ fn patch_text(ui: &mut Ui, patch: &[u8]) {
 
 /// "1 commit ahead", "3 behind", "2 ahead, 1 behind", "the same commit".
 fn relation_text(ahead: u64, behind: u64) -> String {
-    let commits = |n: u64| if n == 1 { "1 commit".to_owned() } else { format!("{n} commits") };
     match (ahead, behind) {
-        (0, 0) => "The same commit".into(),
-        (a, 0) => format!("{} ahead", commits(a)),
-        (0, b) => format!("{} behind", commits(b)),
-        (a, b) => format!("{} ahead, {b} behind", commits(a)),
+        (0, 0) => crate::i18n::tr("The same commit").into(),
+        (a, 0) => crate::i18n::trf!("Commits ahead: {count}", count = a),
+        (0, b) => crate::i18n::trf!("Commits behind: {count}", count = b),
+        (a, b) => crate::i18n::trf!("Commits ahead: {ahead} · behind: {behind}", ahead = a, behind = b),
     }
 }
 
@@ -999,7 +1008,7 @@ fn details_pane(
     let Some(target) = s.target.clone() else {
         ui.add_space(30.0);
         ui.vertical_centered(|ui| {
-            ui.label(RichText::new("Select an entry to see its commit and what you can do with it.").color(MUTED()));
+            ui.label(RichText::new(crate::i18n::tr("Select an entry to see its commit and what you can do with it.")).color(MUTED()));
         });
         return Event::None;
     };
@@ -1030,7 +1039,7 @@ fn details_pane(
                     .color(HINT()),
             );
         }
-        let r = crate::chrome::icon_button(ui, Icon::Copy, true, false, 22.0).on_hover_text("Copy the full commit ID");
+        let r = crate::chrome::icon_button(ui, Icon::Copy, true, false, 22.0).on_hover_text(crate::i18n::tr("Copy the full commit ID"));
         control(widgets, "dialog-recovery-copy", &r, ui.clip_rect());
         if r.clicked() {
             ui.ctx().copy_text(target.to_string());
@@ -1038,53 +1047,49 @@ fn details_pane(
     });
     let off = s.off.as_ref().is_some_and(|o| o.contains(&target));
     let (color, state) = if lost {
-        (AMBER(), "Nothing reaches this commit, so Git deletes it at its next cleanup. Make a branch to keep it.".to_owned())
+        (AMBER(), crate::i18n::tr("Nothing reaches this commit, so Git deletes it at its next cleanup. Make a branch to keep it.").to_owned())
     } else if head_target == Some(&target) {
-        (BLUE(), format!("{current} is here now."))
+        (BLUE(), crate::i18n::trf!("{current} is here now.", current))
     } else if off {
-        (AMBER(), "No branch includes this commit. Make a branch to keep it.".to_owned())
+        (AMBER(), crate::i18n::tr("No branch includes this commit. Make a branch to keep it.").to_owned())
     } else {
-        (BLUE(), "A branch already includes this commit.".to_owned())
+        (BLUE(), crate::i18n::tr("A branch already includes this commit.").to_owned())
     };
     pages::callout(ui, color, &state);
     if lost {
-        crate::tags::card(ui, "Found by the scan", |ui| {
+        crate::tags::card(ui, crate::i18n::tr("Found by the scan"), |ui| {
             if let Some(c) = &commit {
-                pages::key_value(ui, "Parents", 96.0, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Parents"), 96.0, |ui| {
                     ui.label(match c.parents.len() {
-                        0 => "None: a root commit".to_owned(),
+                        0 => crate::i18n::tr("None: a root commit").to_owned(),
                         1 => c.parents[0].as_str()[..7].to_owned(),
-                        n => format!("{n}, a merge"),
+                        n => crate::i18n::trf!("{count}, a merge", count = n),
                     });
                 });
             }
-            pages::note(ui, "Making a branch shows the change it holds first.");
+            pages::note(ui, crate::i18n::tr("Making a branch shows the change it holds first."));
         });
     } else {
         match &s.details {
             Some((id, Err(error))) if *id == target => pages::callout(ui, AMBER(), error),
-            _ if details.is_none() => pages::loading(ui, "Reading the commit"),
+            _ if details.is_none() => pages::loading(ui, crate::i18n::tr("Reading the commit")),
             _ => {}
         }
         if let Some(details) = &details {
-            crate::tags::card(ui, &format!("Compared with {current}"), |ui| {
+            crate::tags::card(ui, &crate::i18n::trf!("Compared with {current}", current), |ui| {
                 let files = crate::diff::Patch::parse(&details.patch).files.len();
                 let line = match details.relation {
                     Some((ahead, behind)) => format!(
                         "{} · {}",
                         relation_text(ahead, behind),
-                        match files {
-                            0 => "no files differ".to_owned(),
-                            1 => "1 file differs".to_owned(),
-                            n => format!("{n} files differ"),
-                        }
+                        crate::i18n::trf!("Files that differ: {count}", count = files)
                     ),
-                    None => "There is no current commit to compare with.".into(),
+                    None => crate::i18n::tr("There is no current commit to compare with.").into(),
                 };
                 ui.label(RichText::new(line).color(MUTED()));
                 patch_files(ui, &details.patch, 6);
                 if !details.patch.is_empty() {
-                    let r = pages::disclosure(ui, s.show_diff, "Show diff");
+                    let r = pages::disclosure(ui, s.show_diff, crate::i18n::tr("Show diff"));
                     control(widgets, "dialog-recovery-diff", &r, ui.clip_rect());
                     if r.clicked() {
                         s.show_diff = !s.show_diff;
@@ -1102,7 +1107,7 @@ fn details_pane(
     let full = vec2(ui.available_width(), 32.0);
     let r = ui.add_enabled(
         !s.applying,
-        Button::new(RichText::new("Make a branch here").color(ACCENT_INK()).strong())
+        Button::new(RichText::new(crate::i18n::tr("Make a branch here")).color(ACCENT_INK()).strong())
             .fill(BLUE())
             .min_size(full),
     );
@@ -1113,7 +1118,7 @@ fn details_pane(
     if !lost && on_branch {
         let r = ui.add_enabled(
             !s.applying && head_target != Some(&target),
-            Button::new(format!("Move {current} here")).min_size(full),
+            Button::new(crate::i18n::trf!("Move {current} here", current)).min_size(full),
         );
         control(widgets, "dialog-recovery-reset", &r, ui.clip_rect());
         if r.clicked() {
@@ -1133,7 +1138,7 @@ fn back_link(ui: &mut Ui, s: &DialogState, widgets: &mut HashMap<String, UiContr
             let entry = s.page.as_ref()?.entries.get(s.selected_row?)?;
             Some(entry_subject(entry, s.scope))
         })
-        .unwrap_or_else(|| "Back".into());
+        .unwrap_or_else(|| crate::i18n::tr("Back").into());
     let r = pages::tool(ui, Icon::ArrowLeft, &label, !s.applying);
     control(widgets, "dialog-recovery-back", &r, ui.clip_rect());
     r.clicked()
@@ -1157,8 +1162,8 @@ fn branch_pane(
         event = Event::Back;
     }
     let sha = s.target.as_ref().map_or("", |t| &t.as_str()[..7]).to_owned();
-    ui.label(RichText::new(format!("Make a branch at {sha}")).font(semibold(16.0)));
-    ui.label(RichText::new("Branch name").size(12.0).color(MUTED()));
+    ui.label(RichText::new(crate::i18n::trf!("Make a branch at {sha}", sha)).font(semibold(16.0)));
+    ui.label(RichText::new(crate::i18n::tr("Branch name")).size(12.0).color(MUTED()));
     let r = ui.add_enabled(
         !s.applying,
         TextEdit::singleline(name)
@@ -1178,7 +1183,7 @@ fn branch_pane(
     if !trimmed.is_empty() {
         match crate::small_dialogs::branch_name_problem(trimmed, branches, None) {
             Some(problem) => check(ui, false, &problem),
-            None if s.preview.is_some() => check(ui, true, "Available"),
+            None if s.preview.is_some() => check(ui, true, crate::i18n::tr("Available")),
             None => {}
         }
     }
@@ -1186,23 +1191,23 @@ fn branch_pane(
         pages::callout(ui, RED(), error);
     }
     if s.task.is_some() {
-        pages::waiting(ui, "Reviewing");
+        pages::waiting(ui, crate::i18n::tr("Reviewing"));
     }
     if let Some(p) = &s.preview {
-        let text = format!(
-            "The new branch starts at {sha} · {}. You stay on {current} and no files change.",
-            subject(p.target())
+        let text = crate::i18n::trf!(
+            "The new branch starts at {sha} · {subject}. You stay on {current} and no files change.",
+            sha, subject = subject(p.target()), current
         );
         pages::callout(ui, BLUE(), &text);
         if p.is_lost_commit() {
-            crate::tags::card(ui, "The change it holds", |ui| {
+            crate::tags::card(ui, crate::i18n::tr("The change it holds"), |ui| {
                 patch_files(ui, p.patch(), 8);
             });
         }
     }
     pages::divider(ui);
     ui.horizontal(|ui| {
-        let r = ui.add_enabled(!s.applying, Button::new("Back").min_size(vec2(72.0, 32.0)));
+        let r = ui.add_enabled(!s.applying, Button::new(crate::i18n::tr("Back")).min_size(vec2(72.0, 32.0)));
         control(widgets, "dialog-recovery-back-button", &r, ui.clip_rect());
         if r.clicked() {
             event = Event::Back;
@@ -1210,7 +1215,7 @@ fn branch_pane(
         let ready = idle && !s.applying && s.task.is_none() && s.preview.is_some() && error.is_none();
         let r = ui.add_enabled(
             ready,
-            Button::new(RichText::new("Make branch").color(ACCENT_INK()).strong())
+            Button::new(RichText::new(crate::i18n::tr("Make branch")).color(ACCENT_INK()).strong())
                 .fill(BLUE())
                 .min_size(vec2(ui.available_width(), 32.0)),
         );
@@ -1237,22 +1242,22 @@ fn reset_pane(
         event = Event::Back;
     }
     let sha = s.target.as_ref().map_or("", |t| &t.as_str()[..7]).to_owned();
-    ui.label(RichText::new(format!("Move {current} to {sha}")).font(semibold(16.0)));
+    ui.label(RichText::new(crate::i18n::trf!("Move {current} to {sha}", current, sha)).font(semibold(16.0)));
     let original = s.preview.as_ref().and_then(|p| match p.head() {
         Head::Branch { target, .. } => Some(target.as_str()[..7].to_owned()),
         _ => None,
     });
-    move_picture(ui, original.as_deref().unwrap_or("now"), &sha);
-    ui.label(RichText::new("Your current changes").size(12.0).color(MUTED()));
+    move_picture(ui, original.as_deref().unwrap_or(crate::i18n::tr("now")), &sha);
+    ui.label(RichText::new(crate::i18n::tr("Your current changes")).size(12.0).color(MUTED()));
     let mode = match s.action {
         Some(RecoveryAction::Reset(mode)) => mode,
         _ => ResetMode::Soft,
     };
-    let hard_detail = format!("Files become exactly {sha}. Only when nothing is changed.");
+    let hard_detail = crate::i18n::trf!("Files become exactly {sha}. Only when nothing is changed.", sha);
     let choices = [
-        (ResetMode::Soft, "soft", "Keep them staged", "Only the branch moves."),
-        (ResetMode::Mixed, "mixed", "Keep them unstaged", "The branch moves and staging is cleared. Files stay."),
-        (ResetMode::Hard, "hard", "Replace them", hard_detail.as_str()),
+        (ResetMode::Soft, "soft", crate::i18n::tr("Keep them staged"), crate::i18n::tr("Only the branch moves.")),
+        (ResetMode::Mixed, "mixed", crate::i18n::tr("Keep them unstaged"), crate::i18n::tr("The branch moves and staging is cleared. Files stay.")),
+        (ResetMode::Hard, "hard", crate::i18n::tr("Replace them"), hard_detail.as_str()),
     ];
     for (value, id, name, about) in choices {
         let r = pages::option_cards(ui, !s.applying, &[(mode == value, name, about)]);
@@ -1265,17 +1270,17 @@ fn reset_pane(
         pages::callout(ui, RED(), error);
     }
     if s.task.is_some() {
-        pages::waiting(ui, "Reviewing");
+        pages::waiting(ui, crate::i18n::tr("Reviewing"));
     }
     if let Some(p) = &s.preview
         && p.recovery_reference().is_some()
     {
-        let kept = original.as_deref().unwrap_or("the current commit");
-        pages::callout(ui, BLUE(), &format!("Rocket keeps {kept} under Kept by Rocket, so you can move back from here."));
+        let kept = original.as_deref().unwrap_or(crate::i18n::tr("the current commit"));
+        pages::callout(ui, BLUE(), &crate::i18n::trf!("Rocket keeps {kept} under Kept by Rocket, so you can move back from here.", kept));
     }
     pages::divider(ui);
     ui.horizontal(|ui| {
-        let r = ui.add_enabled(!s.applying, Button::new("Back").min_size(vec2(72.0, 32.0)));
+        let r = ui.add_enabled(!s.applying, Button::new(crate::i18n::tr("Back")).min_size(vec2(72.0, 32.0)));
         control(widgets, "dialog-recovery-back-button", &r, ui.clip_rect());
         if r.clicked() {
             event = Event::Back;
@@ -1288,7 +1293,7 @@ fn reset_pane(
         };
         let r = ui.add_enabled(
             ready,
-            Button::new(RichText::new("Move branch").color(ink).strong())
+            Button::new(RichText::new(crate::i18n::tr("Move branch")).color(ink).strong())
                 .fill(fill)
                 .min_size(vec2(ui.available_width(), 32.0)),
         );
@@ -1316,35 +1321,32 @@ fn move_picture(ui: &mut Ui, now: &str, after: &str) {
         3.0,
     );
     painter.extend(arc);
-    painter.text(pos2(a, y + 12.0), Align2::CENTER_TOP, format!("now · {now}"), FontId::proportional(11.5), HINT());
-    painter.text(pos2(b, y + 12.0), Align2::CENTER_TOP, format!("after · {after}"), FontId::proportional(11.5), TEXT());
+    painter.text(pos2(a, y + 12.0), Align2::CENTER_TOP, crate::i18n::trf!("now · {commit}", commit = now), FontId::proportional(11.5), HINT());
+    painter.text(pos2(b, y + 12.0), Align2::CENTER_TOP, crate::i18n::trf!("after · {commit}", commit = after), FontId::proportional(11.5), TEXT());
 }
 
 /// The footer line: how many entries, or where a review stands.
 fn footer_line(s: &DialogState, browsing: bool) -> String {
     if !browsing {
         return if s.task.is_some() {
-            "Reviewing".into()
+            crate::i18n::tr("Reviewing").into()
         } else if s.preview.is_some() {
-            "Reviewed · nothing has changed yet".into()
+            crate::i18n::tr("Reviewed · nothing has changed yet").into()
         } else {
-            "Review to see what will happen".into()
+            crate::i18n::tr("Review to see what will happen").into()
         };
     }
     if s.log_task.is_some() {
-        return if s.scope == ReflogScope::Unreachable { "Scanning".into() } else { "Reading".into() };
+        return if s.scope == ReflogScope::Unreachable { crate::i18n::tr("Scanning").into() } else { crate::i18n::tr("Reading").into() };
     }
     match &s.page {
         Some(page) => {
             let shown = match (s.scope == ReflogScope::Unreachable, page.entries.len()) {
-                (true, 0) => "No lost commits found".to_owned(),
-                (true, 1) => "1 lost commit found".to_owned(),
-                (true, n) => format!("{n} lost commits found"),
-                (false, 1) => "1 entry · newest first".to_owned(),
-                (false, n) => format!("{n} entries · newest first"),
+                (true, n) => crate::i18n::trf!("Lost commits found: {count}", count = n),
+                (false, n) => crate::i18n::trf!("Entries: {count} · newest first", count = n),
             };
             if page.more {
-                format!("{shown} · older ones with Show older")
+                crate::i18n::trf!("{shown} · older ones with Show older", shown)
             } else {
                 shown
             }

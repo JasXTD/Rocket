@@ -1,0 +1,115 @@
+{
+  "Open a repository before preparing this operation.": "Ouvrez un dépôt avant de préparer cette opération.",
+  "The original message is not UTF-8. Enter an explicit replacement message to amend it.": "Le message d’origine n’est pas en UTF-8. Saisissez un message de remplacement explicite pour le modifier.",
+  "Review stopped. Nothing was started.": "Vérification arrêtée. Rien n’a été lancé.",
+  "Amend changes the commit ID.": "La modification change l’identifiant du commit.",
+  "Stopping the review…": "Arrêt de la vérification…",
+  "Reading the branch and checking for conflicts…": "Lecture de la branche et recherche de conflits…",
+  "Reading the branch, staged changes and commit…": "Lecture de la branche, des modifications indexées et du commit…",
+  "Staged changes to include": "Modifications indexées à inclure",
+  "Replacement commit message": "Message de commit de remplacement",
+  "Nothing to undo": "Rien à annuler",
+  "The operation could not start. Wait for the repository, then review again.": "L’opération n’a pas pu démarrer. Attendez que le dépôt soit disponible, puis vérifiez à nouveau.",
+  "Finishes the revert.": "Termine l’annulation.",
+  "Finishes the cherry-pick.": "Termine le cherry-pick.",
+  "Amend latest commit": "Modifier le dernier commit",
+  "Replaces the latest commit with what's staged and the message below.": "Remplace le dernier commit par le contenu indexé et le message ci-dessous.",
+  "Adds a copy of each commit to {branch}, oldest first.": "Ajoute une copie de chaque commit à {branch}, les plus anciens en premier.",
+  "This commit's changes are already gone from {branch}.": "Les modifications de ce commit ont déjà été retirées de {branch}.",
+  "Adds a commit to {branch} that undoes this one. Nothing leaves history.": "Ajoute à {branch} un commit qui annule celui-ci. Rien n’est retiré de l’historique.",
+  "Adds a copy of this commit to {branch}.": "Ajoute une copie de ce commit à {branch}.",
+  "Saves your fix for {subject}.": "Enregistre votre correction pour {subject}.",
+  "Commit {at} of {total} · {subject}": "Commit {at} sur {total} · {subject}",
+  "Leaves out {subject}.": "Omet {subject}.",
+  "Does the last commit, then finishes the revert.": "Traite le dernier commit, puis termine l’annulation.",
+  "Does the last commit, then finishes the cherry-pick.": "Traite le dernier commit, puis termine le cherry-pick.",
+  "Leaves out this commit.": "Omet ce commit.",
+  "Puts {branch} back where it was before the revert.": "Remet {branch} à son état d’avant l’annulation.",
+  "Puts {branch} back where it was before the cherry-pick.": "Remet {branch} à son état d’avant le cherry-pick.",
+  "Ends the revert. {branch} stays where it is, because it moved by hand.": "Termine l’annulation. {branch} reste à sa position actuelle, car la branche a été déplacée manuellement.",
+  "Ends the cherry-pick. {branch} stays where it is, because it moved by hand.": "Termine le cherry-pick. {branch} reste à sa position actuelle, car la branche a été déplacée manuellement.",
+  "Stops reverting {subject}. {branch} stays where it is.": "Arrête l’annulation de {subject}. {branch} reste à sa position actuelle.",
+  "Stops copying {subject}. {branch} stays where it is.": "Arrête la copie de {subject}. {branch} reste à sa position actuelle.",
+  "Stops the revert. {branch} stays where it is.": "Arrête l’annulation. {branch} reste à sa position actuelle.",
+  "Stops the cherry-pick. {branch} stays where it is.": "Arrête le cherry-pick. {branch} reste à sa position actuelle.",
+  "This is a merge. Which side stays?": "C’est une fusion. Quel côté conserver ?",
+  "This is a merge. Copy what it added to which side?": "C’est une fusion. Copier ce qu’elle a ajouté à quel côté ?",
+  "the branch it merged into": "la branche de destination de la fusion",
+  "the branch that came in": "la branche entrante",
+  "Side {side}": "Côté {side}",
+  "Merging that branch again later won't bring these changes back.": "Fusionner à nouveau cette branche plus tard ne rétablira pas ces modifications.",
+  "{branch} now": "{branch} maintenant",
+  "Nothing to undo at commit {at} of {total}": "Rien à annuler au commit {at} sur {total}",
+  "Those changes are already gone, so Git stops there. Continue goes on without that commit.": "Ces modifications ont déjà été retirées, Git s’arrête donc ici. Continuer poursuit sans ce commit.",
+  "That's {id} · {subject}, open below.": "Il s’agit de {id} · {subject}, ouvert ci-dessous.",
+  "{subject} · copy": "{subject} · copie",
+  "What the new commit changes": "Ce que le nouveau commit modifie",
+  "What the copy changes": "Ce que la copie modifie",
+  "These commits are too big to show here. The check above still covers them.": "Ces commits sont trop volumineux pour être affichés. La vérification ci-dessus les couvre quand même.",
+  "reverted": "annulé",
+  "not reverted": "non annulé",
+  "not copied": "non copié",
+  "done by hand": "fait manuellement",
+  "being reverted": "en cours d’annulation",
+  "being copied": "en cours de copie",
+  "Your fix · {staged}": "Votre correction · {staged}",
+  "{branch} stays at": "{branch} reste à",
+  "before it started": "avant le début",
+  "where it is now": "à sa position actuelle",
+  "Reflog & Recovery can still find the commits it made.": "Reflog et récupération peut toujours retrouver les commits créés.",
+  "No conflicts expected.": "Aucun conflit prévu.",
+  "Conflict expected at commit {stopped_at} of {total}": "Conflit prévu au commit {stopped_at} sur {total}",
+  "Conflict expected": "Conflit prévu",
+  "Nothing to change at commit {stopped_at} of {total}": "Rien à modifier au commit {stopped_at} sur {total}",
+  "Nothing to change": "Rien à modifier",
+  "Rocket can't tell yet whether this conflicts": "Rocket ne peut pas encore déterminer s’il y aura des conflits",
+  "Git stops there so you can fix it, then Continue or Abort.": "Git s’arrête ici pour vous laisser corriger le problème, puis continuer ou abandonner.",
+  "Git stops so you can fix it, then Continue or Abort.": "Git s’arrête pour vous laisser corriger le problème, puis continuer ou abandonner.",
+  "Those changes are already here, so Git stops there for you to decide.": "Ces modifications sont déjà présentes, Git s’arrête donc ici pour vous laisser décider.",
+  "Those changes are already here, so Git stops for you to decide.": "Ces modifications sont déjà présentes, Git s’arrête donc pour vous laisser décider.",
+  "No clean result is claimed.": "Aucun résultat sans conflit n’est garanti.",
+  "Reviewed · adds {n} commits to {branch} · nothing is pushed": {
+    "one": "Vérifié · ajoute {n} commit à {branch} · aucun envoi",
+    "other": "Vérifié · ajoute {n} commits à {branch} · aucun envoi"
+  },
+  " Then reverts the remaining {n} commits.": {
+    "one": " Annule ensuite le {n} commit restant.",
+    "other": " Annule ensuite les {n} commits restants."
+  },
+  " Then cherry-picks the remaining {n} commits.": {
+    "one": " Applique ensuite le {n} commit restant par cherry-pick.",
+    "other": " Applique ensuite les {n} commits restants par cherry-pick."
+  },
+  "Adds {n} commits to {branch} that undo these, newest first. Nothing leaves history.": {
+    "one": "Ajoute à {branch} {n} commit qui annule celui-ci. Rien n’est retiré de l’historique.",
+    "other": "Ajoute à {branch} {n} commits qui annulent ceux-ci, les plus récents en premier. Rien n’est retiré de l’historique."
+  },
+  "Does the other {n} commits, then finishes the revert.": {
+    "one": "Traite le {n} commit restant, puis termine l’annulation.",
+    "other": "Traite les {n} autres commits, puis termine l’annulation."
+  },
+  "Does the other {n} commits, then finishes the cherry-pick.": {
+    "one": "Traite le {n} commit restant, puis termine le cherry-pick.",
+    "other": "Traite les {n} autres commits, puis termine le cherry-pick."
+  },
+  "{n} commits, newest first": {
+    "one": "{n} commit, les plus récents en premier",
+    "other": "{n} commits, les plus récents en premier"
+  },
+  "{n} commits, oldest first": {
+    "one": "{n} commit, les plus anciens en premier",
+    "other": "{n} commits, les plus anciens en premier"
+  },
+  "{n} files staged": {
+    "one": "{n} fichier indexé",
+    "other": "{n} fichiers indexés"
+  },
+  " The {n} commits after it weren't checked.": {
+    "one": " Le {n} commit suivant n’a pas été vérifié.",
+    "other": " Les {n} commits suivants n’ont pas été vérifiés."
+  },
+  "{n} more conflicting paths.": {
+    "one": "{n} autre chemin en conflit.",
+    "other": "{n} autres chemins en conflit."
+  }
+}

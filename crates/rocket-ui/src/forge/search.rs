@@ -61,13 +61,13 @@ pub(super) fn controls(
         let rest = author + assignee + recent + search + 4.0 * 6.0;
         // Narrow pages give the words a row of their own.
         let words = if room - rest >= 160.0 { room - rest } else { room };
-        let hint = if s.provider == ForgeProvider::GitLab { "Search titles and descriptions on GitLab" } else { "Search titles and bodies on GitHub" };
+        let hint = if s.provider == ForgeProvider::GitLab { tr("Search titles and descriptions on GitLab") } else { tr("Search titles and bodies on GitHub") };
         let r = icon_field(ui, widgets, "hosting-search-text", Icon::Search, hint, &mut s.search.text, words, !busy);
         out.changed |= r.changed();
         run |= r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         for (key, prefix, value, width) in [
-            ("hosting-search-author", "author:", &mut s.search.author, author),
-            ("hosting-search-assignee", "assignee:", &mut s.search.assignee, assignee),
+            ("hosting-search-author", tr("author:"), &mut s.search.author, author),
+            ("hosting-search-assignee", tr("assignee:"), &mut s.search.assignee, assignee),
         ] {
             let r = prefix_field(ui, widgets, key, prefix, value, width, !busy);
             out.changed |= r.changed();
@@ -79,7 +79,7 @@ pub(super) fn controls(
             let r = ui
                 .add_enabled_ui(!busy, |ui| crate::chrome::icon_button(ui, Icon::Clock, true, false, recent))
                 .inner
-                .on_hover_text("Recent searches");
+                .on_hover_text(tr("Recent searches"));
             control(widgets, "hosting-search-recent", &r, ui.clip_rect());
             egui::Popup::menu(&r).show(|ui| {
                 let context = Recent::from_state(s);
@@ -93,17 +93,14 @@ pub(super) fn controls(
                     .map(|(i, r)| (i, r.clone()))
                     .collect();
                 if choices.is_empty() {
-                    ui.weak("No saved search for this repository");
+                    ui.weak(tr("No saved search for this repository"));
                 }
                 for (index, recent) in choices {
-                    let any = |value: &str| if value.is_empty() { "anyone".to_owned() } else { value.to_owned() };
-                    let label = format!(
-                        "{} · author {} · assignee {} · {:?}",
-                        if recent.search.text.is_empty() { "Any text" } else { &recent.search.text },
-                        any(&recent.search.author),
-                        any(&recent.search.assignee),
-                        recent.state
-                    );
+                    let any = |value: &str| if value.is_empty() { tr("anyone").to_owned() } else { value.to_owned() };
+                    let state = match recent.state { ForgeState::Open => tr("Open"), ForgeState::Closed => tr("Closed"), ForgeState::All => tr("All") };
+                    let label = trf!("{text} · author {author} · assignee {assignee} · {state}",
+                        text = if recent.search.text.is_empty() { tr("Any text") } else { &recent.search.text },
+                        author = any(&recent.search.author), assignee = any(&recent.search.assignee), state);
                     let r = ui.button(label);
                     control(widgets, format!("hosting-search-recent-{index}"), &r, ui.clip_rect());
                     if r.clicked() {
@@ -114,7 +111,7 @@ pub(super) fn controls(
                     }
                 }
                 ui.separator();
-                let r = ui.add_enabled(!s.searches.is_empty(), Button::new("Clear recent searches"));
+                let r = ui.add_enabled(!s.searches.is_empty(), Button::new(tr("Clear recent searches")));
                 control(widgets, "hosting-search-clear", &r, ui.clip_rect());
                 if r.clicked() {
                     s.searches.clear();
@@ -122,7 +119,7 @@ pub(super) fn controls(
                 }
             });
         }
-        let r = ui.add_enabled(!busy && s.session.is_some(), Button::new("Search"));
+        let r = ui.add_enabled(!busy && s.session.is_some(), Button::new(tr("Search")));
         control(widgets, "hosting-search", &r, ui.clip_rect());
         run |= r.clicked();
     });
@@ -130,12 +127,9 @@ pub(super) fn controls(
         out.action = Some("refresh");
     }
     if let Some(total) = s.total {
-        ui.weak(format!(
-            "{} of {total} matching results loaded",
-            s.items.len()
-        ));
+        ui.weak(trf!("{loaded} of {total} matching results loaded", loaded = s.items.len(), total));
     }
     if s.incomplete {
-        ui.colored_label(AMBER(), "GitHub returned partial results or more than 1,000 matches. Narrow the search or retry.");
+        ui.colored_label(AMBER(), tr("GitHub returned partial results or more than 1,000 matches. Narrow the search or retry."));
     }
 }

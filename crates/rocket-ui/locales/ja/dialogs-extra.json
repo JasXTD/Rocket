@@ -1,0 +1,8 @@
+{
+  "Created by Xetro": "Xetro が作成",
+  "Version {version} · a native Rust Git workspace": "バージョン {version} · Rust 製のネイティブ Git ワークスペース",
+  "Free and open-source software under the {license} license.": "{license} ライセンスの自由なオープンソースソフトウェアです。",
+  "What changed in each Rocket build.": "各 Rocket ビルドの変更点です。",
+  "{version} · this build": "{version} · このビルド",
+  "This build": "このビルド"
+}

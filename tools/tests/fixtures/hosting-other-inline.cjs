@@ -1,7 +1,7 @@
 // Official Bitbucket/Azure contracts, served only on loopback. No returned URL
 // is usable: tests fail if Rocket follows links instead of constructing scope.
 const http=require('node:http'),assert=require('node:assert/strict');
-function create(provider,token){
+function create(provider,token,threadHandler){
  const azure=provider.startsWith('azure'),server=provider==='bitbucket-server';
  const base='/'+provider+(provider==='azure-server'?'/tfs/Fixture':'');
  const prefix=base+(azure?'/team/_apis/git/repositories/sample':server?'/projects/team/repos/sample':'/repositories/team/sample');
@@ -28,6 +28,7 @@ function create(provider,token){
   if(p===base+'/team/_apis/build/builds')return send(200,{value:[]});
   assert(p.startsWith(prefix),'Unexpected scope '+p);const route=p.slice(prefix.length);
   if(state.mode==='slow-read'&&req.method==='GET')return slow();
+  if(threadHandler?.({provider,state,route,pr,req,data,u,send,slow,actor}))return;
   if(route===''&&azure)return send(200,{id:'33333333-3333-4333-8333-333333333333'});
   if(route==='/refs')return send(200,{value:[{name:'refs/heads/main',objectId:state.base}]});
   if(route==='/branches')return send(200,page([{id:'refs/heads/main',latestCommit:state.base}]));

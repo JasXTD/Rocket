@@ -11,9 +11,9 @@ pub(super) struct Edit {
 fn parse(text: &str) -> Result<u64, String> {
     let text = text.trim();
     if text.is_empty() || !text.bytes().all(|b| b.is_ascii_digit()) {
-        return Err("Enter a positive whole number of MiB.".into());
+        return Err(crate::i18n::tr("Enter a positive whole number of MiB.").into());
     }
-    let mib = text.parse::<u64>().map_err(|_| "That number is too large.".to_owned())?;
+    let mib = text.parse::<u64>().map_err(|_| crate::i18n::tr("That number is too large.").to_owned())?;
     rocket_git::validate_secret_scan_mib(mib).map_err(|error| error.to_string())?;
     Ok(mib)
 }
@@ -22,10 +22,10 @@ impl Rocket {
     pub(super) fn scan_budget_card(&mut self, ui: &mut Ui) {
         let editable = !self.busy() && self.backend.is_some();
         preferences::card_frame(ui, |ui| {
-            preferences::card_header(ui, "Total scan budget", |_| {});
+            preferences::card_header(ui, crate::i18n::tr("Total scan budget"), |_| {});
             preferences::card_note(ui, |ui| {
-                ui.label(RichText::new("Maximum uncompressed Git data per commit or push scan").color(TEXT()));
-                ui.label(RichText::new("Push checks include reachable older history, not just the new commit or compressed upload.").color(MUTED()));
+                ui.label(RichText::new(crate::i18n::tr("Maximum uncompressed Git data per commit or push scan")).color(TEXT()));
+                ui.label(RichText::new(crate::i18n::tr("Push checks include reachable older history, not just the new commit or compressed upload.")).color(MUTED()));
                 let mut apply = None;
                 ui.add_enabled_ui(editable, |ui| {
                     ui.horizontal_wrapped(|ui| {
@@ -34,7 +34,7 @@ impl Rocket {
                         pages::control(&mut self.frame_widgets, "pref-secret-scan-mib", &input, ui.clip_rect());
                         if input.changed() { self.dependencies.scan_budget.error = None; }
                         ui.label("MiB");
-                        let button = ui.button("Apply");
+                        let button = ui.button(crate::i18n::tr("Apply"));
                         pages::control(&mut self.frame_widgets, "pref-secret-scan-apply", &button, ui.clip_rect());
                         if button.clicked() {
                             match parse(self.dependencies.scan_budget.text.as_deref().unwrap_or("")) {
@@ -42,7 +42,7 @@ impl Rocket {
                                 Err(error) => self.dependencies.scan_budget.error = Some(error),
                             }
                         }
-                        let reset = ui.button("Reset to 256 MiB");
+                        let reset = ui.button(crate::i18n::tr("Reset to 256 MiB"));
                         pages::control(&mut self.frame_widgets, "pref-secret-scan-reset", &reset, ui.clip_rect());
                         if reset.clicked() { apply = Some(rocket_git::DEFAULT_SECRET_SCAN_MIB); }
                     });
@@ -57,11 +57,11 @@ impl Rocket {
                         Err(error) => self.dependencies.scan_budget.error = Some(error.to_string()),
                     }
                 }
-                ui.label(RichText::new(format!("Applied: {} MiB · for future scans", self.secret_scan_mib)).color(MUTED()));
+                ui.label(RichText::new(crate::i18n::trf!("Applied: {mib} MiB · for future scans", mib = self.secret_scan_mib)).color(MUTED()));
                 if let Some(error) = &self.dependencies.scan_budget.error {
                     pages::callout(ui, AMBER(), error);
                 }
-                ui.label(RichText::new("A larger budget can take longer. The 128 MiB per-object limit, timeout and cancellation still apply. An incomplete scan blocks the operation.").color(MUTED()));
+                ui.label(RichText::new(crate::i18n::tr("A larger budget can take longer. The 128 MiB per-object limit, timeout and cancellation still apply. An incomplete scan blocks the operation.")).color(MUTED()));
             });
         });
     }

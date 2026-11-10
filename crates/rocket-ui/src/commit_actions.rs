@@ -3,6 +3,7 @@
 use crate::{
     app::*,
     backend::{Action, Outcome, user_error},
+    i18n::{tr, trf, trn},
     pages::{self, Step, StepMark},
     patch_diff::{self, Shown},
     series_view,
@@ -32,11 +33,6 @@ pub struct DialogState {
     edits: bool,
     /// The latest review, so a merge's sides stay put while another side is reviewed.
     seen: Option<Arc<CommitPreview>>,
-}
-
-/// "1 commit", "3 commits".
-fn commits(n: usize) -> String {
-    if n == 1 { "1 commit".into() } else { format!("{n} commits") }
 }
 
 /// A commit's short ID.
@@ -124,7 +120,7 @@ impl Rocket {
                     },
                     _ => {
                         dialog.error =
-                            Some("Open a repository before preparing this operation.".into())
+                            Some(tr("Open a repository before preparing this operation.").into())
                     }
                 }
             }
@@ -154,7 +150,7 @@ impl Rocket {
                 if preview.request().operation == CommitOperation::Amend && !state.message_loaded {
                     match String::from_utf8(preview.source().message.clone()) {
                         Ok(message) => dialog.first = message,
-                        Err(_) => dialog.error = Some("The original message is not UTF-8. Enter an explicit replacement message to amend it.".into()),
+                        Err(_) => dialog.error = Some(tr("The original message is not UTF-8. Enter an explicit replacement message to amend it.").into()),
                     }
                     state.message_loaded = true;
                 }
@@ -165,7 +161,7 @@ impl Rocket {
                 state.seen = Some(preview.clone());
                 state.preview = Some(preview);
             }
-            Err(Error::Cancelled) => dialog.error = Some("Review stopped. Nothing was started.".into()),
+            Err(Error::Cancelled) => dialog.error = Some(tr("Review stopped. Nothing was started.").into()),
             Err(error) => dialog.error = Some(user_error(&error)),
         }
     }
@@ -253,7 +249,7 @@ impl Rocket {
                         pages::refusal(ui, AMBER(), error);
                     }
                     if request.operation == CommitOperation::Amend {
-                        pages::callout(ui, AMBER(), "Amend changes the commit ID.");
+                        pages::callout(ui, AMBER(), tr("Amend changes the commit ID."));
                     }
                     if starting && !range {
                         let seen = state.seen.clone();
@@ -269,11 +265,11 @@ impl Rocket {
                         pages::waiting(
                             ui,
                             if state.cancelling {
-                                "Stopping the review…"
+                                tr("Stopping the review…")
                             } else if starting {
-                                "Reading the branch and checking for conflicts…"
+                                tr("Reading the branch and checking for conflicts…")
                             } else {
-                                "Reading the branch, staged changes and commit…"
+                                tr("Reading the branch, staged changes and commit…")
                             },
                         );
                     }
@@ -282,7 +278,7 @@ impl Rocket {
                             Some(recovery) => recovery_body(ui, recovery, &preview, original.as_ref(), &branch, state, widgets),
                             None if request.operation == CommitOperation::Amend => {
                                 if let Some(files) = state.shown.first() {
-                                    series_view::diff_card(ui, "Staged changes to include", "dialog-commit-diff", files, 150.0);
+                                    series_view::diff_card(ui, tr("Staged changes to include"), "dialog-commit-diff", files, 150.0);
                                 }
                             }
                             None if range => range_body(ui, &preview, state, widgets, height),
@@ -290,7 +286,7 @@ impl Rocket {
                         }
                     }
                     if request.operation == CommitOperation::Amend && state.message_loaded {
-                        ui.label("Replacement commit message");
+                        ui.label(tr("Replacement commit message"));
                         Frame::new()
                             .fill(BG())
                             .stroke(Stroke::new(1.0, BORDER()))
@@ -343,26 +339,26 @@ impl Rocket {
                     submit = r.clicked();
                     // It reviews itself on opening; asking again is for a refusal.
                     if dialog.error.is_some() {
-                        let r = ui.add_enabled(!waiting && idle, Button::new("Review again"));
+                        let r = ui.add_enabled(!waiting && idle, Button::new(tr("Review again")));
                         pages::control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                         refresh |= r.clicked();
                     }
                     if state.task.is_some() {
-                        let r = ui.add_enabled(!state.cancelling, Button::new("Stop review"));
+                        let r = ui.add_enabled(!state.cancelling, Button::new(tr("Stop review")));
                         pages::control(widgets, "dialog-prediction-stop", &r, ui.clip_rect());
                         stop_check = r.clicked();
                     }
                     let status = if state.task.is_some() {
-                        "Reviewing".to_owned()
+                        tr("Reviewing").to_owned()
                     } else if dialog.error.is_some() && !amend {
-                        "Fix the problem above, then review again".to_owned()
+                        tr("Fix the problem above, then review again").to_owned()
                     } else if nothing {
-                        "Nothing to undo".to_owned()
+                        tr("Nothing to undo").to_owned()
                     } else if starting {
                         let n = state.preview.as_ref().map_or(request.targets.len(), |p| p.commits().len());
-                        format!("Reviewed · adds {} to {branch} · nothing is pushed", commits(n))
+                        trn!(n, "Reviewed · adds {n} commit to {branch} · nothing is pushed", "Reviewed · adds {n} commits to {branch} · nothing is pushed", branch)
                     } else {
-                        "Nothing has changed yet".to_owned()
+                        tr("Nothing has changed yet").to_owned()
                     };
                     pages::footer_status(ui, false, &status);
                 }
@@ -389,7 +385,7 @@ impl Rocket {
             );
             if self.write.is_none() {
                 state.applying = false;
-                dialog.error = Some("The operation could not start. Wait for the repository, then review again.".into());
+                dialog.error = Some(tr("The operation could not start. Wait for the repository, then review again.").into());
             }
         }
         if !dismiss {
@@ -410,10 +406,7 @@ struct Words {
 impl Words {
     fn of(request: &CommitActionRequest, preview: Option<&CommitPreview>, step: Option<&OperationStep>, branch: &str) -> Self {
         let n = request.targets.len();
-        let (revert, what) = match request.operation {
-            CommitOperation::Revert => (true, "revert"),
-            _ => (false, "cherry-pick"),
-        };
+        let revert = request.operation == CommitOperation::Revert;
         // Until a review is in, or when one is refused, Git's own state says where it stopped.
         let stopped = match preview {
             Some(p) => p.stopped_commit().map(subject),
@@ -424,68 +417,70 @@ impl Words {
             None => step.filter(|s| s.total > 1).map(|s| (s.at, s.total)),
         };
         let rest = position.map_or(0, |(at, total)| total.saturating_sub(at));
-        let then = match rest {
-            0 => String::new(),
-            1 => format!(", then {what}s the last commit"),
-            n => format!(", then {what}s the other {n}"),
+        let then = if rest == 0 {
+            String::new()
+        } else if revert {
+            trn!(rest, " Then reverts the remaining {n} commit.", " Then reverts the remaining {n} commits.")
+        } else {
+            trn!(rest, " Then cherry-picks the remaining {n} commit.", " Then cherry-picks the remaining {n} commits.")
         };
+        let finish = || if revert { tr("Finishes the revert.") } else { tr("Finishes the cherry-pick.") }.to_owned();
         let (title, subtitle) = match (request.operation, request.recovery) {
             (CommitOperation::Amend, _) => (
-                "Amend latest commit".to_owned(),
-                "Replaces the latest commit with what's staged and the message below.".to_owned(),
+                tr("Amend latest commit").to_owned(),
+                tr("Replaces the latest commit with what's staged and the message below.").to_owned(),
             ),
             (_, None) if revert && n > 1 => (
-                format!("Revert {n} commits"),
-                format!("Adds {n} commits to {branch} that undo these, newest first. Nothing leaves history."),
+                trn!(n, "Revert {n} commit", "Revert {n} commits"),
+                trn!(n, "Adds {n} commit to {branch} that undoes this. Nothing leaves history.", "Adds {n} commits to {branch} that undo these, newest first. Nothing leaves history.", branch),
             ),
             (_, None) if n > 1 => (
-                format!("Cherry-pick {n} commits"),
-                format!("Adds a copy of each commit to {branch}, oldest first."),
+                trn!(n, "Cherry-pick {n} commit", "Cherry-pick {n} commits"),
+                trf!("Adds a copy of each commit to {branch}, oldest first.", branch),
             ),
             (_, None) if revert && preview.is_some_and(nothing_to_undo) => (
-                "Revert commit".to_owned(),
-                format!("This commit's changes are already gone from {branch}."),
+                tr("Revert commit").to_owned(),
+                trf!("This commit's changes are already gone from {branch}.", branch),
             ),
             (_, None) if revert => (
-                "Revert commit".to_owned(),
-                format!("Adds a commit to {branch} that undoes this one. Nothing leaves history."),
+                tr("Revert commit").to_owned(),
+                trf!("Adds a commit to {branch} that undoes this one. Nothing leaves history.", branch),
             ),
-            (_, None) => ("Cherry-pick commit".to_owned(), format!("Adds a copy of this commit to {branch}.")),
+            (_, None) => (tr("Cherry-pick commit").to_owned(), trf!("Adds a copy of this commit to {branch}.", branch)),
             (_, Some(CommitRecovery::Continue)) => (
-                format!("Continue {what}"),
+                if revert { tr("Continue revert") } else { tr("Continue cherry-pick") }.to_owned(),
                 match (&stopped, preview, position) {
-                    (Some(subject), Some(_), _) => format!("Saves your fix for {subject}{then}."),
-                    (Some(subject), None, Some((at, total))) => format!("Commit {at} of {total} · {subject}"),
+                    (Some(subject), Some(_), _) => format!("{}{then}", trf!("Saves your fix for {subject}.", subject)),
+                    (Some(subject), None, Some((at, total))) => trf!("Commit {at} of {total} · {subject}", at, total, subject),
                     (Some(subject), None, None) => subject.clone(),
                     // Between two commits Git goes on after the one it reached, which someone
                     // finished by hand or Git couldn't make.
                     (None, Some(p), Some((at, _))) if p.rewinds() => match p.reviewed().get(at - 1) {
-                        Some(commit) => format!("Leaves out {}{then}.", subject(commit)),
-                        None => format!("Finishes the {what}."),
+                        Some(commit) => format!("{}{then}", trf!("Leaves out {subject}.", subject = subject(commit))),
+                        None => finish(),
                     },
-                    (None, _, Some(_)) if rest > 1 => format!("Does the other {rest} commits, then finishes the {what}."),
-                    (None, _, Some(_)) if rest == 1 => format!("Does the last commit, then finishes the {what}."),
-                    (None, _, _) => format!("Finishes the {what}."),
+                    (None, _, Some(_)) if rest > 1 => if revert { trn!(rest, "Does the remaining {n} commit, then finishes the revert.", "Does the other {n} commits, then finishes the revert.") } else { trn!(rest, "Does the remaining {n} commit, then finishes the cherry-pick.", "Does the other {n} commits, then finishes the cherry-pick.") },
+                    (None, _, Some(_)) if rest == 1 => if revert { tr("Does the last commit, then finishes the revert.") } else { tr("Does the last commit, then finishes the cherry-pick.") }.to_owned(),
+                    (None, _, _) => finish(),
                 },
             ),
             (_, Some(CommitRecovery::Skip)) => (
-                position.map_or_else(|| "Skip commit".to_owned(), |(at, _)| format!("Skip commit {at}")),
+                position.map_or_else(|| tr("Skip commit").to_owned(), |(at, _)| trf!("Skip commit {at}", at)),
                 match &stopped {
-                    Some(subject) => format!("Leaves out {subject}{then}."),
-                    None => "Leaves out this commit.".to_owned(),
+                    Some(subject) => format!("{}{then}", trf!("Leaves out {subject}.", subject)),
+                    None => tr("Leaves out this commit.").to_owned(),
                 },
             ),
             (_, Some(CommitRecovery::Abort)) => (
-                format!("Abort {what}"),
+                if revert { tr("Abort revert") } else { tr("Abort cherry-pick") }.to_owned(),
                 if preview.map_or(position.is_some(), |p| p.is_sequence() && p.rewinds()) {
-                    format!("Puts {branch} back where it was before the {what}.")
+                    if revert { trf!("Puts {branch} back where it was before the revert.", branch) } else { trf!("Puts {branch} back where it was before the cherry-pick.", branch) }
                 } else if preview.is_some_and(CommitPreview::is_sequence) {
-                    format!("Ends the {what}. {branch} stays where it is, because it moved by hand.")
+                    if revert { trf!("Ends the revert. {branch} stays where it is, because it moved by hand.", branch) } else { trf!("Ends the cherry-pick. {branch} stays where it is, because it moved by hand.", branch) }
                 } else {
-                    let doing = if revert { "reverting" } else { "copying" };
                     match &stopped {
-                        Some(subject) => format!("Stops {doing} {subject}. {branch} stays where it is."),
-                        None => format!("Stops the {what}. {branch} stays where it is."),
+                        Some(subject) => if revert { trf!("Stops reverting {subject}. {branch} stays where it is.", subject, branch) } else { trf!("Stops copying {subject}. {branch} stays where it is.", subject, branch) },
+                        None => if revert { trf!("Stops the revert. {branch} stays where it is.", branch) } else { trf!("Stops the cherry-pick. {branch} stays where it is.", branch) },
                     }
                 },
             ),
@@ -504,14 +499,14 @@ fn sides(
     widgets: &mut HashMap<String, UiControl>,
 ) -> bool {
     let revert = request.operation == CommitOperation::Revert;
-    ui.label(RichText::new(if revert { "This is a merge. Which side stays?" } else { "This is a merge. Copy what it added to which side?" }).size(12.0).color(HINT()));
+    ui.label(RichText::new(if revert { tr("This is a merge. Which side stays?") } else { tr("This is a merge. Copy what it added to which side?") }).size(12.0).color(HINT()));
     let names: Vec<(String, String)> = parents
         .iter()
         .enumerate()
         .map(|(i, id)| {
-            let about = if i == 0 { "the branch it merged into" } else { "the branch that came in" };
+            let about = if i == 0 { tr("the branch it merged into") } else { tr("the branch that came in") };
             let name = preview.and_then(|p| p.parent_commits().iter().find(|c| c.id == *id));
-            (name.map_or_else(|| format!("Side {}", i + 1), subject), format!("{} · {about}", short(id)))
+            (name.map_or_else(|| trf!("Side {side}", side = i + 1), subject), format!("{} · {about}", short(id)))
         })
         .collect();
     let cards: Vec<(bool, &str, &str)> = names
@@ -528,7 +523,7 @@ fn sides(
         }
     }
     if revert {
-        pages::note(ui, "Merging that branch again later won't bring these changes back.");
+        pages::note(ui, tr("Merging that branch again later won't bring these changes back."));
     }
     changed
 }
@@ -549,7 +544,7 @@ fn picture(ui: &mut Ui, branch: &str, label: &str) {
         painter.circle_filled(pos2(left + step * i as f32, y), 4.5, RING_IDLE());
     }
     painter.circle_filled(pos2(new, y), 5.5, BLUE());
-    let mut now = text::LayoutJob::simple_singleline(format!("{branch} now"), FontId::proportional(12.0), HINT());
+    let mut now = text::LayoutJob::simple_singleline(trf!("{branch} now", branch), FontId::proportional(12.0), HINT());
     now.wrap = text::TextWrapping::truncate_at_width(new - left);
     let now = painter.layout_job(now);
     painter.galley(pos2(left, y - 28.0), now, HINT());
@@ -574,9 +569,9 @@ fn expected(ui: &mut Ui, preview: &CommitPreview) {
         if revert && prediction.kind == PredictionKind::Empty {
             let range = preview.commits().len() > 1;
             let at = prediction.stopped_at.unwrap_or(0) + 1;
-            pages::callout(ui, AMBER(), &if range { format!("Nothing to undo at commit {at} of {}", prediction.total) } else { "Nothing to undo".to_owned() });
+            pages::callout(ui, AMBER(), &if range { trf!("Nothing to undo at commit {at} of {total}", total = prediction.total, at) } else { tr("Nothing to undo").to_owned() });
             if range {
-                pages::note(ui, "Those changes are already gone, so Git stops there. Continue goes on without that commit.");
+                pages::note(ui, tr("Those changes are already gone, so Git stops there. Continue goes on without that commit."));
             }
         } else {
             prediction_ui(ui, prediction);
@@ -584,7 +579,7 @@ fn expected(ui: &mut Ui, preview: &CommitPreview) {
         if preview.commits().len() > 1
             && let Some(commit) = prediction.stopped_at.and_then(|i| preview.commits().get(i))
         {
-            pages::note(ui, &format!("That's {} · {}, open below.", short(&commit.id), subject(commit)));
+            pages::note(ui, &trf!("That's {id} · {subject}, open below.", id = short(&commit.id), subject = subject(commit)));
         }
     }
 }
@@ -600,12 +595,12 @@ fn single_body(ui: &mut Ui, preview: &CommitPreview, state: &DialogState, branch
     pages::titled_card(
         ui,
         |ui| {
-            ui.label(RichText::new("What will happen").size(12.0).color(MUTED()).strong());
+            ui.label(RichText::new(tr("What will happen")).size(12.0).color(MUTED()).strong());
         },
         |ui| {
             Frame::new().inner_margin(Margin::symmetric(14, 8)).show(ui, |ui| {
                 ui.set_width(ui.available_width());
-                let label = if revert { format!("Revert \"{}\"", subject(source)) } else { format!("{} · copy", subject(source)) };
+                let label = if revert { format!("Revert \"{}\"", subject(source)) } else { trf!("{subject} · copy", subject = subject(source)) };
                 picture(ui, branch, &label);
                 ui.add_space(4.0);
                 expected(ui, preview);
@@ -613,7 +608,7 @@ fn single_body(ui: &mut Ui, preview: &CommitPreview, state: &DialogState, branch
         },
     );
     if let Some(files) = state.shown.first() {
-        let title = if revert { "What the new commit changes" } else { "What the copy changes" };
+        let title = if revert { tr("What the new commit changes") } else { tr("What the copy changes") };
         series_view::diff_card(ui, title, "dialog-commit-diff", files, height);
     }
 }
@@ -629,7 +624,7 @@ fn range_body(
     expected(ui, preview);
     let revert = preview.request().operation == CommitOperation::Revert;
     if preview.patches().is_empty() {
-        pages::note(ui, "These commits are too big to show here. The check above still covers them.");
+        pages::note(ui, tr("These commits are too big to show here. The check above still covers them."));
     }
     let rows: Vec<series_view::Row> = preview
         .commits()
@@ -645,7 +640,7 @@ fn range_body(
             }
         })
         .collect();
-    let title = format!("{}, {}", commits(rows.len()), if revert { "newest first" } else { "oldest first" });
+    let title = if revert { trn!(rows.len(), "{n} commit, newest first", "{n} commits, newest first") } else { trn!(rows.len(), "{n} commit, oldest first", "{n} commits, oldest first") };
     let files = state.shown.get(state.selected).map(Vec::as_slice).unwrap_or_default();
     series_view::split(
         ui,
@@ -665,7 +660,7 @@ fn range_steps(preview: &CommitPreview, recovery: CommitRecovery) -> Vec<Step> {
     use std::cmp::Ordering::*;
     use CommitRecovery::*;
     let revert = preview.request().operation == CommitOperation::Revert;
-    let (done, not_done) = if revert { ("reverted", "not reverted") } else { ("copied", "not copied") };
+    let (done, not_done) = if revert { (tr("reverted"), tr("not reverted")) } else { (tr("copied"), tr("not copied")) };
     let (reached, _) = preview.position();
     // Between two commits, the one Git reached is finished by hand, or Git couldn't make it.
     let between = preview.stopped_commit().is_none();
@@ -684,17 +679,17 @@ fn range_steps(preview: &CommitPreview, recovery: CommitRecovery) -> Vec<Step> {
         .map(|(i, commit)| {
             let number = i + 1;
             let (mark, note) = match (recovery, number.cmp(&reached)) {
-                (_, Less) if !landed(commit) => (StepMark::Waiting, "skipped"),
-                (Abort, Less) if by_hand => (StepMark::Done, "stays"),
-                (Abort, Less) => (StepMark::LeftOut, "comes off"),
+                (_, Less) if !landed(commit) => (StepMark::Waiting, tr("skipped")),
+                (Abort, Less) if by_hand => (StepMark::Done, tr("stays")),
+                (Abort, Less) => (StepMark::LeftOut, tr("comes off")),
                 (_, Less) => (StepMark::Done, done),
-                (Abort, Equal) if by_hand => (StepMark::Done, "stays"),
+                (Abort, Equal) if by_hand => (StepMark::Done, tr("stays")),
                 (Abort, Equal) if unmade => (StepMark::Waiting, not_done),
                 (Abort, Equal) => (StepMark::Stopped, not_done),
-                (Continue, Equal) if by_hand => (StepMark::Done, "done by hand"),
-                (Continue, Equal) if unmade => (StepMark::LeftOut, "left out"),
-                (Continue, Equal) => (StepMark::Stopped, "your fix"),
-                (Skip, Equal) => (StepMark::LeftOut, "left out"),
+                (Continue, Equal) if by_hand => (StepMark::Done, tr("done by hand")),
+                (Continue, Equal) if unmade => (StepMark::LeftOut, tr("left out")),
+                (Continue, Equal) => (StepMark::Stopped, tr("your fix")),
+                (Skip, Equal) => (StepMark::LeftOut, tr("left out")),
                 (Abort, Greater) => (StepMark::Waiting, not_done),
                 (_, Greater) => (StepMark::Waiting, ""),
             };
@@ -721,18 +716,18 @@ fn recovery_body(
             if range {
                 pages::steps(ui, "dialog-commit", &range_steps(preview, recovery));
             } else {
-                pages::commit_card(ui, &subject(preview.source()), short(&preview.source().id), if revert { "being reverted" } else { "being copied" });
+                pages::commit_card(ui, &subject(preview.source()), short(&preview.source().id), if revert { tr("being reverted") } else { tr("being copied") });
             }
             if let Some(files) = edits {
-                let staged = if files.len() == 1 { "1 file staged".to_owned() } else { format!("{} files staged", files.len()) };
-                series_view::diff_card(ui, &format!("Your fix · {staged}"), "dialog-commit-diff", files, 160.0);
+                let staged = trn!(files.len(), "{n} file staged", "{n} files staged");
+                series_view::diff_card(ui, &trf!("Your fix · {staged}", staged), "dialog-commit-diff", files, 160.0);
             }
         }
         CommitRecovery::Skip => {
             if range {
                 pages::steps(ui, "dialog-commit", &range_steps(preview, recovery));
             } else {
-                pages::commit_card(ui, &subject(preview.source()), short(&preview.source().id), "left out");
+                pages::commit_card(ui, &subject(preview.source()), short(&preview.source().id), tr("left out"));
             }
             if let Some(files) = edits {
                 state.edits = series_view::edits_section(ui, "dialog-commit-edits", files, state.edits, widgets);
@@ -740,9 +735,9 @@ fn recovery_body(
         }
         CommitRecovery::Abort => {
             let back = range && preview.rewinds();
-            ui.label(RichText::new(format!("{branch} {}", if back { "goes back to" } else { "stays at" })).size(12.0).color(HINT()));
+            ui.label(RichText::new(if back { trf!("{branch} goes back to", branch) } else { trf!("{branch} stays at", branch) }).size(12.0).color(HINT()));
             if let Some(commit) = original {
-                pages::commit_card(ui, &subject(commit), short(&commit.id), if back { "before it started" } else { "where it is now" });
+                pages::commit_card(ui, &subject(commit), short(&commit.id), if back { tr("before it started") } else { tr("where it is now") });
             }
             if range {
                 pages::steps(ui, "dialog-commit", &range_steps(preview, recovery));
@@ -751,7 +746,7 @@ fn recovery_body(
                 state.edits = series_view::edits_section(ui, "dialog-commit-edits", files, state.edits, widgets);
             }
             if back && !preview.applied().is_empty() {
-                pages::note(ui, "Reflog & Recovery can still find the commits it made.");
+                pages::note(ui, tr("Reflog & Recovery can still find the commits it made."));
             }
         }
     }
@@ -760,30 +755,27 @@ fn recovery_body(
 pub(crate) fn prediction_ui(ui: &mut Ui, prediction: &CommitPrediction) {
     let total = prediction.total;
     let stopped_at = prediction.stopped_at.unwrap_or(0) + 1;
-    let at = if total > 1 { format!(" at commit {stopped_at} of {total}") } else { String::new() };
     let (color, title) = match prediction.kind {
-        PredictionKind::Clean if total > 1 => (GREEN(), format!("No conflicts expected: all {total} commits apply cleanly.")),
-        PredictionKind::Clean => (GREEN(), "No conflicts expected.".to_owned()),
-        PredictionKind::Conflicts => (AMBER(), format!("Conflict expected{at}")),
-        PredictionKind::Empty => (AMBER(), format!("Nothing to change{at}")),
-        PredictionKind::Unavailable => (MUTED(), "Rocket can't tell yet whether this conflicts".to_owned()),
+        PredictionKind::Clean if total > 1 => (GREEN(), trn!(total, "No conflicts expected: {n} commit applies cleanly.", "No conflicts expected: all {n} commits apply cleanly.")),
+        PredictionKind::Clean => (GREEN(), tr("No conflicts expected.").to_owned()),
+        PredictionKind::Conflicts if total > 1 => (AMBER(), trf!("Conflict expected at commit {stopped_at} of {total}", stopped_at, total)),
+        PredictionKind::Conflicts => (AMBER(), tr("Conflict expected").to_owned()),
+        PredictionKind::Empty if total > 1 => (AMBER(), trf!("Nothing to change at commit {stopped_at} of {total}", stopped_at, total)),
+        PredictionKind::Empty => (AMBER(), tr("Nothing to change").to_owned()),
+        PredictionKind::Unavailable => (MUTED(), tr("Rocket can't tell yet whether this conflicts").to_owned()),
     };
     let unchecked = total - prediction.checked;
-    let stops = if total > 1 { "Git stops there" } else { "Git stops" };
-    let later = match unchecked {
-        0 => String::new(),
-        1 => " The commit after it wasn't checked.".to_owned(),
-        n => format!(" The {n} commits after it weren't checked."),
-    };
-    let note = match prediction.kind {
+    let mut note = match prediction.kind {
         PredictionKind::Clean => String::new(),
-        PredictionKind::Conflicts => format!("{stops} so you can fix it, then Continue or Abort.{later}"),
-        PredictionKind::Empty => format!("Those changes are already here, so {stops} for you to decide.{later}"),
-        PredictionKind::Unavailable => prediction
-            .reason
-            .map_or("No clean result is claimed.", PredictionReason::guidance)
-            .to_owned(),
+        PredictionKind::Conflicts if total > 1 => tr("Git stops there so you can fix it, then Continue or Abort.").to_owned(),
+        PredictionKind::Conflicts => tr("Git stops so you can fix it, then Continue or Abort.").to_owned(),
+        PredictionKind::Empty if total > 1 => tr("Those changes are already here, so Git stops there for you to decide.").to_owned(),
+        PredictionKind::Empty => tr("Those changes are already here, so Git stops for you to decide.").to_owned(),
+        PredictionKind::Unavailable => prediction.reason.map_or(tr("No clean result is claimed."), crate::rebase::prediction_guidance).to_owned(),
     };
+    if unchecked > 0 && matches!(prediction.kind, PredictionKind::Conflicts | PredictionKind::Empty) {
+        note.push_str(&trn!(unchecked, " The {n} commit after it wasn't checked.", " The {n} commits after it weren't checked."));
+    }
     pages::callout(ui, color, &title);
     if !note.is_empty() {
         pages::note(ui, &note);
@@ -802,7 +794,7 @@ pub(crate) fn prediction_ui(ui: &mut Ui, prediction: &CommitPrediction) {
             if prediction.paths.len() > 25 {
                 pages::note(
                     ui,
-                    &format!("{} more conflicting paths.", prediction.paths.len() - 25),
+                    &trn!(prediction.paths.len() - 25, "{n} more conflicting path.", "{n} more conflicting paths."),
                 );
             }
         });

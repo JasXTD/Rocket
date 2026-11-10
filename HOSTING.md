@@ -1,5 +1,9 @@
 # Hosting accounts and pull requests
 
+The published baseline is [Rocket 0.92.2](docs/releases/0.92.2.md). The discussion
+extensions marked below are pending the next release. Features, permissions and
+validation coverage differ by provider, as described below.
+
 Open a repository, then **Repository → Remotes & Hosting → Hosting**; accounts are in **Edit → Preferences → Accounts** (Hosting links there). This is separate from Git transport, Git Credential Manager and system SSH. Connecting a hosting account does not rewrite remotes or local Git configuration.
 
 ## Providers
@@ -37,7 +41,7 @@ claim of real-account or self-hosted GitLab acceptance.
 
 GitLab, Gitea and Bitbucket Server/Data Center support an explicitly configured HTTPS server and optional base path. Azure DevOps Server requires its collection path. Redirects are refused; enter the final server address.
 
-## PR collaboration and saved drafts (unreleased)
+## PR collaboration and saved drafts
 
 Open a PR's **Details and reviews** to read commits, changed files, discussion,
 reviews and available checks. Each collection is bounded and reports missing
@@ -50,8 +54,8 @@ this adapter. Bitbucket Cloud/Server and Azure support comments and review votes
 Their vote endpoints do not accept accompanying text: publish a separate comment
 if needed. Gitea supports comments, approvals and change requests with a message.
 GitHub.com/GHES, GitLab, Gitea, Bitbucket Cloud/Server and Azure Services/Server
-publish inline comments. Thread reply/resolve/
-reopen controls remain GitHub.com/GHES-only.
+publish inline comments. Version 0.92.2 has thread reply/resolve/reopen controls
+for GitHub.com/GHES. The pending discussion extension is described below.
 
 GitLab sends one single-line discussion at a time using its exact base/head/start
 diff refs and both old/new paths for a rename. Select **Comment**, leave the
@@ -127,10 +131,48 @@ Loopback tests verify Rocket's implementation, not real-server permissions or
 end-to-end acceptance against every deployed version.
 
 For GitHub, choose a changed line in **Files** and optionally set a first/last
-line on the same diff side and hunk. In **Discussion**, **Load / refresh threads**
-allows replying, resolving or reopening a thread if the server permits it. Every
-write gets a fresh, single-use preview. Changed commits or thread state require
-another preview. The viewer shows up to 50 threads and 20 comments per thread.
+line on the same diff side and hunk. **Discussion → Load / refresh threads**
+shows up to 50 threads and 20 comments per thread.
+
+### Discussion actions — pending next release
+
+| Provider | Reply | Resolve / reopen |
+| --- | --- | --- |
+| GitHub / GHES | Existing support | Existing support, using server permissions |
+| GitLab | Reply to the selected discussion | Resolvable discussions only |
+| Bitbucket Cloud | Reply to the original comment | Comment resolution |
+| Bitbucket Server / Data Center | Reply to the original comment | Version-checked thread state; task severity is preserved |
+| Azure DevOps Services / Server | Reply inside the selected thread | Active ↔ Fixed; other server states are preserved |
+| Gitea | Use the provider website | Resolve / reopen review comments |
+
+Gitea's stable 1.26 API supports resolution but not a documented review-thread
+reply endpoint. Rocket leaves Reply disabled rather than guessing a route from
+development-only API changes. These controls use the existing desktop and
+localhost MCP review flow; this pass does not add CLI thread commands.
+
+Each write gets a fresh, single-use preview. Rocket checks the PR tips and the
+complete loaded thread again before sending, including comment edits hidden by
+display truncation. A changed thread, incomplete selected discussion or expired
+preview must be refreshed. Bitbucket Server records are read separately from the
+activity feed, with at most eight detailed thread reads per refresh. Gitea reads
+at most eight loaded reviews. Truncated results are marked incomplete; partial
+Bitbucket Cloud pages cannot authorize a thread write. No continuation URL from
+a response is followed.
+
+After a non-GitHub write, Rocket reads back the selected discussion. Replies must
+match the authenticated account, exact submitted text and original parent; the
+new comment must appear in that discussion. Missing or cancelled readback remains
+an uncertain outcome. Resolution is confirmed only by the selected thread's state.
+The final check is not an atomic server-side precondition on every provider:
+a concurrent change after it remains possible. Existing cancellation and recovery
+controls below apply, with no automatic retry.
+
+Contracts: [GitLab discussions](https://docs.gitlab.com/api/discussions/),
+[Bitbucket Cloud PRs](https://developer.atlassian.com/cloud/bitbucket/rest/api-group-pullrequests/),
+[Bitbucket Server PRs](https://developer.atlassian.com/server/bitbucket/rest/v814/api-group-pull-requests/),
+[Azure thread updates](https://learn.microsoft.com/en-us/rest/api/azure/devops/git/pull-request-threads/update?view=azure-devops-rest-7.1),
+[Gitea 1.26 review API](https://github.com/go-gitea/gitea/blob/v1.26.0/routers/api/v1/repo/pull_review.go).
+These are documented contracts, not proof of live-account compatibility.
 
 Rocket saves review text, line locations, reply drafts and uncertain review,
 thread and merge outcomes in `hosting-drafts.dpapi`, protected for the current
@@ -161,11 +203,11 @@ Rocket does not bypass policies, delete source branches or alter local files.
 
 The adapters use official API contracts and isolated mock tests. This is not
 live acceptance of each host, enterprise version, token scope or server policy.
-No Jira/custom-script runtime is included. A future scripted connector should
-use permissioned, brokered requests with credentials retained by Rocket, explicit
-write previews, cancellation and a separate bounded worker process.
+Jira uses a separately enabled [Lua extension](INTEGRATIONS.md), rather than a
+built-in hosting adapter. The bundled Jira Cloud example and sandboxed runtime
+are available; their mock-service tests do not establish live Jira acceptance.
 
-## Azure DevOps Server (unreleased)
+## Azure DevOps Server
 
 The PR collaboration extension described below adds details, comments, votes and
 reviewed completion to this adapter. These features use the selected REST contract.
@@ -223,7 +265,7 @@ Contracts: [Microsoft's REST version matrix](https://learn.microsoft.com/en-us/r
 [connection identity](https://learn.microsoft.com/en-us/javascript/api/azure-devops-extension-api/connectiondata)
 and [Microsoft's versionless connection implementation](https://github.com/microsoft/azure-devops-node-api/blob/master/api/WebApi.ts).
 
-## GitHub Enterprise Server (unreleased)
+## GitHub Enterprise Server
 
 1. Open **Edit → Preferences → Accounts**, or **Accounts** on the Hosting page.
 2. Choose **GitHub Enterprise Server**, name the profile and enter the server
@@ -398,7 +440,7 @@ despite late cancellation. There is no automatic retry. Drafts and uncertainty
 state are protected locally in the PR collaboration extension, including across
 restarts. Another PR cannot silently take over an existing draft.
 
-### Inline reviews (unreleased)
+### Inline reviews
 
 In **Files**, click a left or right line number, write a comment, then **Save to
 review draft**. Left refers to the old file and right to the new file; renames use
@@ -417,7 +459,7 @@ change, remove and re-select stale comments; refresh never moves them silently.
 These are protected local drafts, not GitHub server-side pending reviews.
 The PR collaboration extension adds replies, resolution and multiline ranges.
 
-### Merge on GitHub (unreleased)
+### Merge on GitHub
 
 Submit or discard review drafts, choose **Merge commit**, **Squash and merge** or
 **Rebase and merge**, then **Review merge**. The preview shows repository, target,
@@ -441,7 +483,7 @@ inspect GitHub and explicitly acknowledge before making another preview. Another
 PR cannot clear the guard. This state persists across restarts in the PR
 collaboration extension. Confirmed success survives late cancellation.
 
-### Cross-fork creation (unreleased)
+### Cross-fork creation
 
 In **Create pull request**, the **Repository** is the destination. Enable **Use a
 different source repository (fork)** and enter its `owner/repository`. Both
@@ -458,12 +500,12 @@ become an uncertain result to inspect, never an automatic retry. See
 
 Cross-fork creation remains GitHub/GHES-only. CLI account/list/details/create/
 review/merge commands now reuse the current provider adapters with reviewed write
-fingerprints; see [CLI hosting](CLI.md#hosting-commands-unreleased). Local
+fingerprints; see [CLI hosting](CLI.md#hosting-commands). Local
 synthetic API/native MCP checks do not establish real GitHub review/merge scopes,
 organization policy or cross-fork acceptance. Existing live Git transport and
 sign-in evidence is separate.
 
-## CI status on commits and branches (unreleased)
+## CI status on commits and branches
 
 Commits shows a mark at the end of each pushed commit's message, and the sidebar
 shows one beside each branch: passed (check), failed (cross), running or queued
@@ -510,7 +552,7 @@ until** a time when the rate limit is used up, and **Checks from** a time when t
 last refresh failed, with faded marks. Checks hidden and Checks paused open
 Actions, which says what to do; a token the host rejected opens Accounts.
 
-### Actions page (unreleased)
+### Actions page
 
 **Actions**, in the sidebar after AI review, lists the repository's runs from its
 host, newest first: every workflow, branch, pull request and schedule. It shows for

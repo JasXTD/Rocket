@@ -78,14 +78,14 @@ impl State {
         let mut parts = vec![package.version.clone()];
         if let Some(bundled) = self.bundled.iter().find(|b| b.id == package.id) {
             let changed = self.installed(&package.id) && package.version == bundled.version && !package.same_files(bundled);
-            parts.push(if changed { "Local copy" } else { "Bundled" }.to_owned());
+            parts.push(if changed { crate::i18n::tr("Local copy") } else { crate::i18n::tr("Bundled") }.to_owned());
         }
-        parts.push(if package.network { "Network" } else { "Offline" }.to_owned());
+        parts.push(if package.network { crate::i18n::tr("Network") } else { crate::i18n::tr("Offline") }.to_owned());
         if package.writes {
-            parts.push("Writes".to_owned());
+            parts.push(crate::i18n::tr("Writes").to_owned());
         }
         if package.repository {
-            parts.push("Repository".to_owned());
+            parts.push(crate::i18n::tr("Repository").to_owned());
         }
         parts.join(" · ")
     }
@@ -99,13 +99,13 @@ impl State {
             .collect();
         let off: Vec<&str> = all.iter().map(|(_, name)| name.as_str()).filter(|n| !on.contains(n)).collect();
         match (on.len(), off.len()) {
-            (0, 1) => "Off".to_owned(),
-            (0, 2) => "Off for both connections".to_owned(),
-            (0, _) => "Off for all connections".to_owned(),
-            (1, 0) => "On".to_owned(),
-            (_, 0) => "On for all connections".to_owned(),
-            (1, 1) => format!("On for {} · Off for {}", on[0], off[0]),
-            (n, _) => format!("On for {n} of {} connections", all.len()),
+            (0, 1) => crate::i18n::tr("Off").to_owned(),
+            (0, 2) => crate::i18n::tr("Off for both connections").to_owned(),
+            (0, _) => crate::i18n::tr("Off for all connections").to_owned(),
+            (1, 0) => crate::i18n::tr("On").to_owned(),
+            (_, 0) => crate::i18n::tr("On for all connections").to_owned(),
+            (1, 1) => crate::i18n::trf!("On for {enabled} · Off for {disabled}", enabled = on[0], disabled = off[0]),
+            (n, _) => crate::i18n::trf!("On for {count} of {total} connections", count = n, total = all.len()),
         }
     }
     /// The enabled extension whose details are open in Preferences.
@@ -122,7 +122,7 @@ impl State {
     }
     fn count_text(&self) -> String {
         let (on, all) = (self.entries.len(), self.listed().len());
-        if on == 0 { "None enabled".to_owned() } else { format!("{on} of {all} enabled") }
+        if on == 0 { crate::i18n::tr("None enabled").to_owned() } else { crate::i18n::trf!("{enabled} of {total} enabled", enabled = on, total = all) }
     }
     /// The details show a connection form that differs from what is saved, so the dialog's
     /// footer holds Save and Discard, in view however far the page has scrolled.
@@ -131,18 +131,18 @@ impl State {
     }
     pub(crate) fn form_footer(&mut self, ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, backend: Backend, writable: bool) {
         let idle = !self.running();
-        let r = pages::primary(ui, idle && writable && !self.uncertain(), "Save");
+        let r = pages::primary(ui, idle && writable && !self.uncertain(), crate::i18n::tr("Save"));
         pages::control(widgets, "int-save", &r, ui.clip_rect());
         if r.clicked() {
             self.perform(backend, Action::Save);
         }
-        if button(ui, widgets, "int-discard", "Discard", idle) {
+        if button(ui, widgets, "int-discard", crate::i18n::tr("Discard"), idle) {
             self.reset_draft();
         }
         ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
             let (rect, _) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
             ui.painter().circle_filled(rect.center(), 3.5, AMBER());
-            ui.add(Label::new(RichText::new("Unsaved changes").size(12.5).color(AMBER())).truncate());
+            ui.add(Label::new(RichText::new(crate::i18n::tr("Unsaved changes")).size(12.5).color(AMBER())).truncate());
         });
     }
 }
@@ -284,36 +284,36 @@ fn rows(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, ba
                 action = Some(Action::Switch(package.id.clone(), switched));
             }
             if let Some(version) = &update {
-                let r = ui.add_enabled(enabled && writable, Button::new(format!("Update to {version}")));
+                let r = ui.add_enabled(enabled && writable, Button::new(crate::i18n::trf!("Update to {version}", version)));
                 pages::control(widgets, format!("int-update-{}", package.id), &r, ui.clip_rect());
                 if r.clicked() {
                     action = Some(Action::Update(package.id.clone()));
                 }
             }
             if review {
-                if button(ui, widgets, &format!("int-review-{}", package.id), "Review", enabled && writable) {
+                if button(ui, widgets, &format!("int-review-{}", package.id), crate::i18n::tr("Review"), enabled && writable) {
                     action = Some(Action::Review(package.id.clone()));
                 }
-                pages::pill(ui, "Files changed", AMBER());
+                pages::pill(ui, crate::i18n::tr("Files changed"), AMBER());
             }
         });
         if response.clicked() {
             open = Some(package.id.clone());
         }
         response.context_menu(|ui| {
-            if ui.button("Configure").clicked() {
+            if ui.button(crate::i18n::tr("Configure")).clicked() {
                 open = Some(package.id.clone());
                 ui.close();
             }
-            if update.is_some() && ui.button("Update").clicked() {
+            if update.is_some() && ui.button(crate::i18n::tr("Update")).clicked() {
                 action = Some(Action::Update(package.id.clone()));
                 ui.close();
             }
-            if review && ui.button("Review").clicked() {
+            if review && ui.button(crate::i18n::tr("Review")).clicked() {
                 action = Some(Action::Review(package.id.clone()));
                 ui.close();
             }
-            if s.removable(package) && ui.button("Remove").clicked() {
+            if s.removable(package) && ui.button(crate::i18n::tr("Remove")).clicked() {
                 s.ask_remove(package.clone());
                 ui.close();
             }
@@ -324,8 +324,7 @@ fn rows(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, ba
         let (detail, name) = match &issue.duplicate {
             Some((id, version)) => {
                 let copies = issues.iter().filter(|o| o.duplicate.as_ref().is_some_and(|d| &d.0 == id)).count();
-                let rest = if copies == 2 { "both stay off" } else { "all stay off" };
-                (format!("ID {id} · {version} · {copies} folders use this ID, so {rest}"), letter(id))
+                (crate::i18n::trf!("ID {id} · {version} · {copies} folders use this ID; all stay off", id, version, copies), letter(id))
             }
             None => (shown(&issue.error).to_owned(), '!'),
         };
@@ -340,17 +339,17 @@ fn rows(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, ba
         };
         list_row(ui, widgets, row, enabled, |ui, widgets| {
             if issue.duplicate.is_some() {
-                let r = pages::danger_ghost(ui, enabled && writable, "Remove");
+                let r = pages::danger_ghost(ui, enabled && writable, crate::i18n::tr("Remove"));
                 pages::control(widgets, format!("int-issue-remove-{i}"), &r, ui.clip_rect());
                 if r.clicked() {
                     s.ask_remove_folder(issue.clone());
                 }
-                pages::pill(ui, "Duplicate ID", RED());
+                pages::pill(ui, crate::i18n::tr("Duplicate ID"), RED());
             } else {
-                if quiet(ui, widgets, &format!("int-issue-folder-{i}"), "Open folder", true) {
+                if quiet(ui, widgets, &format!("int-issue-folder-{i}"), crate::i18n::tr("Open folder"), true) {
                     s.reveal = Some(issue.directory.clone());
                 }
-                pages::pill(ui, if code == "integration_api" { "Needs a newer Rocket" } else { "Invalid" }, RED());
+                pages::pill(ui, if code == "integration_api" { crate::i18n::tr("Needs a newer Rocket") } else { crate::i18n::tr("Invalid") }, RED());
             }
         });
     }
@@ -368,16 +367,16 @@ fn list(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, ba
     let enabled = idle && s.preview.is_none();
     preferences::card_frame(ui, |ui| {
         let mut strip = bar(ui);
-        let r = pages::primary(&mut strip, idle && writable, "Install from file");
+        let r = pages::primary(&mut strip, idle && writable, crate::i18n::tr("Install from file"));
         pages::control(widgets, "int-install-file", &r, strip.clip_rect());
         asked.pick = r.clicked();
-        let r = icon_button(&mut strip, Icon::Refresh, idle, false, 28.0).on_hover_text("Reload folders");
+        let r = icon_button(&mut strip, Icon::Refresh, idle, false, 28.0).on_hover_text(crate::i18n::tr("Reload folders"));
         pages::control(widgets, "int-reload", &r, strip.clip_rect());
         if r.clicked() {
             s.perform(backend.clone(), Action::Reload(None));
         }
         let count = if s.listed_once { s.count_text() } else { String::new() };
-        bar_left(&mut strip, |ui| card_title(ui, "Extensions", &count));
+        bar_left(&mut strip, |ui| card_title(ui, crate::i18n::tr("Extensions"), &count));
         if !s.listed_once {
             placeholder_row(ui, 120.0, 240.0, false);
             placeholder_row(ui, 170.0, 200.0, false);
@@ -388,7 +387,7 @@ fn list(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, ba
             preferences::card_note(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 10.0;
-                    if button(ui, widgets, "int-reload-retry", "Try again", idle) {
+                    if button(ui, widgets, "int-reload-retry", crate::i18n::tr("Try again"), idle) {
                         s.perform(backend.clone(), Action::Reload(None));
                     }
                     ui.add(Label::new(RichText::new(shown(&error)).size(12.5).color(RED())).wrap());
@@ -404,13 +403,13 @@ fn list(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, ba
                 let (rect, _) = ui.allocate_exact_size(vec2(24.0, 24.0), Sense::hover());
                 icon(ui.painter(), rect, Icon::Puzzle, FAINT());
                 ui.add_space(8.0);
-                ui.label(RichText::new("No other extensions installed").color(MUTED()));
+                ui.label(RichText::new(crate::i18n::tr("No other extensions installed")).color(MUTED()));
             });
             ui.add_space(28.0);
         }
     });
     notices(ui, s, widgets, backend, false);
-    let r = pages::disclosure(ui, s.tools_open, "Developer tools");
+    let r = pages::disclosure(ui, s.tools_open, crate::i18n::tr("Developer tools"));
     pages::control(widgets, "int-developer", &r, ui.clip_rect());
     if r.clicked() {
         s.tools_open = !s.tools_open;
@@ -419,18 +418,18 @@ fn list(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, ba
         return;
     }
     preferences::card_frame(ui, |ui| {
-        preferences::card_header(ui, "Developer", |_| {});
+        preferences::card_header(ui, crate::i18n::tr("Developer"), |_| {});
         let folder = s.directory.join("integrations");
-        tool_row(ui, "Folder", &crate::views::display_path(&folder), true, false, |ui| {
-            if button(ui, widgets, "int-open-folder", "Open folder", true) {
+        tool_row(ui, crate::i18n::tr("Folder"), &crate::views::display_path(&folder), true, false, |ui| {
+            if button(ui, widgets, "int-open-folder", crate::i18n::tr("Open folder"), true) {
                 asked.folder = Some(folder.clone());
             }
         });
-        tool_row(ui, "Lua playground", "Lua editor with a live preview", false, false, |ui| {
-            asked.playground = button(ui, widgets, "int-open-playground", "Open Lua playground", idle && writable);
+        tool_row(ui, crate::i18n::tr("Lua playground"), crate::i18n::tr("Lua editor with a live preview"), false, false, |ui| {
+            asked.playground = button(ui, widgets, "int-open-playground", crate::i18n::tr("Open Lua playground"), idle && writable);
         });
-        tool_row(ui, "Sample", "Repository context", false, true, |ui| {
-            if button(ui, widgets, "int-install-repository", "Add sample", idle && writable && !s.installed("repository")) {
+        tool_row(ui, crate::i18n::tr("Sample"), crate::i18n::tr("Repository context"), false, true, |ui| {
+            if button(ui, widgets, "int-install-repository", crate::i18n::tr("Add sample"), idle && writable && !s.installed("repository")) {
                 s.perform(backend.clone(), Action::Reload(Some("repository")));
             }
         });
@@ -488,7 +487,7 @@ fn card_section(ui: &mut Ui, title: &str) {
 
 /// The back link above an extension's cards.
 fn back_link(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, enabled: bool) -> bool {
-    let label = "All extensions";
+    let label = crate::i18n::tr("All extensions");
     let galley = ui.painter().layout_no_wrap(label.to_owned(), FontId::proportional(13.0), MUTED());
     let (rect, response) = ui.allocate_exact_size(vec2(galley.size().x + 28.0, 26.0), Sense::click());
     let hot = enabled && (response.hovered() || response.has_focus());
@@ -507,12 +506,12 @@ fn back_link(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, enabled: boo
 fn connection_rows(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, package: &Package, idle: bool, writable: bool) {
     ui.add_enabled_ui(idle, |ui| {
         if package.network {
-            preferences::field_row(ui, "Name", |ui| edit(ui, widgets, "int-connection-name", &mut s.draft.name, false, "Default"));
+            preferences::field_row(ui, crate::i18n::tr("Name"), |ui| edit(ui, widgets, "int-connection-name", &mut s.draft.name, false, "Default"));
             preferences::divider(ui);
-            preferences::field_row(ui, "Server", |ui| edit(ui, widgets, "int-server", &mut s.draft.origin, false, "https://"));
+            preferences::field_row(ui, crate::i18n::tr("Server"), |ui| edit(ui, widgets, "int-server", &mut s.draft.origin, false, "https://"));
             preferences::divider(ui);
-            preferences::field_row(ui, "Authentication", |ui| {
-                let modes = [("none", "None"), ("bearer", "Bearer token"), ("basic", "Identifier + token")];
+            preferences::field_row(ui, crate::i18n::tr("Authentication"), |ui| {
+                let modes = [("none", crate::i18n::tr("None")), ("bearer", crate::i18n::tr("Bearer token")), ("basic", crate::i18n::tr("Identifier + token"))];
                 let items: Vec<(&str, bool)> = modes.iter().map(|(key, label)| (*label, s.draft.auth == *key)).collect();
                 let ids: Vec<String> = modes.iter().map(|(key, _)| format!("int-auth-{key}")).collect();
                 ui.horizontal(|ui| {
@@ -523,20 +522,20 @@ fn connection_rows(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiC
             });
             if s.draft.auth == "basic" {
                 preferences::divider(ui);
-                preferences::field_row(ui, "Identifier", |ui| edit(ui, widgets, "int-username", &mut s.draft.username, false, ""));
+                preferences::field_row(ui, crate::i18n::tr("Identifier"), |ui| edit(ui, widgets, "int-username", &mut s.draft.username, false, ""));
             }
             if s.draft.auth != "none" {
                 preferences::divider(ui);
-                preferences::field_row(ui, "API token", |ui| {
-                    edit(ui, widgets, "int-token", &mut s.draft.token, true, "Kept by Rocket, never given to Lua");
-                    let r = ui.add(checkbox(&mut s.draft.remember, "Remember on this device"));
+                preferences::field_row(ui, crate::i18n::tr("API token"), |ui| {
+                    edit(ui, widgets, "int-token", &mut s.draft.token, true, crate::i18n::tr("Kept by Rocket, never given to Lua"));
+                    let r = ui.add(checkbox(&mut s.draft.remember, crate::i18n::tr("Remember on this device")));
                     pages::control(widgets, "int-remember", &r, ui.clip_rect());
                 });
             }
         }
         if !package.settings.is_empty() {
             if package.network {
-                card_section(ui, "Settings");
+                card_section(ui, crate::i18n::tr("Settings"));
             }
             for (i, setting) in package.settings.iter().enumerate() {
                 if i > 0 {
@@ -549,25 +548,25 @@ fn connection_rows(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiC
         }
         if package.writes || package.repository {
             if package.network {
-                card_section(ui, "Access");
+                card_section(ui, crate::i18n::tr("Access"));
             } else if !package.settings.is_empty() {
                 preferences::divider(ui);
             }
             if package.writes {
-                preferences::switch_row(ui, widgets, "int-allow-write", &mut s.draft.writes, "Allow writes", "Rocket shows each write before it is sent", "");
+                preferences::switch_row(ui, widgets, "int-allow-write", &mut s.draft.writes, crate::i18n::tr("Allow writes"), crate::i18n::tr("Rocket shows each write before it is sent"), "");
             }
             if package.repository {
                 if package.writes {
                     preferences::divider(ui);
                 }
                 preferences::switch_row(ui, widgets, "int-allow-repository", &mut s.draft.repository,
-                    "Share branch, commit IDs and change counts", "Never paths, remote URLs, identities or file contents", "");
+                    crate::i18n::tr("Share branch, commit IDs and change counts"), crate::i18n::tr("Never paths, remote URLs, identities or file contents"), "");
             }
         }
     });
     if package.network {
         foot(ui, |ui| {
-            let r = pages::danger_ghost(ui, idle && writable && !s.uncertain(), "Remove connection");
+            let r = pages::danger_ghost(ui, idle && writable && !s.uncertain(), crate::i18n::tr("Remove connection"));
             pages::control(widgets, "int-remove-connection", &r, ui.clip_rect());
             if r.clicked() {
                 s.remove_confirm = true;
@@ -602,12 +601,16 @@ fn details(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>,
         if r.clicked() {
             s.perform(backend.clone(), Action::Switch(package.id.clone(), switched));
         }
-        strip.label(RichText::new("Enabled").size(12.0).color(HINT()));
+        strip.label(RichText::new(crate::i18n::tr("Enabled")).size(12.0).color(HINT()));
         bar_left(&mut strip, |ui| {
             let (tile, _) = ui.allocate_exact_size(vec2(24.0, 24.0), Sense::hover());
             letter_tile(ui.painter(), tile, letter(&package.name), BLUE());
-            let origin = if bundled { " · Bundled" } else { "" };
-            card_title(ui, &package.name, &format!("{}{origin} · Lua API 1", package.version));
+            let detail = if bundled {
+                crate::i18n::trf!("{version} · Bundled · Lua API 1", version = package.version)
+            } else {
+                format!("{} · Lua API 1", package.version)
+            };
+            card_title(ui, &package.name, &detail);
         });
         if !package.description.is_empty() {
             Frame::new().inner_margin(Margin::symmetric(14, 11)).show(ui, |ui| {
@@ -616,15 +619,15 @@ fn details(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>,
             });
             preferences::divider(ui);
         }
-        let not = "Not requested";
-        permission_row(ui, Icon::Remote, "Network", if package.network { "Only the server set in each connection" } else { not }, !package.network);
+        let not = crate::i18n::tr("Not requested");
+        permission_row(ui, Icon::Remote, crate::i18n::tr("Network"), if package.network { crate::i18n::tr("Only the server set in each connection") } else { not }, !package.network);
         let writes = if package.writes { s.access("writes") } else { not.to_owned() };
-        permission_row(ui, Icon::Pencil, "Reviewed writes", &writes, !package.writes);
+        permission_row(ui, Icon::Pencil, crate::i18n::tr("Reviewed writes"), &writes, !package.writes);
         let repository = if package.repository { s.access("repository") } else { not.to_owned() };
-        permission_row(ui, Icon::Branch, "Repository details", &repository, !package.repository);
+        permission_row(ui, Icon::Branch, crate::i18n::tr("Repository details"), &repository, !package.repository);
         foot(ui, |ui| {
             if s.removable(&package) {
-                let r = pages::danger_ghost(ui, idle && writable, "Remove");
+                let r = pages::danger_ghost(ui, idle && writable, crate::i18n::tr("Remove"));
                 pages::control(widgets, "int-remove", &r, ui.clip_rect());
                 if r.clicked() {
                     s.ask_remove(package.clone());
@@ -633,21 +636,21 @@ fn details(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>,
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
                 if let Some(version) = &update {
-                    let r = pages::primary(ui, idle && writable, &format!("Update to {version}"));
+                    let r = pages::primary(ui, idle && writable, &crate::i18n::trf!("Update to {version}", version));
                     pages::control(widgets, "int-update", &r, ui.clip_rect());
                     if r.clicked() {
                         s.perform(backend.clone(), Action::Update(package.id.clone()));
                     }
-                    ui.label(RichText::new(format!("Rocket includes {version}")).size(12.0).color(HINT()));
+                    ui.label(RichText::new(crate::i18n::trf!("Rocket includes {version}", version)).size(12.0).color(HINT()));
                 }
-                if installed && !bundled && button(ui, widgets, "int-update-file", "Update from file", idle && writable) {
+                if installed && !bundled && button(ui, widgets, "int-update-file", crate::i18n::tr("Update from file"), idle && writable) {
                     s.pick = true;
                 }
                 if review {
-                    if button(ui, widgets, "int-review", "Review", idle && writable) {
+                    if button(ui, widgets, "int-review", crate::i18n::tr("Review"), idle && writable) {
                         s.perform(backend.clone(), Action::Review(package.id.clone()));
                     }
-                    pages::pill(ui, "Files changed", AMBER());
+                    pages::pill(ui, crate::i18n::tr("Files changed"), AMBER());
                 }
             });
         });
@@ -657,11 +660,11 @@ fn details(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>,
         if package.network {
             preferences::card_frame(ui, |ui| {
                 let mut strip = bar(ui);
-                if quiet(&mut strip, widgets, "int-new-connection", "New connection", idle && writable) {
+                if quiet(&mut strip, widgets, "int-new-connection", crate::i18n::tr("New connection"), idle && writable) {
                     s.perform(backend.clone(), Action::New);
                 }
                 bar_left(&mut strip, |ui| {
-                    card_title(ui, "Connection", "");
+                    card_title(ui, crate::i18n::tr("Connection"), "");
                     ui.add_space(4.0);
                     choose_connection(ui, s, widgets, idle && s.preview.is_none(), backend, false);
                 });
@@ -671,7 +674,7 @@ fn details(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>,
             preferences::card_frame(ui, |ui| {
                 let mut strip = bar(ui);
                 bar_left(&mut strip, |ui| {
-                    card_title(ui, "Settings", "");
+                    card_title(ui, crate::i18n::tr("Settings"), "");
                     if s.connections().len() > 1 {
                         ui.add_space(4.0);
                         choose_connection(ui, s, widgets, idle && s.preview.is_none(), backend, false);
@@ -685,11 +688,11 @@ fn details(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>,
     if !package.commands.is_empty() {
         preferences::card_frame(ui, |ui| {
             let mut strip = bar(ui);
-            bar_left(&mut strip, |ui| card_title(ui, "Commands", ""));
+            bar_left(&mut strip, |ui| card_title(ui, crate::i18n::tr("Commands"), ""));
             let shares = profiles::connection(&s.store, &package.id, profiles::selected(&s.store, &package.id))["repository"] == true;
             for command in &package.commands {
                 let needs = command.target.is_some() && !shares;
-                review::command_row(ui, command, needs.then_some("Needs repository details"));
+                review::command_row(ui, command, needs.then_some(crate::i18n::tr("Needs repository details")));
             }
         });
     }
@@ -697,17 +700,17 @@ fn details(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>,
         pages::callout(
             ui,
             AMBER(),
-            &format!(
-                "Remove {} and its saved draft and credential from this device? Remote data is unchanged.",
-                s.profile()["name"].as_str().unwrap_or("Default")
+            &crate::i18n::trf!(
+                "Remove {connection} and its saved draft and credential from this device? Remote data is unchanged.",
+                connection = s.profile()["name"].as_str().unwrap_or("Default")
             ),
         );
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
-            if button(ui, widgets, "int-remove-back", "Keep connection", idle) {
+            if button(ui, widgets, "int-remove-back", crate::i18n::tr("Keep connection"), idle) {
                 s.remove_confirm = false;
             }
-            let r = pages::danger(ui, idle && !s.uncertain(), "Remove this connection");
+            let r = pages::danger(ui, idle && !s.uncertain(), crate::i18n::tr("Remove this connection"));
             pages::control(widgets, "int-remove-confirm", &r, ui.clip_rect());
             if r.clicked() {
                 s.perform(backend.clone(), Action::Remove);
@@ -723,7 +726,7 @@ impl Rocket {
     /// to open, when Install from file or Update from file was chosen.
     pub(crate) fn integration_settings(&mut self, ui: &mut Ui) -> Option<PickTarget> {
         let Some(backend) = self.backend.clone() else {
-            ui.label("Waiting for Rocket to start.");
+            ui.label(crate::i18n::tr("Waiting for Rocket to start."));
             return None;
         };
         let writable = self.profile_storage_ready();

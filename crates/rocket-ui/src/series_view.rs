@@ -89,7 +89,7 @@ pub(crate) fn split(
 /// Says so when a diff shows only part of a long change.
 fn cut_note(ui: &mut Ui, files: &[Shown]) {
     if files.iter().any(|f| f.limited) {
-        pages::note(ui, "This change is long, so only its start shows here. Nothing is left out of the commit.");
+        pages::note(ui, crate::i18n::tr("This change is long, so only its start shows here. Nothing is left out of the commit."));
     }
 }
 
@@ -103,9 +103,9 @@ pub(crate) fn edits_section(ui: &mut Ui, id: &str, files: &[Shown], open: bool, 
     let (added, removed) = counts(files);
     let name = match files {
         [one] => one.label.rsplit('/').next().unwrap_or(&one.label).to_owned(),
-        _ => format!("{} files", files.len()),
+        _ => crate::i18n::trn!(files.len(), "{n} file", "{n} files"),
     };
-    let r = pages::disclosure(ui, open, &format!("Your edits to {name} go too  +{added} −{removed}"));
+    let r = pages::disclosure(ui, open, &crate::i18n::trf!("Your edits to {name} go too  +{added} −{removed}", name, added, removed));
     pages::control(widgets, id, &r, ui.clip_rect());
     let open = open ^ r.clicked();
     if open {
@@ -184,12 +184,15 @@ pub(crate) fn short_date(date: &str) -> String {
         && let (Ok(month), Ok(day)) = (month.parse::<usize>(), day.parse::<u32>())
         && let Some(name) = month.checked_sub(1).and_then(|m| MONTHS.get(m))
     {
-        return format!("{day} {name} {year}");
+        return format!("{day} {} {year}", crate::i18n::tr(name));
     }
     // "Sat, 31 Oct 2026 19:31:09 +0800"
     let words: Vec<&str> = date.split_whitespace().collect();
     match words.as_slice() {
-        [_, day, month, year, ..] if MONTHS.contains(month) => format!("{day} {month} {year}"),
+        [_, day, month, year, ..] if MONTHS.contains(month) => {
+            let month = MONTHS.iter().find(|name| *name == month).expect("known month");
+            format!("{day} {} {year}", crate::i18n::tr(month))
+        },
         _ => date.to_owned(),
     }
 }

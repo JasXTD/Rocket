@@ -126,7 +126,7 @@ impl Rocket {
                     Ok(patch) => state.patch = Some(patch),
                     Err(Error::Cancelled) => {
                         state.notice = Some(
-                            "Preview cancelled. Reselect the stash or a preview tab to retry."
+                            crate::i18n::tr("Preview cancelled. Reselect the stash or a preview tab to retry.")
                                 .into(),
                         )
                     }
@@ -171,7 +171,7 @@ fn list(
 ) {
     ui.spacing_mut().item_spacing.y = 2.0;
     if entries.is_empty() {
-        pages::empty(ui, "No saved stashes.");
+        pages::empty(ui, crate::i18n::tr("No saved stashes."));
     }
     for entry in entries {
         let title = subject(entry);
@@ -210,18 +210,15 @@ pub(crate) fn view(
         .snapshot
         .as_ref()
         .map_or(&[][..], |s| s.stashes.as_slice());
-    let count = match entries.len() {
-        1 => "1 saved locally".to_owned(),
-        n => format!("{n} saved locally"),
-    };
+    let count = crate::i18n::trf!("Saved locally: {count}", count = entries.len());
     let running = tab.stash.running();
     let description = if compact {
         count
     } else {
-        format!("{count} · newest first · applying keeps the stash")
+        crate::i18n::trf!("{count} · newest first · applying keeps the stash", count)
     };
     // Short panes have no preview strip, so the title row also carries Apply and Drop.
-    pages::page_title(ui, compact, Icon::Stash, "Stashes", &description, |ui| {
+    pages::page_title(ui, compact, Icon::Stash, crate::i18n::tr("Stashes"), &description, |ui| {
         save_and_cancel(ui, running, writable, intents, widgets);
         if compact {
             actions(ui, &tab.stash, entries, writable, intents, widgets);
@@ -235,7 +232,7 @@ pub(crate) fn view(
                 let r = ComboBox::from_id_salt(("stash-list", tab.id))
                     .width(ui.available_width())
                     .selected_text(tab.stash.selected.as_ref().map_or_else(
-                        || "Select a saved stash".into(),
+                        || crate::i18n::tr("Select a saved stash").into(),
                         |e| format!("stash@{{{}}} · {}", e.index, subject(e)),
                     ))
                     .show_ui(ui, |ui| {
@@ -300,15 +297,15 @@ fn save_and_cancel(
     intents: &mut Vec<Intent>,
     widgets: &mut HashMap<String, UiControl>,
 ) {
-    let r = pages::primary(ui, writable, "Save changes…");
+    let r = pages::primary(ui, writable, crate::i18n::tr("Save changes…"));
     register(ui, widgets, "stash-save".into(), &r);
     if r.clicked() {
         intents.push(Intent::Dialog(DialogKind::Stash));
     }
-    let r=pages::ghost(ui,writable,"Snapshot…").on_hover_text("Save a stash while keeping working files and staging unchanged");
+    let r=pages::ghost(ui,writable,crate::i18n::tr("Snapshot…")).on_hover_text(crate::i18n::tr("Save a stash while keeping working files and staging unchanged"));
     register(ui,widgets,"stash-snapshot".into(),&r);
     if r.clicked(){intents.push(Intent::KeepLocal{snapshot:true,paths:Vec::new()});}
-    if running && button(ui, widgets, "stash-cancel", "Stop", true) {
+    if running && button(ui, widgets, "stash-cancel", crate::i18n::tr("Stop"), true) {
         intents.push(Intent::Stash(StashIntent::Cancel));
     }
 }
@@ -326,22 +323,22 @@ fn actions(
     let ready =
         writable && entries.iter().any(|e| e.id == entry.id) && s.patch.is_some() && !s.running();
     // Callers lay these out right to left, so Apply ends up outermost.
-    let r = pages::primary(ui, ready, "Apply…");
+    let r = pages::primary(ui, ready, crate::i18n::tr("Apply…"));
     register(ui, widgets, "stash-apply".into(), &r);
     if r.clicked() {
-        intents.push(Intent::Dialog(DialogKind::Confirm(Action::ApplyStash { entry: entry.clone(), restore_index: false }, format!("Apply stash {} to the current working tree? The stash is kept.", entry.id))));
+        intents.push(Intent::Dialog(DialogKind::Confirm(Action::ApplyStash { entry: entry.clone(), restore_index: false }, crate::i18n::trf!("Apply stash {id} to the current working tree? The stash is kept.", id = entry.id))));
     }
-    let r = pages::ghost(ui, ready, "Apply selected…");
+    let r = pages::ghost(ui, ready, crate::i18n::tr("Apply selected…"));
     register(ui, widgets, "stash-apply-selected".into(), &r);
     if r.clicked() { intents.push(Intent::Stash(StashIntent::ApplySelected(entry.clone(), s.part))); }
-    let r = pages::danger_ghost(ui, ready && entries.contains(entry), "Drop…");
+    let r = pages::danger_ghost(ui, ready && entries.contains(entry), crate::i18n::tr("Drop…"));
     register(ui, widgets, "stash-drop".into(), &r);
     if r.clicked() {
-        intents.push(Intent::Dialog(DialogKind::Confirm(Action::DropStash(entry.clone()), format!("Drop stash@{{{}}} · {}? Its saved changes may become unrecoverable.", entry.index, entry.id))));
+        intents.push(Intent::Dialog(DialogKind::Confirm(Action::DropStash(entry.clone()), crate::i18n::trf!("Drop {stash} · {id}? Its saved changes may become unrecoverable.", stash = format!("stash@{{{}}}", entry.index), id = entry.id))));
     }
     // Exporting writes only the chosen patch file, never the repository.
-    let r = pages::ghost(ui, entries.contains(entry) && !s.running(), "Save as patch…")
-        .on_hover_text("Review exporting this stash's tracked changes (against the commit it was saved on) as a patch file. Untracked files saved in the stash are not included.");
+    let r = pages::ghost(ui, entries.contains(entry) && !s.running(), crate::i18n::tr("Save as patch…"))
+        .on_hover_text(crate::i18n::tr("Review exporting this stash's tracked changes (against the commit it was saved on) as a patch file. Untracked files saved in the stash are not included."));
     register(ui, widgets, "stash-save-patch".into(), &r);
     if r.clicked() {
         intents.push(Intent::Stash(StashIntent::SavePatch(entry.id.clone())));
@@ -355,9 +352,9 @@ fn parts(
     compact: bool,
 ) {
     let choices = [
-        (StashPart::Tracked, "stash-tracked", "All tracked"),
-        (StashPart::Index, "stash-index", "Saved index"),
-        (StashPart::Untracked, "stash-untracked", "Untracked files"),
+        (StashPart::Tracked, "stash-tracked", crate::i18n::tr("All tracked")),
+        (StashPart::Index, "stash-index", crate::i18n::tr("Saved index")),
+        (StashPart::Untracked, "stash-untracked", crate::i18n::tr("Untracked files")),
     ];
     if compact {
         let r = ComboBox::from_id_salt("stash-part")
@@ -443,7 +440,7 @@ fn inspect(
         Frame::new()
             .inner_margin(Margin::symmetric(24, 8))
             .show(ui, |ui| {
-                pages::empty(ui, "Select a stash to inspect its saved changes.")
+                pages::empty(ui, crate::i18n::tr("Select a stash to inspect its saved changes."))
             });
         return;
     };
@@ -488,23 +485,23 @@ fn inspect(
                 message(
                     ui,
                     AMBER(),
-                    "This stash is no longer in the list. The preview remains pinned to its saved commit.",
+                    crate::i18n::tr("This stash is no longer in the list. The preview remains pinned to its saved commit."),
                     compact,
                 );
             } else if !entries.contains(&entry) {
                 message(
                     ui,
                     AMBER(),
-                    "Stash positions changed. Reselect this entry before dropping it.",
+                    crate::i18n::tr("Stash positions changed. Reselect this entry before dropping it."),
                     compact,
                 );
             }
             if s.running() {
                 // Centered while nothing is shown; beside a patch that stays on screen.
                 if s.patch.is_none() {
-                    pages::loading(ui, "Reading saved changes…");
+                    pages::loading(ui, crate::i18n::tr("Reading saved changes…"));
                 } else {
-                    pages::busy_line(ui, "Reading saved changes…");
+                    pages::busy_line(ui, crate::i18n::tr("Reading saved changes…"));
                 }
             }
             if let Some(error) = &s.error {
@@ -518,12 +515,12 @@ fn inspect(
                 message(
                     ui,
                     AMBER(),
-                    "Preview limit reached; this is not the complete patch.",
+                    crate::i18n::tr("Preview limit reached; this is not the complete patch."),
                     compact,
                 );
             }
             if patch.files.is_empty() {
-                pages::note(ui, "No saved changes in this section.");
+                pages::note(ui, crate::i18n::tr("No saved changes in this section."));
                 return None;
             }
             Some(())

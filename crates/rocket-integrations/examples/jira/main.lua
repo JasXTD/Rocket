@@ -103,35 +103,62 @@ end
 local function comment_id(s, key)
     return "comment_body_"..key..(s.sent and "_"..s.sent or "")
 end
-local function issue_types(project)
-    local meta=get(rest.."/issue/createmeta/"..rocket.url_encode(project).."/issuetypes?maxResults=50")
-    local types={}
-    for i,t in ipairs(meta.issueTypes or meta.createMetaIssueType or meta.results or meta.values or {}) do
-        if i > 32 then break end
-        local id=text(tostring(t.id or ""),32)
-        if id:match("^%d+$") and t.subtask ~= true then types[#types+1]={id=id,name=text(t.name,60)} end
+-- Jira may return fewer rows than requested. Follow its offset/total, not our
+-- requested page size. Four pages leave room for the panel's other reads under
+-- Rocket's eight-read limit; incomplete metadata must never authorize a create.
+local function metadata(path, member)
+    local rows,offset={},0
+    for page=1,4 do
+        local meta=get(path.."?maxResults=50&startAt="..offset)
+        local items=meta[member]
+        if type(items) ~= "table" or meta.startAt ~= offset then return rows,false end
+        local count=#items
+        if count > 50 then return rows,false end
+        for _,item in ipairs(items) do rows[#rows+1]=item end
+        offset=offset+count
+        if meta.total ~= nil then
+            if type(meta.total) ~= "number" or meta.total < offset or meta.total%1 ~= 0 then return rows,false end
+            if offset == meta.total and meta.isLast ~= false then return rows,true end
+        elseif meta.isLast == true then return rows,true
+        else return rows,false end
+        if count == 0 or meta.isLast == true then return rows,false end
     end
-    return types
+    return rows,false
+end
+local function issue_types(project)
+    local rows,complete=metadata(rest.."/issue/createmeta/"..rocket.url_encode(project).."/issuetypes","issueTypes")
+    local types={}
+    for _,t in ipairs(rows) do
+        local id=text(tostring(t.id or ""),32)
+        if id:match("^%d+$") and t.subtask ~= true then
+            if #types >= 32 then complete=false;break end
+            types[#types+1]={id=id,name=text(t.name,60)}
+        end
+    end
+    return types,not complete
 end
 -- Required fields this form has no control for.
 local function unfilled(project, type_id)
-    local meta=get(rest.."/issue/createmeta/"..rocket.url_encode(project).."/issuetypes/"..type_id.."?maxResults=50")
-    local names={}
-    for i,field in ipairs(meta.fields or meta.results or meta.values or {}) do
-        if i > 50 then break end
+    local fields,complete=metadata(rest.."/issue/createmeta/"..rocket.url_encode(project).."/issuetypes/"..type_id,"fields")
+    local names,description_required={},false
+    for _,field in ipairs(fields) do
         local id=field.fieldId or field.key
-        if field.required and not field.hasDefaultValue and id ~= "project" and id ~= "issuetype" and id ~= "summary" and id ~= "description" then
-            names[#names+1]=text(field.name or id,80)
+        if field.required and not field.hasDefaultValue then
+            if id == "description" then description_required=true
+            elseif id ~= "project" and id ~= "issuetype" and id ~= "summary" then
+                if #names < 8 then names[#names+1]=text(field.name or id,80)
+                elseif #names == 8 then names[#names+1]="other required fields" end
+            end
         end
     end
-    if meta.isLast == false or (meta.total or 0) > 50 then names[#names+1]="other fields" end
-    return names
+    return names,complete,description_required
 end
 local function create_form(s, project, warning)
     local names={};for _,t in ipairs(s.types or {}) do names[#names+1]=t.name end
     local controls={}
     if #names > 0 then controls[#controls+1]=ui.select{id="issue_type",label="Type",options=names,value=names[1]}
     else controls[#controls+1]=ui.text{text="Jira lists no issue types for "..project..".",tone="warning"} end
+    if s.more_types then controls[#controls+1]=ui.text{text="Only some issue types are shown. Use Jira if yours is missing.",tone="warning"} end
     controls[#controls+1]=ui.input{id="summary",label="Summary",value=""}
     controls[#controls+1]=ui.multiline{id="description",label="Description",value=""}
     if warning ~= "" then controls[#controls+1]=ui.text{text=warning,tone="warning"} end
@@ -211,8 +238,10 @@ return function(ctx)
         if summary == "" or (utf8.len(summary) or 256) > 255 then warning="Enter a summary of 1–255 characters."
         elseif not chosen then warning="Choose an issue type."
         else
-            local missing=unfilled(project,chosen.id)
-            if #missing > 0 then warning=chosen.name.." needs "..table.concat(missing,", ")..", which this form can’t fill. Create it in Jira."
+            local missing,complete,description_required=unfilled(project,chosen.id)
+            if not complete then warning="Jira's required fields could not be fully checked. Create this issue in Jira."
+            elseif #missing > 0 then warning=chosen.name.." needs "..table.concat(missing,", ")..", which this form can’t fill. Create it in Jira."
+            elseif description_required and not (values.description or ""):find("%S") then warning="This issue type requires a description."
             else
                 local fields={project={key=project},summary=summary,issuetype={id=chosen.id}}
                 if values.description and #values.description > 0 then fields.description=document(values.description) end
@@ -285,7 +314,7 @@ return function(ctx)
         -- From the issue as it is now, so its update marker is current.
         open(issue.key);edit()
     elseif event == "create_open" or ctx.command == "create-issue" then
-        s.types=issue_types(project);s.pane="create"
+        s.types,s.more_types=issue_types(project);s.pane="create"
     elseif event == "open" then
         -- Refresh keeps an open form and what was typed in it.
         local pane=s.pane

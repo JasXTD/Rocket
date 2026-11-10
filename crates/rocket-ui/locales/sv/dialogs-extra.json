@@ -1,0 +1,8 @@
+{
+  "Created by Xetro": "Skapat av Xetro",
+  "Version {version} · a native Rust Git workspace": "Version {version} · en inbyggd Git-arbetsyta i Rust",
+  "Free and open-source software under the {license} license.": "Fri programvara med öppen källkod under licensen {license}.",
+  "What changed in each Rocket build.": "Ändringar i varje Rocket-version.",
+  "{version} · this build": "{version} · den här versionen",
+  "This build": "Den här versionen"
+}

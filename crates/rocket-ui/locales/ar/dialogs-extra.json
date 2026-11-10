@@ -1,0 +1,8 @@
+{
+  "Created by Xetro": "أنشأه Xetro",
+  "Version {version} · a native Rust Git workspace": "الإصدار {version} · مساحة عمل Git أصلية بلغة Rust",
+  "Free and open-source software under the {license} license.": "برنامج حر ومفتوح المصدر بموجب ترخيص {license}.",
+  "What changed in each Rocket build.": "ما تغير في كل بناء من Rocket.",
+  "{version} · this build": "{version} · هذا البناء",
+  "This build": "هذا البناء"
+}

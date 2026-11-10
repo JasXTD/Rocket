@@ -16,7 +16,14 @@
   "Changes require an available working tree.": "تتطلب «التغييرات» شجرة عمل متاحة.",
   "Checked out at": "مُستخرَج في",
   "Cherry-pick commit": "انتقاء الإيداع",
-  "Cherry-pick {n} commits": "انتقاء الإيداعات ({n})",
+  "Cherry-pick {n} commits": {
+    "zero": "لا إيداعات لانتقائها",
+    "one": "انتقاء إيداع واحد",
+    "two": "انتقاء إيداعين",
+    "few": "انتقاء {n} إيداعات",
+    "many": "انتقاء {n} إيداعًا",
+    "other": "انتقاء {n} إيداع"
+  },
   "Choose what the commit search looks at": "اختر ما يشمله البحث في الإيداعات",
   "Clear recent messages": "مسح الرسائل الأخيرة",
   "Clear the path": "مسح المسار",
@@ -27,10 +34,24 @@
   "Collapse merge": "طي الدمج",
   "Collapse {group}": "طي {group}",
   "Commit & Push": "إيداع ودفع",
-  "Commit & Push {n} staged files": {"zero": "إيداع ودفع بلا ملفات مجهزة", "one": "إيداع ودفع ملف مجهز واحد", "two": "إيداع ودفع ملفين مجهزين", "few": "إيداع ودفع {n} ملفات مجهزة", "many": "إيداع ودفع {n} ملفًا مجهزًا", "other": "إيداع ودفع {n} ملف مجهز"},
+  "Commit & Push {n} staged files": {
+    "zero": "إيداع ودفع بلا ملفات مجهزة",
+    "one": "إيداع ودفع ملف مجهز واحد",
+    "two": "إيداع ودفع ملفين مجهزين",
+    "few": "إيداع ودفع {n} ملفات مجهزة",
+    "many": "إيداع ودفع {n} ملفًا مجهزًا",
+    "other": "إيداع ودفع {n} ملف مجهز"
+  },
   "Commit date": "تاريخ الإيداع",
   "Commit template unavailable": "قالب الإيداع غير متاح",
-  "Commit {n} staged files": {"zero": "إيداع بلا ملفات مجهزة", "one": "إيداع ملف مجهز واحد", "two": "إيداع ملفين مجهزين", "few": "إيداع {n} ملفات مجهزة", "many": "إيداع {n} ملفًا مجهزًا", "other": "إيداع {n} ملف مجهز"},
+  "Commit {n} staged files": {
+    "zero": "إيداع بلا ملفات مجهزة",
+    "one": "إيداع ملف مجهز واحد",
+    "two": "إيداع ملفين مجهزين",
+    "few": "إيداع {n} ملفات مجهزة",
+    "many": "إيداع {n} ملفًا مجهزًا",
+    "other": "إيداع {n} ملف مجهز"
+  },
   "Compare selected commits": "مقارنة الإيداعات المحددة",
   "Compare with HEAD": "مقارنة مع HEAD",
   "Conflict": "تعارض",
@@ -146,7 +167,14 @@
   "Resume continues with older commits.": "يتابع «استئناف» البحث في الإيداعات الأقدم.",
   "Retry Git discovery": "إعادة محاولة اكتشاف Git",
   "Revert commit": "عكس الإيداع",
-  "Revert {n} commits": "عكس الإيداعات ({n})",
+  "Revert {n} commits": {
+    "zero": "لا إيداعات لعكسها",
+    "one": "عكس إيداع واحد",
+    "two": "عكس إيداعين",
+    "few": "عكس {n} إيداعات",
+    "many": "عكس {n} إيداعًا",
+    "other": "عكس {n} إيداع"
+  },
   "Review an amended latest commit with the staged changes": "مراجعة آخر إيداع بعد تعديله بالتغييرات المجهزة",
   "Review stopping tracking while keeping the local file. Unstage selected changes first.": "مراجعة إيقاف التتبع مع إبقاء الملف المحلي. ألغِ تجهيز التغييرات المحددة أولًا.",
   "Save, switch & restore…": "حفظ وتبديل واستعادة…",
@@ -206,17 +234,73 @@
   "tracks {upstream}": "يتتبّع {upstream}",
   "{ahead} ahead · {behind} behind": "متقدم {ahead} · متأخر {behind}",
   "{checked} commits checked": "الإيداعات المفحوصة: {checked}",
-  "{found} commits": {"zero": "لا إيداعات", "one": "إيداع واحد", "two": "إيداعان", "few": "{found} إيداعات", "many": "{found} إيداعًا", "other": "{found} إيداع"},
-  "{found} commits · {checked} checked": {"zero": "لا إيداعات · فُحص {checked}", "one": "إيداع واحد · فُحص {checked}", "two": "إيداعان · فُحص {checked}", "few": "{found} إيداعات · فُحص {checked}", "many": "{found} إيداعًا · فُحص {checked}", "other": "{found} إيداع · فُحص {checked}"},
+  "{found} commits": {
+    "zero": "لا إيداعات",
+    "one": "إيداع واحد",
+    "two": "إيداعان",
+    "few": "{found} إيداعات",
+    "many": "{found} إيداعًا",
+    "other": "{found} إيداع"
+  },
+  "{found} commits · {checked} checked": {
+    "zero": "لا إيداعات · فُحص {checked}",
+    "one": "إيداع واحد · فُحص {checked}",
+    "two": "إيداعان · فُحص {checked}",
+    "few": "{found} إيداعات · فُحص {checked}",
+    "many": "{found} إيداعًا · فُحص {checked}",
+    "other": "{found} إيداع · فُحص {checked}"
+  },
   "{hidden} commits of this merge are hidden. Click, or press → on the row, to show them.": "أُخفي {hidden} من إيداعات هذا الدمج. انقر، أو اضغط → على الصف، لإظهارها.",
   "{local} local · {tracking} remote-tracking · on {head}": "محلية: {local} · تتبع بعيد: {tracking} · على {head}",
-  "{n} URLs": {"zero": "لا عناوين URL", "one": "عنوان URL واحد", "two": "عنوانا URL", "few": "{n} عناوين URL", "many": "{n} عنوان URL", "other": "{n} عنوان URL"},
-  "{n} branches": {"zero": "لا فروع", "one": "فرع واحد", "two": "فرعان", "few": "{n} فروع", "many": "{n} فرعًا", "other": "{n} فرع"},
+  "{n} URLs": {
+    "zero": "لا عناوين URL",
+    "one": "عنوان URL واحد",
+    "two": "عنوانا URL",
+    "few": "{n} عناوين URL",
+    "many": "{n} عنوان URL",
+    "other": "{n} عنوان URL"
+  },
+  "{n} branches": {
+    "zero": "لا فروع",
+    "one": "فرع واحد",
+    "two": "فرعان",
+    "few": "{n} فروع",
+    "many": "{n} فرعًا",
+    "other": "{n} فرع"
+  },
   "{n} configured · editing a remote does not contact its server": "المُعدّة: {n} · تحرير مستودع بعيد لا يتصل بخادمه",
-  "{n} files": {"zero": "لا ملفات", "one": "ملف واحد", "two": "ملفان", "few": "{n} ملفات", "many": "{n} ملفًا", "other": "{n} ملف"},
-  "{n} files · drop to stage": {"zero": "لا ملفات · أفلت للتجهيز", "one": "ملف واحد · أفلت للتجهيز", "two": "ملفان · أفلت للتجهيز", "few": "{n} ملفات · أفلت للتجهيز", "many": "{n} ملفًا · أفلت للتجهيز", "other": "{n} ملف · أفلت للتجهيز"},
-  "{n} files · drop to unstage": {"zero": "لا ملفات · أفلت لإلغاء التجهيز", "one": "ملف واحد · أفلت لإلغاء التجهيز", "two": "ملفان · أفلت لإلغاء التجهيز", "few": "{n} ملفات · أفلت لإلغاء التجهيز", "many": "{n} ملفًا · أفلت لإلغاء التجهيز", "other": "{n} ملف · أفلت لإلغاء التجهيز"},
-  "{n} remote-tracking branches": {"zero": "لا فروع تتبع بعيدة", "one": "فرع تتبع بعيد واحد", "two": "فرعا تتبع بعيدان", "few": "{n} فروع تتبع بعيدة", "many": "{n} فرع تتبع بعيدًا", "other": "{n} فرع تتبع بعيد"},
+  "{n} files": {
+    "zero": "لا ملفات",
+    "one": "ملف واحد",
+    "two": "ملفان",
+    "few": "{n} ملفات",
+    "many": "{n} ملفًا",
+    "other": "{n} ملف"
+  },
+  "{n} files · drop to stage": {
+    "zero": "لا ملفات · أفلت للتجهيز",
+    "one": "ملف واحد · أفلت للتجهيز",
+    "two": "ملفان · أفلت للتجهيز",
+    "few": "{n} ملفات · أفلت للتجهيز",
+    "many": "{n} ملفًا · أفلت للتجهيز",
+    "other": "{n} ملف · أفلت للتجهيز"
+  },
+  "{n} files · drop to unstage": {
+    "zero": "لا ملفات · أفلت لإلغاء التجهيز",
+    "one": "ملف واحد · أفلت لإلغاء التجهيز",
+    "two": "ملفان · أفلت لإلغاء التجهيز",
+    "few": "{n} ملفات · أفلت لإلغاء التجهيز",
+    "many": "{n} ملفًا · أفلت لإلغاء التجهيز",
+    "other": "{n} ملف · أفلت لإلغاء التجهيز"
+  },
+  "{n} remote-tracking branches": {
+    "zero": "لا فروع تتبع بعيدة",
+    "one": "فرع تتبع بعيد واحد",
+    "two": "فرعا تتبع بعيدان",
+    "few": "{n} فروع تتبع بعيدة",
+    "many": "{n} فرع تتبع بعيدًا",
+    "other": "{n} فرع تتبع بعيد"
+  },
   "{n} selected · drag to the other group": "تم تحديد {n} · اسحب إلى المجموعة الأخرى",
   "{order} order: parents follow their children. All branches combines local and remote-tracking branches, plus HEAD.": "ترتيب {order}: يأتي الآباء بعد أبنائهم. يجمع «كل الفروع» الفروع المحلية وفروع التتبع البعيدة، إضافة إلى HEAD.",
   "{progress} · current phase {percent}%": "{progress} · المرحلة الحالية {percent}%",

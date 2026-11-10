@@ -23,9 +23,9 @@ impl Rocket {
             return;
         }
         let label = if self.updates.ready() {
-            "Update ready"
+            crate::i18n::tr("Update ready")
         } else {
-            "Update available"
+            crate::i18n::tr("Update available")
         };
         let r = pages::tool(
             ui,
@@ -33,7 +33,7 @@ impl Rocket {
             label,
             !self.blocking_dialog() && !self.quitting,
         )
-        .on_hover_text("Review the update without checking again");
+        .on_hover_text(crate::i18n::tr("Review the update without checking again"));
         pages::control(&mut self.frame_widgets, "update-status", &r, ui.clip_rect());
         if r.clicked() {
             self.updates.reveal();
@@ -77,18 +77,18 @@ impl Rocket {
                                 ui.set_width(width);
                                 ui.add(
                                     Label::new(
-                                        RichText::new(format!(
-                                            "Rocket {} is available",
-                                            release.version.text()
+                                        RichText::new(crate::i18n::trf!(
+                                            "Rocket {version} is available",
+                                            version = release.version.text()
                                         ))
                                         .font(semibold(14.0)),
                                     )
                                     .wrap(),
                                 );
-                                pages::note(ui, "A new version is ready to download.");
+                                pages::note(ui, crate::i18n::tr("A new version is ready to download."));
                             });
                             let r = crate::chrome::icon_button(ui, Icon::Close, true, false, 24.0)
-                                .on_hover_text("Dismiss update notice");
+                                .on_hover_text(crate::i18n::tr("Dismiss update notice"));
                             pages::control(
                                 &mut self.frame_widgets,
                                 "update-notice-close",
@@ -103,7 +103,7 @@ impl Rocket {
                                 ui,
                                 &mut self.frame_widgets,
                                 "update-notice-open",
-                                "View update",
+                                crate::i18n::tr("View update"),
                                 true,
                                 true,
                             );
@@ -111,7 +111,7 @@ impl Rocket {
                                 ui,
                                 &mut self.frame_widgets,
                                 "update-notice-later",
-                                "Not now",
+                                crate::i18n::tr("Not now"),
                                 true,
                                 false,
                             );
@@ -210,7 +210,7 @@ fn dialog(ctx: &Context, s: &mut State, widgets: &mut Widgets, can_install: bool
                     ui.spacing_mut().item_spacing.y = 10.0;
                     ui.horizontal(|ui| {
                         ui.label(
-                            RichText::new("ROCKET UPDATES")
+                            RichText::new(crate::i18n::tr("ROCKET UPDATES"))
                                 .size(11.0)
                                 .color(HINT())
                                 .strong(),
@@ -218,9 +218,9 @@ fn dialog(ctx: &Context, s: &mut State, widgets: &mut Widgets, can_install: bool
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             let r = crate::chrome::icon_button(ui, Icon::Close, true, false, 26.0)
                                 .on_hover_text(if s.running() {
-                                    "Cancel and close (Esc)"
+                                    crate::i18n::tr("Cancel and close (Esc)")
                                 } else {
-                                    "Close (Esc)"
+                                    crate::i18n::tr("Close (Esc)")
                                 });
                             pages::control(widgets, "update-close", &r, ui.clip_rect());
                             a.close = r.clicked();
@@ -231,9 +231,9 @@ fn dialog(ctx: &Context, s: &mut State, widgets: &mut Widgets, can_install: bool
                         pages::note(
                             ui,
                             if s.ready() {
-                                "Your update is verified. Choose when to restart Rocket."
+                                crate::i18n::tr("Your update is verified. Choose when to restart Rocket.")
                             } else {
-                                "Get the latest improvements, on your schedule."
+                                crate::i18n::tr("Get the latest improvements, on your schedule.")
                             },
                         );
                     }
@@ -336,9 +336,9 @@ fn body_ui(
             if s.release.is_none() {
                 ui.add_space(4.0);
                 ui.label(
-                    RichText::new(format!(
-                        "Installed {}   ·   Stable",
-                        env!("CARGO_PKG_VERSION")
+                    RichText::new(crate::i18n::trf!(
+                        "Installed {version}   ·   Stable",
+                        version = env!("CARGO_PKG_VERSION")
                     ))
                     .size(12.0)
                     .color(HINT()),
@@ -355,7 +355,7 @@ fn body_ui(
             } else {
                 Icon::ChevronRight
             },
-            "Error details",
+            crate::i18n::tr("Error details"),
             true,
         );
         pages::control(widgets, "update-error-details", &r, ui.clip_rect());
@@ -377,13 +377,13 @@ fn body_ui(
                 ui.horizontal(|ui| {
                     let (rect, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
                     icon(ui.painter(), rect, Icon::Shield, GREEN());
-                    ui.label(RichText::new("Download verified").font(semibold(13.0)));
+                    ui.label(RichText::new(crate::i18n::tr("Download verified")).font(semibold(13.0)));
                 });
-                pages::note(ui, "The previous installation is kept for recovery.");
+                pages::note(ui, crate::i18n::tr("The previous installation is kept for recovery."));
                 if !s.installable() {
                     pages::note(
                         ui,
-                        "This development build cannot be replaced automatically. Open the download folder to use the packaged build.",
+                        crate::i18n::tr("This development build cannot be replaced automatically. Open the download folder to use the packaged build."),
                     );
                 }
             });
@@ -391,38 +391,38 @@ fn body_ui(
                 ui,
                 widgets,
                 "update-folder",
-                "Open download folder",
+                crate::i18n::tr("Open download folder"),
                 true,
                 false,
             );
         } else if let Some(release) = &s.release {
             ui.label(
-                RichText::new(format!(
-                    "{}   ·   {:.1} MB download",
-                    rocket_git::app_update::UPDATE_PLATFORM
+                RichText::new(crate::i18n::trf!(
+                    "{platform}   ·   {size} MB download",
+                    platform = rocket_git::app_update::UPDATE_PLATFORM
                         .as_ref()
-                        .map_or("Update", |target| target.label),
-                    release.size as f64 / 1_000_000.0
+                        .map_or(crate::i18n::tr("Update"), |target| target.label),
+                    size = format!("{:.1}", release.size as f64 / 1_000_000.0)
                 ))
                 .size(12.0)
                 .color(HINT()),
             );
             ui.separator();
             ui.horizontal(|ui| {
-                ui.label(RichText::new("What’s new").font(semibold(15.0)));
+                ui.label(RichText::new(crate::i18n::tr("What’s new")).font(semibold(15.0)));
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     a.browse = button(
                         ui,
                         widgets,
                         "update-release",
-                        "View on GitHub ↗",
+                        crate::i18n::tr("View on GitHub ↗"),
                         true,
                         false,
                     );
                 });
             });
             if release.notes.trim().is_empty() {
-                pages::note(ui, "No release notes were provided for this version.");
+                pages::note(ui, crate::i18n::tr("No release notes were provided for this version."));
             } else {
                 let r = pages::tool(
                     ui,
@@ -432,9 +432,9 @@ fn body_ui(
                         Icon::ChevronRight
                     },
                     if s.notes_expanded {
-                        "Hide full release notes"
+                        crate::i18n::tr("Hide full release notes")
                     } else {
-                        "Full release notes"
+                        crate::i18n::tr("Full release notes")
                     },
                     true,
                 );
@@ -466,7 +466,7 @@ fn body_ui(
     }
     if let Some(receipt) = &s.last_result {
         pages::well(ui, |ui| {
-            pages::caption(ui, "Last update result");
+            pages::caption(ui, crate::i18n::tr("Last update result"));
             ui.add(Label::new(RichText::new(receipt).size(12.0)).wrap());
         });
     }
@@ -476,13 +476,13 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
     let running = s.running();
     let retry_download = s.release.is_some() && s.operation != Operation::Check;
     let hint = if running {
-        "Your current installation stays in place."
+        crate::i18n::tr("Your current installation stays in place.")
     } else if s.ready() {
-        "Save your work before restarting. Active terminals will close."
+        crate::i18n::tr("Save your work before restarting. Active terminals will close.")
     } else if s.release.is_some() && s.error.is_none() && s.status != "cancelled" {
-        "Download now. Choose when to restart."
+        crate::i18n::tr("Download now. Choose when to restart.")
     } else {
-        "Checks run once at launch, or when you ask."
+        crate::i18n::tr("Checks run once at launch, or when you ask.")
     };
     pages::note(ui, hint);
     ui.spacing_mut().interact_size.y = 34.0;
@@ -493,12 +493,12 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
             ui.spacing_mut().item_spacing.x = 8.0;
             if running {
                 let label = if s.status == "stopping" {
-                    "Stopping…"
+                    crate::i18n::tr("Stopping…")
                 } else {
                     match s.operation {
-                        Operation::Check => "Cancel check",
-                        Operation::Download => "Cancel download",
-                        Operation::Install => "Cancel restart",
+                        Operation::Check => crate::i18n::tr("Cancel check"),
+                        Operation::Download => crate::i18n::tr("Cancel download"),
+                        Operation::Install => crate::i18n::tr("Cancel restart"),
                     }
                 };
                 a.stop = button(
@@ -519,7 +519,7 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
                         } else {
                             "update-check"
                         },
-                        "Try again",
+                        crate::i18n::tr("Try again"),
                         s.endpoint.is_some(),
                         true,
                     );
@@ -533,7 +533,7 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
                         ui,
                         widgets,
                         "update-install",
-                        "Install and restart",
+                        crate::i18n::tr("Install and restart"),
                         can_install,
                         true,
                     );
@@ -542,7 +542,7 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
                         ui,
                         widgets,
                         "update-download",
-                        "Download update",
+                        crate::i18n::tr("Download update"),
                         true,
                         true,
                     );
@@ -551,7 +551,7 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
                         ui,
                         widgets,
                         "update-check",
-                        "Check again",
+                        crate::i18n::tr("Check again"),
                         s.endpoint.is_some(),
                         true,
                     );
@@ -561,11 +561,11 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
                     widgets,
                     "update-later",
                     if matches!(s.status, "available" | "ready") {
-                        "Later"
+                        crate::i18n::tr("Later")
                     } else if s.status == "current" {
-                        "Done"
+                        crate::i18n::tr("Done")
                     } else {
-                        "Close"
+                        crate::i18n::tr("Close")
                     },
                     true,
                     false,
@@ -574,45 +574,45 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
         },
     );
     if s.ready() && s.installable() && !can_install {
-        pages::note(ui, "Finish the running operation before installing.");
+        pages::note(ui, crate::i18n::tr("Finish the running operation before installing."));
     }
 }
 
 fn title(s: &State) -> String {
     if s.error.is_some() {
         return match s.operation {
-            Operation::Check => "Couldn’t check for updates",
-            Operation::Download => "Couldn’t prepare the update",
-            Operation::Install => "Couldn’t prepare the restart",
+            Operation::Check => crate::i18n::tr("Couldn’t check for updates"),
+            Operation::Download => crate::i18n::tr("Couldn’t prepare the update"),
+            Operation::Install => crate::i18n::tr("Couldn’t prepare the restart"),
         }
         .into();
     }
     match s.phase() {
         "available" => {
-            return format!(
-                "Rocket {} is available",
-                s.release
+            return crate::i18n::trf!(
+                "Rocket {version} is available",
+                version = s.release
                     .as_ref()
                     .map(|r| r.version.text())
                     .unwrap_or_default()
             );
         }
-        "ready" => "Ready when you are",
-        "current" => "You’re up to date",
-        "unavailable" => "No public release yet",
-        "disabled" => "Updates are unavailable",
-        "downloading" => "Downloading your update",
-        "verifying_archive" | "verifying_files" => "Verifying your update",
-        "preparing_restart" => "Preparing to restart",
-        "stopping" => "Stopping…",
+        "ready" => crate::i18n::tr("Ready when you are"),
+        "current" => crate::i18n::tr("You’re up to date"),
+        "unavailable" => crate::i18n::tr("No public release yet"),
+        "disabled" => crate::i18n::tr("Updates are unavailable"),
+        "downloading" => crate::i18n::tr("Downloading your update"),
+        "verifying_archive" | "verifying_files" => crate::i18n::tr("Verifying your update"),
+        "preparing_restart" => crate::i18n::tr("Preparing to restart"),
+        "stopping" => crate::i18n::tr("Stopping…"),
         "cancelled" => {
             if s.operation == Operation::Install {
-                "Restart cancelled"
+                crate::i18n::tr("Restart cancelled")
             } else {
-                "Update cancelled"
+                crate::i18n::tr("Update cancelled")
             }
         }
-        _ => "Checking for updates",
+        _ => crate::i18n::tr("Checking for updates"),
     }
     .into()
 }
@@ -626,30 +626,30 @@ fn description(s: &State) -> &str {
             .unwrap_or_default()
             .lines()
             .next()
-            .unwrap_or("The operation failed. See Error details.");
+            .unwrap_or(crate::i18n::tr("The operation failed. See Error details."));
         return error.strip_prefix("invalid input: ").unwrap_or(error);
     }
     match s.phase() {
-        "checking" | "idle" => "Looking for the latest Rocket release on GitHub.",
-        "downloading" => "Downloading the release package. You can keep your current version.",
-        "verifying_archive" => "Checking the download hash and unpacking the release.",
-        "verifying_files" => "Checking the files in the new installation.",
+        "checking" | "idle" => crate::i18n::tr("Looking for the latest Rocket release on GitHub."),
+        "downloading" => crate::i18n::tr("Downloading the release package. You can keep your current version."),
+        "verifying_archive" => crate::i18n::tr("Checking the download hash and unpacking the release."),
+        "verifying_files" => crate::i18n::tr("Checking the files in the new installation."),
         "preparing_restart" => {
-            "Preparing the verified package. Rocket will check for unsaved work before closing."
+            crate::i18n::tr("Preparing the verified package. Rocket will check for unsaved work before closing.")
         }
-        "stopping" => "Waiting for the update worker to stop and release its files.",
-        "current" => "You have the latest available stable version of Rocket.",
+        "stopping" => crate::i18n::tr("Waiting for the update worker to stop and release its files."),
+        "current" => crate::i18n::tr("You have the latest available stable version of Rocket."),
         _ => s
             .message
             .as_deref()
-            .unwrap_or("Review the update before continuing."),
+            .unwrap_or(crate::i18n::tr("Review the update before continuing.")),
     }
 }
 
 fn versions(ui: &mut Ui, s: &State) {
     ui.horizontal(|ui| {
         let width = ((ui.available_width() - 40.0) / 2.0).max(90.0);
-        version_card(ui, width, "Installed", env!("CARGO_PKG_VERSION"), false);
+        version_card(ui, width, crate::i18n::tr("Installed"), env!("CARGO_PKG_VERSION"), false);
         let (rect, _) = ui.allocate_exact_size(vec2(20.0, 20.0), Sense::hover());
         icon(ui.painter(), rect.shrink(3.0), Icon::ChevronRight, HINT());
         let version = s
@@ -661,9 +661,9 @@ fn versions(ui: &mut Ui, s: &State) {
             ui,
             width,
             if s.ready() {
-                "Ready to install"
+                crate::i18n::tr("Ready to install")
             } else {
-                "Available"
+                crate::i18n::tr("Available")
             },
             &version,
             true,
@@ -697,7 +697,7 @@ fn version_card(ui: &mut Ui, width: f32, label: &str, version: &str, available: 
                     )
                     .wrap(),
                 );
-                ui.label(RichText::new("Stable").size(11.0).color(HINT()));
+                ui.label(RichText::new(crate::i18n::tr("Stable")).size(11.0).color(HINT()));
             });
         });
 }
@@ -711,7 +711,7 @@ fn steps(ui: &mut Ui, s: &State) {
     ui.columns(3, |cols| {
         for (i, (col, label)) in cols
             .iter_mut()
-            .zip(["Download", "Verify", "Ready"])
+            .zip([crate::i18n::tr("Download"), crate::i18n::tr("Verify"), crate::i18n::tr("Ready")])
             .enumerate()
         {
             col.vertical_centered(|ui| {

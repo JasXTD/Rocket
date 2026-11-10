@@ -16,19 +16,19 @@ pub enum Fix {
 impl Fix {
     pub(crate) fn label(self, name: &str) -> String {
         match self {
-            Self::Review => format!("Review {name}"),
-            Self::Connect => format!("Connect {name}"),
-            Self::Share => format!("Share repository details with {name}"),
-            Self::Draft => format!("Check {name}’s saved draft"),
+            Self::Review => crate::i18n::trf!("Review {name}", name),
+            Self::Connect => crate::i18n::trf!("Connect {name}", name),
+            Self::Share => crate::i18n::trf!("Share repository details with {name}", name),
+            Self::Draft => crate::i18n::trf!("Check {name}’s saved draft", name),
         }
     }
     /// Why a command waits, beside it in the palette.
     pub(crate) fn reason(self) -> &'static str {
         match self {
-            Self::Review => "Review its files first",
-            Self::Connect => "Connect it first",
-            Self::Share => "Needs repository details",
-            Self::Draft => "Clear its saved draft first",
+            Self::Review => crate::i18n::tr("Review its files first"),
+            Self::Connect => crate::i18n::tr("Connect it first"),
+            Self::Share => crate::i18n::tr("Needs repository details"),
+            Self::Draft => crate::i18n::tr("Clear its saved draft first"),
         }
     }
 }
@@ -114,9 +114,9 @@ impl State {
     /// request review would be lost.
     pub(crate) fn command_block(&self, free: bool) -> Option<&'static str> {
         if !free || self.running() {
-            Some("Wait for the current work to finish")
+            Some(crate::i18n::tr("Wait for the current work to finish"))
         } else if self.preview.is_some() {
-            Some("Finish the request review first")
+            Some(crate::i18n::tr("Finish the request review first"))
         } else {
             None
         }

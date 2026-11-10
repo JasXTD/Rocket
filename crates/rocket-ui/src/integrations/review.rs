@@ -60,7 +60,7 @@ fn names(list: &[String]) -> String {
     match list {
         [] => String::new(),
         [one] => one.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [rest @ .., last] => crate::i18n::trf!("{names} and {last}", names = rest.join(", "), last),
     }
 }
 
@@ -87,11 +87,11 @@ impl State {
         };
         let line = |image, name, asks: bool, before: Option<bool>, first: &str, key: &str| {
             let (value, new, off) = match (asks, before) {
-                (false, Some(true)) => ("Removed".to_owned(), false, true),
-                (false, _) => ("Not requested".to_owned(), false, true),
+                (false, Some(true)) => (crate::i18n::tr("Removed").to_owned(), false, true),
+                (false, _) => (crate::i18n::tr("Not requested").to_owned(), false, true),
                 (true, Some(true)) => {
                     let on = granted(key);
-                    let value = if on.is_empty() { "No change".to_owned() } else { format!("No change · on for {}", names(&on)) };
+                    let value = if on.is_empty() { crate::i18n::tr("No change").to_owned() } else { crate::i18n::trf!("No change · on for {connections}", connections = names(&on)) };
                     (value, false, false)
                 }
                 (true, Some(false)) => (first.to_owned(), true, false),
@@ -99,11 +99,11 @@ impl State {
             };
             Permission { image, name, value, new, off }
         };
-        let off = "Off until you allow it";
+        let off = crate::i18n::tr("Off until you allow it");
         [
-            line(Icon::Remote, "Network", package.network, previous.map(|p| p.network), "Only the server you set", ""),
-            line(Icon::Pencil, "Reviewed writes", package.writes, previous.map(|p| p.writes), off, "writes"),
-            line(Icon::Branch, "Repository details", package.repository, previous.map(|p| p.repository), off, "repository"),
+            line(Icon::Remote, crate::i18n::mark("Network"), package.network, previous.map(|p| p.network), crate::i18n::tr("Only the server you set"), ""),
+            line(Icon::Pencil, crate::i18n::mark("Reviewed writes"), package.writes, previous.map(|p| p.writes), off, "writes"),
+            line(Icon::Branch, crate::i18n::mark("Repository details"), package.repository, previous.map(|p| p.repository), off, "repository"),
         ]
     }
     /// Opens a review of `package`, with everything it shows read now.
@@ -195,22 +195,21 @@ impl State {
         let id = &package.id;
         let saved = profiles::saved_connections(&self.store, id);
         let drafts = profiles::draft_count(&self.store, id);
-        let mut rows = vec![("Removed", "The installed copy".to_owned())];
-        rows.push(("Connections", match saved.len() {
-            0 => "None".to_owned(),
-            1 => format!("{}, with its saved token", saved[0]),
-            _ => format!("{}, with their saved tokens", names(&saved)),
+        let mut rows = vec![(crate::i18n::tr("Removed"), crate::i18n::tr("The installed copy").to_owned())];
+        rows.push((crate::i18n::tr("Connections"), match saved.len() {
+            0 => crate::i18n::tr("None").to_owned(),
+            _ => crate::i18n::trf!("{connections}, including saved tokens", connections = names(&saved)),
         }));
         if drafts > 0 {
-            rows.push(("Drafts", if drafts == 1 { "1 saved draft".to_owned() } else { format!("{drafts} saved drafts") }));
+            rows.push((crate::i18n::tr("Drafts"), crate::i18n::trf!("Saved drafts: {count}", count = drafts)));
         }
         if self.is_bundled(id) {
-            rows.push(("List", format!("{} stays here, off, because it ships with Rocket", package.name)));
+            rows.push((crate::i18n::tr("List"), crate::i18n::trf!("{extension} stays here, off, because it ships with Rocket", extension = package.name)));
         }
-        rows.push(("Unchanged", if package.network { "Data on the service and your repositories".to_owned() } else { "Your repositories".to_owned() }));
+        rows.push((crate::i18n::tr("Unchanged"), if package.network { crate::i18n::tr("Data on the service and your repositories").to_owned() } else { crate::i18n::tr("Your repositories").to_owned() }));
         self.error = None;
         self.prompt = Some(Prompt::Remove(Removal {
-            title: format!("Remove {}", package.name),
+            title: crate::i18n::trf!("Remove {name}", name = package.name),
             blocked: profiles::unchecked_write(&self.store, id),
             directory: self.installed(id).then(|| package.directory.clone()),
             id: Some(package.id),
@@ -223,16 +222,16 @@ impl State {
             .package_issues
             .iter()
             .filter(|o| o.directory != issue.directory && o.duplicate.as_ref().map(|d| &d.0) == issue.duplicate.as_ref().map(|d| &d.0))
-            .map(|o| format!("The folder {}", o.folder))
+            .map(|o| crate::i18n::trf!("The folder {folder}", folder = o.folder))
             .collect();
         let rows = vec![
-            ("Removed", format!("The folder {}", issue.folder)),
-            ("Connections", "Stay, for the copy that’s left".to_owned()),
-            ("Unchanged", others.join(", ")),
+            (crate::i18n::tr("Removed"), crate::i18n::trf!("The folder {folder}", folder = issue.folder)),
+            (crate::i18n::tr("Connections"), crate::i18n::tr("Stay, for the copy that’s left").to_owned()),
+            (crate::i18n::tr("Unchanged"), others.join(", ")),
         ];
         self.error = None;
         self.prompt = Some(Prompt::Remove(Removal {
-            title: format!("Remove {}", issue.folder),
+            title: crate::i18n::trf!("Remove {name}", name = issue.folder),
             id: None,
             directory: Some(issue.directory),
             rows,
@@ -355,7 +354,7 @@ fn path_text(path: &std::path::Path) -> impl FnOnce(&mut Ui) {
     }
 }
 fn permissions(ui: &mut Ui, review: &Review) {
-    pages::caption(ui, "Permissions");
+    pages::caption(ui, crate::i18n::tr("Permissions"));
     Frame::new()
         .fill(PANEL())
         .stroke(Stroke::new(1.0, CARD_STROKE()))
@@ -363,7 +362,7 @@ fn permissions(ui: &mut Ui, review: &Review) {
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 0.0;
-            let never = [(Icon::Lock, "Never", "Git or shell commands, your files, your tokens".to_owned(), false, false)];
+            let never = [(Icon::Lock, crate::i18n::mark("Never"), crate::i18n::tr("Git or shell commands, your files, your tokens").to_owned(), false, false)];
             let show_never = matches!(review.kind, Kind::Enable | Kind::Install);
             let lines = review
                 .permissions
@@ -378,11 +377,11 @@ fn permissions(ui: &mut Ui, review: &Review) {
                 }
                 let (ink, soft) = if off { (FAINT(), FAINT()) } else { (TEXT(), MUTED()) };
                 icon(ui.painter(), Rect::from_center_size(pos2(rect.left() + 20.0, rect.center().y), vec2(14.0, 14.0)), image, if off { FAINT() } else { HINT() });
-                ui.painter().text(pos2(rect.left() + 38.0, rect.center().y), Align2::LEFT_CENTER, name, FontId::proportional(13.0), ink);
+                ui.painter().text(pos2(rect.left() + 38.0, rect.center().y), Align2::LEFT_CENTER, crate::i18n::tr(name), FontId::proportional(13.0), ink);
                 let mut right = rect.right() - 12.0;
                 if new {
                     let mut side = ui.new_child(UiBuilder::new().max_rect(rect.shrink2(vec2(12.0, 0.0))).layout(Layout::right_to_left(Align::Center)));
-                    pages::pill(&mut side, "New", AMBER());
+                    pages::pill(&mut side, crate::i18n::tr("New"), AMBER());
                     right = side.min_rect().left() - 8.0;
                 }
                 let left = rect.left() + 178.0;
@@ -396,9 +395,9 @@ fn permissions(ui: &mut Ui, review: &Review) {
 /// Where a command shows and what it gets, in the words of the review and the details.
 fn place(target: Option<Target>) -> &'static str {
     match target {
-        None => "Repository menu · Palette",
-        Some(Target::Commit) => "Right-click a commit · Palette · Gets its ID",
-        Some(Target::Branch) => "Right-click a branch · Palette · Gets its name",
+        None => crate::i18n::tr("Repository menu · Palette"),
+        Some(Target::Commit) => crate::i18n::tr("Right-click a commit · Palette · Gets its ID"),
+        Some(Target::Branch) => crate::i18n::tr("Right-click a branch · Palette · Gets its name"),
     }
 }
 /// One command on two lines: its label, then where it shows. `side` is amber text at the
@@ -437,14 +436,14 @@ fn command_line(ui: &mut Ui, command: &Command, detail: &str, gone: bool, side: 
 /// What a changed command used to be, after where it shows now.
 pub(super) fn was(label: &Option<String>, target: &Option<Option<Target>>) -> String {
     let at = |target: &Option<Target>| match target {
-        None => "in the Repository menu",
-        Some(Target::Commit) => "on commits",
-        Some(Target::Branch) => "on branches",
+        None => crate::i18n::tr("in the Repository menu"),
+        Some(Target::Commit) => crate::i18n::tr("on commits"),
+        Some(Target::Branch) => crate::i18n::tr("on branches"),
     };
     match (label, target) {
-        (Some(label), Some(target)) => format!(" · Was “{label}” {}", at(target)),
-        (Some(label), None) => format!(" · Was “{label}”"),
-        (None, Some(target)) => format!(" · Was {}", at(target)),
+        (Some(label), Some(target)) => crate::i18n::trf!(" · Was “{label}” {place}", label, place = at(target)),
+        (Some(label), None) => crate::i18n::trf!(" · Was “{label}”", label),
+        (None, Some(target)) => crate::i18n::trf!(" · Was {place}", place = at(target)),
         (None, None) => String::new(),
     }
 }
@@ -453,7 +452,7 @@ fn commands(ui: &mut Ui, review: &Review) {
     if review.commands.is_empty() {
         return;
     }
-    pages::caption(ui, "Commands");
+    pages::caption(ui, crate::i18n::tr("Commands"));
     Frame::new()
         .fill(PANEL())
         .stroke(Stroke::new(1.0, CARD_STROKE()))
@@ -468,26 +467,26 @@ fn commands(ui: &mut Ui, review: &Review) {
                     CommandChange::Same if review.compared => same += 1,
                     CommandChange::Same => command_row(ui, command, None),
                     CommandChange::New => command_line(ui, command, place(command.target), false, |ui| {
-                        pages::pill(ui, "New", AMBER());
+                        pages::pill(ui, crate::i18n::tr("New"), AMBER());
                     }),
                     CommandChange::Changed { label, target } => {
                         command_line(ui, command, &format!("{}{}", place(command.target), was(label, target)), false, |ui| {
-                            pages::pill(ui, "Changed", AMBER());
+                            pages::pill(ui, crate::i18n::tr("Changed"), AMBER());
                         });
                     }
-                    CommandChange::Removed => command_line(ui, command, "Removed", true, |_| {}),
+                    CommandChange::Removed => command_line(ui, command, crate::i18n::tr("Removed"), true, |_| {}),
                 }
             }
             if same > 0 {
                 let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::hover());
                 icon(ui.painter(), Rect::from_center_size(pos2(rect.left() + 20.0, rect.center().y), vec2(14.0, 14.0)), Icon::Puzzle, FAINT());
                 let name = if same == review.commands.len() {
-                    if same == 1 { "1 command".to_owned() } else { format!("{same} commands") }
+                    crate::i18n::trf!("Commands: {count}", count = same)
                 } else {
-                    format!("{same} more")
+                    crate::i18n::trf!("More: {count}", count = same)
                 };
                 ui.painter().text(pos2(rect.left() + 38.0, rect.center().y), Align2::LEFT_CENTER, name, FontId::proportional(13.0), FAINT());
-                ui.painter().text(pos2(rect.left() + 178.0, rect.center().y), Align2::LEFT_CENTER, "No change", FontId::proportional(13.0), FAINT());
+                ui.painter().text(pos2(rect.left() + 178.0, rect.center().y), Align2::LEFT_CENTER, crate::i18n::tr("No change"), FontId::proportional(13.0), FAINT());
             }
         });
 }
@@ -539,21 +538,21 @@ fn review_body(ui: &mut Ui, s: &mut Review, widgets: &mut HashMap<String, UiCont
     pages::well(ui, |ui| {
         ui.spacing_mut().item_spacing.y = 0.0;
         let api = if s.kind == Kind::Update { s.version.clone() } else { format!("{} · Lua API 1", s.version) };
-        well_row(ui, "Version", plain(&api), |_| {});
+        well_row(ui, crate::i18n::tr("Version"), plain(&api), |_| {});
         if s.kind == Kind::Install {
             well_row(ui, "ID", plain(&s.package.id), |_| {});
         }
         match (&s.file, s.kind) {
-            (Some(file), _) => well_row(ui, "File", path_text(file), |_| {}),
-            (None, Kind::Again) => well_row(ui, "Changed", plain("Files in the extensions folder"), |_| {}),
-            (None, _) if s.copies => well_row(ui, "Source", plain("Ships with Rocket"), |_| {}),
-            (None, _) => well_row(ui, "Source", plain("The extensions folder"), |_| {}),
+            (Some(file), _) => well_row(ui, crate::i18n::tr("File"), path_text(file), |_| {}),
+            (None, Kind::Again) => well_row(ui, crate::i18n::tr("Changed"), plain(crate::i18n::tr("Files in the extensions folder")), |_| {}),
+            (None, _) if s.copies => well_row(ui, crate::i18n::tr("Source"), plain(crate::i18n::tr("Ships with Rocket")), |_| {}),
+            (None, _) => well_row(ui, crate::i18n::tr("Source"), plain(crate::i18n::tr("The extensions folder")), |_| {}),
         }
         let added = s.change.as_ref().map(|c| (c.added, c.removed));
         let code = s.code;
         well_row(
             ui,
-            "Code",
+            crate::i18n::tr("Code"),
             |ui| match added {
                 Some((added, removed)) => {
                     ui.spacing_mut().item_spacing.x = 6.0;
@@ -562,15 +561,15 @@ fn review_body(ui: &mut Ui, s: &mut Review, widgets: &mut HashMap<String, UiCont
                     ui.label(RichText::new(format!("−{removed}")).size(13.0).color(RED()));
                 }
                 None => {
-                    ui.label(RichText::new(format!("main.lua · {} lines", s.package.source.lines().count())).size(13.0));
+                    ui.label(RichText::new(crate::i18n::trf!("main.lua · lines: {count}", count = s.package.source.lines().count())).size(13.0));
                 }
             },
             |ui| {
                 let label = match (code, compared) {
-                    (false, false) => "View code",
-                    (true, false) => "Hide code",
-                    (false, true) => "View changes",
-                    (true, true) => "Hide changes",
+                    (false, false) => crate::i18n::tr("View code"),
+                    (true, false) => crate::i18n::tr("Hide code"),
+                    (false, true) => crate::i18n::tr("View changes"),
+                    (true, true) => crate::i18n::tr("Hide changes"),
                 };
                 if quiet(ui, widgets, "int-review-code", label, true) {
                     s.code = !s.code;
@@ -583,7 +582,7 @@ fn review_body(ui: &mut Ui, s: &mut Review, widgets: &mut HashMap<String, UiCont
             Some(change) => {
                 code_view(ui, widgets, &change.lines);
                 let n = change.changes;
-                pages::note(ui, &if n == 1 { "1 change".to_owned() } else { format!("{n} changes") });
+                pages::note(ui, &crate::i18n::trf!("Changes: {count}", count = n));
             }
             None => {
                 let lines: Vec<Line> = s.package.source.lines().enumerate().map(|(i, text)| Line {
@@ -599,31 +598,30 @@ fn review_body(ui: &mut Ui, s: &mut Review, widgets: &mut HashMap<String, UiCont
         commands(ui, s);
     }
     match s.kind {
-        Kind::Install if s.package.network => pages::callout(ui, AMBER(), "Rocket can’t confirm who made this file. It can send what you share with it to that server."),
-        Kind::Install => pages::callout(ui, AMBER(), "Rocket can’t confirm who made this file."),
-        Kind::Enable if s.package.network => pages::callout(ui, AMBER(), &format!("{name} can send what you share with it to that server.")),
+        Kind::Install if s.package.network => pages::callout(ui, AMBER(), crate::i18n::tr("Rocket can’t confirm who made this file. It can send what you share with it to that server.")),
+        Kind::Install => pages::callout(ui, AMBER(), crate::i18n::tr("Rocket can’t confirm who made this file.")),
+        Kind::Enable if s.package.network => pages::callout(ui, AMBER(), &crate::i18n::trf!("{extension} can send what you share with it to that server.", extension = name)),
         _ => {}
     }
     if !s.kept.is_empty() || s.drafts > 0 {
-        pages::caption(ui, "Stays on this device");
+        pages::caption(ui, crate::i18n::tr("Stays on this device"));
         pages::well(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 0.0;
             if !s.kept.is_empty() {
-                let kept = if s.kept.len() == 1 { "its token and access" } else { "their tokens and access" };
-                well_row(ui, "Connections", plain(&format!("{}, with {kept}", names(&s.kept))), |_| {});
+                well_row(ui, crate::i18n::tr("Connections"), plain(&crate::i18n::trf!("{connections}, including tokens and access", connections = names(&s.kept))), |_| {});
             }
             if s.drafts > 0 {
-                let text = if s.drafts == 1 { "1 saved draft can’t be used after this change".to_owned() } else { format!("{} saved drafts can’t be used after this change", s.drafts) };
+                let text = crate::i18n::trf!("Saved drafts unavailable after this change: {count}", count = s.drafts);
                 let blocks = compared && s.change.as_ref().is_some_and(|c| c.added + c.removed > 0);
                 let color = if blocks { AMBER() } else { TEXT() };
-                well_row(ui, "Drafts", move |ui| {
+                well_row(ui, crate::i18n::tr("Drafts"), move |ui| {
                     ui.add(Label::new(RichText::new(text).size(13.0).color(color)).truncate());
                 }, |_| {});
             }
         });
     }
     if let Some(connection) = &s.blocked {
-        pages::callout(ui, RED(), &format!("{connection} has a request that may have reached the service. Check it first."));
+        pages::callout(ui, RED(), &crate::i18n::trf!("{connection} has a request that may have reached the service. Check it first.", connection));
     }
     if let Some(error) = error {
         pages::callout(ui, RED(), shown(error));
@@ -646,12 +644,12 @@ impl Rocket {
         let error = self.integrations.error.clone();
         let (image, title, danger) = match &prompt {
             Prompt::Review(r) => match r.kind {
-                Kind::Enable => (Icon::Puzzle, format!("Enable {}", r.package.name), false),
-                Kind::Install => (Icon::Pull, format!("Install {}", r.package.name), false),
-                Kind::Update => (Icon::Pull, format!("Update {}", r.package.name), false),
-                Kind::Again => (Icon::Warning, format!("Review {} again", r.package.name), false),
+                Kind::Enable => (Icon::Puzzle, crate::i18n::trf!("Enable {extension}", extension = r.package.name), false),
+                Kind::Install => (Icon::Pull, crate::i18n::trf!("Install {extension}", extension = r.package.name), false),
+                Kind::Update => (Icon::Pull, crate::i18n::trf!("Update {extension}", extension = r.package.name), false),
+                Kind::Again => (Icon::Warning, crate::i18n::trf!("Review {extension} again", extension = r.package.name), false),
             },
-            Prompt::Failed { .. } | Prompt::Installed { .. } => (Icon::Pull, "Install from file".to_owned(), false),
+            Prompt::Failed { .. } | Prompt::Installed { .. } => (Icon::Pull, crate::i18n::tr("Install from file").to_owned(), false),
             Prompt::Remove(r) => (Icon::Trash, r.title.clone(), true),
         };
         let mut confirm = false;
@@ -668,39 +666,39 @@ impl Rocket {
                 (Part::Body, Prompt::Review(review)) => review_body(ui, review, widgets, error.as_deref()),
                 (Part::Footer, Prompt::Review(review)) => {
                     let label = match review.kind {
-                        Kind::Enable => "Enable",
-                        Kind::Install => "Install",
-                        Kind::Update => "Update",
-                        Kind::Again => "Approve",
+                        Kind::Enable => crate::i18n::tr("Enable"),
+                        Kind::Install => crate::i18n::tr("Install"),
+                        Kind::Update => crate::i18n::tr("Update"),
+                        Kind::Again => crate::i18n::tr("Approve"),
                     };
-                    let label = if error.is_some() && !busy { "Try again" } else { label };
+                    let label = if error.is_some() && !busy { crate::i18n::tr("Try again") } else { label };
                     let r = pages::primary(ui, !busy && review.blocked.is_none(), label);
                     pages::control(widgets, "int-review-approve", &r, ui.clip_rect());
                     confirm = r.clicked();
                     if busy {
-                        pages::footer_status(ui, true, "Copying the files");
+                        pages::footer_status(ui, true, crate::i18n::tr("Copying the files"));
                     } else if review.kind == Kind::Again {
-                        pages::footer_status(ui, false, "It can’t run until you approve these files");
+                        pages::footer_status(ui, false, crate::i18n::tr("It can’t run until you approve these files"));
                     } else {
-                        pages::footer_status(ui, false, "No script has run");
+                        pages::footer_status(ui, false, crate::i18n::tr("No script has run"));
                     }
                 }
                 (Part::Body, Prompt::Failed { file, error }) => {
                     file_row(ui, widgets, file, &mut choose);
                     let error = shown(error);
-                    let nothing = if error.ends_with("Nothing was installed.") { "" } else { " Nothing was installed." };
-                    pages::callout(ui, RED(), &format!("{error}{nothing}"));
+                    let detail = error.trim_end_matches("Nothing was installed.").trim_end();
+                    pages::callout(ui, RED(), &format!("{detail} {}", crate::i18n::tr("Nothing was installed.")));
                 }
                 (Part::Footer, Prompt::Failed { .. }) => {
-                    let r = pages::primary(ui, false, "Install");
+                    let r = pages::primary(ui, false, crate::i18n::tr("Install"));
                     pages::control(widgets, "int-review-approve", &r, ui.clip_rect());
                 }
                 (Part::Body, Prompt::Installed { file, name, version, .. }) => {
                     file_row(ui, widgets, file, &mut choose);
-                    pages::callout(ui, GREEN(), &format!("{name} {version} is already installed."));
+                    pages::callout(ui, GREEN(), &crate::i18n::trf!("{name} {version} is already installed.", name, version));
                 }
                 (Part::Footer, Prompt::Installed { id, name, .. }) => {
-                    let r = pages::primary(ui, !busy, &format!("Show {name}"));
+                    let r = pages::primary(ui, !busy, &crate::i18n::trf!("Show {name}", name));
                     pages::control(widgets, "int-review-show", &r, ui.clip_rect());
                     if r.clicked() {
                         show = Some(id.clone());
@@ -714,18 +712,18 @@ impl Rocket {
                         }
                     });
                     if let Some(connection) = &removal.blocked {
-                        pages::callout(ui, RED(), &format!("{connection} has a request that may have reached the service. Check it first."));
+                        pages::callout(ui, RED(), &crate::i18n::trf!("{connection} has a request that may have reached the service. Check it first.", connection));
                     }
                     if let Some(error) = &error {
                         pages::callout(ui, RED(), shown(error));
                     }
                 }
                 (Part::Footer, Prompt::Remove(removal)) => {
-                    let r = pages::danger(ui, !busy && removal.blocked.is_none(), "Remove");
+                    let r = pages::danger(ui, !busy && removal.blocked.is_none(), crate::i18n::tr("Remove"));
                     pages::control(widgets, "int-review-approve", &r, ui.clip_rect());
                     confirm = r.clicked();
                     if busy {
-                        pages::footer_status(ui, true, "Removing");
+                        pages::footer_status(ui, true, crate::i18n::tr("Removing"));
                     }
                 }
             },
@@ -759,13 +757,13 @@ fn file_row(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, file: &std::p
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         let (rect, _) = ui.allocate_exact_size(vec2(56.0, CONTROL), Sense::hover());
-        ui.painter().text(rect.left_center(), Align2::LEFT_CENTER, "File", FontId::proportional(13.0), MUTED());
+        ui.painter().text(rect.left_center(), Align2::LEFT_CENTER, crate::i18n::tr("File"), FontId::proportional(13.0), MUTED());
         let width = (ui.available_width() - 104.0).max(80.0);
         let mut text = crate::views::display_path(file);
         ui.add_enabled_ui(false, |ui| {
             ui.add_sized([width, CONTROL], TextEdit::singleline(&mut text).vertical_align(Align::Center));
         });
-        let r = ui.add_sized([96.0, CONTROL], Button::new("Choose file"));
+        let r = ui.add_sized([96.0, CONTROL], Button::new(crate::i18n::tr("Choose file")));
         pages::control(widgets, "int-review-choose", &r, ui.clip_rect());
         *choose = r.clicked();
     });

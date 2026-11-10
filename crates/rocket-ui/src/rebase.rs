@@ -13,11 +13,12 @@ use crate::{
 use eframe::egui::*;
 use rocket_git::*;
 use std::{collections::HashMap, sync::Arc};
+use crate::i18n::{mark, tr, trf, trn};
 
 /// The interactive plan's editor pane width.
 const PANE: f32 = 380.0;
 /// What an interactive rebase says while it reads.
-const READING: &str = "Reading the branch, its commits and the rebase state";
+const READING: &str = mark("Reading the branch, its commits and the rebase state");
 
 /// A review and the staged fix's files as shown, worked out on the worker.
 pub struct Reviewed {
@@ -86,7 +87,7 @@ impl Rocket {
                             Ok(task) => state.task = Some(task),
                             Err(e) => dialog.error = Some(user_error(&e)),
                         },
-                        _ => dialog.error = Some("Open a repository first.".into()),
+                        _ => dialog.error = Some(crate::i18n::tr("Open a repository first.").into()),
                     }
                 }
             }
@@ -111,7 +112,7 @@ impl Rocket {
                 s.preview = Some(Arc::new(p));
                 s.fix = fix;
             }
-            Err(Error::Cancelled) => d.error = Some("Conflict check cancelled. No rebase was started. Review again to check again.".into()),
+            Err(Error::Cancelled) => d.error = Some(tr("Conflict check cancelled. No rebase was started. Review again to check again.").into()),
             Err(e) => d.error = Some(user_error(&e)),
         }
     }
@@ -130,11 +131,7 @@ impl Rocket {
             s.applying = false;
             s.preview = None;
             s.reviewed = false;
-            d.error = Some(format!(
-                "{}\n{}\nReview again before retrying.",
-                outcome.summary,
-                outcome.details.join("\n")
-            ));
+            d.error = Some(trf!("{summary}\n{details}\nReview again before retrying.", summary = outcome.summary, details = outcome.details.join("\n")));
         }
     }
     pub(crate) fn rebase_dialog(&mut self, ctx: &Context) {
@@ -207,39 +204,39 @@ impl Rocket {
         let at = step.as_ref().map_or(0, |t| t.at);
         let rest = step.as_ref().map_or(0, |t| t.total.saturating_sub(t.at));
         let then = match rest {
-            0 => "that's the last one".to_owned(),
-            1 => "then moves the last commit".to_owned(),
-            n => format!("then moves the other {n} commits"),
+            0 => tr("that's the last one").to_owned(),
+            1 => tr("then moves the last commit").to_owned(),
+            n => trn!(n, "then moves the other {n} commit", "then moves the other {n} commits"),
         };
-        let commit = if at > 0 { format!("commit {at}") } else { "this commit".to_owned() };
+        let commit = if at > 0 { trf!("commit {at}", at) } else { tr("this commit").to_owned() };
         let stopped_name = step
             .as_ref()
             .map(|t| t.subject.clone())
             .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| "this commit".into());
+            .unwrap_or_else(|| tr("this commit").into());
         let title = match action {
-            RebaseAction::Start => format!("Rebase {current}"),
-            RebaseAction::Interactive if s.reviewed => "Review the new history".into(),
-            RebaseAction::Interactive => format!("Interactive rebase · {current}"),
-            RebaseAction::Skip if discard_and_continue => "Discard changes and continue".into(),
-            RebaseAction::Skip if at > 0 => format!("Skip commit {at}"),
+            RebaseAction::Start => trf!("Rebase {current}", current),
+            RebaseAction::Interactive if s.reviewed => tr("Review the new history").into(),
+            RebaseAction::Interactive => trf!("Interactive rebase · {current}", current),
+            RebaseAction::Skip if discard_and_continue => tr("Discard changes and continue").into(),
+            RebaseAction::Skip if at > 0 => trf!("Skip commit {at}", at),
             _ => self::title(action).into(),
         };
         let subtitle = match action {
             RebaseAction::Skip if discard_and_continue => {
-                "Discard tracked changes made since the planned stop, then continue the plan.".to_owned()
+                tr("Discard tracked changes made since the planned stop, then continue the plan.").to_owned()
             }
-            RebaseAction::Continue if planned.is_some() => "Resume the preserved plan from this planned stop.".to_owned(),
-            RebaseAction::Start => "Moves its commits on top of another branch or commit.".to_owned(),
-            RebaseAction::Interactive if s.reviewed => "Nothing has changed yet. Start when this looks right.".to_owned(),
-            RebaseAction::Interactive => "Reorder, reword, fold or leave out commits, then review the result.".to_owned(),
+            RebaseAction::Continue if planned.is_some() => tr("Resume the preserved plan from this planned stop.").to_owned(),
+            RebaseAction::Start => tr("Moves its commits on top of another branch or commit.").to_owned(),
+            RebaseAction::Interactive if s.reviewed => tr("Nothing has changed yet. Start when this looks right.").to_owned(),
+            RebaseAction::Interactive => tr("Reorder, reword, fold or leave out commits, then review the result.").to_owned(),
             RebaseAction::Continue if s.preview.is_none() => match &step {
-                Some(t) => format!("Commit {} of {} · {stopped_name}", t.at, t.total),
+                Some(t) => trf!("Commit {at} of {total} · {stopped_name}", at = t.at, total = t.total, stopped_name),
                 None => stopped_name.clone(),
             },
-            RebaseAction::Continue => format!("Saves your fix as {commit}, {then}."),
-            RebaseAction::Skip => format!("Leaves out {stopped_name}, {then}."),
-            RebaseAction::Abort => format!("Puts {current} back where it was before the rebase."),
+            RebaseAction::Continue => trf!("Saves your fix as {commit}, {then}.", commit, then),
+            RebaseAction::Skip => trf!("Leaves out {stopped_name}, {then}.", stopped_name, then),
+            RebaseAction::Abort => trf!("Puts {current} back where it was before the rebase.", current),
         };
         let head = pages::ReviewHeader {
             image: match action {
@@ -303,11 +300,11 @@ impl Rocket {
                         pages::waiting(
                             ui,
                             if s.cancelling {
-                                "Stopping the check"
+                                tr("Stopping the check")
                             } else if action == RebaseAction::Start {
-                                "Reading what will be replayed and checking for conflicts"
+                                tr("Reading what will be replayed and checking for conflicts")
                             } else {
-                                READING
+                                tr(READING)
                             },
                         );
                     }
@@ -322,10 +319,10 @@ impl Rocket {
                         && d.error.is_none()
                         && validation.is_none();
                     let label = match action {
-                        RebaseAction::Start => "Rebase",
-                        RebaseAction::Interactive if s.reviewed => "Start rebase",
-                        RebaseAction::Interactive => "Review plan",
-                        _ if discard_and_continue => "Discard changes and continue",
+                        RebaseAction::Start => crate::i18n::tr("Rebase"),
+                        RebaseAction::Interactive if s.reviewed => tr("Start rebase"),
+                        RebaseAction::Interactive => tr("Review plan"),
+                        _ if discard_and_continue => tr("Discard changes and continue"),
                         _ => title.as_str(),
                     };
                     let r = if danger {
@@ -336,7 +333,7 @@ impl Rocket {
                     control(widgets, "dialog-submit", &r, ui.clip_rect());
                     submit = r.clicked();
                     if interactive && s.reviewed {
-                        let r = ui.add_enabled(!waiting, Button::new("Edit plan"));
+                        let r = ui.add_enabled(!waiting, Button::new(tr("Edit plan")));
                         control(widgets, "dialog-rebase-edit", &r, ui.clip_rect());
                         if r.clicked() {
                             s.reviewed = false;
@@ -350,37 +347,37 @@ impl Rocket {
                     let first = s.preview.is_none() && d.error.is_none();
                     if (action.is_start() || d.error.is_some()) && !(interactive && first && s.task.is_some()) {
                         let r = match (first, action) {
-                            (true, RebaseAction::Start) => pages::primary(ui, can_review, "Review"),
-                            (true, _) => ui.add_enabled(can_review, Button::new("Review")),
-                            _ => ui.add_enabled(can_review, Button::new("Review again")),
+                            (true, RebaseAction::Start) => pages::primary(ui, can_review, crate::i18n::tr("Review")),
+                            (true, _) => ui.add_enabled(can_review, Button::new(crate::i18n::tr("Review"))),
+                            _ => ui.add_enabled(can_review, Button::new(tr("Review again"))),
                         };
                         control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                         refresh |= r.clicked();
                     }
                     if s.task.is_some() {
-                        let r = ui.add_enabled(!s.cancelling, Button::new("Stop check"));
+                        let r = ui.add_enabled(!s.cancelling, Button::new(tr("Stop check")));
                         control(widgets, "dialog-prediction-stop", &r, ui.clip_rect());
                         stop_check = r.clicked();
                     }
                     let status = if s.task.is_some() {
-                        "Reviewing".to_owned()
+                        tr("Reviewing").to_owned()
                     } else if d.error.is_some() || validation.is_some() {
-                        "Fix the problem above, then review again".to_owned()
+                        tr("Fix the problem above, then review again").to_owned()
                     } else if interactive && s.preview.is_some() {
                         let summary = plan_summary(&s.entries);
                         if s.reviewed {
-                            format!("{summary} · reviewed")
+                            trf!("{summary} · reviewed", summary)
                         } else {
-                            format!("{summary} · not reviewed")
+                            trf!("{summary} · not reviewed", summary)
                         }
                     } else if s.preview.is_some() {
                         if action.is_start() {
-                            "Reviewed · commit IDs will change".to_owned()
+                            tr("Reviewed · commit IDs will change").to_owned()
                         } else {
-                            "Nothing has changed yet".to_owned()
+                            tr("Nothing has changed yet").to_owned()
                         }
                     } else if action == RebaseAction::Start {
-                        "Review to see what the rebase will do".to_owned()
+                        tr("Review to see what the rebase will do").to_owned()
                     } else {
                         String::new()
                     };
@@ -444,7 +441,7 @@ impl Rocket {
                         self.execute(owner, Action::Rebase(p));
                         if self.write.is_none() {
                             s.applying = false;
-                            d.error=Some("Could not start. Wait for the repository, then review again.".into());
+                            d.error=Some(tr("Could not start. Wait for the repository, then review again.").into());
                         }
                     }
                     Err(e) => d.error = Some(user_error(&e)),
@@ -478,13 +475,13 @@ fn plan_summary(entries: &[RebasePlanEntry]) -> String {
     let kept = entries.len() - folded - dropped;
     let mut text = format!(
         "{} → {kept}",
-        if entries.len() == 1 { "1 commit".to_owned() } else { format!("{} commits", entries.len()) }
+        trn!(entries.len(), "{n} commit", "{n} commits")
     );
     if folded > 0 {
-        text.push_str(&format!(" · {folded} folded"));
+        text.push_str(&trf!(" · {folded} folded", folded));
     }
     if dropped > 0 {
-        text.push_str(&format!(" · {dropped} left out"));
+        text.push_str(&trf!(" · {dropped} left out", dropped));
     }
     text
 }
@@ -504,7 +501,7 @@ fn target_field(
     let r = ui.add_enabled(
         !s.applying,
         TextEdit::singleline(first)
-            .hint_text(RichText::new("main, origin/main or a commit ID").color(FAINT()))
+            .hint_text(RichText::new(tr("main, origin/main or a commit ID")).color(FAINT()))
             .desired_width(width)
             .min_size(vec2(0.0, 30.0))
             .vertical_align(Align::Center),
@@ -517,7 +514,7 @@ fn target_field(
         ui,
         widgets,
         "dialog-rebase-target-choice",
-        "Branches",
+        crate::i18n::tr("Branches"),
         branches,
         !s.applying,
     ) {
@@ -554,8 +551,8 @@ fn from_and_on_top(
     };
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 0.0;
-        heading(ui, "From", gap);
-        heading(ui, "On top of", 120.0);
+        heading(ui, crate::i18n::tr("From"), gap);
+        heading(ui, tr("On top of"), 120.0);
     });
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
@@ -563,10 +560,7 @@ fn from_and_on_top(
         let painter = ui.painter();
         painter.rect(rect, 7.0, CARD(), Stroke::new(1.0, CARD_STROKE()), StrokeKind::Inside);
         icon(painter, Rect::from_center_size(pos2(rect.left() + 18.0, rect.center().y), vec2(14.0, 14.0)), Icon::Branch, BLUE());
-        let count = s.preview.as_ref().filter(|p| !p.commits().is_empty()).map(|p| match p.commits().len() {
-            1 => "1 commit".to_owned(),
-            n => format!("{n} commits"),
-        });
+        let count = s.preview.as_ref().filter(|p| !p.commits().is_empty()).map(|p| trn!(p.commits().len(), "{n} commit", "{n} commits"));
         let right = rect.right() - 10.0;
         let count_width = count.map_or(0.0, |text| {
             let galley = painter.layout_no_wrap(text, FontId::proportional(12.0), HINT());
@@ -609,12 +603,12 @@ fn start_body(
     if let Some(p) = s.preview.clone() {
         let target = target_name(first);
         if p.up_to_date() {
-            pages::callout(ui, BLUE(), &format!("Already on top of {target}. Nothing to move."));
+            pages::callout(ui, BLUE(), &trf!("Already on top of {target}. Nothing to move.", target));
         } else if p.fast_forward() {
-            pages::callout(ui, BLUE(), "Fast-forward only: nothing is rewritten.");
+            pages::callout(ui, BLUE(), tr("Fast-forward only: nothing is rewritten."));
         } else {
             let merges = p.commits().iter().filter(|c| c.parents.len() > 1).count();
-            crate::tags::card(ui, "What will happen", |ui| {
+            crate::tags::card(ui, tr("What will happen"), |ui| {
                 picture(ui, &p, &target, branch);
                 ui.add(Label::new(moves(p.commits().len(), merges, branch, &target)).wrap());
                 let (color, text) = check_line(&p);
@@ -623,11 +617,7 @@ fn start_body(
             if !p.preserves_merges() {
                 others_card(ui, &p, &s.entries, &mut s.update_refs, !s.applying, true, widgets);
             }
-            let label = if p.commits().len() == 1 {
-                "1 commit that moves".to_owned()
-            } else {
-                format!("{} commits that move", p.commits().len())
-            };
+            let label = trn!(p.commits().len(), "{n} commit that moves", "{n} commits that move");
             let r = pages::disclosure(ui, s.listed, &label);
             control(widgets, "dialog-rebase-commits", &r, ui.clip_rect());
             if r.clicked() {
@@ -641,7 +631,7 @@ fn start_body(
                             ui.label(RichText::new(&c.id.as_str()[..7]).monospace().size(12.5).color(MUTED()));
                             ui.add(Label::new(subject(c)).truncate());
                             if c.parents.len() > 1 {
-                                ui.label(RichText::new("merge").size(12.0).color(AMBER()));
+                                ui.label(RichText::new(tr("Merge")).size(12.0).color(AMBER()));
                             }
                         });
                     }
@@ -650,7 +640,7 @@ fn start_body(
         }
     }
     // Keep merge commits; closed, the title still names it.
-    let label = if s.preserve_merges && !s.more { "More options · keep merge commits" } else { "More options" };
+    let label = if s.preserve_merges && !s.more { tr("More options · keep merge commits") } else { tr("More options") };
     let r = pages::disclosure(ui, s.more, label);
     control(widgets, "dialog-rebase-more", &r, ui.clip_rect());
     if r.clicked() {
@@ -658,20 +648,20 @@ fn start_body(
     }
     if s.more {
         ui.horizontal(|ui| {
-            let r = ui.add_enabled(!s.applying, checkbox(&mut s.preserve_merges, "Keep merge commits"));
+            let r = ui.add_enabled(!s.applying, checkbox(&mut s.preserve_merges, tr("Keep merge commits")));
             control(widgets, "dialog-rebase-preserve-merges", &r, ui.clip_rect());
             if r.changed() {
                 invalidate(s, error);
                 s.update_refs = false;
                 *refresh = !first.trim().is_empty();
             }
-            ui.label(RichText::new("keeps them as merges instead of flattening them").size(12.0).color(FAINT()));
+            ui.label(RichText::new(tr("keeps them as merges instead of flattening them")).size(12.0).color(FAINT()));
         });
         if s.preserve_merges {
             pages::callout(
                 ui,
                 AMBER(),
-                "If a merge needed conflict fixes, you fix them again. The conflict check and moving other branches along aren't available with this option.",
+                tr("If a merge needed conflict fixes, you fix them again. The conflict check and moving other branches along aren't available with this option."),
             );
         }
     }
@@ -679,19 +669,21 @@ fn start_body(
 
 /// "3 commits from feature move on top of main. main doesn't change."
 fn moves(n: usize, merges: usize, branch: &str, target: &str) -> text::LayoutJob {
-    let (plain, bold) = (FontId::proportional(13.0), semibold(13.0));
-    let what = match (n, merges) {
-        (1, _) => "1 commit".to_owned(),
-        (n, 0) => format!("{n} commits"),
-        (n, 1) => format!("{n} commits, 1 of them a merge,"),
-        (n, m) => format!("{n} commits, {m} of them merges,"),
-    };
+    let plain = FontId::proportional(13.0);
+    // Keep branch values out of the template until styling their named slots.
+    let mut description = trn!(n, "{n} commit from {branch} moves on top of {target}. {target} doesn't change.", "{n} commits from {branch} move on top of {target}. {target} doesn't change.", branch = "{branch}", target = "{target}");
+    if merges > 0 { description.push_str(&trn!(merges, " Includes {n} merge commit.", " Includes {n} merge commits.")); }
     let mut job = text::LayoutJob::default();
-    job.append(&format!("{what} from "), 0.0, TextFormat::simple(plain.clone(), TEXT()));
-    job.append(branch, 0.0, TextFormat::simple(bold.clone(), TEXT()));
-    job.append(if n == 1 { " moves on top of " } else { " move on top of " }, 0.0, TextFormat::simple(plain.clone(), TEXT()));
-    job.append(target, 0.0, TextFormat::simple(bold, TEXT()));
-    job.append(&format!(". {target} doesn't change."), 0.0, TextFormat::simple(plain, TEXT()));
+    let mut rest = description.as_str();
+    while let Some((at, slot, value)) = [("{branch}", branch), ("{target}", target)]
+        .into_iter().filter_map(|(slot, value)| rest.find(slot).map(|at| (at, slot, value)))
+        .min_by_key(|(at, _, _)| *at)
+    {
+        job.append(&rest[..at], 0.0, TextFormat::simple(plain.clone(), TEXT()));
+        job.append(value, 0.0, TextFormat::simple(semibold(13.0), TEXT()));
+        rest = &rest[at + slot.len()..];
+    }
+    job.append(rest, 0.0, TextFormat::simple(plain, TEXT()));
     job
 }
 
@@ -700,51 +692,52 @@ fn check_line(p: &RebasePreview) -> (Color32, String) {
     if p.preserves_merges() {
         return (
             AMBER(),
-            "No conflict check with merges kept. If a commit stops on a conflict, Changes lists what to fix.".into(),
+            tr("No conflict check with merges kept. If a commit stops on a conflict, Changes lists what to fix.").into(),
         );
     }
     match p.prediction() {
         Some(prediction) => match prediction.kind {
             PredictionKind::Clean => (
                 GREEN(),
-                format!(
-                    "No conflicts expected: all {} apply cleanly.",
-                    if prediction.total == 1 { "1 commit".to_owned() } else { format!("{} commits", prediction.total) }
-                ),
+                trn!(prediction.total, "No conflicts expected: {n} commit applies cleanly.", "No conflicts expected: all {n} commits apply cleanly."),
             ),
             PredictionKind::Conflicts => {
                 let at = prediction.stopped_at.and_then(|i| p.commits().get(i));
                 (
                     AMBER(),
                     match at {
-                        Some(c) => format!(
-                            "Expect a conflict at commit {} of {}: {} · {}. Later commits weren't checked.",
-                            prediction.stopped_at.unwrap_or(0) + 1,
-                            prediction.total,
-                            &c.id.as_str()[..7],
-                            subject(c)
-                        ),
-                        None => "Expect a conflict. Later commits weren't checked.".into(),
+                        Some(c) => trf!("Expect a conflict at commit {position} of {total}: {commit} · {subject}. Later commits weren't checked.", position = prediction.stopped_at.unwrap_or(0) + 1, total = prediction.total, commit = &c.id.as_str()[..7], subject = subject(c)),
+                        None => tr("Expect a conflict. Later commits weren't checked.").into(),
                     },
                 )
             }
             PredictionKind::Empty => (
                 AMBER(),
-                format!(
-                    "Commit {} of {} would be empty here; Git may stop for Skip or Abort.",
-                    prediction.stopped_at.unwrap_or(0) + 1,
-                    prediction.total
-                ),
+                trf!("Commit {position} of {total} would be empty here; Git may stop for Skip or Abort.", position = prediction.stopped_at.unwrap_or(0) + 1, total = prediction.total),
             ),
             PredictionKind::Unavailable => (
                 MUTED(),
                 prediction
                     .reason
-                    .map_or("Conflicts couldn't be checked; none are ruled out.", PredictionReason::guidance)
+                    .map_or(tr("Conflicts couldn't be checked; none are ruled out."), prediction_guidance)
                     .to_owned(),
             ),
         },
-        None => (MUTED(), "Conflicts weren't checked.".into()),
+        None => (MUTED(), tr("Conflicts weren't checked.").into()),
+    }
+}
+
+/// UI wording for the typed reason; diagnostic codes remain backend data.
+pub(crate) fn prediction_guidance(reason: PredictionReason) -> &'static str {
+    match reason {
+        PredictionReason::MergeSettings => tr("Custom merge settings are outside this check. No merge driver was run and no clean result is claimed."),
+        PredictionReason::Attributes => tr("Merge, filter or encoding attributes need the actual checkout. No external program was run and no clean result is claimed."),
+        PredictionReason::AttributeChange => tr("This sequence changes .gitattributes. Review those rules before applying; the check does not simulate changing attributes."),
+        PredictionReason::Submodules => tr("Submodule merge ancestry needs its own repository. The check does not predict submodule conflicts."),
+        PredictionReason::ReplacedObjects => tr("This repository replaces commit objects or ancestry. The isolated check does not simulate replacements or grafts."),
+        PredictionReason::Limit => tr("This check reached its size or time budget. Unchecked commits are not assumed clean."),
+        PredictionReason::GitFailed => tr("Git could not complete the isolated check. Inspect diagnostics and refresh, or review the change before starting the actual operation."),
+        PredictionReason::TimedOut => tr("The isolated Git check timed out. Refresh to check again; unchecked commits are not assumed clean."),
     }
 }
 
@@ -806,12 +799,12 @@ fn picture(ui: &mut Ui, p: &RebasePreview, target: &str, branch: &str) {
         let name = painter.layout_job(job);
         painter.galley(pos2(right - name.size().x, top - 15.0 - name.size().y / 2.0), name, color);
     };
-    over(format!("{target} stays here"), FontId::proportional(12.0), HINT(), onto.x + 18.0, onto.x + 18.0 - left);
-    over(format!("{branch} ends here"), semibold(12.0), TEXT(), end + 8.0, end - onto.x - 30.0);
+    over(trf!("{target} stays here", target), FontId::proportional(12.0), HINT(), onto.x + 18.0, onto.x + 18.0 - left);
+    over(trf!("{branch} ends here", branch), semibold(12.0), TEXT(), end + 8.0, end - onto.x - 30.0);
     painter.text(
         pos2(old_end + 10.0, bottom),
         Align2::LEFT_CENTER,
-        "old copies stay in Reflog & Recovery",
+        tr("old copies stay in Reflog & Recovery"),
         small,
         HINT(),
     );
@@ -840,9 +833,9 @@ fn others_card(
         |ui| {
             ui.label(
                 RichText::new(if start {
-                    "Other branches on these commits"
+                    tr("Other branches on these commits")
                 } else {
-                    "Branches this rebase moves when it finishes"
+                    tr("Branches this rebase moves when it finishes")
                 })
                 .size(12.0)
                 .color(MUTED())
@@ -850,7 +843,7 @@ fn others_card(
             );
             if start {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let r = ui.add_enabled(enabled && movable, checkbox(on, "Move them along"));
+                    let r = ui.add_enabled(enabled && movable, checkbox(on, tr("Move them along")));
                     control(widgets, "dialog-rebase-update-refs", &r, ui.clip_rect());
                 });
             }
@@ -859,20 +852,17 @@ fn others_card(
             for b in dependents {
                 let commit = p.commits().iter().find(|c| c.id == b.target);
                 let (fate, color) = match &b.checked_out_at {
-                    Some(_) => ("Stays: in use".to_owned(), AMBER()),
-                    None if !start => ("Moves when it finishes".to_owned(), BLUE()),
+                    Some(_) => (tr("Stays: in use").to_owned(), AMBER()),
+                    None if !start => (tr("Moves when it finishes").to_owned(), BLUE()),
                     None if moving => (
                         match planned_move(entries, &b.target) {
-                            "moves to its rewritten commit" => "Moves along".to_owned(),
-                            other => {
-                                let mut text = other.to_owned();
-                                text.replace_range(..1, "M");
-                                text
-                            }
-                        },
+                            "moves to the combined commit" => tr("Moves to the combined commit"),
+                            "moves to the commit before it (its commit is dropped)" => tr("Moves to the commit before it (its commit is dropped)"),
+                            _ => tr("Moves along"),
+                        }.to_owned(),
                         BLUE(),
                     ),
-                    None => ("Stays behind".to_owned(), MUTED()),
+                    None => (tr("Stays behind").to_owned(), MUTED()),
                 };
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
@@ -887,7 +877,7 @@ fn others_card(
                         ui.spacing_mut().item_spacing.y = 1.0;
                         ui.add(Label::new(short_ref(&b.reference)).truncate());
                         let detail = match (&b.checked_out_at, commit) {
-                            (Some(path), _) => format!("checked out in {}", crate::views::display_path(path)),
+                            (Some(path), _) => trf!("checked out in {folder}", folder = crate::views::display_path(path)),
                             (None, Some(c)) => format!("{} · {}", &b.target.as_str()[..7], subject(c)),
                             (None, None) => b.target.as_str()[..7].to_owned(),
                         };
@@ -919,16 +909,16 @@ fn interactive_body(
     ui.horizontal(|ui| {
         ui.set_min_height(30.0);
         if s.reviewed {
-            let base = if s.root { "From the first commit".to_owned() } else { format!("On top of {}", target_name(first)) };
+            let base = if s.root { tr("From the first commit").to_owned() } else { trf!("On top of {target}", target = target_name(first)) };
             ui.label(RichText::new(base).color(MUTED()));
         } else {
             if !s.root {
-                ui.label(RichText::new("On top of").color(MUTED()));
+                ui.label(RichText::new(tr("On top of")).color(MUTED()));
                 // The field takes what Branches and the checkbox leave.
                 let width = (ui.available_width() - 260.0).max(200.0);
                 target_field(ui, s, first, error, branches, width, widgets, refresh);
             }
-            let r = ui.add_enabled(!s.applying, checkbox(&mut s.root, "From the first commit"));
+            let r = ui.add_enabled(!s.applying, checkbox(&mut s.root, tr("From the first commit")));
             control(widgets, "dialog-rebase-root", &r, ui.clip_rect());
             if r.changed() {
                 invalidate(s, error);
@@ -939,10 +929,10 @@ fn interactive_body(
     let preview = s.preview.clone();
     let refused = error.is_some();
     let order = if s.root {
-        "Oldest first".to_owned()
+        tr("Oldest first").to_owned()
     } else {
         let target = target_name(first);
-        format!("Oldest first. The commits listed are the ones {target} doesn't have; they go on top of {target}.")
+        trf!("Oldest first. The commits listed are the ones {target} doesn't have; they go on top of {target}.", target)
     };
     // Room for the other branches' card under the plan: the gap above it, its title and
     // up to four rows. The panes give that up, so the dialog keeps its size.
@@ -988,7 +978,7 @@ fn interactive_body(
                         None => {
                             ui.add_space((height / 2.0 - 12.0).max(0.0));
                             ui.vertical_centered(|ui| {
-                                ui.label(RichText::new("Choose a commit to change it").size(12.0).color(FAINT()));
+                                ui.label(RichText::new(tr("Choose a commit to change it")).size(12.0).color(FAINT()));
                             });
                         }
                         Some(p) if s.reviewed => result_pane(ui, s, p),
@@ -1016,9 +1006,9 @@ fn plan_placeholder(ui: &mut Ui, s: &DialogState, order: &str, refused: bool) {
             ui.painter().rect_filled(rect, 8.0, HOVER());
         }
         ui.add_space(8.0);
-        pages::waiting(ui, if s.cancelling { "Stopping the check" } else { READING });
+        pages::waiting(ui, if s.cancelling { tr("Stopping the check") } else { tr(READING) });
     } else if !refused {
-        pages::note(ui, "Choose what they go on top of, or the first commit.");
+        pages::note(ui, tr("Choose what they go on top of, or the first commit."));
     }
 }
 
@@ -1046,11 +1036,11 @@ fn plan_rows(ui: &mut Ui, s: &mut DialogState, p: &RebasePreview, widgets: &mut 
         };
         let folds = matches!(entry.instruction, RebaseInstruction::Squash | RebaseInstruction::Fixup);
         let note = if folds && i > 0 {
-            Some((format!("into row {i}"), MUTED()))
+            Some((trf!("into row {i}", i), MUTED()))
         } else if entry.exec.is_some() {
-            Some(("then runs a command".to_owned(), AMBER()))
+            Some((tr("then runs a command").to_owned(), AMBER()))
         } else if entry.stop_after || entry.instruction == RebaseInstruction::Edit {
-            Some(("pauses".to_owned(), BLUE()))
+            Some((tr("pauses").to_owned(), BLUE()))
         } else {
             None
         };
@@ -1077,10 +1067,10 @@ fn plan_rows(ui: &mut Ui, s: &mut DialogState, p: &RebasePreview, widgets: &mut 
         painter.text(pos2(x + 14.0, y), Align2::RIGHT_CENTER, (i + 1).to_string(), FontId::proportional(12.0), HINT());
         x += 22.0;
         let tint = action_tint(entry.instruction);
-        let pill = Rect::from_min_size(pos2(x, y - 10.0), vec2(62.0, 20.0));
+        let label = instruction_label(entry.instruction);
+        let label_width = painter.layout_no_wrap(label.to_owned(), semibold(12.0), tint).size().x;
+        let pill = Rect::from_min_size(pos2(x, y - 10.0), vec2((label_width + 14.0).max(62.0), 20.0));
         painter.rect_filled(pill, 6.0, tint.gamma_multiply(0.14));
-        let mut label = entry.instruction.label().to_owned();
-        label.replace_range(..1, &label[..1].to_uppercase());
         painter.text(pill.center(), Align2::CENTER_CENTER, label, semibold(12.0), tint);
         x = pill.right() + 10.0;
         let sha = painter.layout_no_wrap(entry.commit.as_str()[..7].to_owned(), FontId::monospace(12.5), MUTED());
@@ -1144,12 +1134,12 @@ fn row_editor(ui: &mut Ui, s: &mut DialogState, p: &RebasePreview, widgets: &mut
     };
     let commit = p.commits().iter().find(|c| c.id == entry.commit);
     ui.label(
-        RichText::new(format!("Row {} · {}", s.selected + 1, &entry.commit.as_str()[..7]))
+        RichText::new(trf!("Row {row} · {commit}", row = s.selected + 1, commit = &entry.commit.as_str()[..7]))
             .size(12.0)
             .color(HINT()),
     );
     ui.add(Label::new(RichText::new(commit.map(subject).unwrap_or_default()).font(semibold(16.0))).wrap());
-    ui.label(RichText::new("Do").size(12.0).color(MUTED()));
+    ui.label(RichText::new(tr("Do")).size(12.0).color(MUTED()));
     let actions = [
         RebaseInstruction::Pick,
         RebaseInstruction::Reword,
@@ -1166,8 +1156,7 @@ fn row_editor(ui: &mut Ui, s: &mut DialogState, p: &RebasePreview, widgets: &mut
             for action in row {
                 let on = entry.instruction == *action;
                 let tint = action_tint(*action);
-                let mut label = action.label().to_owned();
-                label.replace_range(..1, &label[..1].to_uppercase());
+                let label = instruction_label(*action);
                 let r = ui.add(
                     Button::new(RichText::new(label).strong().color(if on { tint } else { MUTED() }))
                         .fill(if on { tint.gamma_multiply(0.14) } else { Color32::TRANSPARENT })
@@ -1188,12 +1177,12 @@ fn row_editor(ui: &mut Ui, s: &mut DialogState, p: &RebasePreview, widgets: &mut
     }
     ui.label(
         RichText::new(match entry.instruction {
-            RebaseInstruction::Pick => "Keep this commit as it is.",
-            RebaseInstruction::Reword => "Keep the changes and write a new message.",
-            RebaseInstruction::Edit => "Stop after this commit so you can change it.",
-            RebaseInstruction::Squash => "Fold into the row above and combine both messages.",
-            RebaseInstruction::Fixup => "Fold into the row above and keep only its message.",
-            RebaseInstruction::Drop => "Leave this commit out.",
+            RebaseInstruction::Pick => tr("Keep this commit as it is."),
+            RebaseInstruction::Reword => tr("Keep the changes and write a new message."),
+            RebaseInstruction::Edit => tr("Stop after this commit so you can change it."),
+            RebaseInstruction::Squash => tr("Fold into the row above and combine both messages."),
+            RebaseInstruction::Fixup => tr("Fold into the row above and keep only its message."),
+            RebaseInstruction::Drop => tr("Leave this commit out."),
         })
         .size(12.0)
         .color(HINT()),
@@ -1209,9 +1198,9 @@ fn row_editor(ui: &mut Ui, s: &mut DialogState, p: &RebasePreview, widgets: &mut
     if entry.instruction.needs_message() {
         ui.label(
             RichText::new(if entry.instruction == RebaseInstruction::Squash {
-                "Combined message"
+                tr("Combined message")
             } else {
-                "New message"
+                tr("New message")
             })
             .size(12.0)
             .color(MUTED()),
@@ -1228,18 +1217,18 @@ fn row_editor(ui: &mut Ui, s: &mut DialogState, p: &RebasePreview, widgets: &mut
         }
     }
     pages::divider(ui);
-    ui.label(RichText::new("After this commit").size(12.0).color(MUTED()));
-    let r = ui.add(checkbox(&mut entry.stop_after, "Pause so I can look or test"));
+    ui.label(RichText::new(tr("After this commit")).size(12.0).color(MUTED()));
+    let r = ui.add(checkbox(&mut entry.stop_after, tr("Pause so I can look or test")));
     control(widgets, "dialog-rebase-stop", &r, ui.clip_rect());
     if r.changed() {
         s.reviewed = false;
     }
-    ui.label(RichText::new("Run a command · optional").size(12.0).color(HINT()));
+    ui.label(RichText::new(tr("Run a command · optional")).size(12.0).color(HINT()));
     let mut command = entry.exec.clone().unwrap_or_default();
     let r = ui.add(
         TextEdit::singleline(&mut command)
             .font(TextStyle::Monospace)
-            .hint_text(RichText::new("For example: cargo test").color(FAINT()))
+            .hint_text(RichText::new(tr("For example: cargo test")).color(FAINT()))
             .char_limit(MAX_REBASE_COMMAND)
             .desired_width(f32::INFINITY)
             .min_size(vec2(0.0, 28.0))
@@ -1251,9 +1240,9 @@ fn row_editor(ui: &mut Ui, s: &mut DialogState, p: &RebasePreview, widgets: &mut
         s.reviewed = false;
     }
     if command.trim() != command {
-        pages::note(ui, "Remove spaces at the start or end of the command.");
+        pages::note(ui, tr("Remove spaces at the start or end of the command."));
     } else if !command.is_empty() {
-        pages::note(ui, "Git runs it with its shell at the repository root.");
+        pages::note(ui, tr("Git runs it with its shell at the repository root."));
     }
 }
 
@@ -1265,7 +1254,7 @@ fn result_pane(ui: &mut Ui, s: &DialogState, p: &RebasePreview) {
         .filter(|r| !matches!(r.instruction, RebaseInstruction::Squash | RebaseInstruction::Fixup | RebaseInstruction::Drop))
         .count();
     ui.label(
-        RichText::new(if kept == 1 { "Result · 1 commit".to_owned() } else { format!("Result · {kept} commits") })
+        RichText::new(trn!(kept, "Result · {n} commit", "Result · {n} commits"))
             .font(semibold(16.0)),
     );
     let subject_of = |entry: &RebasePlanEntry| {
@@ -1296,14 +1285,14 @@ fn result_pane(ui: &mut Ui, s: &DialogState, p: &RebasePreview) {
             j += 1;
         }
         let last = &s.entries[j - 1];
-        let mut detail = format!("from {}", from.join(" + "));
+        let mut detail = trf!("from {commits}", commits = from.join(" + "));
         if entry.instruction == RebaseInstruction::Reword || from.len() > 1 {
             detail.push_str(" · new message");
         } else if entry.instruction == RebaseInstruction::Pick {
             detail.push_str(" · unchanged");
         }
         if let Some(command) = &last.exec {
-            detail.push_str(&format!(" · then runs {command}"));
+            detail.push_str(&trf!(" · then runs {command}", command));
         }
         if last.stop_after || entry.instruction == RebaseInstruction::Edit {
             detail.push_str(" · pauses");
@@ -1320,7 +1309,7 @@ fn result_pane(ui: &mut Ui, s: &DialogState, p: &RebasePreview) {
             });
         i = j;
     }
-    pages::note(ui, "Commit IDs change. Branches moving along follow their commits.");
+    pages::note(ui, tr("Commit IDs change. Branches moving along follow their commits."));
 }
 
 /// Under the reviewed plan: commands that will run, pauses, and left-out commits.
@@ -1336,10 +1325,7 @@ fn reviewed_notes(ui: &mut Ui, s: &DialogState) {
         pages::callout(
             ui,
             RED(),
-            &format!(
-                "After row {}, Git runs {command} with your permissions at the repository root. Start only if you trust it.",
-                i + 1
-            ),
+            &trf!("After row {row}, Git runs {command} with your permissions at the repository root. Start only if you trust it.", row = i + 1, command),
         );
     }
     // An edit row stops once; a break after it stops again.
@@ -1351,7 +1337,7 @@ fn reviewed_notes(ui: &mut Ui, s: &DialogState) {
     if stops > 0 {
         pages::note(
             ui,
-            &if stops == 1 { "Git pauses once as planned.".to_owned() } else { format!("Git pauses {stops} times as planned.") },
+            &trn!(stops, "Git pauses {n} time as planned.", "Git pauses {n} times as planned."),
         );
     }
     let dropped = s.entries.iter().filter(|r| r.instruction == RebaseInstruction::Drop).count();
@@ -1359,11 +1345,7 @@ fn reviewed_notes(ui: &mut Ui, s: &DialogState) {
         pages::callout(
             ui,
             AMBER(),
-            &format!(
-                "{} left out of the branch. Reflog & recovery can still find {}.",
-                if dropped == 1 { "1 commit is".to_owned() } else { format!("{dropped} commits are") },
-                if dropped == 1 { "it" } else { "them" }
-            ),
+            &trn!(dropped, "{n} commit is left out of the branch. Reflog & recovery can still find it.", "{n} commits are left out of the branch. Reflog & recovery can still find them."),
         );
     }
 }
@@ -1381,8 +1363,8 @@ fn too_early(error: &str, changes: &[(String, &'static str)]) -> String {
         .collect();
     match conflicts.as_slice() {
         [] => error.to_owned(),
-        [name] => format!("{name} still has a conflict\nFix it in Changes and stage it, then Continue. Nothing has changed."),
-        many => format!("{} files still have conflicts\nFix them in Changes and stage them, then Continue. Nothing has changed.", many.len()),
+        [name] => trf!("{name} still has a conflict\nFix it in Changes and stage it, then Continue. Nothing has changed.", name),
+        many => trn!(many.len(), "{n} file still has conflicts\nFix it in Changes and stage it, then Continue. Nothing has changed.", "{n} files still have conflicts\nFix them in Changes and stage them, then Continue. Nothing has changed."),
     }
 }
 
@@ -1415,7 +1397,7 @@ fn step_rows(p: &RebasePreview, paused: &Paused, mark: StepMark, note: &'static 
         .map(|(i, subject)| {
             let number = i + 1;
             let (mark, note) = match number.cmp(&at) {
-                std::cmp::Ordering::Less => (StepMark::Done, "done"),
+                std::cmp::Ordering::Less => (StepMark::Done, tr("Done")),
                 std::cmp::Ordering::Equal => (mark, note),
                 std::cmp::Ordering::Greater => (StepMark::Waiting, ""),
             };
@@ -1439,21 +1421,21 @@ fn progress_body(
     ui.spacing_mut().item_spacing.y = 12.0;
     match action {
         RebaseAction::Continue => {
-            let note = if planned.is_some() { "stopped here" } else { "your fix" };
+            let note = if planned.is_some() { tr("stopped here") } else { tr("your fix") };
             pages::steps(ui, "dialog-rebase", &step_rows(&p, &paused, StepMark::Stopped, note))
         }
         RebaseAction::Skip if planned.is_some() => {
-            pages::steps(ui, "dialog-rebase", &step_rows(&p, &paused, StepMark::Stopped, "stays"))
+            pages::steps(ui, "dialog-rebase", &step_rows(&p, &paused, StepMark::Stopped, tr("stays")))
         }
-        RebaseAction::Skip => pages::steps(ui, "dialog-rebase", &step_rows(&p, &paused, StepMark::LeftOut, "left out")),
+        RebaseAction::Skip => pages::steps(ui, "dialog-rebase", &step_rows(&p, &paused, StepMark::LeftOut, tr("left out"))),
         _ => {
-            ui.label(RichText::new(format!("{} goes back to", paused.branch)).size(12.0).color(HINT()));
+            ui.label(RichText::new(trf!("{branch} goes back to", branch = paused.branch)).size(12.0).color(HINT()));
             let tip = p.commits().iter().find(|c| c.id == *p.original());
             pages::commit_card(
                 ui,
-                &tip.map_or_else(|| "Your branch before the rebase".to_owned(), subject),
+                &tip.map_or_else(|| tr("Your branch before the rebase").to_owned(), subject),
                 &p.original().as_str()[..7],
-                "before the rebase",
+                tr("before the rebase"),
             );
         }
     }
@@ -1464,20 +1446,20 @@ fn progress_body(
                 let text = RichText::new(text).size(12.0);
                 ui.label(if strong { text.strong().color(TEXT()) } else { text.color(HINT()) });
             };
-            word(ui, "From", false);
+            word(ui, crate::i18n::tr("From"), false);
             word(ui, paused.branch, true);
             ui.add_space(10.0);
             match paused.on_top {
                 Some((Some(name), id)) => {
-                    word(ui, "On top of", false);
+                    word(ui, tr("On top of"), false);
                     word(ui, name, true);
                     ui.label(RichText::new(format!("· {id}")).size(12.0).monospace().color(HINT()));
                 }
                 Some((None, id)) => {
-                    word(ui, "On top of", false);
+                    word(ui, tr("On top of"), false);
                     ui.label(RichText::new(id).size(12.0).monospace().color(HINT()));
                 }
-                None => word(ui, "From the first commit: the first kept commit becomes the new root", false),
+                None => word(ui, tr("From the first commit: the first kept commit becomes the new root"), false),
             }
         });
     }
@@ -1495,23 +1477,23 @@ fn progress_body(
             ui,
             AMBER(),
             if retry {
-                "Retry saving the reviewed message on the current replayed commit, then resume the plan."
+                tr("Retry saving the reviewed message on the current replayed commit, then resume the plan.")
             } else {
-                "The reviewed message was already saved before interruption. Continue will resume the remaining plan."
+                tr("The reviewed message was already saved before interruption. Continue will resume the remaining plan.")
             },
         );
         pages::well(ui, |ui| {
             ui.add(Label::new(message.chars().take(16000).collect::<String>()).wrap());
         });
         if message.chars().count() > 16000 {
-            pages::callout(ui, AMBER(), "Showing the first 16,000 characters of the message.");
+            pages::callout(ui, AMBER(), tr("Showing the first 16,000 characters of the message."));
         }
     }
     if let Some(plan) = p.plan() {
-        ui.collapsing("The plan", |ui| {
+        ui.collapsing(tr("The plan"), |ui| {
             for entry in plan {
                 ui.label(
-                    RichText::new(format!("{} {}", entry.instruction.label(), &entry.commit.as_str()[..9]))
+                    RichText::new(format!("{} {}", instruction_label(entry.instruction), &entry.commit.as_str()[..9]))
                         .monospace(),
                 );
                 for (text, color) in row_extras(entry) {
@@ -1522,15 +1504,12 @@ fn progress_body(
     }
     if action == RebaseAction::Continue {
         let title = match planned {
-            Some(RebaseStop::Edit(_)) => "Staged changes to amend into this commit".to_owned(),
-            Some(_) => "Current changes".to_owned(),
-            None => match s.fix.len() {
-                1 => "Your fix · 1 file staged".to_owned(),
-                n => format!("Your fix · {n} files staged"),
-            },
+            Some(RebaseStop::Edit(_)) => tr("Staged changes to amend into this commit").to_owned(),
+            Some(_) => tr("Current changes").to_owned(),
+            None => trn!(s.fix.len(), "Your fix · {n} file staged", "Your fix · {n} files staged"),
         };
         if s.fix.is_empty() {
-            pages::note(ui, "No changes to save here. The rebase moves on.");
+            pages::note(ui, tr("No changes to save here. The rebase moves on."));
         } else {
             series_view::diff_card(ui, &title, "dialog-rebase-fix", &s.fix, 160.0);
         }
@@ -1538,22 +1517,22 @@ fn progress_body(
         pages::note(
             ui,
             if action == RebaseAction::Abort {
-                "Reflog & Recovery can still find the original commits."
+                tr("Reflog & Recovery can still find the original commits.")
             } else {
-                "There are no edits to discard."
+                tr("There are no edits to discard.")
             },
         );
     } else {
         if action == RebaseAction::Abort {
             let edits = match p.changes() {
                 [(path, _)] => path.rsplit('/').next().unwrap_or(path).to_owned(),
-                files => format!("{} files", files.len()),
+                files => trn!(files.len(), "{n} file", "{n} files"),
             };
-            pages::callout(ui, AMBER(), &format!("Your edits to {edits} are discarded. Reflog & Recovery can still find the original commits."));
+            pages::callout(ui, AMBER(), &trf!("Your edits to {edits} are discarded. Reflog & Recovery can still find the original commits.", edits));
         } else {
             discarded(ui, p.changes());
         }
-        let r = pages::disclosure(ui, s.edits, "The edits that go");
+        let r = pages::disclosure(ui, s.edits, tr("The edits that go"));
         control(widgets, "dialog-rebase-edits", &r, ui.clip_rect());
         if r.clicked() {
             s.edits = !s.edits;
@@ -1564,7 +1543,7 @@ fn progress_body(
                 ui.add(Label::new(RichText::new(text.chars().take(16000).collect::<String>()).monospace()).wrap());
             });
             if text.chars().count() > 16000 {
-                pages::callout(ui, AMBER(), "Showing the first 16,000 characters.");
+                pages::callout(ui, AMBER(), tr("Showing the first 16,000 characters."));
             }
         }
     }
@@ -1575,7 +1554,7 @@ fn discarded(ui: &mut Ui, changes: &[(String, bool)]) {
     pages::titled_card(
         ui,
         |ui| {
-            ui.label(RichText::new("Discarded").size(12.0).color(MUTED()).strong());
+            ui.label(RichText::new(tr("Discarded")).size(12.0).color(MUTED()).strong());
         },
         |ui| {
             for (path, conflict) in changes {
@@ -1600,7 +1579,7 @@ fn discarded(ui: &mut Ui, changes: &[(String, bool)]) {
                     job.wrap = text::TextWrapping::truncate_at_width((ui.available_width() - 150.0).max(60.0));
                     ui.label(job);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        ui.label(RichText::new(if conflict { "conflict, not fixed yet" } else { "changed" }).size(12.0).color(HINT()));
+                        ui.label(RichText::new(if conflict { tr("conflict, not fixed yet") } else { tr("changed") }).size(12.0).color(HINT()));
                     });
                 });
             }
@@ -1641,6 +1620,16 @@ fn instruction_color(instruction: RebaseInstruction) -> Color32 {
         RebaseInstruction::Drop => RED(),
     }
 }
+fn instruction_label(instruction: RebaseInstruction) -> &'static str {
+    match instruction {
+        RebaseInstruction::Pick => tr("Pick"),
+        RebaseInstruction::Reword => tr("Reword"),
+        RebaseInstruction::Edit => tr("Edit"),
+        RebaseInstruction::Squash => tr("Squash"),
+        RebaseInstruction::Fixup => tr("Fixup"),
+        RebaseInstruction::Drop => tr("Drop"),
+    }
+}
 /// What Git does after a row: a planned break and/or a shell command.
 fn row_extras(entry: &RebasePlanEntry) -> Vec<(String, Color32)> {
     let mut extras = Vec::new();
@@ -1660,37 +1649,31 @@ fn planned_stop_guidance(stop: &RebaseStop, action: RebaseAction) -> (Color32, S
     if action == RebaseAction::Skip {
         return (
             AMBER(),
-            "Git stopped here as planned, so Skip keeps the commits and discards only the tracked changes made since the stop, then continues the plan.".into(),
+            tr("Git stopped here as planned, so Skip keeps the commits and discards only the tracked changes made since the stop, then continues the plan.").into(),
         );
     }
     match stop {
         RebaseStop::Edit(id) => (
             BLUE(),
-            format!(
-                "Stopped as planned to edit {}. Stage changes to amend them into this commit, or continue with nothing staged to keep it unchanged.",
-                &id.as_str()[..9]
-            ),
+            trf!("Stopped as planned to edit {commit}. Stage changes to amend them into this commit, or continue with nothing staged to keep it unchanged.", commit = &id.as_str()[..9]),
         ),
         RebaseStop::Break => (
             BLUE(),
-            "Paused at a planned break. Inspect or test the result, then continue the plan. Staged changes are refused here; Skip discards them.".into(),
+            tr("Paused at a planned break. Inspect or test the result, then continue the plan. Staged changes are refused here; Skip discards them.").into(),
         ),
         RebaseStop::Command(command) => (
             AMBER(),
-            format!(
-                "Git stopped at the planned command `{}`: it failed or left changes. Continue resumes with the next step and does not run the command again.",
-                command.chars().take(240).collect::<String>()
-            ),
+            trf!("Git stopped at the planned command `{command}`: it failed or left changes. Continue resumes with the next step and does not run the command again.", command = command.chars().take(240).collect::<String>()),
         ),
     }
 }
 fn title(action: RebaseAction) -> &'static str {
     match action {
-        RebaseAction::Start => "Rebase branch",
-        RebaseAction::Interactive => "Interactive rebase",
-        RebaseAction::Continue => "Continue rebase",
-        RebaseAction::Skip => "Skip commit",
-        RebaseAction::Abort => "Abort rebase",
+        RebaseAction::Start => tr("Rebase branch"),
+        RebaseAction::Interactive => crate::i18n::tr("Interactive rebase"),
+        RebaseAction::Continue => crate::i18n::tr("Continue rebase"),
+        RebaseAction::Skip => crate::i18n::tr("Skip commit"),
+        RebaseAction::Abort => crate::i18n::tr("Abort rebase"),
     }
 }
 /// Shared by ordinary rebase and pull-with-rebase; the list is the pinned replay.
@@ -1699,7 +1682,7 @@ pub(crate) fn prediction_ui(ui: &mut Ui, prediction: &CommitPrediction, commits:
     if let Some(commit) = prediction.stopped_at.and_then(|i| commits.get(i)) {
         pages::field(
             ui,
-            "First stop",
+            tr("First stop"),
             &format!(
                 "{} · {}",
                 &commit.id.as_str()[..9],
@@ -1875,7 +1858,7 @@ mod flow_tests {
         let text = |n, merges| super::moves(n, merges, "feature", "main").text;
         assert_eq!(text(3, 0), "3 commits from feature move on top of main. main doesn't change.");
         assert_eq!(text(1, 0), "1 commit from feature moves on top of main. main doesn't change.");
-        assert_eq!(text(4, 1), "4 commits, 1 of them a merge, from feature move on top of main. main doesn't change.");
+        assert_eq!(text(4, 1), "4 commits from feature move on top of main. main doesn't change. Includes 1 merge commit.");
         assert_eq!(super::target_name("refs/heads/main"), "main");
         assert_eq!(super::target_name("origin/main"), "origin/main");
         assert_eq!(super::target_name(&"a".repeat(40)), "aaaaaaa");

@@ -1,5 +1,13 @@
 //! PR reads/reviews stay owned by the global hosting worker across navigation.
 use super::*;
+
+fn review_action_label(action: ForgeReviewAction) -> &'static str {
+    match action {
+        ForgeReviewAction::Comment => tr("Comment"),
+        ForgeReviewAction::Approve => tr("Approve"),
+        ForgeReviewAction::RequestChanges => tr("Request changes"),
+    }
+}
 pub(super) mod inline;
 pub mod merge;
 pub mod threads;
@@ -54,7 +62,7 @@ impl Rocket {
         let same_account = s.drafts.active.as_ref().is_none_or(|scope| s.session.as_ref().is_some_and(|session| scope.matches(session)));
         if s.pull.repository.as_ref() != Some(&repo) || s.pull.number != number || !same_account {
             if s.pull.has_draft() || s.drafts.has_restored() {
-                s.error = Some("A review draft is still open for its original account and PR. Reconnect that account and submit or discard the draft before opening another account's PR.".into());
+                s.error = Some(tr("A review draft is still open for its original account and PR. Reconnect that account and submit or discard the draft before opening another account's PR.").into());
                 s.section = Section::PullDetail;
                 return;
             }
@@ -80,14 +88,14 @@ impl Rocket {
         if !self.gate_pull_write(action) {return;}
         let Some(backend) = self.backend.clone() else {
             self.forge.drafts.write_ahead = None;
-            self.forge.error = Some("The Git backend is unavailable. No PR request was sent.".into());
+            self.forge.error = Some(tr("The Git backend is unavailable. No PR request was sent.").into());
             return;
         };
         let s = &mut self.forge;
         if !s.enabled || s.account_check_only || s.publish_check.is_some() {
             s.drafts.write_ahead = None;
             s.error = Some(
-                "PR details and review submissions are disabled in this restricted window.".into(),
+                tr("PR details and review submissions are disabled in this restricted window.").into(),
             );
             return;
         }
@@ -96,12 +104,12 @@ impl Rocket {
         s.failed = "";
         let task = (|| -> rocket_git::Result<WriteTask<Done>> {
             let session = s.session.clone().ok_or_else(|| {
-                rocket_git::Error::InvalidInput("Connect a hosting account first.".into())
+                rocket_git::Error::InvalidInput(tr("Connect a hosting account first.").into())
             })?;
             match action {
                 "pull-refresh" => {
                     let repo = s.pull.repository.clone().ok_or_else(|| {
-                        rocket_git::Error::InvalidInput("Select a PR first.".into())
+                        rocket_git::Error::InvalidInput(tr("Select a PR first.").into())
                     })?;
                     let number = s.pull.number;
                     s.pull.preview = None;
@@ -117,15 +125,15 @@ impl Rocket {
                     })
                 }
                 "pull-preview" => {
-                    if s.drafts.has_restored() {return Err(Error::InvalidInput("Saved line comments need their original diff or explicit removal before this review can be submitted.".into()));}
+                    if s.drafts.has_restored() {return Err(Error::InvalidInput(tr("Saved line comments need their original diff or explicit removal before this review can be submitted.").into()));}
                     if s.pull.unknown.is_some() || s.pull.merge.unknown.is_some() || s.pull.threads.unknown {
-                        return Err(rocket_git::Error::InvalidInput("Resolve the previous review's uncertain outcome before submitting another review.".into()));
+                        return Err(rocket_git::Error::InvalidInput(tr("Resolve the previous review's uncertain outcome before submitting another review.").into()));
                     }
                     if s.pull.inline_selection.is_some() || s.pull.inline_editing.is_some() {
-                        return Err(Error::InvalidInput("Save or cancel the current line draft before reviewing the submission.".into()));
+                        return Err(Error::InvalidInput(tr("Save or cancel the current line draft before reviewing the submission.").into()));
                     }
                     let details = s.pull.details.clone().ok_or_else(|| {
-                        rocket_git::Error::InvalidInput("Load PR details first.".into())
+                        rocket_git::Error::InvalidInput(tr("Load PR details first.").into())
                     })?;
                     let action = s.pull.action;
                     let body = s.pull.body.clone();
@@ -143,11 +151,11 @@ impl Rocket {
                 "pull-submit" => {
                     if s.pull.unknown.is_some() || s.pull.merge.unknown.is_some() || s.pull.threads.unknown {
                         return Err(rocket_git::Error::InvalidInput(
-                            "Check the previous review's outcome first.".into(),
+                            tr("Check the previous review's outcome first.").into(),
                         ));
                     }
                     let preview = s.pull.preview.clone().ok_or_else(|| {
-                        rocket_git::Error::InvalidInput("Preview this review first.".into())
+                        rocket_git::Error::InvalidInput(tr("Preview this review first.").into())
                     })?;
                     s.pull.submission =
                         Some((preview.repository().clone(), preview.summary().number));
@@ -162,7 +170,7 @@ impl Rocket {
                 }
                 "pull-merge-preview" | "pull-merge-submit" => merge::start(s, &backend, session, action),
                 "pull-threads-refresh" | "pull-thread-preview" | "pull-thread-submit" => threads::start(s,&backend,session,action),
-                _ => Err(rocket_git::Error::InvalidInput("Unknown PR action.".into())),
+                _ => Err(rocket_git::Error::InvalidInput(tr("Unknown PR action.").into())),
             }
         })();
         match task {
@@ -186,7 +194,7 @@ pub(super) fn section(
     // Where this is (back to the list), and the page's own actions.
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 6.0;
-        let r = pages::ghost(ui, !busy, "Pull requests");
+        let r = pages::ghost(ui, !busy, tr("Pull requests"));
         control(widgets, "hosting-pull-back", &r, ui.clip_rect());
         if r.clicked() {
             s.section = Section::Pulls;
@@ -197,14 +205,14 @@ pub(super) fn section(
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             if let Some(details) = &s.pull.details
-                && btn(ui, widgets, "hosting-pull-browser", "Open on provider", true) {
+                && btn(ui, widgets, "hosting-pull-browser", tr("Open on provider"), true) {
                     out.open = Some(details.url());
                 }
             if btn(
                 ui,
                 widgets,
                 "hosting-pull-refresh",
-                "Refresh",
+                tr("Refresh"),
                 !busy && s.session.is_some(),
             ) {
                 out.action = Some("pull-refresh");
@@ -217,27 +225,27 @@ pub(super) fn section(
     if let Some(notice) = &s.notice {
         pages::note(ui, notice);
     }
-    if let Some(error)=&s.drafts.error {pages::callout(ui,RED(),&format!("{error} Open Saved drafts to retry storage after resolving the problem."));} else if s.drafts.saving() {
-        pages::note(ui,"Saving protected draft and recovery");
+    if let Some(error)=&s.drafts.error {pages::callout(ui,RED(),&trf!("{error} Open Saved drafts to retry storage after resolving the problem.", error));} else if s.drafts.saving() {
+        pages::note(ui,tr("Saving protected draft and recovery"));
     }
     if s.drafts.has_restored() {
-        pages::callout(ui,AMBER(),"Saved line comments do not match the loaded revision. Their text is preserved; review it before removing the old locations.");
-        for raw in &s.drafts.restored {ui.label(RichText::new(format!("{} · {} {}–{}",raw.path,raw.side.key(),raw.start,raw.line)).size(12.5).color(MUTED()));ui.add(Label::new(&raw.body).wrap());}
-        if btn(ui,widgets,"hosting-draft-remove-stale","Move saved line comments into review text",!busy){
+        pages::callout(ui,AMBER(),tr("Saved line comments do not match the loaded revision. Their text is preserved; review it before removing the old locations."));
+        for raw in &s.drafts.restored {ui.label(RichText::new(trf!("{path} · {side} lines {start}–{end}",path=raw.path,side=inline::side_label(raw.side),start=raw.start,end=raw.line)).size(12.5).color(MUTED()));ui.add(Label::new(&raw.body).wrap());}
+        if btn(ui,widgets,"hosting-draft-remove-stale",tr("Move saved line comments into review text"),!busy){
             let mut body=s.pull.body.clone();
             for c in &s.drafts.restored {body.push_str(&format!("\n\n{} ({} {}–{}):\n{}",c.path,c.side.key(),c.start,c.line,c.body));}
-            if !s.pull.inline_body.is_empty(){body.push_str(&format!("\n\nUnfinished line comment:\n{}",s.pull.inline_body));}
-            if body.len()>65536{s.error=Some("The combined review text exceeds 64 KiB. Copy or shorten the preserved text first; nothing was removed.".into());}else{s.pull.body=body;s.pull.inline_body.clear();s.drafts.restored.clear();s.drafts.restored_selection=None;s.pull.inline_editing=None;s.pull.inline_selection=None;}
+            if !s.pull.inline_body.is_empty(){body.push_str(&format!("\n\n{}\n{}",tr("Unfinished line comment:"),s.pull.inline_body));}
+            if body.len()>65536{s.error=Some(tr("The combined review text exceeds 64 KiB. Copy or shorten the preserved text first; nothing was removed.").into());}else{s.pull.body=body;s.pull.inline_body.clear();s.drafts.restored.clear();s.drafts.restored_selection=None;s.pull.inline_editing=None;s.pull.inline_selection=None;}
         }
     }
     merge::recovery(ui,s,widgets,busy);
     if let Some((repo, number)) = &s.pull.unknown {
-        pages::callout(ui, AMBER(), &format!("Submission outcome unknown for {} #{number}. Refresh its reviews and inspect the provider before deciding to submit again.", repo.path()));
+        pages::callout(ui, AMBER(), &trf!("Submission outcome unknown for {repository} #{number}. Refresh its reviews and inspect the provider before deciding to submit again.", repository = repo.path(), number));
         if btn(
             ui,
             widgets,
             "hosting-review-acknowledge",
-            "I checked the provider and understand another submit may duplicate the review",
+            tr("I checked the provider and understand another submit may duplicate the review"),
             !busy && s.pull.checked_unknown,
         ) {
             s.pull.unknown = None;
@@ -249,10 +257,10 @@ pub(super) fn section(
         if busy {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label(RichText::new("Loading the pull request").color(MUTED()));
+                ui.label(RichText::new(tr("Loading the pull request")).color(MUTED()));
             });
         } else {
-            pages::empty(ui, "Refresh to load this pull request.");
+            pages::empty(ui, tr("Refresh to load this pull request."));
         }
         return;
     };
@@ -271,18 +279,18 @@ pub(super) fn section(
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
                 let (state, color) = if p.merged {
-                    ("Merged", VIOLET())
+                    (tr("Merged"), VIOLET())
                 } else if p.state == "closed" {
-                    ("Closed", RED())
+                    (tr("Closed"), RED())
                 } else if p.draft {
-                    ("Draft", HINT())
+                    (tr("Draft"), HINT())
                 } else {
-                    ("Open", GREEN())
+                    (tr("Open"), GREEN())
                 };
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().item_spacing.x = 8.0;
                     let open = p.state == "open" && !p.merged;
-                    let r = pages::primary(ui, !busy && open && s.session.is_some() && !s.pull.composing, "Write a review");
+                    let r = pages::primary(ui, !busy && open && s.session.is_some() && !s.pull.composing, tr("Write a review"));
                     control(widgets, "hosting-review-write", &r, ui.clip_rect());
                     if r.clicked() {
                         s.pull.composing = true;
@@ -293,7 +301,7 @@ pub(super) fn section(
                             ui,
                             widgets,
                             "hosting-review-discard",
-                            "Discard draft",
+                            tr("Discard draft"),
                             !busy,
                         )
                     {
@@ -313,21 +321,18 @@ pub(super) fn section(
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 6.0;
                 ui.label(RichText::new(&p.author).strong());
-                ui.label(RichText::new("wants to merge").color(MUTED()));
+                ui.label(RichText::new(tr("wants to merge")).color(MUTED()));
                 chip(ui, &p.source, BLUE());
-                ui.label(RichText::new("into").color(MUTED()));
+                ui.label(RichText::new(tr("Into")).color(MUTED()));
                 chip(ui, &p.target, BLUE());
                 ui.label(RichText::new(format!("· {}", details.repository().path())).color(HINT()));
             });
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                chip(ui, &format!("head {}", &p.head[..12.min(p.head.len())]), TEXT()).on_hover_text(&p.head);
-                chip(ui, &format!("base {}", &p.base[..12.min(p.base.len())]), TEXT()).on_hover_text(&p.base);
+                chip(ui, &trf!("head {commit}", commit = &p.head[..12.min(p.head.len())]), TEXT()).on_hover_text(&p.head);
+                chip(ui, &trf!("base {commit}", commit = &p.base[..12.min(p.base.len())]), TEXT()).on_hover_text(&p.base);
                 if p.counts_available {
-                    ui.label(RichText::new(format!(
-                        "{} commits · {} files · +{} −{}",
-                        p.commits, p.files, p.additions, p.deletions
-                    )).size(12.5).color(MUTED()));
+                    ui.label(RichText::new(trf!("Commits: {commits} · Files: {files} · +{additions} −{deletions}", commits = p.commits, files = p.files, additions = p.additions, deletions = p.deletions)).size(12.5).color(MUTED()));
                 }
                 // Whether the head's checks pass, without opening the Checks tab.
                 if let Some(ci) = s.pull.ci.as_ref().filter(|c| c.commit() == p.head)
@@ -337,10 +342,14 @@ pub(super) fn section(
                     let failed = ci.count(ForgeCheckState::Failed) + ci.count(ForgeCheckState::Cancelled);
                     let running = ci.count(ForgeCheckState::Running) + ci.count(ForgeCheckState::Queued);
                     let text = match state {
-                        ForgeCiState::Failed => format!("{failed} failed check{}{}", if failed == 1 { "" } else { "s" }, if running > 0 { format!(" · {running} running") } else { String::new() }),
-                        ForgeCiState::Running => format!("{running} running"),
-                        ForgeCiState::Passed => "Checks passed".into(),
-                        ForgeCiState::NotChecked => "No checks".into(),
+                        ForgeCiState::Failed => {
+                            let mut label = trn!(failed, "{n} failed check", "{n} failed checks");
+                            if running > 0 { label.push_str(&trf!(" · {running} running", running)); }
+                            label
+                        },
+                        ForgeCiState::Running => trf!("{running} running", running),
+                        ForgeCiState::Passed => tr("Checks passed").into(),
+                        ForgeCiState::NotChecked => tr("No checks").into(),
                     };
                     let color = match state { ForgeCiState::Failed => RED(), ForgeCiState::Running => AMBER(), ForgeCiState::Passed => GREEN(), ForgeCiState::NotChecked => MUTED() };
                     // Room for the mark left of the pill, clear of the counts.
@@ -348,7 +357,7 @@ pub(super) fn section(
                     let r = ui.add(Button::new(RichText::new(text).size(12.0).color(color).strong()).corner_radius(12).stroke(Stroke::new(1.0, color.gamma_multiply(0.45))).fill(color.gamma_multiply(0.08)).min_size(vec2(0.0, 24.0)));
                     crate::ci_checks::paint_mark(ui.painter(), pos2(r.rect.left() - 10.0, r.rect.center().y), state, false);
                     control(widgets, "hosting-checks-pill", &r, ui.clip_rect());
-                    if r.on_hover_text("Open the Checks tab").clicked() {
+                    if r.on_hover_text(tr("Open the Checks tab")).clicked() {
                         s.pull.tab = 5;
                     }
                 }
@@ -373,12 +382,12 @@ pub(super) fn section(
         },
     ];
     let names = [
-        ("hosting-pull-tab-overview", "Overview"),
-        ("hosting-pull-tab-commits", "Commits"),
-        ("hosting-pull-tab-files", "Files"),
-        ("hosting-pull-tab-discussion", "Discussion"),
-        ("hosting-pull-tab-reviews", "Reviews"),
-        ("hosting-pull-tab-checks", "Checks"),
+        ("hosting-pull-tab-overview", tr("Overview")),
+        ("hosting-pull-tab-commits", tr("Commits")),
+        ("hosting-pull-tab-files", tr("Files")),
+        ("hosting-pull-tab-discussion", tr("Discussion")),
+        ("hosting-pull-tab-reviews", tr("Reviews")),
+        ("hosting-pull-tab-checks", tr("Checks")),
     ];
     let items: Vec<pages::TabItem> = names
         .iter()
@@ -392,16 +401,16 @@ pub(super) fn section(
     match s.pull.tab {
         0 => {
             if !p.counts_available {
-                pages::note(ui, "This provider does not report all aggregate counts. See the bounded Commits and Files previews.");
+                pages::note(ui, tr("This provider does not report all aggregate counts. See the bounded Commits and Files previews."));
             }
             pages::well(ui, |ui| {
                 if p.body.is_empty() {
-                    ui.label(RichText::new("No description.").color(HINT()));
+                    ui.label(RichText::new(tr("No description.")).color(HINT()));
                 } else {
                     ui.add(Label::new(&p.body).wrap());
                 }
             });
-            pages::note(ui, "Markdown is shown as text. Remote images and HTML are not loaded.");
+            pages::note(ui, tr("Markdown is shown as text. Remote images and HTML are not loaded."));
         }
         1 => {
             collection_note(ui, &details.commits);
@@ -415,32 +424,29 @@ pub(super) fn section(
         }
         2 => inline::files(ui, &details, s, widgets, busy),
         3 => {
-            ui.strong("Conversation");
+            ui.strong(tr("Conversation"));
             comments(ui, &details.discussion);
-            ui.strong("Inline review comments");
+            ui.strong(tr("Inline review comments"));
             comments(ui, &details.inline_comments);
-            if details.repository().config().provider().is_github(){threads::section(ui,s,widgets,busy,out);}
+            threads::section(ui,s,widgets,busy,out);
         }
         4 => {
             if let Some(r) = &s.pull.submitted {
                 ui.colored_label(
                     GREEN(),
-                    format!(
-                        "Confirmed {} · {}. Refresh to reload the review history.",
-                        if r.id == 0 { "review action".into() } else { format!("submission #{}", r.id) }, r.state
-                    ),
+                    trf!("Confirmed {reference} · {state}. Refresh to reload the review history.", reference = if r.id == 0 { tr("review action").into() } else { trf!("submission #{number}", number = r.id) }, state = r.state),
                 );
             }
             collection_note(ui, &details.reviews);
             for r in &details.reviews.items {
-                let reference = if r.id == 0 { "review action".into() } else { format!("review #{}", r.id) };
+                let reference = if r.id == 0 { tr("review action").into() } else { trf!("review #{number}", number = r.id) };
                 ui.strong(format!("{} · {} · {reference}", r.author, r.state));
                 ui.colored_label(
                     MUTED(),
                     format!(
                         "{} · {}",
                         r.date,
-                        r.commit.as_deref().unwrap_or("No commit reported")
+                        r.commit.as_deref().unwrap_or(tr("No commit reported"))
                     ),
                 );
                 ui.label(&r.body);
@@ -460,32 +466,32 @@ fn composer(
     Frame::new().fill(CARD()).inner_margin(12).corner_radius(8).show(ui, |ui| {
         ui.set_width(ui.available_width());
         if let Some(preview) = &s.pull.preview {
-            ui.strong("Review before sending");
-            ui.label(format!("{} as {} on {} #{}", preview.action().label(), s.session.as_ref().map(|x| x.login()).unwrap_or("Disconnected"), preview.repository().path(), preview.summary().number));
-            ui.add(Label::new(RichText::new(format!("Commit {}", preview.summary().head)).monospace()).wrap());
+            ui.strong(tr("Review before sending"));
+            ui.label(trf!("{action} as {account} on {repository} #{number}", action = review_action_label(preview.action()), account = s.session.as_ref().map(|x| x.login()).unwrap_or(tr("Disconnected")), repository = preview.repository().path(), number = preview.summary().number));
+            ui.add(Label::new(RichText::new(trf!("Commit {commit}", commit = preview.summary().head)).monospace()).wrap());
             ui.label(preview.body());
-            for comment in preview.comments() { ui.label(format!("{} · {} lines {}–{}",comment.path(),comment.side().key(),comment.start_line(),comment.line())); ui.label(comment.body()); }
-            ui.colored_label(MUTED(), "This publishes a review and may notify participants. Rocket rechecks the PR before sending. Preview expires after two minutes.");
+            for comment in preview.comments() { ui.label(trf!("{path} · {side} lines {start}–{end}", path = comment.path(), side = inline::side_label(comment.side()), start = comment.start_line(), end = comment.line())); ui.label(comment.body()); }
+            ui.colored_label(MUTED(), tr("This publishes a review and may notify participants. Rocket rechecks the PR before sending. Preview expires after two minutes."));
             ui.horizontal_wrapped(|ui| {
-                if btn(ui, widgets, "hosting-review-edit", "Back to draft", !busy) { s.pull.preview = None; }
-                if btn(ui, widgets, "hosting-review-submit", "Submit review", !busy && s.pull.unknown.is_none()) { out.action = Some("pull-submit"); }
+                if btn(ui, widgets, "hosting-review-edit", tr("Back to draft"), !busy) { s.pull.preview = None; }
+                if btn(ui, widgets, "hosting-review-submit", tr("Submit review"), !busy && s.pull.unknown.is_none()) { out.action = Some("pull-submit"); }
             });
         } else {
-            ui.strong("Review draft");
+            ui.strong(tr("Review draft"));
             inline::queued(ui,s,widgets,busy);
             ui.horizontal_wrapped(|ui| {
                 for (key, action) in [("comment", ForgeReviewAction::Comment), ("approve", ForgeReviewAction::Approve), ("changes", ForgeReviewAction::RequestChanges)] {
                     let enabled=s.pull.details.as_ref().is_some_and(|d|d.supports_review(action));
-                    let r = ui.add_enabled(!busy&&enabled, Button::selectable(s.pull.action == action, action.label()));
+                    let r = ui.add_enabled(!busy&&enabled, Button::selectable(s.pull.action == action, review_action_label(action)));
                     control(widgets, format!("hosting-review-{key}"), &r, ui.clip_rect());
                     if r.clicked() { s.pull.action = action; }
                 }
             });
             let message_supported=s.pull.details.as_ref().is_some_and(|d|d.review_message_supported(s.pull.action));
-            if !message_supported {ui.colored_label(AMBER(),"This vote cannot include a message. Publish a Comment first or clear the text explicitly. No text will be silently discarded.");}
-            let r = ui.add_enabled(!busy, TextEdit::multiline(&mut s.pull.body).desired_width(f32::INFINITY).desired_rows(4).char_limit(65536).hint_text("Describe your review"));
+            if !message_supported {ui.colored_label(AMBER(),tr("This vote cannot include a message. Publish a Comment first or clear the text explicitly. No text will be silently discarded."));}
+            let r = ui.add_enabled(!busy, TextEdit::multiline(&mut s.pull.body).desired_width(f32::INFINITY).desired_rows(4).char_limit(65536).hint_text(tr("Describe your review")));
             control(widgets, "hosting-review-body", &r, ui.clip_rect());
-            if btn(ui, widgets, "hosting-review-preview", "Review before sending", !busy && s.pull.unknown.is_none()) { out.action = Some("pull-preview"); }
+            if btn(ui, widgets, "hosting-review-preview", tr("Review before sending"), !busy && s.pull.unknown.is_none()) { out.action = Some("pull-preview"); }
         }
     });
 }
@@ -506,9 +512,9 @@ fn checks_tab(ui: &mut Ui, s: &mut super::State, details: &ForgePullDetails, wid
                     let (rect, _) = ui.allocate_exact_size(vec2(18.0, 22.0), Sense::hover());
                     crate::ci_checks::paint_mark(ui.painter(), rect.center(), ci.state(), false);
                     ui.label(RichText::new(crate::ci_checks::summary(&ci)).font(semibold(13.0)));
-                    ui.label(RichText::new(format!("for head {}", &head[..7])).size(12.0).color(HINT()));
+                    ui.label(RichText::new(trf!("for head {commit}", commit = &head[..7])).size(12.0).color(HINT()));
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let r = pages::ghost(ui, true, "Open in browser");
+                        let r = pages::ghost(ui, true, tr("Open in browser"));
                         control(widgets, "hosting-checks-open", &r, ui.clip_rect());
                         if r.clicked() {
                             out.open = Some(crate::ci_checks::browser_url(&ci));
@@ -517,7 +523,7 @@ fn checks_tab(ui: &mut Ui, s: &mut super::State, details: &ForgePullDetails, wid
                         if failed || ci.rerun.is_some() {
                             let r = pages::primary(ui, failed && ci.rerun.is_none() && !reading, crate::ci_checks::rerun_label(provider));
                             let r = match ci.rerun {
-                                Some(why) => r.on_disabled_hover_text(ci_rerun_refusal(why)),
+                                Some(why) => r.on_disabled_hover_text(crate::ci_checks::rerun_refusal(why)),
                                 None => r,
                             };
                             control(widgets, "hosting-checks-rerun", &r, ui.clip_rect());
@@ -528,9 +534,9 @@ fn checks_tab(ui: &mut Ui, s: &mut super::State, details: &ForgePullDetails, wid
                 });
             });
             let hidden = ci.error.map(|e| match (e, &ci.missing) {
-                (ForgeFailure::Forbidden, Some(p)) => format!("Some checks are hidden: this token needs {p}."),
-                (ForgeFailure::Forbidden, None) => "Some checks are hidden: this token can't read them.".to_string(),
-                (other, _) => format!("Some checks couldn't be read ({}).", other.code()),
+                (ForgeFailure::Forbidden, Some(p)) => trf!("Some checks are hidden: this token needs {p}.", p),
+                (ForgeFailure::Forbidden, None) => tr("Some checks are hidden: this token can't read them.").to_string(),
+                (other, _) => trf!("Some checks couldn't be read ({code}).", code = other.code()),
             });
             if let Some(text) = hidden {
                 Frame::new().inner_margin(Margin::symmetric(10, 8)).show(ui, |ui| {
@@ -539,12 +545,12 @@ fn checks_tab(ui: &mut Ui, s: &mut super::State, details: &ForgePullDetails, wid
             }
             if let Some(why) = ci.rerun.filter(|w| *w != ForgeRerunBlock::Unsupported || ci.state() == ForgeCiState::Failed) {
                 Frame::new().inner_margin(Margin { left: 14, right: 10, top: 8, bottom: 2 }).show(ui, |ui| {
-                    ui.label(RichText::new(ci_rerun_refusal(why)).size(12.0).color(HINT()));
+                    ui.label(RichText::new(crate::ci_checks::rerun_refusal(why)).size(12.0).color(HINT()));
                 });
             }
             if ci.checks.is_empty() {
                 Frame::new().inner_margin(14).show(ui, |ui| {
-                    ui.label(RichText::new("No checks ran for this head.").color(HINT()));
+                    ui.label(RichText::new(tr("No checks ran for this head.")).color(HINT()));
                 });
             }
             if let Some(url) = crate::ci_checks::list(ui, &ci.checks, provider, widgets, "hosting-checks", crate::ci_checks::ListStyle::Wide) {
@@ -552,14 +558,14 @@ fn checks_tab(ui: &mut Ui, s: &mut super::State, details: &ForgePullDetails, wid
             }
             if ci.limited {
                 Frame::new().inner_margin(10).show(ui, |ui| {
-                    ui.label(RichText::new(format!("Showing {}: open the head on the host for the rest.", ci.checks.len())).size(12.0).color(HINT()));
+                    ui.label(RichText::new(trf!("Showing {shown}: open the head on the host for the rest.", shown = ci.checks.len())).size(12.0).color(HINT()));
                 });
             }
         });
         return;
     }
     if s.pull.ci_task.is_some() && s.pull.ci_for.as_deref() == Some(head.as_str()) {
-        pages::busy_line(ui, "Reading the head's checks");
+        pages::busy_line(ui, tr("Reading the head's checks"));
         return;
     }
     if let Some(error) = &s.pull.ci_error {
@@ -580,16 +586,16 @@ fn checks_tab(ui: &mut Ui, s: &mut super::State, details: &ForgePullDetails, wid
         for c in [&details.checks, &details.statuses] {
             if let Some(e) = c.error.filter(|e| *e != ForgeFailure::Unsupported) {
                 failed = true;
-                pages::notice_strip(ui, AMBER(), &format!("Some checks couldn't be read: {} ({})", e.guidance(), e.code()), None);
+                pages::notice_strip(ui, AMBER(), &trf!("Some checks couldn't be read: {guidance} ({code})", guidance = e.guidance(), code = e.code()), None);
             }
         }
         // Bitbucket Server has no checks read here: say so rather than show an empty card.
         let unsupported = [&details.checks, &details.statuses].iter().all(|c| c.error == Some(ForgeFailure::Unsupported));
         if all.is_empty() && !failed {
             let words = if provider == ForgeProvider::BitbucketServer && unsupported {
-                "Bitbucket Server doesn't report CI to Rocket. Builds from Jenkins or Bamboo show on the pull request's page."
+                tr("Bitbucket Server doesn't report CI to Rocket. Builds from Jenkins or Bamboo show on the pull request's page.")
             } else {
-                "No checks ran for this head."
+                tr("No checks ran for this head.")
             };
             Frame::new().inner_margin(10).show(ui, |ui| {
                 ui.add(Label::new(RichText::new(words).color(HINT())).wrap());
@@ -609,9 +615,9 @@ fn all_runs(ui: &mut Ui, tab: Option<u64>, branch: &str, widgets: &mut HashMap<S
         return;
     }
     ui.add_space(4.0);
-    let r = ui.add(Label::new(RichText::new(format!("All runs for {branch}")).size(12.5).color(BLUE())).sense(Sense::click()).truncate())
+    let r = ui.add(Label::new(RichText::new(trf!("All runs for {branch}", branch)).size(12.5).color(BLUE())).sense(Sense::click()).truncate())
         .on_hover_cursor(CursorIcon::PointingHand)
-        .on_hover_text("Opens Actions on this branch");
+        .on_hover_text(tr("Opens Actions on this branch"));
     control(widgets, "hosting-checks-all-runs", &r, ui.clip_rect());
     if r.clicked() {
         out.ci_runs = Some(branch.to_owned());
@@ -632,34 +638,34 @@ fn collection_note<T>(ui: &mut Ui, c: &ForgePullCollection<T>) {
     if let Some(e) = c.error {
         ui.colored_label(
             AMBER(),
-            format!("Unavailable: {} — {}", e.code(), e.guidance()),
+            trf!("Unavailable: {code} — {guidance}", code = e.code(), guidance = e.guidance()),
         );
     } else if c.items.is_empty() {
         ui.colored_label(
             MUTED(),
-            "No entries returned. This does not mean checks passed or approval is granted.",
+            tr("No entries returned. This does not mean checks passed or approval is granted."),
         );
     }
     if c.limited {
         ui.colored_label(
             AMBER(),
-            "Partial preview (up to 200 entries). Open the provider for the complete list.",
+            tr("Partial preview (up to 200 entries). Open the provider for the complete list."),
         );
     }
 }
 fn comments(ui: &mut Ui, comments: &ForgePullCollection<ForgePullComment>) {
     collection_note(ui, comments);
     for c in &comments.items {
-        ui.strong(format!("{} · comment #{}", c.author, c.id));
+        ui.strong(trf!("{author} · comment #{number}", author = c.author, number = c.id));
         ui.colored_label(MUTED(), &c.date);
         if let Some(path) = &c.path {
             ui.label(format!(
                 "{path} · {}{}",
                 c.line
-                    .map(|x| format!("line {x}"))
-                    .unwrap_or_else(|| "outdated or file comment".into()),
+                    .map(|x| trf!("line {x}", x))
+                    .unwrap_or_else(|| tr("outdated or file comment").into()),
                 c.reply_to
-                    .map(|x| format!(" · reply to #{x}"))
+                    .map(|x| trf!(" · reply to #{x}", x))
                     .unwrap_or_default()
             ));
         }

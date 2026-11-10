@@ -174,7 +174,7 @@ impl State {
                 Ok(Done::Saved(source, raw)) => {
                     self.saved = source;
                     self.raw = Some(raw);
-                    self.notice = Some("Code saved locally on this device.".into());
+                    self.notice = Some(crate::i18n::tr("Code saved locally on this device.").into());
                     self.save_error = None;
                 }
                 Ok(Done::Ran(source, reset, Outcome::View { node, state })) => {
@@ -186,16 +186,16 @@ impl State {
                     self.state = state;
                     self.last_source = source;
                     self.request = None;
-                    self.notice = Some("Preview ready. No network or repository access.".into());
+                    self.notice = Some(crate::i18n::tr("Preview ready. No network or repository access.").into());
                 }
                 Ok(Done::Ran(_, _, Outcome::Review(r))) => {
                     self.request = Some(json!({"method":r.method,"path":r.path,"body":r.body}));
                     self.notice =
-                        Some("Script requested HTTP. Preview only; nothing was sent.".into());
+                        Some(crate::i18n::tr("Script requested HTTP. Preview only; nothing was sent.").into());
                 }
                 Err(Error::Cancelled) => {
                     self.notice =
-                        Some("Cancelled. Last successful preview and source are retained.".into());
+                        Some(crate::i18n::tr("Cancelled. Last successful preview and source are retained.").into());
                     if self.saving {
                         self.save_error = Some(
                             "playground_cancelled: Save cancelled; retry before closing.".into(),
@@ -325,7 +325,7 @@ fn preview(
     height: f32,
 ) -> Option<integrations::PanelEvent> {
     let stale = s.last_source != s.source && s.node.is_some();
-    panel(ui, "Preview", if stale { "Code changed: run to update" } else { "Interactive" }, |ui| {
+    panel(ui, crate::i18n::tr("Preview"), if stale { crate::i18n::tr("Code changed: run to update") } else { crate::i18n::tr("Interactive") }, |ui| {
         let mut event = None;
         let enabled = !s.running() && s.last_source == s.source;
         let area=ScrollArea::both().id_salt("int-play-preview").max_height(height).auto_shrink([false,false]).show(ui,|ui|{
@@ -338,9 +338,9 @@ fn preview(
                     integrations::render_node(ui, n, &mut panel, enabled);
                 });
             }
-            else {pages::empty(ui,"Write Lua and choose Run. Scripts run in an isolated worker with no files, HTTP, credentials or Git access.");}
+            else {pages::empty(ui,crate::i18n::tr("Write Lua and choose Run. Scripts run in an isolated worker with no files, HTTP, credentials or Git access."));}
             if let Some(request)=&s.request {
-                pages::caption(ui,"Requested HTTP (not sent)");
+                pages::caption(ui,crate::i18n::tr("Requested HTTP (not sent)"));
                 pages::well(ui,|ui|{ui.add(Label::new(RichText::new(serde_json::to_string_pretty(request).unwrap_or_default()).monospace().size(12.0)).wrap());});
             }
         });
@@ -367,8 +367,8 @@ pub fn view(
 ) {
     let idle = !s.running();
     // Header: what this is, and Run as the main action.
-    pages::header(ui, Icon::Console, "Lua playground", "Offline Lua scratchpad · nothing is sent", |ui| {
-        let r = pages::primary(ui, idle && s.loaded, "Run");
+    pages::header(ui, Icon::Console, crate::i18n::tr("Lua playground"), crate::i18n::tr("Offline Lua scratchpad · nothing is sent"), |ui| {
+        let r = pages::primary(ui, idle && s.loaded, crate::i18n::tr("Run"));
         pages::control(widgets, "int-play-run", &r, ui.clip_rect());
         if r.clicked() {
             s.run(backend.clone(), None);
@@ -377,12 +377,12 @@ pub fn view(
             ui,
             widgets,
             "int-play-save",
-            "Save",
+            crate::i18n::tr("Save"),
             idle && s.loaded && writable,
         ) {
             s.save(backend.clone(), directory.clone());
         }
-        let r = pages::ghost(ui, idle, "Reload saved");
+        let r = pages::ghost(ui, idle, crate::i18n::tr("Reload saved"));
         pages::control(widgets, "int-play-reload", &r, ui.clip_rect());
         if r.clicked() {
             if s.dirty() {
@@ -391,7 +391,7 @@ pub fn view(
                 s.load(backend.clone(), directory.clone());
             }
         }
-        let r = pages::ghost(ui, true, "Extensions");
+        let r = pages::ghost(ui, true, crate::i18n::tr("Extensions"));
         pages::control(widgets, "int-play-back", &r, ui.clip_rect());
         if r.clicked() {
             s.open = false;
@@ -409,29 +409,29 @@ pub fn view(
                     ui,
                     widgets,
                     "int-play-cancel",
-                    if s.stopping { "Stopping" } else { "Stop" },
+                    if s.stopping { crate::i18n::tr("Stopping") } else { crate::i18n::tr("Stop") },
                     !s.stopping,
                 ) {
                     s.cancel();
                 }
             }
             if s.dirty() {
-                pages::pill(ui, "Unsaved code", AMBER());
+                pages::pill(ui, crate::i18n::tr("Unsaved code"), AMBER());
             } else {
-                pages::pill(ui, "Saved locally", GREEN());
+                pages::pill(ui, crate::i18n::tr("Saved locally"), GREEN());
             }
             if let Some(n) = &s.notice {
                 ui.add(Label::new(RichText::new(n).size(12.0).color(HINT())).truncate());
             }
         });
         if s.reload_confirm {
-            pages::callout(ui, AMBER(), "Replace this unsaved code with the saved copy?");
+            pages::callout(ui, AMBER(), crate::i18n::tr("Replace this unsaved code with the saved copy?"));
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                if button(ui, widgets, "int-play-reload-cancel", "Keep editing", true) {
+                if button(ui, widgets, "int-play-reload-cancel", crate::i18n::tr("Keep editing"), true) {
                     s.reload_confirm = false;
                 }
-                let r = pages::danger(ui, idle, "Reload and discard edits");
+                let r = pages::danger(ui, idle, crate::i18n::tr("Reload and discard edits"));
                 pages::control(widgets, "int-play-reload-confirm", &r, ui.clip_rect());
                 if r.clicked() {
                     s.reload_confirm = false;
@@ -451,7 +451,7 @@ pub fn view(
             });
             event
         } else {
-            let items = [("Code", s.part == 0), ("Preview", s.part == 1)];
+            let items = [(crate::i18n::tr("Code"), s.part == 0), (crate::i18n::tr("Preview"), s.part == 1)];
             let ids = ["int-play-tab-code".to_owned(), "int-play-tab-preview".to_owned()];
             ui.horizontal(|ui| {
                 if let Some(i) = crate::preferences::choices(ui, widgets, &items, &ids) {

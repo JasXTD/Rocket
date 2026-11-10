@@ -7,6 +7,7 @@ use crate::{
     style::*,
 };
 use eframe::egui::*;
+use crate::i18n::{tr, trf, trn};
 use rocket_git::*;
 use std::{collections::HashMap, sync::Arc};
 
@@ -278,54 +279,54 @@ impl DialogState {
 /// What is checked again and kept lives in the guide.
 const MODES: [(&str, &str, &str); 18] = [
     (
-        "Tracking refs",
-        "Remove stale remote refs",
-        "Remote refs whose branch is gone from the server. Their tips are kept under refs/rocket/remote-prune.",
+        crate::i18n::mark("Tracking refs"),
+        crate::i18n::mark("Remove stale remote refs"),
+        crate::i18n::mark("Remote refs whose branch is gone from the server. Their tips are kept under refs/rocket/remote-prune."),
     ),
     (
-        "Remote branch",
-        "Delete one branch on a remote",
-        "Deletes one branch on the remote, only if its tip is still the one you reviewed. Local branches stay.",
+        crate::i18n::mark("Remote branch"),
+        crate::i18n::mark("Delete one branch on a remote"),
+        crate::i18n::mark("Deletes one branch on the remote, only if its tip is still the one you reviewed. Local branches stay."),
     ),
     (
-        "Rename stash",
-        "Give a stash a clearer name",
-        "Changes the stash name only; its changes and position stay.",
+        crate::i18n::mark("Rename stash"),
+        crate::i18n::mark("Give a stash a clearer name"),
+        crate::i18n::mark("Changes the stash name only; its changes and position stay."),
     ),
     (
-        "Stash + pull",
-        "Save, pull, then reapply",
-        "Saves tracked changes, pulls, then reapplies them with staging restored. The recovery stash is kept.",
+        crate::i18n::mark("Stash + pull"),
+        crate::i18n::mark("Save, pull, then reapply"),
+        crate::i18n::mark("Saves tracked changes, pulls, then reapplies them with staging restored. The recovery stash is kept."),
     ),
     (
-        "Stash + rebase",
-        "Save, rebase, then reapply",
-        "Saves tracked changes, rebases on top of a branch or commit, then reapplies them. The recovery stash is kept.",
+        crate::i18n::mark("Stash + rebase"),
+        crate::i18n::mark("Save, rebase, then reapply"),
+        crate::i18n::mark("Saves tracked changes, rebases on top of a branch or commit, then reapplies them. The recovery stash is kept."),
     ),
     (
-        "LFS cache",
-        "Free space from old LFS objects",
-        "Deletes local LFS objects the remote already has. Current, stashed, recent and unpushed objects stay.",
+        crate::i18n::mark("LFS cache"),
+        crate::i18n::mark("Free space from old LFS objects"),
+        crate::i18n::mark("Deletes local LFS objects the remote already has. Current, stashed, recent and unpushed objects stay."),
     ),
-    ("Sync branch", "Rebase on top of a local base", "Rebases the feature on top of a reviewed local base. Optionally save tracked changes and restore staging afterward. Recovery refs and any saved stash are kept. Fetch separately."),
-    ("Finish branch", "Merge into a local base", "Switches to the reviewed base and integrates the feature. Choose a merge commit or allow fast-forward. A clean checkout is required; both branches stay. Publishing and deletion are separate."),
-    ("Fast-forward branches", "Update several local branches", "Fetch first, then review local upstream tips. Checked-out and diverged branches are blocked. Selected refs update atomically with recovery refs."),
-    ("Rename remote", "Keep URLs and tracking relationships", "Review the new name. Config and tracking tips are backed up before Git renames the remote. No network access."),
-    ("Pop stash", "Apply, then remove on success", "Requires a clean checkout. Conflicts, cancellation or a changed list retain the stash; recovery refs are kept."),
-    ("Clear stashes", "Remove reviewed entries with recovery", "Clears the reviewed stash list after retaining every object under refs/rocket/stash. Working files and staging stay."),
-    ("Update submodules", "Review several clean checkouts", "Enter one submodule path per line. All selections are checked before updates begin; a failure or cancellation stops remaining updates. Review parents and children separately."),
-    ("Stash snapshot", "Save without cleaning local work", "Save staged and working versions separately. Working files and the index stay unchanged; a stash entry and recovery ref are added. Normal files only, up to 256 files / 64 MiB (16 MiB per file)."),
-    ("Ignore tracked files", "Keep local and stop tracking", "Append exact root ignore rules and stage removal of reviewed files. Local copies and unrelated staging stay. Selected staged changes are blocked. The root .gitignore is not staged automatically."),
-    ("Selected stash", "", ""), // mode 15 has its own existing dialog.
-    ("Commit & Push", "Commit, then publish", "Commit only the reviewed staging, then push the new commit normally. Rejection or cancellation keeps the local commit. Upstream settings stay unchanged."),
-    ("Save + switch", "Save, switch, then restore", "Save tracked changes, switch to an existing local branch, then restore staging and working changes. The recovery stash is kept. Untracked and ignored files stay in place; overwriting them is refused."),
+    (crate::i18n::mark("Sync branch"), crate::i18n::mark("Rebase on top of a local base"), crate::i18n::mark("Rebases the feature on top of a reviewed local base. Optionally save tracked changes and restore staging afterward. Recovery refs and any saved stash are kept. Fetch separately.")),
+    (crate::i18n::mark("Finish branch"), crate::i18n::mark("Merge into a local base"), crate::i18n::mark("Switches to the reviewed base and integrates the feature. Choose a merge commit or allow fast-forward. A clean checkout is required; both branches stay. Publishing and deletion are separate.")),
+    (crate::i18n::mark("Fast-forward branches"), crate::i18n::mark("Update several local branches"), crate::i18n::mark("Fetch first, then review local upstream tips. Checked-out and diverged branches are blocked. Selected refs update atomically with recovery refs.")),
+    (crate::i18n::mark("Rename remote"), crate::i18n::mark("Keep URLs and tracking relationships"), crate::i18n::mark("Review the new name. Config and tracking tips are backed up before Git renames the remote. No network access.")),
+    (crate::i18n::mark("Pop stash"), crate::i18n::mark("Apply, then remove on success"), crate::i18n::mark("Requires a clean checkout. Conflicts, cancellation or a changed list retain the stash; recovery refs are kept.")),
+    (crate::i18n::mark("Clear stashes"), crate::i18n::mark("Remove reviewed entries with recovery"), crate::i18n::mark("Clears the reviewed stash list after retaining every object under refs/rocket/stash. Working files and staging stay.")),
+    (crate::i18n::mark("Update submodules"), crate::i18n::mark("Review several clean checkouts"), crate::i18n::mark("Enter one submodule path per line. All selections are checked before updates begin; a failure or cancellation stops remaining updates. Review parents and children separately.")),
+    (crate::i18n::mark("Stash snapshot"), crate::i18n::mark("Save without cleaning local work"), crate::i18n::mark("Save staged and working versions separately. Working files and the index stay unchanged; a stash entry and recovery ref are added. Normal files only, up to 256 files / 64 MiB (16 MiB per file).")),
+    (crate::i18n::mark("Ignore tracked files"), crate::i18n::mark("Keep local and stop tracking"), crate::i18n::mark("Append exact root ignore rules and stage removal of reviewed files. Local copies and unrelated staging stay. Selected staged changes are blocked. The root .gitignore is not staged automatically.")),
+    (crate::i18n::mark("Selected stash"), "", ""), // mode 15 has its own existing dialog.
+    (crate::i18n::mark("Commit & Push"), crate::i18n::mark("Commit, then publish"), crate::i18n::mark("Commit only the reviewed staging, then push the new commit normally. Rejection or cancellation keeps the local commit. Upstream settings stay unchanged.")),
+    (crate::i18n::mark("Save + switch"), crate::i18n::mark("Save, switch, then restore"), crate::i18n::mark("Save tracked changes, switch to an existing local branch, then restore staging and working changes. The recovery stash is kept. Untracked and ignored files stay in place; overwriting them is refused.")),
 ];
 /// The list's groups: what the operations touch.
 const GROUPS: [(&str, &[usize]); 4] = [
-    ("Branches", &[17, 6, 7, 8]),
-    ("Remote", &[16, 0, 1, 9]),
-    ("Saved work", &[13, 2, 3, 4, 10, 11]),
-    ("Storage", &[14, 5,12]),
+    (crate::i18n::mark("Branches"), &[17, 6, 7, 8]),
+    (crate::i18n::mark("Remote"), &[16, 0, 1, 9]),
+    (crate::i18n::mark("Saved work"), &[13, 2, 3, 4, 10, 11]),
+    (crate::i18n::mark("Storage"), &[14, 5,12]),
 ];
 
 impl Rocket {
@@ -372,7 +373,7 @@ impl Rocket {
             && let Some(s)=&mut d.workflow {
             s.mode=if snapshot{13}else{14};
             s.reveal_mode=true;
-            d.first=if snapshot{"Rocket snapshot".into()}else{paths.iter().map(|p|p.display_lossy()).collect::<Vec<_>>().join("\n")};
+            d.first=if snapshot{tr("Rocket snapshot").into()}else{paths.iter().map(|p|p.display_lossy()).collect::<Vec<_>>().join("\n")};
         }
     }
     pub(crate) fn start_workflow_dialog(&mut self) {
@@ -424,14 +425,14 @@ impl Rocket {
             }
             8 => Request::FastForward,
             9 => Request::RenameRemote(remote,d.first.trim().into()),
-            10 => {let Some(entry)=s.stashes.get(s.stash)else{d.error=Some("Choose a stash first.".into());return;};Request::StashControl(StashControl::Pop(entry.clone()))},
+            10 => {let Some(entry)=s.stashes.get(s.stash)else{d.error=Some(tr("Choose a stash first.").into());return;};Request::StashControl(StashControl::Pop(entry.clone()))},
             11 => Request::StashControl(StashControl::Clear),
             12 => {let paths=d.first.lines().filter(|s|!s.trim().is_empty()).map(|s|RepoPath::new(s.trim().as_bytes().to_vec())).collect::<rocket_git::Result<Vec<_>>>();match paths{Ok(paths)=>Request::SubmoduleBatch(paths,self.submodule_fixture_root.clone()),Err(e)=>{d.error=Some(user_error(&e));return;}}},
             0 => Request::Prune(remote),
             1 => Request::Delete(remote, d.first.as_bytes().to_vec()),
             2 => {
                 let Some(entry) = s.stashes.get(s.stash) else {
-                    d.error = Some("Create a stash first, then reopen this dialog.".into());
+                    d.error = Some(tr("Create a stash first, then reopen this dialog.").into());
                     return;
                 };
                 Request::Rename(entry.clone(), d.first.clone())
@@ -464,7 +465,7 @@ impl Rocket {
             saved.task = None;
             match result {
                 Ok(review) if !s.stopping => saved.review = Some(review),
-                Ok(_) | Err(Error::Cancelled) => s.notice = Some("Reading saved changes stopped. Close and reopen to retry.".into()),
+                Ok(_) | Err(Error::Cancelled) => s.notice = Some(tr("Reading saved changes stopped. Close and reopen to retry.").into()),
                 Err(error) => d.error = Some(user_error(&error)),
             }
             s.stopping = false;
@@ -473,7 +474,7 @@ impl Rocket {
             s.task = None;
             let r = if s.stopping { Err(Error::Cancelled) } else { r };
             s.stopping = false;
-            match r {Ok(p)=>{s.preview=Some(Arc::new(p));},Err(Error::Cancelled)=>s.notice=Some(if s.mode==15{"Review cancelled. No saved changes were applied."}else if matches!(s.mode,13|14){"Review cancelled. No snapshot, ignore-rule or index changes were applied."}else{"Review cancelled. No cleanup or integration was applied. A pull review may already have fetched remote refs."}.into()),Err(e)=>d.error=Some(user_error(&e))}
+            match r {Ok(p)=>{s.preview=Some(Arc::new(p));},Err(Error::Cancelled)=>s.notice=Some(if s.mode==15{tr("Review cancelled. No saved changes were applied.")}else if matches!(s.mode,13|14){tr("Review cancelled. No snapshot, ignore-rule or index changes were applied.")}else{tr("Review cancelled. No cleanup or integration was applied. A pull review may already have fetched remote refs.")}.into()),Err(e)=>d.error=Some(user_error(&e))}
         }
     }
     pub(crate) fn finish_workflow_dialog(&mut self, owner: Option<u64>, out: &Outcome) {
@@ -582,11 +583,11 @@ impl Rocket {
                         ui.vertical(|ui| {
                             ui.set_max_width(ui.available_width() - 70.0);
                             ui.spacing_mut().item_spacing.y = 3.0;
-                            ui.label(RichText::new("Branch workflows & cleanup").font(semibold(16.0)));
+                            ui.label(RichText::new(crate::i18n::tr("Branch workflows & cleanup")).font(semibold(16.0)));
                             ui.add(
                                 Label::new(
                                     RichText::new(
-                                        "Sync or finish a branch, manage saved work and clean up refs. Review before applying.",
+                                        tr("Sync or finish a branch, manage saved work and clean up refs. Review before applying."),
                                     )
                                     .color(MUTED()),
                                 )
@@ -595,7 +596,7 @@ impl Rocket {
                         });
                         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                             let x = crate::chrome::icon_button(ui, Icon::Close, !s.applying, false, 28.0)
-                                .on_hover_text("Close (Esc)");
+                                .on_hover_text(crate::i18n::tr("Close (Esc)"));
                             control(widgets, "dialog-close", &x, ui.clip_rect());
                             // Automation's old id for the footer's Close.
                             control(widgets, "dialog-cancel", &x, ui.clip_rect());
@@ -624,7 +625,7 @@ impl Rocket {
                                         ui.horizontal(|ui| {
                                             ui.add_space(10.0);
                                             ui.label(
-                                                RichText::new(group.to_uppercase())
+                                                RichText::new(tr(group).to_uppercase())
                                                     .font(semibold(11.0))
                                                     .color(HINT()),
                                             );
@@ -632,7 +633,7 @@ impl Rocket {
                                         ui.add_space(2.0);
                                         for &i in modes {
                                             let (title, about, _) = MODES[i];
-                                            let r = nav_row(ui, title, if lines { about } else { "" }, s.mode == i);
+                                            let r = nav_row(ui, tr(title), if lines { tr(about) } else { "" }, s.mode == i);
                                             if s.reveal_mode && s.mode==i {r.scroll_to_me(Some(Align::Center));s.reveal_mode=false;}
                                             control(widgets, format!("workflow-mode-{i}"), &r, ui.clip_rect());
                                             if r.clicked() && s.mode != i {
@@ -659,13 +660,13 @@ impl Rocket {
                                     ui.set_width(ui.available_width());
                                     ui.spacing_mut().item_spacing.y = 6.0;
                                     let (title, _, about) = MODES[s.mode.min(MODES.len() - 1)];
-                                    ui.label(RichText::new(title).font(semibold(15.0)));
+                                    ui.label(RichText::new(tr(title)).font(semibold(15.0)));
                                     let size = TextStyle::Body.resolve(ui.style()).size;
-                                    pages::with_guide_link(ui, &[about], size, MUTED(), widgets, "workflow-guide");
+                                    pages::with_guide_link(ui, &[tr(about)], size, MUTED(), widgets, "workflow-guide");
                                     ui.add_space(8.0);
                                     ui.add_enabled_ui(!busy, |ui| {
                                         if matches!(s.mode, 0 | 1 | 5 | 9 | 16) {
-                                            input_label(ui, "Remote");
+                                            input_label(ui, crate::i18n::tr("Remote"));
                                             ui.horizontal_wrapped(|ui| {
                                                 ui.spacing_mut().item_spacing.x = 6.0;
                                                 for (i, name) in d.remotes.iter().enumerate() {
@@ -677,17 +678,17 @@ impl Rocket {
                                                     }
                                                 }
                                                 if d.remotes.is_empty() {
-                                                    ui.label(RichText::new("This repository has no remotes.").color(HINT()));
+                                                    ui.label(RichText::new(tr("This repository has no remotes.")).color(HINT()));
                                                 }
                                             });
                                             ui.add_space(8.0);
                                         }
                                         if matches!(s.mode,2|10) {
-                                            input_label(ui, "Stash");
+                                            input_label(ui, crate::i18n::tr("Stash"));
                                             let shown = s.stashes.len().min(100);
                                             if shown == 0 {
                                                 ui.label(
-                                                    RichText::new("No stashes. Save one first, then open this dialog again.")
+                                                    RichText::new(tr("No stashes. Save one first, then open this dialog again."))
                                                         .color(HINT()),
                                                 );
                                             } else {
@@ -710,11 +711,11 @@ impl Rocket {
                                             ui.add_space(8.0);
                                         }
                                         if s.mode == 3 {
-                                            input_label(ui, "Pull with");
+                                            input_label(ui, tr("Pull with"));
                                             let items = [
-                                                ("Fast-forward only", s.strategy == 0),
-                                                ("Merge", s.strategy == 1),
-                                                ("Rebase", s.strategy == 2),
+                                                (tr("Fast-forward only"), s.strategy == 0),
+                                                (crate::i18n::tr("Merge"), s.strategy == 1),
+                                                (crate::i18n::tr("Rebase"), s.strategy == 2),
                                             ];
                                             let ids: Vec<String> =
                                                 (0..items.len()).map(|i| format!("workflow-strategy-{i}")).collect();
@@ -732,16 +733,16 @@ impl Rocket {
                                             input_label(
                                                 ui,
                                                 match s.mode {
-                                                    16 => "Destination branch on the remote",
-                                                    17 => "Existing local branch to switch to",
-                                                    6 | 7 => "Local base branch (for example main)",
-                                                    9 => "New remote name",
-                                                    12 => "Submodule paths (one per line)",
-                                                    13 => "Snapshot name",
-                                                    14 => "Files or folders to stop tracking (one per line)",
-                                                    1 => "Branch on the remote",
-                                                    2 => "New name",
-                                                    _ => "Target branch or commit",
+                                                    16 => tr("Destination branch on the remote"),
+                                                    17 => tr("Existing local branch to switch to"),
+                                                    6 | 7 => tr("Local base branch (for example main)"),
+                                                    9 => tr("New remote name"),
+                                                    12 => tr("Submodule paths (one per line)"),
+                                                    13 => tr("Snapshot name"),
+                                                    14 => tr("Files or folders to stop tracking (one per line)"),
+                                                    1 => tr("Branch on the remote"),
+                                                    2 => crate::i18n::tr("New name"),
+                                                    _ => tr("Target branch or commit"),
                                                 },
                                             );
                                             let mut edit = (if matches!(s.mode,12|14) {TextEdit::multiline(&mut d.first).desired_rows(4)}else{TextEdit::singleline(&mut d.first)})
@@ -756,23 +757,23 @@ impl Rocket {
                                             ui.add_space(8.0);
                                         }
                                         if s.mode==6 {
-                                            let r=ui.checkbox(&mut s.save_changes,"Save tracked changes and restore after Sync");
+                                            let r=ui.checkbox(&mut s.save_changes,tr("Save tracked changes and restore after Sync"));
                                             control(widgets,"workflow-save-changes",&r,ui.clip_rect());changed|=r.changed();
-                                            if s.save_changes {ui.add(Label::new("Staging is restored and the recovery stash is kept. Untracked and ignored files stay in place; overwriting them is refused.").wrap());}
+                                            if s.save_changes {ui.add(Label::new(tr("Staging is restored and the recovery stash is kept. Untracked and ignored files stay in place; overwriting them is refused.")).wrap());}
                                         }
                                         if s.mode==7 {
-                                            let r=ui.radio_value(&mut s.allow_fast_forward,false,"Always create a merge commit");
+                                            let r=ui.radio_value(&mut s.allow_fast_forward,false,tr("Always create a merge commit"));
                                             control(widgets,"workflow-finish-merge",&r,ui.clip_rect());changed|=r.changed();
-                                            let r=ui.radio_value(&mut s.allow_fast_forward,true,"Allow fast-forward when possible");
+                                            let r=ui.radio_value(&mut s.allow_fast_forward,true,tr("Allow fast-forward when possible"));
                                             control(widgets,"workflow-finish-ff",&r,ui.clip_rect());changed|=r.changed();
                                         }
                                         if s.mode==16 {
-                                            input_label(ui,"Commit message (staged changes only)");
+                                            input_label(ui,tr("Commit message (staged changes only)"));
                                             let r=ui.add(TextEdit::multiline(&mut d.second).desired_rows(3).desired_width(ui.available_width()));
                                             control(widgets,"workflow-message",&r,ui.clip_rect());changed|=r.changed();
                                         }
                                         if s.mode==13 {
-                                            let r=ui.checkbox(&mut s.include_untracked,"Include untracked files");
+                                            let r=ui.checkbox(&mut s.include_untracked,tr("Include untracked files"));
                                             control(widgets,"workflow-untracked",&r,ui.clip_rect());changed|=r.changed();
                                         }
                                     });
@@ -799,27 +800,27 @@ impl Rocket {
                 let ready = !changed && s.preview.is_some();
                 let (working, status) = if s.task.is_some() {
                     let text = if s.stopping {
-                        "Stopping the review"
+                        tr("Stopping the review")
                     } else {
-                        "Reviewing targets and checking the current state"
+                        tr("Reviewing targets and checking the current state")
                     };
                     (true, text.to_owned())
                 } else if s.applying {
                     let progress = write.map(|w| w.progress.clone()).filter(|p| !p.is_empty());
                     let text = if s.stopping {
-                        "Stopping the operation".to_owned()
+                        tr("Stopping the operation").to_owned()
                     } else {
-                        progress.unwrap_or_else(|| "Applying the reviewed operation".to_owned())
+                        progress.unwrap_or_else(|| tr("Applying the reviewed operation").to_owned())
                     };
                     (true, text)
                 } else if ready {
-                    (false, "Reviewed · nothing has changed yet".to_owned())
+                    (false, tr("Reviewed · nothing has changed yet").to_owned())
                 } else if d.error.is_some() {
-                    (false, "Nothing else changes until you review again".to_owned())
+                    (false, tr("Nothing else changes until you review again").to_owned())
                 } else if let Some(label) = &s.applied {
-                    (false, format!("Done · {} finished", lower_first(label)))
+                    (false, trf!("Done · {operation} finished", operation = label))
                 } else {
-                    (false, "Nothing changes until you review and apply.".to_owned())
+                    (false, tr("Nothing changes until you review and apply.").to_owned())
                 };
                 ui.scope_builder(
                     UiBuilder::new()
@@ -829,7 +830,7 @@ impl Rocket {
                         ui.spacing_mut().item_spacing.x = 8.0;
                         // Added right to left: Stop, the operation, Review.
                         if busy {
-                            let r = pages::danger_ghost(ui, !s.stopping, "Stop");
+                            let r = pages::danger_ghost(ui, !s.stopping, crate::i18n::tr("Stop"));
                             control(widgets, "workflow-stop", &r, ui.clip_rect());
                             cancel = r.clicked();
                         } else {
@@ -853,9 +854,9 @@ impl Rocket {
                                 }
                             }
                             let r = if ready {
-                                ui.add_enabled(idle, Button::new("Review again"))
+                                ui.add_enabled(idle, Button::new(tr("Review again")))
                             } else {
-                                pages::primary(ui, idle, "Review")
+                                pages::primary(ui, idle, crate::i18n::tr("Review"))
                             };
                             control(widgets, "workflow-review", &r, ui.clip_rect());
                             review = r.clicked();
@@ -1035,55 +1036,49 @@ fn reviewed(
     busy: bool,
 ) {
     let short = |id: &ObjectId| id.as_str().chars().take(7).collect::<String>();
-    let count = |n: usize, one: &str, many: &str| {
-        if n == 1 { format!("1 {one}") } else { format!("{n} {many}") }
-    };
     let lossy = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
     let (title, meta, note) = match review {
         Review::CommitPush(p) => (
-            format!("Commit {}", count(p.staged_files(),"staged file","staged files")),
+            trn!(p.staged_files(), "Commit {n} staged file", "Commit {n} staged files"),
             format!("{} → {}/{}",lossy(p.branch()),lossy(p.remote()),lossy(p.destination())),
-            format!("Destination: {}\nNormal push only. A rejected or cancelled push keeps the local commit; retry Push separately.",p.destination_display()),
+            trf!("Destination: {destination}\nNormal push only. A rejected or cancelled push keeps the local commit; retry Push separately.", destination = p.destination_display()),
         ),
-        Review::StashSnapshot(p) => ("Save a stash snapshot".into(),format!("{} reviewed paths",p.files().len()),"Working files, staging and checkout are retained. External edits invalidate this review.".into()),
-        Review::IgnoreTracked(p) => ("Keep local and stop tracking".into(),format!("{} reviewed files",p.files().len()),"Stage deletions, keep local files, append .gitignore rules. Index and rule recovery copies are retained.".into()),
-        Review::StashSelection(p) => ("Save selected hunks".into(),format!("{} changed lines",p.selected_count()),"Unselected changes and staging are retained.".into()),
-        Review::StashApply(p) => ("Apply selected saved changes".into(),format!("{} working files",p.files().len()),"The stash and index are retained; file recovery copies are kept.".into()),
-        Review::FastForward(p) => ("Fast-forward selected branches".into(),format!("{} local branches",p.entries().len()),"Only eligible branches can be selected; no checkout or file changes.".into()),
-        Review::RenameRemote(p) => (format!("{} → {}",lossy(&p.remote().name),lossy(p.name())),format!("{} upstream relationships",p.affected_branches().len()),"URLs remain unchanged; config and tracking tips are backed up.".into()),
-        Review::StashControl(p) => (if matches!(p.action(),StashControl::Clear){"Clear reviewed stashes"}else{"Pop selected stash"}.into(),format!("{} entries guarded",p.entries().len()),"Recovery objects are retained. Conflicts or an interrupted pop keep the entry.".into()),
-        Review::SubmoduleBatch(p) => ("Update reviewed submodules".into(),format!("{} checkouts",p.entries().count()),"Stops remaining updates on the first failure or cancellation. Dirty children are refused.".into()),
+        Review::StashSnapshot(p) => (tr("Save a stash snapshot").into(),trn!(p.files().len(), "{n} reviewed path", "{n} reviewed paths"),tr("Working files, staging and checkout are retained. External edits invalidate this review.").into()),
+        Review::IgnoreTracked(p) => (tr("Keep local and stop tracking").into(),trn!(p.files().len(), "{n} reviewed file", "{n} reviewed files"),tr("Stage deletions, keep local files, append .gitignore rules. Index and rule recovery copies are retained.").into()),
+        Review::StashSelection(p) => (tr("Save selected hunks").into(),trn!(p.selected_count(), "{n} changed line", "{n} changed lines"),tr("Unselected changes and staging are retained.").into()),
+        Review::StashApply(p) => (tr("Apply selected saved changes").into(),trn!(p.files().len(), "{n} working file", "{n} working files"),tr("The stash and index are retained; file recovery copies are kept.").into()),
+        Review::FastForward(p) => (tr("Fast-forward selected branches").into(),trn!(p.entries().len(), "{n} local branch", "{n} local branches"),tr("Only eligible branches can be selected; no checkout or file changes.").into()),
+        Review::RenameRemote(p) => (format!("{} → {}",lossy(&p.remote().name),lossy(p.name())),trn!(p.affected_branches().len(), "{n} upstream relationship", "{n} upstream relationships"),tr("URLs remain unchanged; config and tracking tips are backed up.").into()),
+        Review::StashControl(p) => (if matches!(p.action(),StashControl::Clear){tr("Clear reviewed stashes")}else{tr("Pop selected stash")}.into(),trn!(p.entries().len(), "{n} entry guarded", "{n} entries guarded"),tr("Recovery objects are retained. Conflicts or an interrupted pop keep the entry.").into()),
+        Review::SubmoduleBatch(p) => (tr("Update reviewed submodules").into(),trn!(p.entries().count(), "{n} checkout", "{n} checkouts"),tr("Stops remaining updates on the first failure or cancellation. Dirty children are refused.").into()),
         Review::Branch(p) => (
             format!("{} → {}", p.feature(), p.base()),
-            format!("{} commits · feature {} · base {}", p.commits(), short(p.tip()), short(p.base_tip())),
+            trn!(p.commits(), "{n} commit · feature {feature} · base {base}", "{n} commits · feature {feature} · base {base}", feature = short(p.tip()), base = short(p.base_tip())),
             if p.kind() == BranchWorkflowKind::Sync {
-                if p.options().save_changes {format!("Save {} tracked files, sync, then restore staging and edits. Recovery stash retained. Conflicts pause before restore; no fetch or push.",p.saved_changes())}
-                else {"Rewrites feature commits on the local base. Recovery references retained; no fetch or push.".into()}
+                if p.options().save_changes {trn!(p.saved_changes(), "Save {n} tracked file, sync, then restore staging and edits. Recovery stash retained. Conflicts pause before restore; no fetch or push.", "Save {n} tracked files, sync, then restore staging and edits. Recovery stash retained. Conflicts pause before restore; no fetch or push.")}
+                else {tr("Rewrites feature commits on the local base. Recovery references retained; no fetch or push.").into()}
             } else {
-                let action=if p.commits()==0 {"Base already contains this feature."} else if p.options().allow_fast_forward && p.can_fast_forward() {"Base will fast-forward to the feature tip."} else {"A merge commit will be created."};
-                format!("Switch to the base. {action} Both branches and recovery tips remain; conflicts stop for recovery.")
+                let action=if p.commits()==0 {tr("Base already contains this feature.")} else if p.options().allow_fast_forward && p.can_fast_forward() {tr("Base will fast-forward to the feature tip.")} else {tr("A merge commit will be created.")};
+                trf!("Switch to the base. {action} Both branches and recovery tips remain; conflicts stop for recovery.", action = action)
             },
         ),
         Review::Prune(p) => {
             let kept: Vec<String> = p.stale_local_branches().iter().map(|b| lossy(b)).collect();
             let title = match p.obsolete().len() {
-                0 => "No obsolete tracking refs".to_owned(),
-                n => count(n, "obsolete tracking ref", "obsolete tracking refs"),
+                0 => tr("No obsolete tracking refs").to_owned(),
+                n => trn!(n, "{n} obsolete tracking ref", "{n} obsolete tracking refs"),
             };
             let note = match kept.len() {
                 0 => String::new(),
-                1 => format!("Kept: local branch {} has no upstream any more; it is not deleted.", kept[0]),
-                _ => format!(
-                    "Kept: local branches {} have no upstream any more; they are not deleted.",
-                    kept.join(", ")
-                ),
+                1 => trf!("Kept: local branch {branches} has no upstream any more; it is not deleted.", branches = &kept[0]),
+                _ => trf!("Kept: local branches {branches} have no upstream any more; they are not deleted.", branches = kept.join(", ")),
             };
             (title, lossy(p.remote()), note)
         }
         Review::Delete(p) => (
             format!("{}/{}", lossy(p.remote()), lossy(p.branch())),
-            format!("tip {}", short(p.expected())),
-            format!("Deleted only if the remote still points at {}.", short(p.expected())),
+            trf!("tip {commit}", commit = short(p.expected())),
+            trf!("Deleted only if the remote still points at {commit}.", commit = short(p.expected())),
         ),
         Review::Rename(p) => (
             format!("stash@{{{}}} → {}", p.entry().index, p.name()),
@@ -1092,24 +1087,20 @@ fn reviewed(
         ),
         Review::Saved(p) => (
             match p.changed_files() {
-                0 => "No tracked changes to save".to_owned(),
-                n => format!("{} will be saved", count(n, "tracked file", "tracked files")),
+                0 => tr("No tracked changes to save").to_owned(),
+                n => trn!(n, "{n} tracked file will be saved", "{n} tracked files will be saved"),
             },
             format!("{} · {}", p.reference(), short(p.target())),
-            "Untracked files stay in place.".to_owned(),
+            tr("Untracked files stay in place.").to_owned(),
         ),
         Review::Lfs(p) => (
             match p.objects().len() {
-                0 => "No cached objects to remove".to_owned(),
-                n => format!(
-                    "{} · {} to reclaim",
-                    count(n, "object", "objects"),
-                    crate::tree::size(p.bytes() as usize)
-                ),
+                0 => tr("No cached objects to remove").to_owned(),
+                n => trn!(n, "{n} object · {size} to reclaim", "{n} objects · {size} to reclaim", size = crate::tree::size(p.bytes() as usize)),
             },
             p.remote().to_owned(),
             if p.objects().len() > 100 {
-                format!("First 100 of {} shown; the review covers all of them.", p.objects().len())
+                trf!("First 100 of {total} shown; the review covers all of them.", total = p.objects().len())
             } else {
                 String::new()
             },
@@ -1143,12 +1134,12 @@ fn reviewed(
                     if r.changed(){if yes{selected.push(e.branch.clone());}else{selected.retain(|n|n!=&e.branch);}}
                     ui.label(RichText::new(e.blocked.map(str::to_owned).unwrap_or_else(||format!("{} → {}",short(&e.before),e.after.as_ref().map(short).unwrap_or_default()))).size(12.0).color(HINT()));
                 });}},
-                Review::StashSnapshot(p) => {for f in p.files(){card_row(ui,|ui|{ui.label(format!("{} · {}",f.path().display_lossy(),if f.before().is_some(){"local copy kept"}else{"working deletion saved"}));});}},
+                Review::StashSnapshot(p) => {for f in p.files(){card_row(ui,|ui|{ui.label(format!("{} · {}",f.path().display_lossy(),if f.before().is_some(){tr("local copy kept")}else{tr("working deletion saved")}));});}},
                 Review::IgnoreTracked(p) => {
-                    for f in p.files(){card_row(ui,|ui|{ui.label(format!("{} · keep local, stage deletion",f.path().display_lossy()));});}
-                    pages::caption(ui,"Reviewed .gitignore (existing content retained)");
+                    for f in p.files(){card_row(ui,|ui|{ui.label(trf!("{path} · keep local, stage deletion", path = f.path().display_lossy()));});}
+                    pages::caption(ui,tr("Reviewed .gitignore (existing content retained)"));
                     ui.label(RichText::new(String::from_utf8_lossy(p.rules().after()).chars().take(6000).collect::<String>()).monospace());
-                    if p.rules().after().len()>6000{pages::note(ui,"Preview text is capped at 6,000 characters; the complete reviewed file is saved.");}
+                    if p.rules().after().len()>6000{pages::note(ui,tr("Preview text is capped at 6,000 characters; the complete reviewed file is saved."));}
                 },
                 Review::StashControl(p) => {for e in p.entries().iter().filter(|e|matches!(p.action(),StashControl::Clear)||matches!(p.action(),StashControl::Pop(selected) if selected==*e)){card_row(ui,|ui|{ui.label(format!("stash@{{{}}} · {} · {}",e.index,short(&e.id),lossy(&e.subject)));});}},
                 Review::SubmoduleBatch(p) => {for e in p.entries(){card_row(ui,|ui|{ui.label(e.path.display_lossy());});}},
@@ -1223,22 +1214,21 @@ fn card_row(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
 /// The Apply button names the reviewed operation; deletes are red.
 fn apply_label(mode: usize, review: &Review, selected: usize) -> (String, bool) {
     match review {
-        Review::CommitPush(_) => ("Commit & Push".into(),false),
-        Review::Saved(p) if matches!(p.action(),SavedWorkAction::Switch(_)) => ("Save, switch & restore".into(),false),
-        Review::StashSnapshot(_) => ("Save snapshot".into(),false),
-        Review::IgnoreTracked(_) => ("Keep local and stop tracking".into(),false),
-        Review::StashSelection(_) => ("Save selected hunks".into(),false),
-        Review::StashApply(_) => ("Apply selected changes".into(),false),
-        Review::FastForward(_) => (format!("Update {selected} branches"),false),
-        Review::RenameRemote(_) => ("Rename remote".into(),false),
-        Review::StashControl(p) => (if matches!(p.action(),StashControl::Clear){"Clear reviewed stashes"}else{"Pop stash"}.into(),matches!(p.action(),StashControl::Clear)),
-        Review::SubmoduleBatch(_) => ("Update submodules".into(),false),
-        Review::Branch(p) => ((if p.kind() == BranchWorkflowKind::Sync {if p.options().save_changes {"Save, sync & restore"} else {"Sync branch"}} else {"Finish branch"}).into(), false),
+        Review::CommitPush(_) => (crate::i18n::tr("Commit & Push").into(),false),
+        Review::Saved(p) if matches!(p.action(),SavedWorkAction::Switch(_)) => (tr("Save, switch & restore").into(),false),
+        Review::StashSnapshot(_) => (crate::i18n::tr("Save snapshot").into(),false),
+        Review::IgnoreTracked(_) => (tr("Keep local and stop tracking").into(),false),
+        Review::StashSelection(_) => (tr("Save selected hunks").into(),false),
+        Review::StashApply(_) => (crate::i18n::tr("Apply selected changes").into(),false),
+        Review::FastForward(_) => (trn!(selected, "Update {n} branch", "Update {n} branches"),false),
+        Review::RenameRemote(_) => (crate::i18n::tr("Rename remote").into(),false),
+        Review::StashControl(p) => (if matches!(p.action(),StashControl::Clear){tr("Clear reviewed stashes")}else{tr("Pop stash")}.into(),matches!(p.action(),StashControl::Clear)),
+        Review::SubmoduleBatch(_) => (crate::i18n::tr("Update submodules").into(),false),
+        Review::Branch(p) => ((if p.kind() == BranchWorkflowKind::Sync {if p.options().save_changes {tr("Save, sync & restore")} else {crate::i18n::tr("Sync branch")}} else {crate::i18n::tr("Finish branch")}).into(), false),
         Review::Prune(_) => (
             match selected {
-                0 => "Remove tracking refs".to_owned(),
-                1 => "Remove 1 tracking ref".to_owned(),
-                n => format!("Remove {n} tracking refs"),
+                0 => crate::i18n::tr("Remove tracking refs").to_owned(),
+                n => trn!(n, "Remove {n} tracking ref", "Remove {n} tracking refs"),
             },
             false,
         ),
@@ -1250,31 +1240,23 @@ fn apply_label(mode: usize, review: &Review, selected: usize) -> (String, bool) 
             );
             // A long name stays in the review card; the button keeps to one short line.
             let label = if name.chars().count() <= 32 {
-                format!("Delete {name}")
+                trf!("Delete {name}", name = name)
             } else {
-                "Delete remote branch".to_owned()
+                crate::i18n::tr("Delete remote branch").to_owned()
             };
             (label, true)
         }
-        Review::Rename(_) => ("Rename stash".to_owned(), false),
-        Review::Saved(_) if mode == 4 => ("Save, rebase and reapply".to_owned(), false),
-        Review::Saved(_) => ("Save, pull and reapply".to_owned(), false),
+        Review::Rename(_) => (crate::i18n::tr("Rename stash").to_owned(), false),
+        Review::Saved(_) if mode == 4 => (tr("Save, rebase and reapply").to_owned(), false),
+        Review::Saved(_) => (tr("Save, pull and reapply").to_owned(), false),
         Review::Lfs(p) => (
             match p.objects().len() {
-                0 => "Delete objects".to_owned(),
-                1 => "Delete 1 object".to_owned(),
-                n => format!("Delete {n} objects"),
+                0 => tr("Delete objects").to_owned(),
+                n => trn!(n, "Delete {n} object", "Delete {n} objects"),
             },
             true,
         ),
     }
-}
-
-fn lower_first(text: &str) -> String {
-    let mut chars = text.chars();
-    chars
-        .next()
-        .map_or_else(String::new, |c| c.to_lowercase().chain(chars).collect())
 }
 
 #[cfg(test)]

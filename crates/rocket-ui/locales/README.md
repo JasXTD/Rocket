@@ -41,19 +41,24 @@ text to its translation:
   changed placeholders and missing plural forms. English remains the runtime
   fallback for messages without a translation. All built-in catalogs are selectable
   in Preferences → General → Languages; unfinished choices carry a Preview label.
-  Catalog completeness does not prove that every screen uses localization: advanced
-  dialogs, backend diagnostics and embedded guides still contain English. Keep
+  Catalog completeness does not prove that every visible message is localized:
+  backend diagnostics and embedded guides retain their original text. Keep
   `RELEASED` limited to reviewed, fully localized languages. The dropdown initially
   shows the first supported system language (including previews), or English. An
   explicit choice overrides detection and survives restart.
 
-The screen-by-screen work now includes the Git program/identity controls, Terminal
-settings and AI draft settings, plus Linux/macOS spelling and keyring descriptions.
-Program names, paths, arguments, commit identities and AI output-language values are
-data, and are not translated. Lower-level diagnostic details can remain in English.
-Accounts, SSH keys, external tools, custom commands, Security, extensions and MCP
-settings still need the same full-screen pass; a translated navigation label alone
-does not mean that page is complete. Swiss German inherits the German catalog.
+The screen-by-screen pass covers core views and advanced Git workflows, repository
+maps, hosting discussions, recovery, conflict proposals, Accounts, SSH keys,
+external tools, custom commands, Security, extensions and MCP settings. Catalog
+checks cover placeholders and plural forms; rendering and native acceptance cover
+representative screens. All ten languages remain Preview pending broader language
+and layout review. Swiss German inherits the German catalog.
+
+Program names, paths, arguments, commit identities, repository contents and AI
+output-language values are data, and are not translated. Lower-level Git/provider
+diagnostics, extension-authored panels and long guides/license text retain their
+original language. Translate Rocket's controls around them without altering their
+content or machine-readable IDs.
 
 Check with `cargo test -p rocket-ui --lib i18n::`. To list what is untranslated:
 `cargo test -p rocket-ui --lib i18n::tests::untranslated -- --ignored --nocapture`.

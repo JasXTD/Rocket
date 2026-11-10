@@ -72,12 +72,12 @@ impl Export {
                 .extension()
                 .is_some_and(|e| e.eq_ignore_ascii_case("mmd"))
         {
-            self.error = Some("Use a file name ending in .mmd.".into());
+            self.error = Some(tr("Use a file name ending in .mmd.").into());
             return;
         }
         let dir = Path::new(self.dir.trim());
         if !dir.is_absolute() {
-            self.error = Some("Choose a folder with Browse, or type its full path.".into());
+            self.error = Some(tr("Choose a folder with Browse, or type its full path.").into());
             return;
         }
         let path = dir.join(name);
@@ -95,13 +95,13 @@ impl Export {
             self.task = None;
             self.stopping = false;
             match result {
-                Ok(()) => self.notice = Some(format!("Saved {}", self.name.trim())),
-                Err(Error::Cancelled) => self.notice = Some("Stopped. No file was made.".into()),
+                Ok(()) => self.notice = Some(trf!("Saved {name}", name = self.name.trim())),
+                Err(Error::Cancelled) => self.notice = Some(tr("Stopped. No file was made.").into()),
                 Err(Error::Io { source, .. })
                     if source.kind() == std::io::ErrorKind::AlreadyExists =>
                 {
                     self.error = Some(
-                        "That file already exists. Choose another name; nothing was replaced."
+                        tr("That file already exists. Choose another name; nothing was replaced.")
                             .into(),
                     )
                 }
@@ -212,13 +212,15 @@ pub(super) fn dialog(
     widgets: &mut HashMap<String, UiControl>,
 ) {
     let Some(e) = &mut s.export else { return };
-    let noun = if e.nodes == 1 { e.noun.trim_end_matches('s') } else { e.noun };
-    let subtitle = format!(
-        "The {} {noun} and {} {} in view",
-        pages::number_text(e.nodes),
-        pages::number_text(e.links),
-        if e.links == 1 { "link" } else { "links" }
-    );
+    // Translate the full summary, never the machine noun or exported diagram.
+    let nodes = pages::number_text(e.nodes);
+    let links = pages::number_text(e.links);
+    let subtitle = match e.noun {
+        "packages" => trf!("In view: packages {nodes} · links {links}", nodes = nodes, links = links),
+        "folders" => trf!("In view: folders {nodes} · links {links}", nodes = nodes, links = links),
+        "commits" => trf!("In view: commits {nodes} · links {links}", nodes = nodes, links = links),
+        _ => trf!("In view: nodes {nodes} · links {links}", nodes = nodes, links = links),
+    };
     let mut act = Act::default();
     let response = pages::review_at(
         ctx,
@@ -226,7 +228,7 @@ pub(super) fn dialog(
         720.,
         ReviewHeader {
             image: Icon::Map,
-            title: "Export as Mermaid",
+            title: tr("Export as Mermaid"),
             subtitle: &subtitle,
             danger: false,
         },
@@ -245,7 +247,7 @@ pub(super) fn dialog(
     if act.copy {
         ctx.copy_text(e.text.clone());
         e.error = None;
-        e.notice = Some("Copied the Mermaid text".into());
+        e.notice = Some(tr("Copied the Mermaid text").into());
     }
     if act.stop {
         e.stop();
@@ -315,29 +317,29 @@ fn body(ui: &mut Ui, e: &mut Export, widgets: &mut HashMap<String, UiControl>, a
     let busy = e.running();
     let field = (ui.available_width() - 160.).max(120.);
     ui.horizontal(|ui| {
-        ui.add_sized([60., CONTROL], Label::new(RichText::new("Save in").color(HINT())));
+        ui.add_sized([60., CONTROL], Label::new(RichText::new(tr("Save in")).color(HINT())));
         let r = ui.add_enabled(
             !busy,
             TextEdit::singleline(&mut e.dir)
                 .id_salt("map-export-folder")
                 .char_limit(4096)
                 .desired_width(field)
-                .hint_text("Folder"),
+                .hint_text(crate::i18n::tr("Folder")),
         );
         pages::control(widgets, "map-export-folder", &r, ui.clip_rect());
-        let r = ui.add_enabled(!busy, Button::new("Browse"));
+        let r = ui.add_enabled(!busy, Button::new(crate::i18n::tr("Browse")));
         pages::control(widgets, "map-export-browse", &r, ui.clip_rect());
         act.browse |= r.clicked();
     });
     ui.horizontal(|ui| {
-        ui.add_sized([60., CONTROL], Label::new(RichText::new("Name").color(HINT())));
+        ui.add_sized([60., CONTROL], Label::new(RichText::new(crate::i18n::tr("Name")).color(HINT())));
         let r = ui.add_enabled(
             !busy,
             TextEdit::singleline(&mut e.name)
                 .id_salt("map-export-name")
                 .char_limit(255)
                 .desired_width(field)
-                .hint_text("File name.mmd"),
+                .hint_text(tr("File name.mmd")),
         );
         pages::control(widgets, "map-export-name", &r, ui.clip_rect());
     });
@@ -350,21 +352,21 @@ fn body(ui: &mut Ui, e: &mut Export, widgets: &mut HashMap<String, UiControl>, a
 fn footer(ui: &mut Ui, e: &mut Export, widgets: &mut HashMap<String, UiControl>, act: &mut Act) {
     let busy = e.running();
     let ready = !busy && !e.dir.trim().is_empty() && !e.name.trim().is_empty();
-    let r = pages::primary(ui, ready, if busy { "Saving" } else { "Save" });
+    let r = pages::primary(ui, ready, if busy { crate::i18n::tr("Saving") } else { crate::i18n::tr("Save") });
     pages::control(widgets, "map-export-save", &r, ui.clip_rect());
     act.save |= r.clicked();
     if busy {
         let r = ui.add_enabled(
             !e.stopping,
-            Button::new(if e.stopping { "Stopping" } else { "Stop" }),
+            Button::new(if e.stopping { crate::i18n::tr("Stopping") } else { crate::i18n::tr("Stop") }),
         );
         pages::control(widgets, "map-export-stop", &r, ui.clip_rect());
         act.stop |= r.clicked();
     }
-    let r = ui.add_enabled(!busy, Button::new("Copy"));
+    let r = ui.add_enabled(!busy, Button::new(crate::i18n::tr("Copy")));
     pages::control(widgets, "map-export-copy", &r, ui.clip_rect());
     act.copy |= r.clicked();
-    pages::footer_status(ui, busy, "Names and paths only, no file contents");
+    pages::footer_status(ui, busy, tr("Names and paths only, no file contents"));
 }
 
 #[cfg(test)]

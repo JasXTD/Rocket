@@ -16,7 +16,10 @@
   "Changes require an available working tree.": "Les modifications nécessitent une copie de travail disponible.",
   "Checked out at": "Extraite dans",
   "Cherry-pick commit": "Cherry-pick du commit",
-  "Cherry-pick {n} commits": "Cherry-pick de {n} commits",
+  "Cherry-pick {n} commits": {
+    "one": "Cherry-pick de {n} commit",
+    "other": "Cherry-pick de {n} commits"
+  },
   "Choose what the commit search looks at": "Choisir ce que la recherche de commits examine",
   "Clear recent messages": "Effacer les messages récents",
   "Clear the path": "Effacer le chemin",
@@ -27,10 +30,16 @@
   "Collapse merge": "Replier la fusion",
   "Collapse {group}": "Replier {group}",
   "Commit & Push": "Valider et pousser",
-  "Commit & Push {n} staged files": {"one": "Valider et pousser {n} fichier indexé", "other": "Valider et pousser {n} fichiers indexés"},
+  "Commit & Push {n} staged files": {
+    "one": "Valider et pousser {n} fichier indexé",
+    "other": "Valider et pousser {n} fichiers indexés"
+  },
   "Commit date": "Date de commit",
   "Commit template unavailable": "Modèle de commit indisponible",
-  "Commit {n} staged files": {"one": "Valider {n} fichier indexé", "other": "Valider {n} fichiers indexés"},
+  "Commit {n} staged files": {
+    "one": "Valider {n} fichier indexé",
+    "other": "Valider {n} fichiers indexés"
+  },
   "Compare selected commits": "Comparer les commits sélectionnés",
   "Compare with HEAD": "Comparer avec HEAD",
   "Conflict": "Conflit",
@@ -146,7 +155,10 @@
   "Resume continues with older commits.": "Reprendre poursuit avec les commits plus anciens.",
   "Retry Git discovery": "Relancer la détection de Git",
   "Revert commit": "Inverser le commit",
-  "Revert {n} commits": "Inverser {n} commits",
+  "Revert {n} commits": {
+    "one": "Inverser {n} commit",
+    "other": "Inverser {n} commits"
+  },
   "Review an amended latest commit with the staged changes": "Vérifier le dernier commit amendé avec les modifications indexées",
   "Review stopping tracking while keeping the local file. Unstage selected changes first.": "Vérifier l'arrêt du suivi en conservant le fichier local. Désindexez d'abord les modifications sélectionnées.",
   "Save, switch & restore…": "Enregistrer, basculer et restaurer…",
@@ -206,17 +218,41 @@
   "tracks {upstream}": "suit {upstream}",
   "{ahead} ahead · {behind} behind": "{ahead} en avance · {behind} en retard",
   "{checked} commits checked": "{checked} commits examinés",
-  "{found} commits": {"one": "{found} commit", "other": "{found} commits"},
-  "{found} commits · {checked} checked": {"one": "{found} commit · {checked} examinés", "other": "{found} commits · {checked} examinés"},
+  "{found} commits": {
+    "one": "{found} commit",
+    "other": "{found} commits"
+  },
+  "{found} commits · {checked} checked": {
+    "one": "{found} commit · {checked} examinés",
+    "other": "{found} commits · {checked} examinés"
+  },
   "{hidden} commits of this merge are hidden. Click, or press → on the row, to show them.": "Commits masqués de cette fusion : {hidden}. Cliquez, ou appuyez sur → sur la ligne, pour les afficher.",
   "{local} local · {tracking} remote-tracking · on {head}": "Locales : {local} · de suivi : {tracking} · sur {head}",
-  "{n} URLs": {"one": "{n} URL", "other": "{n} URL"},
-  "{n} branches": {"one": "{n} branche", "other": "{n} branches"},
+  "{n} URLs": {
+    "one": "{n} URL",
+    "other": "{n} URL"
+  },
+  "{n} branches": {
+    "one": "{n} branche",
+    "other": "{n} branches"
+  },
   "{n} configured · editing a remote does not contact its server": "Configurés : {n} · modifier un dépôt distant ne contacte pas son serveur",
-  "{n} files": {"one": "{n} fichier", "other": "{n} fichiers"},
-  "{n} files · drop to stage": {"one": "{n} fichier · déposer pour indexer", "other": "{n} fichiers · déposer pour indexer"},
-  "{n} files · drop to unstage": {"one": "{n} fichier · déposer pour désindexer", "other": "{n} fichiers · déposer pour désindexer"},
-  "{n} remote-tracking branches": {"one": "{n} branche de suivi", "other": "{n} branches de suivi"},
+  "{n} files": {
+    "one": "{n} fichier",
+    "other": "{n} fichiers"
+  },
+  "{n} files · drop to stage": {
+    "one": "{n} fichier · déposer pour indexer",
+    "other": "{n} fichiers · déposer pour indexer"
+  },
+  "{n} files · drop to unstage": {
+    "one": "{n} fichier · déposer pour désindexer",
+    "other": "{n} fichiers · déposer pour désindexer"
+  },
+  "{n} remote-tracking branches": {
+    "one": "{n} branche de suivi",
+    "other": "{n} branches de suivi"
+  },
   "{n} selected · drag to the other group": "{n} sélectionnés · faites glisser vers l'autre groupe",
   "{order} order: parents follow their children. All branches combines local and remote-tracking branches, plus HEAD.": "{order} : les parents suivent leurs enfants. « Toutes les branches » réunit les branches locales et de suivi, plus HEAD.",
   "{progress} · current phase {percent}%": "{progress} · phase en cours {percent} %",

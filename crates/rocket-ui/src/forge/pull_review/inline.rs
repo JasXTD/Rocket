@@ -1,6 +1,10 @@
 //! Local review drafts retain the location and revision selected in the diff.
 use super::*;
 
+pub(super) fn side_label(side: ForgeDiffSide) -> &'static str {
+    match side { ForgeDiffSide::Left => tr("Left"), ForgeDiffSide::Right => tr("Right") }
+}
+
 pub struct Selection {
     pub file: usize,
     pub path: String,
@@ -18,33 +22,27 @@ pub(super) fn queued(
     widgets: &mut HashMap<String, UiControl>,
     busy: bool,
 ) {
-    ui.colored_label(MUTED(), "Inline comments are saved on this computer until you submit or discard the review. Select an available diff line to add a comment.");
+    ui.colored_label(MUTED(), tr("Inline comments are saved on this computer until you submit or discard the review. Select an available diff line to add a comment."));
     if s.pull.details.as_ref().is_some_and(|d|d.repository().config().provider()==ForgeProvider::GitLab) {
-        ui.colored_label(MUTED(), "GitLab: send one single-line discussion with Comment and an empty review message. Submit other discussions or votes separately.");
+        ui.colored_label(MUTED(), tr("GitLab: send one single-line discussion with Comment and an empty review message. Submit other discussions or votes separately."));
     } else if s.pull.details.as_ref().is_some_and(|d|d.repository().config().provider()==ForgeProvider::Gitea) {
-        ui.colored_label(MUTED(), "Gitea: up to 32 single-line comments in one reviewed submission.");
+        ui.colored_label(MUTED(), tr("Gitea: up to 32 single-line comments in one reviewed submission."));
     } else if s.pull.details.as_ref().is_some_and(|d|matches!(d.repository().config().provider(),ForgeProvider::Bitbucket|ForgeProvider::BitbucketServer|ForgeProvider::Azure|ForgeProvider::AzureServer)) {
-        ui.colored_label(MUTED(), "Send one single-line comment at a time. Select Comment and leave the separate review message empty. Refresh to see published comments.");
+        ui.colored_label(MUTED(), tr("Send one single-line comment at a time. Select Comment and leave the separate review message empty. Refresh to see published comments."));
         if s.pull.details.as_ref().is_some_and(|d|d.repository().config().provider()==ForgeProvider::Bitbucket) {
-            ui.colored_label(MUTED(), "Bitbucket Cloud cannot pin a comment to a commit. Rocket checks for changes before and after sending; inspect any uncertain result before retrying.");
+            ui.colored_label(MUTED(), tr("Bitbucket Cloud cannot pin a comment to a commit. Rocket checks for changes before and after sending; inspect any uncertain result before retrying."));
         }
     }
     let mut edit = None;
     let mut remove = None;
     for (i, c) in s.pull.comments.iter().enumerate() {
         ui.horizontal_wrapped(|ui| {
-            ui.strong(format!(
-                "{} · {} lines {}–{}",
-                c.path(),
-                c.side().key(),
-                c.start_line(),
-                c.line()
-            ));
+            ui.strong(trf!("{path} · {side} lines {start}–{end}", path = c.path(), side = side_label(c.side()), start = c.start_line(), end = c.line()));
             if btn(
                 ui,
                 widgets,
                 &format!("hosting-inline-edit-{i}"),
-                "Edit",
+                tr("Edit"),
                 !busy,
             ) {
                 edit = Some(i);
@@ -53,7 +51,7 @@ pub(super) fn queued(
                 ui,
                 widgets,
                 &format!("hosting-inline-remove-{i}"),
-                "Remove",
+                tr("Remove"),
                 !busy,
             ) {
                 remove = Some(i);
@@ -65,7 +63,7 @@ pub(super) fn queued(
             .as_ref()
             .is_some_and(|d| d.summary().head != c.head())
         {
-            ui.colored_label(AMBER(), "This comment belongs to an earlier head. Remove it and review the new diff before submitting.");
+            ui.colored_label(AMBER(), tr("This comment belongs to an earlier head. Remove it and review the new diff before submitting."));
         }
     }
     if let Some(i) = remove {
@@ -80,7 +78,7 @@ pub(super) fn queued(
         }
     } else if let Some(i) = edit {
         if !s.pull.inline_body.is_empty() {
-            s.error = Some("Save or cancel the current line draft first.".into());
+            s.error = Some(tr("Save or cancel the current line draft first.").into());
         } else {
             s.pull.inline_body = s.pull.comments[i].body().into();
             s.pull.inline_editing = Some(i);
@@ -131,26 +129,20 @@ pub(super) fn files(
     if s.pull.inline_selection.is_some() || s.pull.inline_editing.is_some() {
         ui.separator();
         if let Some(selection) = &mut s.pull.inline_selection {
-            ui.strong(format!(
-                "Draft · {} · {} lines {}–{}",
-                selection.path,
-                selection.side.key(),
-                selection.start,
-                selection.line
-            ));
+            ui.strong(trf!("Draft · {path} · {side} lines {start}–{end}", path = selection.path, side = side_label(selection.side), start = selection.start, end = selection.line));
             if selection.head != details.summary().head || selection.base != details.summary().base
             {
                 ui.colored_label(
                     AMBER(),
-                    "The PR changed. Cancel this draft and select a line from the refreshed diff.",
+                    tr("The PR changed. Cancel this draft and select a line from the refreshed diff."),
                 );
             }
             if details.supports_inline_ranges() { ui.horizontal_wrapped(|ui| {
-                ui.label("First line");let r=ui.add_enabled(edit,DragValue::new(&mut selection.start).range(1..=u32::MAX as u64));control(widgets,"hosting-inline-start",&r,ui.clip_rect());
-                ui.label("Last line");let r=ui.add_enabled(edit,DragValue::new(&mut selection.line).range(1..=u32::MAX as u64));control(widgets,"hosting-inline-end",&r,ui.clip_rect());
-            }); } else { ui.label(format!("{} line {}",selection.side.key(),selection.line)); }
+                ui.label(tr("First line"));let r=ui.add_enabled(edit,DragValue::new(&mut selection.start).range(1..=u32::MAX as u64));control(widgets,"hosting-inline-start",&r,ui.clip_rect());
+                ui.label(tr("Last line"));let r=ui.add_enabled(edit,DragValue::new(&mut selection.line).range(1..=u32::MAX as u64));control(widgets,"hosting-inline-end",&r,ui.clip_rect());
+            }); } else { ui.label(trf!("{side} line {line}", side = side_label(selection.side), line = selection.line)); }
         } else {
-            ui.strong("Edit queued comment (keeps its original revision)");
+            ui.strong(tr("Edit queued comment (keeps its original revision)"));
         }
         let r = ui.add_enabled(
             edit,
@@ -158,7 +150,7 @@ pub(super) fn files(
                 .desired_width(f32::INFINITY)
                 .desired_rows(3)
                 .char_limit(8192)
-                .hint_text("Comment on the selected line"),
+                .hint_text(tr("Comment on the selected line")),
         );
         control(widgets, "hosting-inline-body", &r, ui.clip_rect());
         ui.horizontal_wrapped(|ui| {
@@ -166,7 +158,7 @@ pub(super) fn files(
                 ui,
                 widgets,
                 "hosting-inline-save",
-                "Save to review draft",
+                tr("Save to review draft"),
                 edit && !s.pull.inline_body.trim().is_empty(),
             ) {
                 let result = if let Some(i) = s.pull.inline_editing {
@@ -175,7 +167,7 @@ pub(super) fn files(
                         .get_mut(i)
                         .ok_or_else(|| {
                             Error::InvalidInput(
-                                "The comment was removed. Select a line again.".into(),
+                                tr("The comment was removed. Select a line again.").into(),
                             )
                         })
                         .and_then(|c| c.edit_body(&s.pull.inline_body))
@@ -190,11 +182,11 @@ pub(super) fn files(
                             .is_none_or(|f| f.path != selection.path)
                     {
                         Err(Error::InvalidInput(
-                            "The diff changed. Cancel this draft and select a line again.".into(),
+                            tr("The diff changed. Cancel this draft and select a line again.").into(),
                         ))
                     } else if s.pull.comments.len() >= details.inline_comment_limit() {
                         Err(Error::InvalidInput(
-                            "This provider's comment limit is reached. Review and submit the current draft before adding another.".into(),
+                            tr("This provider's comment limit is reached. Review and submit the current draft before adding another.").into(),
                         ))
                     } else if s.pull.comments.iter().any(|c| {
                         c.path() == selection.path
@@ -202,7 +194,7 @@ pub(super) fn files(
                             && c.side() == selection.side
                     }) {
                         Err(Error::InvalidInput(
-                            "This line already has a draft comment. Edit that comment instead."
+                            tr("This line already has a draft comment. Edit that comment instead.")
                                 .into(),
                         ))
                     } else {
@@ -217,7 +209,7 @@ pub(super) fn files(
                             .map(|c| s.pull.comments.push(c))
                     }
                 } else {
-                    Err(Error::InvalidInput("Select a diff line first.".into()))
+                    Err(Error::InvalidInput(tr("Select a diff line first.").into()))
                 };
                 match result {
                     Ok(()) => {
@@ -234,7 +226,7 @@ pub(super) fn files(
                 ui,
                 widgets,
                 "hosting-inline-cancel",
-                "Cancel line draft",
+                tr("Cancel line draft"),
                 !busy,
             ) {
                 s.pull.inline_body.clear();
@@ -249,15 +241,15 @@ pub(super) fn files(
     ui.separator();
     ui.strong(&file.path);
     if let Some(previous) = &file.previous {
-        ui.label(format!("Renamed from {previous}"));
+        ui.label(trf!("Renamed from {previous}", previous));
     }
     if details.supports_inline_review() {
-        ui.colored_label(MUTED(), "Left numbers refer to the old file; right numbers refer to the new file. Click a number to comment. This preview never changes local files.");
+        ui.colored_label(MUTED(), tr("Left numbers refer to the old file; right numbers refer to the new file. Click a number to comment. This preview never changes local files."));
     } else {
-        ui.colored_label(AMBER(), "The provider did not supply the revision data needed for inline comments. Refresh the PR or open the complete diff on the provider.");
+        ui.colored_label(AMBER(), tr("The provider did not supply the revision data needed for inline comments. Refresh the PR or open the complete diff on the provider."));
     }
     if file.lines.is_empty() {
-        ui.colored_label(AMBER(), "Inline comments are unavailable for a binary, missing, oversized or incomplete patch. Open the provider for the complete diff.");
+        ui.colored_label(AMBER(), tr("Inline comments are unavailable for a binary, missing, oversized or incomplete patch. Open the provider for the complete diff."));
         if let Some(patch) = &file.patch {
             ui.add(Label::new(RichText::new(patch).monospace()).wrap());
         }
@@ -273,13 +265,13 @@ pub(super) fn files(
                             ui,
                             widgets,
                             &format!("hosting-inline-line-{}-{row}-{key}", s.pull.file),
-                            &format!("{key} {number}"),
+                            &trf!("{side} {number}", side = side_label(side), number),
                             edit,
                         )
                     {
                         // Never silently replace text the user is already writing.
                         if !s.pull.inline_body.is_empty() {
-                            s.error = Some("Save or cancel the current line draft first.".into());
+                            s.error = Some(tr("Save or cancel the current line draft first.").into());
                         } else {
                             s.pull.inline_selection = Some(Selection {
                                 file: s.pull.file,

@@ -1,7 +1,9 @@
 # Changelog
 
-Rocket is currently a development application. Versions describe local builds;
-an entry here does not mean a public installer has been released.
+Published portable packages are listed on [GitHub Releases](https://github.com/JasXTD/Rocket/releases).
+Entries under Unreleased describe pending work. Earlier version entries can also
+describe local development builds; use the linked release notes for published
+package requirements and verification limits.
 
 The shared version in the root `Cargo.toml` is used by all workspace crates,
 the About dialog, MCP server information and diagnostic session records. Update
@@ -32,6 +34,22 @@ keep detailed test evidence in `VALIDATION.md`.
   saved sessions never restart automatically. Worktree removal checks for local
   changes and keeps the branch and recovery reference. No agent installation or
   automatic merge/push. Agent commands retain their normal account permissions.
+- Extend the ten preview translations across advanced settings, hosting, history,
+  conflict, recovery and repository workflow screens. Preserve user content,
+  command arguments and diagnostic codes, with English fallback for untranslated
+  text. Keep long tool-profile, commit destination and map navigation labels
+  inside their layouts. Document the language selector and supported languages
+  in the README.
+- Add reviewed discussion replies and resolution for GitLab, Bitbucket Cloud and
+  Server/Data Center, and Azure DevOps Services and Server. Add Gitea review-comment
+  resolution; its stable API does not provide thread replies. Recheck PR revisions
+  and complete threads, confirm writes by readback and preserve uncertain outcomes.
+- Harden the bundled Jira extension's required-field and paginated creation
+  metadata handling against the documented Cloud v3 contract. Live Jira acceptance
+  still requires an account.
+- Reconcile 93 stale Unreleased sections with verified published source: group them
+  under 0.92.1/0.92.2 while preserving their descriptions. Earlier development
+  entries are not separate published portable releases.
 
 ## 0.92.2 — Language preferences and hosting reviews
 
@@ -83,6 +101,42 @@ workflows and inline reviews across the supported hosting adapters. See
 - Saved theme, Clay mode, language and zoom are applied before the first visible
   frame instead of waiting for Git discovery. Draft loading remains asynchronous;
   early presentation changes are preserved when startup finishes.
+
+### Earlier development notes included in 0.92.2
+
+The following notes were already present in the published 0.92.2 source. They
+are grouped here to correct their old Unreleased labels; this does not assign
+a new first-release date to features from earlier local builds. Platform preview
+labels and outstanding live-service acceptance limits still apply.
+
+### Interface languages (groundwork)
+
+- Rocket can show its interface in German, Swiss German, French, Swedish, Russian,
+  Ukrainian, Arabic, Simplified Chinese, Japanese and Korean. For now that covers the
+  menus, sidebar, toolbar, status bar, Changes, Commits, Branches, Remotes, the diff view
+  and Preferences → General and Appearance; the rest stays English until it is
+  translated. These languages are now selectable previews in Preferences → General
+  → Language, each by its own name, and switch at once. `ROCKET_LANG=<tag>` remains
+  available as a developer launch override; it is no longer needed for the selector.
+- Once released, Rocket follows the Windows display language. Swiss and Liechtenstein
+  German show German written with ss for ß, Swiss French shows French, and Traditional
+  Chinese, Italian and every other language show English. On Linux the locale variables
+  decide.
+- Counts read correctly in every language: Russian and Ukrainian have three forms
+  ("1 файл", "2 файла", "5 файлов") and Arabic six, by the CLDR plural rules.
+- Arabic reads right to left with Latin words and numbers in their own order, through a
+  modified epaint in `vendor/epaint` (the change Download Engine ships; it adds 20 ICU4X
+  and helper crates, see DEPENDENCIES.md). Rocket's layout is not mirrored, and text
+  fields' cursors are not direction-aware.
+- Chinese, Japanese and Korean draw some characters in different forms. A Japanese
+  interface now puts Yu Gothic UI first and a Korean one Malgun Gothic, and so does any
+  other interface on a Windows whose languages list Japanese or Korean before Chinese,
+  so commit messages and file names read in their own forms. Japanese text now uses Yu
+  Gothic UI, the face Windows pairs with Segoe UI, instead of Yu Gothic, whose kana sat
+  apart and above the line.
+- Git's own output, repository content, shortcut names, logs and the MCP and command-line
+  interfaces stay English. Saved state gains version 27, written only once a language is
+  picked; older builds refuse that state, as with other new settings.
 
 ## 0.92.1 — Apple Silicon preview and desktop fixes
 
@@ -175,7 +229,14 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   checks join their workers and release partial handles before returning.
 - Record directory inventory and file hashing durations separately in diagnostics.
 
-## Unreleased — Linux CJK fonts and configurable secret-scan budget
+### Earlier development notes included in 0.92.1
+
+The following notes were already present in the published 0.92.1 source. They
+are grouped here to correct their old Unreleased labels; this does not assign
+a new first-release date to features from earlier local builds. Platform preview
+labels and outstanding live-service acceptance limits still apply.
+
+### Linux CJK fonts and configurable secret-scan budget
 
 - Linux UI builds embed the verified Noto Sans CJK Regular 2.004 fallback for
   Chinese, Japanese and Korean text, including code editors on systems without
@@ -189,7 +250,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   setting. Custom budgets use state format v28; older apps refuse that state
   instead of silently dropping the policy. CLI clients use the default separately.
 
-## Unreleased — Linux storage and preview security
+### Linux storage and preview security
 
 - Refuse unsafe existing state directories, links and replaceable parent folders;
   create missing storage privately and report failures without a temporary fallback
@@ -199,7 +260,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
 - Keep previews owned by another running process during cleanup on Linux. A real
   Unix lock remains held through deletion and is released by process exit/crash.
 
-## Unreleased — Hosting and extension requests on Linux (preview)
+### Hosting and extension requests on Linux (preview)
 
 - GitHub sign-in and reads, the other hosting services and the Lua extensions' web
   requests work on Linux. Rocket looked only for Windows' `curl.exe` there before, so
@@ -212,7 +273,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   Linux ignores `SystemRoot`, `PATH` and a curl beside Git. The extension request tests,
   which failed on Linux, now pass there.
 
-## Unreleased — App updates on Linux (preview)
+### App updates on Linux (preview)
 
 - App updates check, download and install on Linux x86_64, as on Windows. Linux looks
   for `Rocket-<version>-linux-x64.tar.gz` in the release; it was offered the Windows ZIP
@@ -233,7 +294,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
 - Linux release packaging stops on archive creation or listing errors, preserving
   the candidate for inspection instead of reporting an invalid archive as complete.
 
-## Unreleased — Lua extensions on Linux (preview)
+### Lua extensions on Linux (preview)
 
 - Lua extensions, the Lua playground and Lua validation run on Linux x86_64. As on
   Windows, every run uses the hash-bound worker. On Linux it runs from a sealed copy in
@@ -262,7 +323,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
 - For developers: `IntegrationWorker::check_isolation` is now `enter_isolation`. On
   Linux it locks the calling process down, so only the worker's entry point calls it.
 
-## Unreleased — Linux MCP terminal tests (preview)
+### Linux MCP terminal tests (preview)
 
 - MCP accepts fixed bash probes in the terminal on Linux, where an MCP window runs bash, as
   it accepts fixed PowerShell probes on Windows. The probes are exact strings; any other
@@ -286,7 +347,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   answers during the hold, that Stop ends the held Git before real Git starts, and that the
   commit doesn't land.
 
-## Unreleased — Linux dependency checks, automatic bisect and LFS cache cleanup (preview)
+### Linux dependency checks, automatic bisect and LFS cache cleanup (preview)
 
 - Dependency checks work on Linux with OSV-Scanner 2.7.0 for Linux x64. Rocket pins its
   SHA-256 as it pins the Windows binary's, and checks it before every scan. Choose the file
@@ -304,7 +365,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
 - The LFS cache cleanup tests moved to `crates/rocket-git/tests/lfs_prune.rs`, which runs
   on Windows and Linux.
 
-## Unreleased — Linux terminal, SSH keys, tokens, MCP and spell check (preview)
+### Linux terminal, SSH keys, tokens, MCP and spell check (preview)
 
 - The integrated terminal works on Linux on its own pseudoterminal. The shell leads a new
   session with the terminal as its controlling terminal, so job control, Ctrl+C and
@@ -341,36 +402,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   that includes spellbook's MPL-2.0 license and where its source is, and there is no
   ConPTY runtime section.
 
-## Unreleased — Interface languages (groundwork)
-
-- Rocket can show its interface in German, Swiss German, French, Swedish, Russian,
-  Ukrainian, Arabic, Simplified Chinese, Japanese and Korean. For now that covers the
-  menus, sidebar, toolbar, status bar, Changes, Commits, Branches, Remotes, the diff view
-  and Preferences → General and Appearance; the rest stays English until it is
-  translated. These languages are now selectable previews in Preferences → General
-  → Language, each by its own name, and switch at once. `ROCKET_LANG=<tag>` remains
-  available as a developer launch override; it is no longer needed for the selector.
-- Once released, Rocket follows the Windows display language. Swiss and Liechtenstein
-  German show German written with ss for ß, Swiss French shows French, and Traditional
-  Chinese, Italian and every other language show English. On Linux the locale variables
-  decide.
-- Counts read correctly in every language: Russian and Ukrainian have three forms
-  ("1 файл", "2 файла", "5 файлов") and Arabic six, by the CLDR plural rules.
-- Arabic reads right to left with Latin words and numbers in their own order, through a
-  modified epaint in `vendor/epaint` (the change Download Engine ships; it adds 20 ICU4X
-  and helper crates, see DEPENDENCIES.md). Rocket's layout is not mirrored, and text
-  fields' cursors are not direction-aware.
-- Chinese, Japanese and Korean draw some characters in different forms. A Japanese
-  interface now puts Yu Gothic UI first and a Korean one Malgun Gothic, and so does any
-  other interface on a Windows whose languages list Japanese or Korean before Chinese,
-  so commit messages and file names read in their own forms. Japanese text now uses Yu
-  Gothic UI, the face Windows pairs with Segoe UI, instead of Yu Gothic, whose kana sat
-  apart and above the line.
-- Git's own output, repository content, shortcut names, logs and the MCP and command-line
-  interfaces stay English. Saved state gains version 27, written only once a language is
-  picked; older builds refuse that state, as with other new settings.
-
-## Unreleased — Linux everyday Git (preview)
+### Linux everyday Git (preview)
 
 - New repository, Clone, new and moved worktrees, the conflict editor's Save and Keep,
   Discard, Restore and Recover, ignore-rule and LFS tracking-rule edits, patch files and
@@ -394,7 +426,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
 - A clone from a local folder that is not a repository now reports Repository unavailable
   on Linux too; Git words that refusal differently for paths without a drive letter.
 
-## Unreleased — Clay, the new default theme
+### Clay, the new default theme
 
 - Clay is the new default theme, in Claude Code's colours: warm charcoal surfaces, cream
   text and a coral accent (#D97757), with Claude Code's own diff greens and reds; in light
@@ -409,7 +441,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   in use (a Clay mode or a Custom theme from a Clay palette); those older builds then
   refuse the saved state, as with other newer settings.
 
-## Unreleased — Linux build (preview)
+### Linux build (preview)
 
 - Rocket builds and opens on Linux under X11 or Wayland. It was checked under WSL2 Ubuntu
   26.04 with WSLg, where opening a repository, history, diffs, staging, committing and
@@ -431,7 +463,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
 - Cargo.lock adds ten Linux-only packages for winit's X11 and Wayland backends, and the
   Windows build is unchanged. See DEPENDENCIES.md.
 
-## Unreleased — Branch switcher and diff header
+### Branch switcher and diff header
 
 - The toolbar's branch list opens with a filter focused. The current branch comes first
   with a current tag, then local branches newest first, each with when it last changed and
@@ -450,7 +482,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   ↑ ↓ and × inside. Narrower panes use two rows; under 440 px Side by side reads Split
   and Words moves into the ··· menu. Stage, Stash and Discard selected get their own row.
 
-## Unreleased — SSH and Preview security; clone example
+### SSH and Preview security; clone example
 
 - Direct SSH validates the complete remote command: one supported Git service
   and one quoted repository path, or a supported LFS upload/download request.
@@ -463,7 +495,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
 - The `inspect clone` example handles file-download progress again, fixing the
   non-exhaustive match that prevented examples/all-target checks from compiling.
 
-## Unreleased — Explore other repositories
+### Explore other repositories
 
 - File → Explore Repositories (Ctrl+Shift+E, also on the + beside the tabs, in the command
   palette and on the welcome screen) searches GitHub's repositories: owner and name, stars,
@@ -503,7 +535,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   only from local fixture sources; `rocket-preview-limit` lowers the limit. Runner:
   tools/tests/test-mcp-explore.cjs.
 
-## Unreleased — Actions page
+### Actions page
 
 - **Actions** in the sidebar, after AI review, lists the repository's CI runs from
   its host, newest first: every workflow, branch, pull request and schedule, on
@@ -529,11 +561,11 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   run runs. New request names `hosting-ci-runs` and `hosting-ci-run`. Token
   permissions: GitHub Actions Read, GitLab `read_api`, Gitea `read:repository`,
   Bitbucket `read:pipeline:bitbucket`, Azure Build (Read); see
-  [HOSTING.md](HOSTING.md#actions-page-unreleased).
+  [HOSTING.md](HOSTING.md#actions-page).
 - Checked against provider-shaped mock services and the native `test-mcp-actions`
   runner only; no live host has been accepted end to end.
 
-## Unreleased — AI review, redesigned
+### AI review, redesigned
 
 - AI review has the frame of Compare: Base and Target fields with the branch list inside,
   Swap, Read again, one result line, and the main button at the top right (Send to Claude
@@ -558,7 +590,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
 - MCP: `review-program`, `review-prepare`, `review-show-preview` and `review-show-result` are
   gone; see UI.md for the new ids and `branch_review` state fields.
 
-## Unreleased — A taller commit message and even toolbar rows
+### A taller commit message and even toolbar rows
 
 - The commit description in Changes was 36 px, two lines, at every window size. It
   now opens at 7 lines (4 in a short window), grows with the text up to 12, then
@@ -574,7 +606,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   `map-revision` (the box), `map-revision-head`, `map-revision-branch-{i}`;
   `commit-resize` is the commit message handle.
 
-## Unreleased — Direct SSH key authentication
+### Direct SSH key authentication
 
 - SSH key selection remains available alongside Windows agent and Direct key
   authentication. Direct mode uses the chosen repository profile without adding
@@ -585,14 +617,14 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   answers host-trust or account-password prompts. No existing keys or main SSH
   configuration are changed. The portable bundle now includes rocket-ssh.exe.
 
-## Unreleased — Summary no longer says Refreshing forever
+### Summary no longer says Refreshing forever
 
 - Summary's "Refreshing; the numbers below may be out of date." stayed on, with its
   spinner, after any automatic refresh had finished, because the tab still marked its
   last refresh as a background one. It now shows only while a refresh is queued or
   running. MCP state reports it as `summary.refreshing`.
 
-## Unreleased — Code search in the CLI
+### Code search in the CLI
 
 - `rocket-cli search TEXT --kind content` takes `--regex` (`git log -G`), `--match-case`
   and `--path PATH`, as Changed code does in Commits; text and path searches refuse
@@ -604,7 +636,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   plain output prints `path:line: preview`.
 - An expression Git can't read fails with `invalid_pattern` and Git's reason.
 
-## Unreleased — Find code in history and files
+### Find code in history and files
 
 - The commit search's Content kind is now **Changed code**: exact text still uses
   `git log -S`; **.\*** switches to a POSIX extended regular expression (`git log -G`),
@@ -626,7 +658,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   `search_file` and `ContentMatch`; `HistorySearchStart::Query` and the cursor carry it.
 
 
-## Unreleased — Repository map, Scan folder and Crash reports redesign
+### Repository map, Scan folder and Crash reports redesign
 
 - **Repository map** has a header with the snapshot it shows, and opens each view on
   its most readable form. Code: **Packages** in dependency layers (what a package uses
@@ -656,7 +688,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   `map-export-folder`, `map-export-name`, `crash-export-folder` and `crash-export-name`
   replace `map-export-path` and `crash-export-path`.
 
-## Unreleased — CI status on commits and branches
+### CI status on commits and branches
 
 - Commits and the sidebar show a CI mark beside each pushed commit and branch:
   passed, failed, running or not checked, for GitHub, GitHub Enterprise Server,
@@ -683,10 +715,10 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   GitLab `read_api` (retry: `api` and Developer); Gitea `read:repository`
   (`write:repository`); Bitbucket `read:repository:bitbucket` and
   `read:pipeline:bitbucket`; Azure Code (Read) and Build (Read). See
-  [HOSTING.md](HOSTING.md#ci-status-on-commits-and-branches-unreleased).
+  [HOSTING.md](HOSTING.md#ci-status-on-commits-and-branches).
 - Checked against provider-shaped mock services and the native
   `test-mcp-ci-checks` runner only; no live host has been accepted end to end.
-## Unreleased — Repository status, Fetch all and Pull all
+### Repository status, Fetch all and Pull all
 
 - **File → Repository manager** shows each saved repository's branch, uncommitted
   changes and where it stands against its upstream (↑ to push, ↓ to pull, both when
@@ -705,7 +737,7 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   for those. New rocket-git `Repository::summary` is the one bounded per-repository
   read, meant to be shared with Scan folder. MCP state adds `repository_manager.status`.
 
-## Unreleased — Jira scoped API tokens
+### Jira scoped API tokens
 
 - Bundled Jira 1.3.0 adds **Cloud ID for scoped tokens** to its connection settings.
   With it set, every read, write and pre-write check goes through Atlassian's gateway
@@ -715,6 +747,1033 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   still accepts only a hostname as a connection's server; no API 1 change.
 - Installed Jira 1.2.0 offers **Update to** 1.3.0 through the usual review. Checked
   against the existing mock services only, not a live Jira site.
+
+### Dependency scanner setup
+
+- Security now guides first-run users through choosing the reviewed OSV-Scanner
+  and downloading public advisory data for the open repository. Scanner choices
+  persist per profile; OSV remains an optional, separately obtained executable.
+- Unreviewed, missing or changed scanners are refused. Failed/cancelled choices
+  preserve the prior selection, and another window's change requires reloading.
+- Fresh profiles show when scanner setup is required. Local caches remain separate
+  for each user. With warnings enabled, an advisory download is followed by an
+  offline scan.
+
+### Password detection
+
+- Secret protection now checks quoted passwords beginning with `$` or `%` and
+  passwords containing punctuation such as `:`, brackets and escaped quotes.
+  These literals could previously pass both commit and push checks.
+- Complete environment/template placeholders remain accepted. Prefixes alone
+  and placeholders with appended literal material no longer exempt a quoted
+  password from the existing credential checks.
+
+### Commit link dialog
+
+- Clearer destination cards and a full, wrapped link preview. Copy link and Open
+  in browser remain visible; custom remote/server settings are under Link options.
+- Compact windows scroll the body while keeping Close and the footer reachable.
+  Correcting settings clears stale errors and destinations before a fresh read.
+- Local link generation, explicit remote selection and cancellation remain intact.
+
+### Rebase stopped after its branch moved
+
+- A rebase whose branch has moved from its saved tip now says so in the paused banner
+  and asks you to finish it with Git. It used to say "stopped as planned" and offer
+  Continue, which the review then refused. This covers Stop landing after the branch
+  moved and another client moving the branch during a pause. Continue, Skip and Abort
+  are still refused the same way, and history and the recovery reference are untouched.
+
+### Pull preparation
+
+- Pull preparation avoids duplicate checkout reads and combines upstream/remote
+  configuration reads at each checkpoint. Reviews still recheck live state after
+  calculation and again under the write lock before applying. Included config,
+  hidden index flags, cancellation and stale targets remain guarded.
+- Diagnostics separate ancestry calculation from the surrounding pull checks.
+
+### Refresh timing diagnostics
+
+- Activity details now separate bundled Git verification from process startup and
+  execution, making remaining refresh delays easier to locate. Timing labels wrap
+  inside narrow cards. Verification checks and fallback scans remain enabled.
+
+### Revert, Cherry-pick and Abort import screens
+
+- Revert and Cherry-pick are in a commit's right-click menu, for one commit or a
+  selection.
+- Their reviews show the commit, a small picture of what happens to your branch and a
+  colored diff of what the new commit changes, instead of a raw patch and a full ID.
+  Several commits show as a list beside each commit's own change.
+- Reverting a merge opens already reviewed, on the side it merged into, and names both
+  sides by commit. It used to open on a red error and two raw IDs.
+- A stopped revert or cherry-pick gets the same banner as a rebase: which commit, what
+  to do next, Continue and Abort, and Skip when commits come after it. Skip is gone
+  from a single commit, where Abort does the same. It's marked paused, not failed, in
+  Activity and opens its first conflict, and Continue revert or Continue cherry-pick
+  takes over the main button in Changes once your fix is staged.
+- Continue, Skip and Abort of a revert or cherry-pick show the same steps as an import,
+  with your fix or the edits that go as a colored diff.
+- Abort import lists every patch: what comes off, where it stopped and what never
+  arrived. Skip patch and Abort import can show the edits that go.
+- If you commit a fix by hand partway through several commits, Continue counts it as
+  done and Abort says it will leave your branch where it is, which is what Git does.
+- Reverting changes that are already gone says Nothing to undo instead of failing.
+- These refusals read in plain words. Error codes stay in Activity details and the MCP
+  dialog state. Activity says what finished, such as Reverted 3 commits on feature.
+
+### Commit series and rebase screens
+
+- Rebase's Onto is now On top of, beside a read-only From that names your branch, so
+  the dialog says what moves and what stays. The same word replaces Commits after,
+  Destination, base and rebasing onto in interactive rebase, the paused reviews, the
+  sidebar menu, branch drops, Sync, Stash + rebase, Pull and the conflict editor.
+  `rocket-cli`'s `--expect-onto` and its `onto` JSON key are unchanged.
+- Export Commit Series has its own row in Repository → Patches, a palette entry and a
+  right-click on commits. Its range is First to Last, both included, picked from
+  lists; it used to be an excluded commit and a typed tip. It can't start at a
+  repository's first commit, as before.
+- Import Commit Series is in the palette. Both dialogs show each commit beside its
+  colored diff instead of raw mail text, with a Browse button for the folder.
+- A paused rebase or import says which commit or patch it stopped at and what to do
+  next, opens its first conflict, and is marked paused, not failed, in Activity. While
+  rebasing, the window names your branch instead of a detached commit. Once your fix
+  is staged, Continue lights up and the main button in Changes becomes Continue import
+  or Continue rebase.
+- Continue, Skip and Abort show the series step by step with the changes that matter.
+  Fixed: at patch 2 of 4 these dialogs opened on patch 1, so Skip previewed the wrong
+  patch. Continue with nothing staged is refused in its review; Git refused it anyway.
+- Series and rebase refusals read in plain words. Error codes stay in Activity details
+  and the MCP dialog state. Finished work names what happened and opens Commits.
+- Import, Continue, Skip and Abort are named the same everywhere: Continue import, Skip
+  patch and Abort import.
+- Interactive rebase opens at its final size, with the commit list and editor already in
+  place, so it no longer jumps when the plan loads. On top of fills its row.
+
+### Bundled Git starts faster
+
+- A command on the bundled Git no longer starts by reading all 871 of its directories, which took
+  about 190 ms each time. Rocket now checks the drive's change journal before each launch, and reads
+  the directories after a change to them and at most every 2 minutes otherwise. A file added to the
+  bundle still blocks the next Git command.
+- A bundle on a drive with no active change journal reads its directories before every launch, as it
+  did before. Second drives often have none, and turning one on takes an administrator.
+- A junction set on an empty bundle folder is now refused at once. Before, it was only noticed after
+  the program that set it closed its handle.
+
+### New MCP test windows stay in the background
+
+- A new `rocket-mcp` window, main or review, no longer takes the Windows foreground when it opens, so
+  the user's typing can't land in it. It opened as an active window, and Windows hands the foreground to
+  one of those once the desktop has seen no input for 200 s. The desktop app is unchanged: its review
+  windows still open active.
+
+### One reconciliation snapshot after fetch
+
+- UI fetch and the fetch step of Pull now read one fresh repository snapshot for
+  both reconciliation and display. They no longer discard status/branch/operation
+  observations and immediately read them again, including after cancellation.
+- A changed history view or automatic-refresh setting requests a new matching
+  snapshot. Live repository watchers and fresh diff/config reads remain in place.
+- Standard backend/CLI fetch and pull reports retain their independent results
+  and refresh errors. Bundled Git verification is unchanged by this optimization.
+
+### MCP scope check covers force, atomic and tag pushes
+
+- Under MCP, force-with-lease, atomic and remote tag pushes skipped the fixture scope check when they
+  ran, so a local receiver's hooks could run and a reviewed command's own `-c` options came after the
+  hook and HTTPS policy. They now get the destination check and hook refusal `SECURITY.md` describes,
+  the same as a plain push, and that policy comes last. A Git command with a global option Rocket
+  doesn't recognize is refused under MCP. The desktop app and CLI don't use this check.
+
+### Background network refresh
+
+- Fetch, fetch-for-pull and push now reconcile in the background without blocking
+  repository navigation. Full reads still refresh the selected diff.
+- Reuse issue-link rules only when effective Git configuration and repository identity
+  match, including included config files. Display reads reuse the verified repository
+  instead of rediscovering Git. Explicit refresh still rereads the rules.
+- Superseded rule reads are cancelled and completion wakes the viewport. No changes
+  to bundled-Git verification, credentials or dependencies. Focused test evidence is
+  recorded in `VALIDATION.md`.
+
+### Public website
+
+- `docs/` now holds a static site for GitHub Pages: Home, Get Rocket and a page-not-found, in light
+  and dark, with a 29-second demo video. It has no build step, external fonts or analytics.
+- The site offers no download, because there is no public release. Get Rocket gives the build steps.
+- `tools/website/` previews the site the way Pages serves it, checks its links and content, and
+  retakes its pictures and video from a disposable demo repository.
+
+### Conflict tags on wrapped lines
+
+- In the conflict editor, tags and buttons no longer sit on the code when a line wraps: the resolved
+  tag and Undo in Result, and Use ours, Use theirs, Used and Not used in the side panes. A line with
+  a button now wraps before it, and the words take a row with room for them. Used and Not used also
+  show when only a later row has room. Other lines wrap as before, and short lines look the same.
+- With Linked scrolling on, a side pane that wraps can scroll to its end in a narrow window.
+
+### MCP test window stays in the background
+
+- The MCP test window no longer takes the foreground on each MCP call, so typing in another app stays
+  in that app. It was forced forward with a simulated Alt key press, which also reached the other app.
+  A minimized test window is still restored, because it can't draw until it is.
+
+### MCP review windows stay in the background
+
+- MCP calls to a review window no longer take the foreground either, so typing in another app stays in
+  that app. A minimized review window is still restored.
+
+### All diagnostics, On origin and MCP input check
+
+- Activity & diagnostics (the Activity drawer's All diagnostics) has the header of other pages,
+  with Close at the right, and two cards. Operations read in words (Fetch, Review tag), times use
+  this computer's clock, and a failure shows Rocket's explanation and next step with its code and
+  where it stopped. It no longer says Git reported a problem when Rocket refused something.
+- Reads Rocket does by itself are hidden unless they fail or are cancelled. Show reads lists them,
+  and a search always covers them. Rows are shorter, and rows that need a look say why.
+- Steps lists each step once, nested, with setup folded. Records is the full timeline it replaces.
+- The page no longer jumps while Live reads, and it has its own reading, nothing to show, no match,
+  failed, stopped and missing-records states. A narrow window shows Operations and Details as tabs.
+  Request and session moved to the card's foot, and log status to the list's foot, in words.
+- On origin (the Tags page's remote tab) has count buttons for what stands where. The first tag is
+  selected after a read, the read stays when you change tabs, and every tag shows, with no Show more.
+- Where it points gives the commit on both sides, named when this repository has it. The note no
+  longer mixes tag object and commit IDs, and "Not in this repository" no longer shows for a commit
+  that is here. An indirect tag no longer claims to be lightweight.
+- Publish and Delete show only for tags they apply to. A tag that differs says how to replace it, and
+  Show in history joins this tab. After a verified change the row updates with no further read.
+- Failed reads have their own states, and the dropdown appears only with two or more remotes.
+  `dialog-remote-tag-more` is gone. New ids: `dialog-remote-tags-all`, `-here`, `-there`,
+  `-different`, `-same`, `-indirect`, `dialog-remote-tag-retry`, `-clear`, `-dismiss`,
+  `-show-commit`, `activity-reads`, `activity-retry`, `activity-resume`, `activity-clear`,
+  `activity-show-reads`, `activity-setup`, `activity-view-steps`, `activity-view-records`,
+  `activity-group-N`, `activity-tab-list`, `activity-tab-details`, `dialog-remote-tags-list`,
+  `dialog-remote-tags-details`.
+- The MCP input check shows only after a second, in Rocket's dialog style, with its checks as a list
+  and Stop instead of Cancel input. The status bar says briefly why a click was dropped. MCP clients
+  keep the existing error text. Try again on On origin and Publish on This repository, which read
+  the remote, now go through the check too. Once the dialog is up, a click on it no longer counts
+  as using the window.
+
+### Shell setting and known tools
+
+- Preferences → Terminal chooses the shell the Terminal drawer runs: Windows PowerShell (the
+  default, unchanged), Git Bash, Command Prompt, PowerShell 7 or a custom program with its
+  arguments. Git Bash is the bash beside the Git Rocket uses, so the bundled Git supplies it.
+  The saved format is v23, written only once the setting differs from its default.
+- The drawer names the session's real shell, shows while it starts, and says why when it can't
+  start, with Terminal settings and Try again. It never falls back to another shell. Command
+  Prompt refuses a network folder, where it would run commands in the Windows folder.
+- Git Bash saves history after each command, so End session, closing a tab and quitting keep it.
+- The shell's program and arguments come only from this profile's settings. MCP can't change
+  them: the page is locked in an MCP window, which always runs Windows PowerShell.
+  `state.terminal.shell` names the running shell.
+- Add on Preferences → External tools now lists known tools for that type: 11 in all, with the
+  ones on this computer first. Choosing one only fills in the form, runs nothing and saves
+  nothing. Runners open the list and choose `tools-known-empty` for the old blank profile.
+- A saved tool profile whose program has gone says so on the form.
+- The Preferences dialog is up to 40 pt taller, so its sidebar needs no scrolling at the usual size.
+
+### Reliable Stop input
+
+- Keep status-bar Stop in a stable position with a stable widget identity while
+  progress text and progress bars change.
+- Resolve localhost MCP Stop clicks against the latest rendered position after
+  the existing visibility, fixture and expiry checks.
+
+### Guide and README
+
+- Help → Guide adds Files, Statistics, AI tools and AI review under Getting started, and
+  Dependency advisories and Storage under Preferences and tools. It now says where to find
+  Commit messages, Issue links and All diagnostics.
+- The Guide no longer shows bold marks and code marks as typed, and Repository benchmark
+  follows the Activity notes instead of splitting them from their topic.
+- README and the wiki's SSH steps follow the current pages.
+
+### Bundled Git
+
+- Include a separate, relocatable Git for Windows 2.56.0.windows.4 runtime in new
+  Windows x64 bundles. Automatic prefers it when included; explicit installed or
+  custom selections still override it, and builds without a runtime use PATH.
+- Preferences → Git adds Bundled Git, full-file verification progress and Stop.
+  Stopped/failed checks and externally changed selections do not publish a choice.
+  A damaged included runtime reports an error instead of silently switching Git.
+- Build and packaging scripts verify the pinned inventory and preserve the vendor
+  licenses. Source-only packaging remains available through `-WithoutBundledGit`.
+  System Git, PATH and existing credential/SSH configuration are not changed.
+- Recognize the bundled Git LFS helper in modern `ucrt64/bin` layouts while
+  preserving older installations and the Git LFS security version gate.
+
+### Extension commands, Jira and PlayGround
+
+- Extensions can declare commands. Lua API 1 gains a `commands` list in the manifest: up to 8, each
+  with an ID, a label and an optional target of commit or branch. A package says what a command
+  acts on and Rocket decides where it shows: the palette, Repository → Extensions, or the
+  right-click menu of commits and branches. Existing packages load and run as they did. There is
+  no API 2; `INTEGRATIONS.md` now says API 1 can grow, with nothing removed or changed in meaning.
+- A command opens its extension's page and runs there, in the same worker with the same limits as
+  a button, with `ctx.command` and `ctx.target`. The target is the row you chose, and a commit or
+  branch command needs the connection's Share switch. It ends in a view, or in one write that stops
+  at the request review.
+- Rows come from the approved copy, name included, so unreviewed text never reaches a menu. Off means
+  no rows. With changed files, no server, or a saved draft that no longer fits, one row opens the
+  review, the connection or the page with Clear draft, and the palette keeps the commands greyed with
+  their reason. Reviews and extension details list commands; a review marks them New, Changed or
+  Removed.
+- Turning a connection's Share switch on keeps its saved draft, which used to be blocked until
+  cleared. Turning it off still blocks a draft saved while sharing. Going back to an extension
+  whose request review is open keeps the review.
+- The panel API gains clickable table rows (`id`, `keys`, `selected`), pills and monospace in table
+  cells, `ui.split`, `ui.segments`, `ui.code`, `placeholder` and `submit` on `ui.input`, `tone` and
+  `small` on `ui.text`, and `ctx.confirmed`, which tells the next callback that a reviewed request
+  went through. `ui.column` takes `small` to keep its children close. Every package gets three fixes:
+  work in progress shows in the Refresh panel row, so the panel no longer jumps after every result;
+  tables fill their card, with lines between rows in place of stripes that stopped at the text; and
+  progress is a thin bar under its label.
+- Jira 1.2.0 is redesigned: one search box for a key, words or JQL, issues beside the chosen issue,
+  filters that apply at once, readable comments, and Edit and Create issue only when asked for.
+  Create lists the project's issue types, so Issue type ID leaves Settings. It adds four commands.
+- UI playground is now PlayGround 1.1.0: sections of live controls beside the Lua that draws them,
+  and two commands that show what a command receives. It ships with Rocket, off, so an installed
+  copy can update. The Lua editor's page is now titled Lua playground.
+
+### Extensions
+
+- Integrations are now Extensions, with their own group in Preferences after Connections. The
+  group has All extensions and a row for each enabled extension, and a puzzle piece replaces the
+  second plug. Connections keeps Accounts, SSH keys and MCP server.
+- The list shows each extension with its version, what it can reach and an Enable switch.
+  Install from file takes a package's integration.json, with main.lua beside it. A click opens
+  the details: Enable, permissions, Update and Remove first, then the connection as one form.
+  Save and Discard show only after an edit. An extension with no network has Settings instead.
+- Jira is a bundled extension, listed from the first run and off. Enable reviews it and copies it
+  into the extensions folder. Add Jira example is gone. Add repository example moved to Developer
+  tools as Add sample, beside the folder and Open playground.
+- Enable, Install, Update and Review again share one review: where the extension came from, its
+  code, its three permissions and what it can never do. A file says Rocket can't confirm who made
+  it. An update marks new permissions, counts changed lines against the approved copy, shows
+  them, lists what stays, and leaves the extension on or off as it was. No review runs a script.
+- Each enabled extension has its own entry in the sidebar, the icon rail, View → Go to and the
+  palette, and a page headed with its name. An amber dot marks a review or an unchecked write. The
+  shared Integrations page and its row of package names are gone. The palette adds Extensions,
+  Install extension from file and Lua playground.
+- Folders that can't load are rows with their reason, and one copy of a duplicate ID can be
+  removed from the list. Errors show their words without the code.
+- A file can't use bundled Jira's ID, so it can't inherit saved tokens. Update and Remove wait
+  while a request may have reached the service.
+- Stopping a Lua run just after it started could report clean Lua sandbox instead of the stop, and
+  left a rocket-lua folder in Temp. Rocket now waits up to 5 seconds for the file, and how the run
+  ended comes first. A successful run that still can't clean up reports it, as before.
+- Migration: none needed. Folders stay in integrations, connections stay in
+  integration-accounts.dpapi in the same format, and packages enabled today stay enabled with no
+  new review. The Enable switch reads the connections' saved state, and one review now covers all
+  of an extension's connections; Allow writes and Share stay per connection. A draft stays bound
+  to the exact files and connection, so after an update it stays saved but blocked, and the Update
+  review says so first.
+- Automation: int-install-jira goes with its button. int-enable moves to the Enable switch, with
+  int-disable as its name while on, and Save is int-save. goto-integrations opens the list, and
+  each extension has goto-ext-{id} and view-ext-{id} in place of view-integrations. int-open-panel
+  goes; other int-* ids stay. Lua API 1, its manifest and error codes are unchanged.
+
+### General settings
+
+- Preferences → General adds three cards, and every new setting starts at Rocket's behaviour
+  before it existed. Window and Updates keep their rows and take the header bar.
+- Repositories. Source code folder: where Clone's Parent folder and New repository's Project folder
+  start, with Browse and ×; a missing folder or a file at that path turns the row amber and Clone
+  starts next to the latest repository. Tags in fetch: where the Fetch dialog starts and what
+  automatic fetch brings. Space in branch names: spaces become - or _ as you type or paste, in New
+  branch, Rename, New worktree and branch recovery. Update submodules on checkout: after a branch
+  switch, initialized and clean submodules move to the recorded commit with no review; others are
+  left alone and named in Activity. Push after commit: Commit & Push takes the main button and
+  Ctrl+Enter in Changes, and its review still opens first.
+- Diff view, with a live preview: show or hide the − and + marks, font size 11 to 16, and Syntax
+  highlighting for every tab. These apply to Changes, Commits, Compare and review windows. The
+  Syntax checkbox in a diff's toolbar still flips one tab.
+- Commit list, with a live preview: Compact branch labels folds a branch and the remote branch it
+  tracks into one chip, drops the remote's name when there is only one remote, shortens folders to
+  their first letter, and counts what doesn't fit as +2. Hover shows the full names.
+- The Changes button reads Commit & Push, without the ellipsis.
+- Migration: saved state gains format v22, written only once one of these settings differs from
+  its default. Older Rocket builds then refuse the state file instead of losing data.
+
+### Repository benchmark page
+
+- View → Repository Benchmark uses the shared page header: an icon tile, "Local read timings · 3
+  passes · read only", Run benchmark as the main button and a quiet Close. Stop takes Run's place
+  while it runs and reads Stopping until the Git processes exit.
+- The results are one Timings card. Its bar shows the run's status (Ready, Waiting for other
+  operations, Pass 2 of 3 · History with a spinner, Stopping, Complete, Stopped, Failed) and the
+  reads and time so far. The table aligns First, Repeat median (bold) and Range on the right;
+  while it runs the read in progress has a tint and a spinner and reads still to come show
+  placeholders, so the table keeps its shape. A repository with no commits shows History and
+  Commit diff as "Skipped · no commits yet".
+- Errors and the changed-during-the-run, unavailable-observation and limit warnings are one line
+  each inside the card instead of full-width boxes above it. Copy summary moved to the card's
+  foot and reads Copied after a click. The explanations moved to the Guide.
+- Automation ids and the measurement itself are unchanged (benchmark-open/run/stop/close/copy/
+  scroll, `state.benchmark`, the report and its JSON).
+
+### Repository manager
+
+- File → Repository manager has its own sidebar in the app sidebar's place: Library (All saved,
+  Ungrouped), Folders and Workspaces with their counts, a + to make a folder or a workspace, and
+  nested workspaces indented under their chevron.
+- The header shows the counts with Save open tabs, Add repository and a quiet Close. The
+  repositories sit in a card whose bar names the selection and holds Filter (a folder adds Rename
+  and Remove); rows show the name, the path on one line and Open, Unavailable, Opening or Waiting.
+  A workspace lists what it opens, marking its active tab and the nested workspace each repository
+  comes from.
+- The selected repository or workspace has a details card with Open, Edit and a red Remove (and
+  New child) in its foot. While repositories open, Stop takes Open's place and the foot says which
+  one is opening of how many; the result ("Opened 2 · 1 unavailable") stays there, and an
+  unavailable repository shows its error in its own card. The save notices are gone.
+- Forms use a label column and full-height fields: Add repository gets Browse (the folder picker
+  in repository mode) and a Folder dropdown, and a workspace's repositories are one list with an
+  Active tab column. Removal reviews say what goes and what stays, with a red Remove. A location
+  without a repository reads "No Git repository at this location".
+- Automation: every manager-* id is kept; manager-stop now sits in the details card's foot. New
+  ids manager-browse, manager-folder (manager-folder-choice-* are inside it), manager-empty-add,
+  manager-empty-save and manager-filter-clear; rocket-mcp allows manager-browse and manager-folder
+  while a form is open. No library model, persistence or settings-format change.
+
+### CLI maintenance, identity, Git LFS and SSH keys
+
+- `remote rename`, `remote prune` (obsolete tracking refs only, with a recovery
+  ref), `branch delete-remote --expect ID` (never the server's default branch) and
+  `branch fast-forward` (to already-fetched upstreams, with a recovery ref).
+- `worktree move`, `repair` and `prune` for one linked worktree, pinned to its HEAD;
+  `fetch --tags`, `tag list --order newest` and signed tags with `tag create --sign`.
+- `identity show` and `identity set` for the repository-local user.name and
+  user.email, refused when the configuration changed after it was read.
+- Git LFS: `lfs status`, `track` (`--literal`), `untrack`, `fetch`, `push`,
+  `checkout`, `locks`, `lock` and `unlock` (your own locks only).
+- SSH: `ssh keys` and `ssh check` read public keys and Rocket's profiles; `ssh use`
+  and `ssh restore` bind this repository's `core.sshCommand` to a profile or put
+  back the earlier configuration, pinned to the configuration's SHA-256.
+- Writes repeat the `--preview` review and call the desktop's backend operations
+  under its write ownership. New refusal codes include `remote_branch_changed`,
+  `ssh_config_changed` and the backend's LFS lock codes. Forced LFS unlocks,
+  pruning, and SSH key creation, import and unlocking stay in the desktop. JSON
+  stays schema 1. No rocket-git, desktop, MCP, dependency or settings-format changes.
+
+### Slider clicks in the MCP
+
+- `rocket_click` now moves the Preferences → Appearance Visibility slider (`theme-visibility`):
+  its release arrives one frame after the press, so egui's slider, which senses drags only,
+  moves to the clicked point, the control's centre (35%). Every other control keeps its
+  one-frame click, and the click guard and fixture checks are unchanged. This supersedes
+  "Visibility can be read but not moved" under Themes in the MCP.
+- `tools/tests/test-mcp-themes.cjs` moves Visibility from 30% to 35%, checks it in
+  `state.appearance` through later clicks and reopening, and checks that a click is refused
+  while Visibility is off.
+
+### CLI undo, commit operations, rebase start, reset and history reads
+
+- `commit` JSON adds `undo` (branch, commit, previous, index SHA-256). `undo-commit`
+  with those values undoes that commit when nothing was staged since and no
+  remote-tracking branch has it, keeping its changes staged and a recovery ref.
+- `cherry-pick` and `revert` (1–100 full IDs, `--mainline`, optional HEAD pin) and
+  `amend --expect HEAD_ID`, with `continue`, `skip` and `abort`.
+- `rebase start TARGET`, applied with the reviewed original and destination IDs;
+  `--interactive` lists the range as a plan, and `--plan FILE` applies a data-only
+  plan (pick, reword, edit, squash, fixup, drop). Plans with `exec` are refused.
+- `reset --soft|--mixed|--hard ID --expect HEAD_ID` keeps the old tip as a recovery
+  ref and refuses work it would discard; `reflog` lists all five scopes.
+- Reads: `verify commit|tag` (`--require-valid`), `signing show`, `blame`,
+  `file-history`, `search` (text, path or content) and `compare`.
+- Backend: `UndoCommit::index_digest`, `Repository::pinned_undo_commit` and the
+  public `undo_failure_code`. Rebase reports gain `stop`. Desktop behavior is
+  unchanged; no dependencies or settings formats changed.
+
+### Repository benchmark
+
+- View → Repository Benchmark measures three passes of full refresh, HEAD
+  history and commit-diff preparation using the desktop's real read backend.
+  Shows first-pass/repeat timings, skips empty history, flags bounded results
+  and observed repository changes, and keeps partial results after stopping.
+- Stop gives immediate feedback while Git exits. Closing waits for cleanup;
+  normal refresh resumes afterward. Scheduled fetches wait during a benchmark.
+- Copy summary exports timings/counts and fixed outcome codes without repository
+  paths, names, refs, identity or content. Activity records each benchmark phase.
+
+### Themes in the MCP
+
+- `rocket_state` gains an `appearance` section: the chosen theme, the palette on screen
+  (System follows Windows' app mode, reported as `windows_mode`) and the accent; while Custom
+  is chosen, its base, accent, picture, size, position and visibility, and whether its
+  picture is showing yet. Your own picture is named by the file name Rocket keeps it under,
+  never by a path.
+- Automation can now change the theme: the Preferences → Appearance controls (the MCP refused
+  them while Preferences was open), the #RRGGBB field, and View → Appearance, whose row is now
+  published as `view-appearance` (before, its view-theme-* items could not be reached). The
+  Visibility slider can be read but not moved: an MCP click presses and releases in one
+  frame, which an egui slider ignores.
+- New runner `tools/tests/test-mcp-themes.cjs`: all five themes from both places, the Custom
+  options, the four built-in pictures, a picture chosen in the fixture-only picker (a file
+  that is not a picture is refused) and reopening the window.
+
+### CLI conflicts, line staging, bisect, remote tags and stash selection
+
+- `rocket-cli` gains the reviewed desktop operations it lacked since 0.84. Each read
+  prints a review; the write repeats it and refuses a mismatch with the SHA-256 or
+  object ID passed back, before the backend's own checks under write ownership.
+- Line staging: `hunks -- PATH` lists changed-line IDs and the patch SHA-256;
+  `stage`/`unstage --lines ... --expect-patch ...` change only the index.
+- Conflicts: `conflict show`, `conflict resolve` (choices per conflict, or a whole
+  result file; `--stage` refuses remaining markers), `conflict keep` (one whole
+  version, pinned by blob ID) and `conflict mark-resolved`, with recovery copies.
+- Bisect: `bisect status/start/good/bad/skip/resume/restore`, decisions pinned to the
+  tested commit, and `bisect run` with a reviewed `.exe` pinned by SHA-256. A run
+  holds write ownership for the whole search; a test timeout exits 124 and Ctrl+C
+  130, both keeping the search. Results appear on the desktop's Bisect page.
+- Remote tags: `tag remote`, `tag publish` (new remote tags only) and
+  `tag delete-remote`, each pinned to the reviewed objects.
+- Stash: `stash save -- PATH...`, `stash save --lines`, `stash show`, applying part
+  of a stash (`stash apply ... -- PATH...` with `--hunks` or `--lines`) and
+  `stash pop` with a backup ref. JSON schema 1 only gains commands and fields.
+- Backend: public `sha256_bytes`, `BisectAutoPreview::program_digest()` and
+  `ConflictPreview::original()`; five new diagnostic operation labels. Desktop
+  behavior is unchanged; no dependencies or settings formats changed.
+
+### Nested workspaces
+
+- Organize saved workspaces into a tree with empty groups, child creation, parent
+  selection, breadcrumbs and collapse/expand controls. Moves keep membership;
+  removal promotes children and refuses duplicate names under the same parent.
+- Optionally open descendant repositories with deduplication and a 64-repository
+  limit. Existing tabs, terminal sessions and drafts remain open; Stop cancels the
+  remaining queue. Hierarchies are bounded to eight levels and 128 workspaces.
+- Existing flat settings retain their format. Nested settings use v21 inside the
+  existing draft envelope; older builds refuse this format instead of losing parents.
+
+### Details card scrolling
+
+- A page's details card (Git LFS, Tags, Worktrees, Submodules and the other
+  list-and-details pages) sizes its scroll area to the part that is on screen.
+  With the Activity drawer open or a long notice in a short window, its last
+  action (for example Git LFS Review checkout) can still be scrolled into view;
+  before, it could stay hidden under the drawer.
+
+### Diff overview
+
+- Text diffs show added/removed-line markers and the current viewport in an
+  overview strip. Click or drag it to scroll; when focused, arrows, Page Up/Down
+  and Home/End navigate. It follows unified and split layouts and hides when the
+  loaded diff fits. Markers describe the loaded diff, including its preview limit.
+- The existing conflict marker rail gains a viewport indicator and scroll
+  navigation, respecting linked and independent panes. Conflict selection,
+  resolution choices, save reviews and recovery copies keep their existing paths.
+- Summaries are cached when text/layout changes and use at most 1,024 paint
+  buckets. No additional Git commands, background scans or dependencies.
+
+### Menus
+
+- Repository goes from 39 rows to 13, so it no longer scrolls: Fetch, Pull, Push and Push
+  Branches Together, then submenus by task: Commit, Branch, Git Flow, Stash, Patches,
+  History & Recovery, Custom Commands, Remotes & Hosting and Settings. Items keep their
+  shortcuts; a few have new names: Workflows & Cleanup, Ignored Files (.gitignore), File
+  Backups & Restore, Signing & Verification, GitHub Repositories & Notifications.
+- Tags, Worktrees, Submodules, Git LFS, Statistics, Integrations and AI review opened the
+  same pages as the sidebar; they move to a new View → Go to, which lists every sidebar page
+  in the sidebar's order and ticks the current one. View's Compare commits and branches is
+  now Go to → Compare.
+- Edit's Undo, Redo, Cut, Copy, Paste and Select All work: they act on the text field you
+  were typing in, with its selection, and are grey when no field has focus (Cut and Copy
+  also need selected text). Undo Last Commit stays a separate item. Outside a text field,
+  Ctrl+V still applies a patch from the clipboard.
+- The command palette, hints and the Guide use the new names and menu paths; the Guide
+  has a short Menus section under Getting started.
+- Automation: item ids are unchanged. Submenu rows are repository-commit-menu,
+  -branch-menu, -stash-menu, -patches-menu, -history-menu, -remotes-menu and
+  -settings-menu (Git Flow and Custom Commands keep theirs); Go to is view-goto with goto-*
+  rows; the text commands are edit-undo, edit-redo, edit-cut, edit-copy, edit-paste and
+  edit-select-all. Runners open a moved item's submenu first (tools/tests/menu-paths.cjs);
+  test-mcp-menus.cjs covers the menus.
+
+### Shortcuts page name
+
+- Preferences → Keyboard & mouse is now called Shortcuts, and so is its command palette
+  entry (formerly Keyboard shortcuts). The page still sets keyboard and mouse bindings, and
+  Preferences search still finds it by keyboard, mouse or hotkeys.
+
+### SSH keys, keys first
+
+- Preferences → SSH keys lists every key once, beside the chosen key's location,
+  fingerprint and public key with Copy public key: the key pairs found in the SSH folder
+  and the keys Rocket made or set up. A key found in the folder no longer needs a profile
+  to be copied, unlocked or removed from ssh-agent.
+- A tick before each key shows whether it is unlocked in ssh-agent. Tick to unlock it
+  (ssh-add asks for the passphrase); untick to remove only that key. A found key is used
+  only while its files are the ones the scan read.
+- New key and Add key file sit under the list, and an empty page offers both. Use only
+  this key reviews the open repository's SSH setting; for a found key it first asks for
+  the host, user and port, taken from the repository's SSH remote when it has one.
+  Restore previous setting stays available, also when there are no keys.
+- Rescan also reads ssh-agent again. Check profile is now Check settings: it reads the
+  key's SSH config with `ssh -G` and does not connect. The Discovered keys card and its
+  Set up profile buttons are gone.
+
+### SSH key discovery
+
+- Preferences → SSH keys automatically lists public/private filename pairs in the
+  user's SSH folder, with Rescan, Unicode filenames, fingerprints and a reviewed
+  profile form. Discovery is bounded, cancellable and does not activate keys or
+  modify SSH config. Import rechecks the selected files and verifies the key pair.
+- Cancellation preserves the previous list; diagnostics report scan phases,
+  counts, skipped entries and typed failures without key contents or filenames.
+
+### Themes
+
+- Preferences → Appearance, View → Appearance and the command palette choose a theme:
+  Default (Rocket's navy, unchanged), Dark (neutral graphite), Light, System (Light or
+  Dark, following Windows as it changes) and Custom. A theme applies at once; the window
+  title bar keeps following Windows.
+- Custom starts from Default, Dark or Light and takes an accent: a swatch, a colour code or
+  From picture (a built-in picture's own colour, or your picture's most common vivid
+  colour). It can show a picture behind the main window's panes, which turn see-through by
+  the Visibility amount (10–60%): Astronaut, Space cat, Planet, Stars, or your own PNG, JPG
+  or WebP (up to 32 MB). Fill covers the
+  window; Fit shows the whole picture, its inner edge fading into the theme. Rocket dims (on
+  Light, lightens) parts of the picture that would make text hard to read. Dialogs, menus
+  and cards stay solid. A chosen picture is copied into Rocket's storage, at most 2,560
+  pixels on its long side, and replaces the one chosen before.
+- Every colour now comes from the active theme's palette (about 90 roles). Diff rows,
+  syntax colours, terminal colours and graph lanes follow the theme; the diff row cache
+  rebuilds when the palette changes. The Guide has a Themes topic, which "?" on the
+  Appearance page opens.
+- Local settings with a non-default theme use inner format v20; older binaries refuse it.
+  The Default theme keeps writing the earlier format. No dependencies were added; the four
+  built-in pictures ship as JPEGs with their SVG sources in `crates/rocket-ui/assets/themes`.
+- Automation: new ids theme-default/-dark/-light/-system/-custom, theme-base-*,
+  theme-accent-picture/-<swatch>/-code, theme-picture-none/-astronaut/-space-cat/-planet/
+  -stars/-choose/-own, theme-size-*, theme-position-*, theme-visibility and View →
+  Appearance's view-theme-*. rows-* are kept.
+
+### Keyboard and mouse shortcuts
+
+- Preferences → Keyboard & mouse now edits 21 common commands. Record up to two
+  keyboard/mouse bindings per command, review duplicates/reserved inputs, remove
+  a binding, or restore defaults. Back/forward buttons work alone; other clicks
+  and wheel directions require Ctrl, Alt or Shift.
+- Bound gestures are consumed before widget input, preventing a second click,
+  scroll or zoom. Terminal focus, modal reviews, ordinary editing and existing
+  command guards remain respected. Menu/palette hints follow saved bindings.
+- Local settings with shortcut overrides use inner format v19; older binaries
+  refuse it instead of silently dropping bindings. Streamed draft storage is
+  retained. No dependencies were added.
+
+### Shortcut table, conflict editor, review windows, Hosting lists and Git preferences
+
+- Keyboard & mouse is a table of Command, Shortcut and Alternate. Click a cell and press the
+  keys or a mouse gesture; it is saved at once. Esc cancels; Delete or Backspace clears the
+  cell. A clash shows under its row with Use for <command> or Keep; an input that cannot be
+  used shows why, with Record again and Cancel. Changed commands carry a dot and a reset
+  button; mouse buttons and the wheel read as chips (Mouse forward, Ctrl + Wheel up).
+- Conflict editor: the result has line numbers, tinted ours and theirs and a dimmed base and
+  markers. Use ours, Use theirs and Use both sit on each conflict's first line instead of the
+  toolbar (shorter words in narrow columns); an amber bar marks the selected conflict. Save
+  and stage no longer ends in an ellipsis.
+- Review windows open with a page header: the commit title, author, date, its ID (click to
+  copy) and Pinned · read only. Commit reviews list changed files beside the diff (a menu
+  below 760 px); file and blame reviews no longer repeat the history header. The window's
+  own close button closes it, so the in-window Close is gone; Retry appears after a stopped
+  or failed read.
+- Hosting: New pull request and Publish repository move from the tabs to the header; the tabs
+  are Pull requests, Issues and Saved drafts. GitHub search is one row: words, author:,
+  assignee:, recent searches behind a clock button (Clear recent searches ends that list) and
+  Search; Enter also searches. Each pull request row has Details beside Open in browser.
+- Preferences → Git uses two cards: Git program (the Git in use, Find Git automatically,
+  installed copies as choices, a path with Browse, Check and Use this Git) and Commit
+  identity (Name, Email, Reload or Discard changes, Save identity). Its notes moved to the
+  Guide.
+- Preferences no longer shows the Rocket version under its page list; Help → About shows it.
+- Automation: existing ids are kept (pref-shortcut-<command>-edit-N/-add/-reset,
+  pref-shortcut-cancel/-again, git-*, review-*, hosting-tab-create/-publish, hosting-search-*;
+  conflict-ours/-theirs/-both name the selected conflict's choices). New: pref-shortcut-move,
+  review-copy-id and per-conflict conflict-ours-N/-theirs-N/-both-N; pref-shortcut-save is
+  gone. MCP rocket_review_click on review-close closes the window as its close button does.
+
+### Compare page
+
+- One compare bar: Revisions, Staging area or Working tree as a segmented switch; Base and
+  Target as single fields with the branch list inside; Swap as an icon between them; and
+  Compare as the main button, which Stop replaces only while a read runs. In Staging area
+  and Working tree, Target is fixed. The always-disabled Stop and the standing hints are gone.
+- One result line: both commit IDs (click to copy), the files by kind (added, modified,
+  deleted, renamed) and when it was compared. When the fields change it says Not compared yet.
+- Files are rows like Changes: a coloured letter, the name, then its folder or where it came
+  from. A file that was only renamed or copied shows a card saying where it moved, instead of
+  Git's raw headers with escaped paths.
+- Before comparing, while reading, no differences and errors show a centered message; Retry
+  for a file's diff sits in the diff area. A narrow window wraps the bar, and Files and Diff
+  take turns as two tabs. The diff view itself is unchanged.
+- Automation: ids keep their meaning (compare-load and compare-cancel take turns; compare-swap
+  and compare-target exist in Revisions; compare-toggle-files is on the tab that switches).
+  New: compare-copy-base and compare-copy-target.
+
+### Apply part of a stash, Undo last commit and loading states
+
+- Apply part of a stash (Stashes → Apply selected) lists the stash's files with a checkbox
+  each (all, some or none of it) and their added and removed lines. Beside the list, the
+  picked file's changes are numbered cards with line numbers and a checkbox per changed line.
+  Each choice is checked at once, so Review selection is gone: Apply selected changes applies
+  a checked selection, and Check again appears only after a refused or stopped check. The
+  dialog's rules moved to the Guide.
+- Undo last commit shows the commit being undone and the commit the branch moves back to as
+  two cards, then what was checked, Copy recovery name and one Undo commit button. An open
+  review checks again by itself before Git's two-minute limit; Check again appears only
+  after a refusal. The dialog's notes moved to the Guide.
+- A pane, page or dialog with nothing to show yet centers its spinner and text (Loading diff
+  keeps Stop under them) instead of starting in the top-left corner. Status lines under
+  content stay in place.
+- Automation: the stash dialog adds dialog-stash-show-N (shows a file's changes) and
+  dialog-stash-whole; change and line checkboxes exist for the shown file.
+  dialog-preview-refresh (stash) and dialog-undo-refresh appear only after a refused or
+  stopped check, and Undo's dialog-submit only while there is a review to undo.
+
+### Conflict editor: three clear panes
+
+- Ours, Result and Theirs are matching boxes with line numbers, each under a header saying
+  what it is: Ours (HEAD, your branch), Result (saved to the file) and Theirs (the incoming
+  branch); rebase, cherry-pick and revert use their own words. After a choice, a file that fits
+  no longer scrolls past its end, leaving the panes mostly empty.
+- Each conflict has the same number in all three panes (amber while open, green once
+  resolved), and a band joins its lines across the gaps. Use ours sits on the Ours lines and
+  Use theirs on the Theirs lines; Result keeps Use both, and all three in a narrow window. A
+  resolved conflict says Used or Not used on each side. Text in Ours and Theirs can be selected.
+- Result's rail marks sit beside their lines on a file that fits, and the conflict counter
+  numbers conflicts as the badges do.
+- Automation: conflict-ours(-N) and conflict-theirs(-N) name the side panes' choices in the
+  three-column view; no ids were removed.
+
+### Find a shortcut by its keys; undo a resolved conflict
+
+- Keyboard & mouse: a keyboard button at the end of the search box waits for one chord or mouse
+  gesture and lists only the command that uses it; the box shows the input, such as Ctrl+K. It
+  never changes a binding. Esc or a plain click cancels; plain wheel scrolling still scrolls.
+- Conflict editor: a conflict resolved with Use ours, Use theirs or Use both stays tinted green,
+  with "Conflict N · resolved · used both" (shorter on a long line) and Undo on its first line
+  and a green mark on the scroll rail. Undo puts the original block back and selects it. Typing
+  elsewhere keeps Undo; typing on the resolved lines, Reload, a merge-tool or AI result, or a
+  failed save ends it. The header reads "N of M left" while resolved conflicts can be undone.
+- Automation: new ids pref-shortcuts-find and conflict-undo-N. state.shortcuts adds finding (pass
+  it as the rocket_shortcut recording_id) and found.
+
+### Git, Custom commands and MCP server in Preferences
+
+- Preferences → Git lists the ways to run Git in one card: Automatic (the first git.exe on
+  PATH), each installed copy with its version, and Custom path with Browse. Choosing one
+  runs git --version and saves it when it passes, so Check and Use this Git are gone; a copy
+  that is too old or does not run cannot be chosen, and a failed Custom path keeps the saved
+  choice. The card says when a restart is needed. Commit identity has full-height Name and
+  Email fields; Save and Discard appear only after an edit, and the config file is named on
+  the info icon. The page footer is gone.
+- Custom commands are edited in Preferences → Custom commands instead of a separate window.
+  Commands are grouped by the menu they show in and edited under their row; Find, Import,
+  Export and New command sit above the list, Save commands and Discard in the footer, and
+  Preferences stays open while changes are unsaved. New: Duplicate. Repository → Custom
+  Commands → Edit Custom Commands and the palette open the page.
+- Preferences → MCP server uses the same cards. While Rocket checks the server, the card
+  says Checking and the rows the answer fills hold placeholders, so nothing jumps when it
+  arrives. Start server or Stop server sits at the server card's foot. Port and folder are
+  full-height fields; Save and Discard appear only after an edit, and Start server waits
+  for them. Errors show on the card they concern; the protocol line moved to the guide.
+- Automation: the custom-commands dialog kind is gone; state.preferences.page is commands. New ids
+  dialog-commands-save, -discard, -duplicate and -filter, git-custom; git-reload is Discard
+  or Try again; git-check and pref-manage-commands are gone. Under MCP,
+  dialog-commands-save keeps the fixed-test-command rule, and a Git row may be chosen only
+  for the Git the window runs. MCP server: mcp-save shows only after an edit; new
+  mcp-discard; mcp-guide is gone.
+
+### Setup Guide and the Help menu
+
+- Guided setup is now called Setup Guide: in the Help menu, on the welcome screen and the
+  Summary page, in the command palette and in the guide.
+- Help no longer lists Keyboard Shortcuts. They live in Preferences → Keyboard & mouse,
+  which the command palette's Keyboard shortcuts entry also opens.
+- Automation: help-shortcuts is gone; help-setup, summary-setup and welcome-setup keep
+  their ids.
+
+### Dialog footers
+
+- Dialogs no longer repeat their header × with a footer Close or Cancel: the ×, or
+  Escape, closes them as that button did, with the same checks while work runs.
+  Among them: Push, Pull, Merge, Rebase, Git Flow, tag, worktree, submodule and Git
+  LFS reviews, Commit link, Undo, Bisect, recovery, Open and Clone.
+- While work runs, the button that ends it reads Stop. File restore and patch
+  reviews show it only then; Preferences (Git, SSH keys, Accounts, Dependencies), the
+  commit link remote read and custom command transfers say Stop instead of Cancel.
+- Pages say Stop for running work too: Hosting, GitHub, Playground, Integrations,
+  AI review, Compare, Path history and Files. Review windows say Stop reading, the
+  repository manager Stop opening, the commit message box Stop drafting and the
+  conflict editor Stop saving. Git LFS and Submodules keep Cancel read: that button
+  also closes the page. Control names are unchanged.
+- The remote tag review's × now returns to the remote tab; it did nothing before.
+- Automation: the × also answers to `dialog-cancel` and to a removed button's own
+  name (`dialog-tag-back`, `manager-cancel`, `picker-cancel`, `commit-link-close` and
+  others); a footer Stop keeps `dialog-cancel` while work runs.
+
+### AI conflict proposal page
+
+- AI conflict proposal has one layout from start to finish: the code on the left, a column on
+  the right, and the main button in one place at the top right: Send, then Stop, then Apply.
+  The page shows an AI mark, and so does AI resolve, which also sits beside Open conflict editor
+  in Changes (`conflict-open-ai`).
+- Who answers is Claude Code, Codex or Connected agent, starting on the first program found.
+  Codex is new here (`conflict-ai-source-codex`, `conflict-ai-codex`, diagnostics
+  `ai-conflict-codex`). Goes to says who gets the code, with Found or Not found checked for real:
+  the page used to show claude.exe even with nothing installed, and fail after Send. Not found
+  offers Browse on the page (`conflict-ai-browse`), and a stopped MCP server offers its
+  Preferences page (`conflict-ai-server`).
+- Prepare snapshot is gone (`conflict-ai-prepare`): the page prepares by itself, and each send
+  checks the file again. Show what will be sent became Show exact data, in the code pane
+  (`conflict-ai-exact`). Sends now says the whole file goes, which is what always happened.
+- Review: Conflict and Proposed result use the editor's colours and numbers, changed lines are
+  green, and each conflict names its lines. Clicking one moves both panes to it
+  (`conflict-ai-section-N`). Discard reads Ask again; its id stays. Errors say what happened and
+  what to do; the code and the program's own message move under Details.
+- Apply lands each conflict in the editor as resolved, marked AI, with its own Undo. An AI result
+  used to end Undo. A narrow window puts the card first and shows the conflicts as chips above
+  the code.
+- MCP state: `conflict_editor.ai.source` can be `codex`, `error` is now always the code alone, and
+  `refused` and `selected` are new.
+
+### Claude Code conflict proposals
+
+- AI resolve can ask Claude Code on this computer as well as a connected MCP agent:
+  choose Claude Code in Ask for a proposal, prepare the snapshot, check what will be
+  sent, then Send to Claude Code. Rocket starts the Claude program from Preferences →
+  Commit messages once, from an empty folder, with no tools or project settings, and
+  sends only the prepared snapshot with fixed instructions. The reply goes through the
+  same review as an agent's proposal; nothing changes until Apply. Your Claude plan or
+  API usage applies; no API key is stored.
+- While Claude Code works, a status card shows the elapsed time and Stop, which ends
+  its process tree; a request stops after 5 minutes. Other running AI work on the page
+  shows Stop instead of Cancel. The page subtitle names the conflicted file.
+- Automation: `conflict-ai-source-agent`, `conflict-ai-source-claude` and
+  `conflict-ai-claude`; MCP state reports `conflict_editor.ai.source`; under MCP only
+  the fixture's stub program may run, as for commit drafts. Diagnostics name the
+  request `ai-conflict-claude`.
+
+### UI revamp: Preferences connections and newer screens
+
+- Edit → Preferences gains Accounts and SSH keys under a new Connections group;
+  its sidebar is grouped (Workspace, Git, Connections, Security & data) and scrolls
+  in short windows. File → Configure SSH Keys, File → Accounts and Repository →
+  SSH Keys and Accounts are removed; Repository → Hosting replaces Hosting and
+  Accounts. The command palette lists Accounts and SSH keys.
+- Hosting has no Accounts tab. Accounts beside the sign-in status, and Open
+  Accounts when signed out, open Preferences; closing it, or connecting an account,
+  returns to Hosting with any error message kept.
+- The account form names the account it edits, groups providers as Cloud and
+  Self-hosted, and gives each provider one line about its token; details moved to
+  the Hosting guide. SSH keys shows profiles as rows with a details card, a
+  passphrase card for OpenSSH prompts and a review card for Use for <repository>,
+  which needs an open repository. Closing Preferences waits while OpenSSH runs.
+- Automation: control names of both pages are kept (`hosting-tab-accounts` reaches
+  the Hosting link); MCP state reports `preferences.page`. No new dependencies,
+  credential or SSH configuration changes.
+- Integrations: Preferences lists packages as rows and edits a connection in Service,
+  Package settings and Permissions cards (permissions are switches). The page has a
+  header and toolbar; the request review shows the method, address and numbered
+  body. Lua panels get Rocket's spacing, padded cards, accent primary buttons and
+  pills without package changes.
+- Hosting pull request details: breadcrumb, a header card with state, branches, head
+  and base, Write a review as the main action, and tabs with counts. Commit link is a
+  review-style dialog; Open in browser appears once a remote is chosen.
+- Bisect keeps its dialog with short IDs, a First bad commit card, decisions as
+  pills and Restore original as the main action once the search ends. Summary shows
+  count tiles, a Next step card and the branch's upstream state; Guided setup is a
+  stepper with progress. The playground has Run in its header, numbered lines and a
+  framed preview; AI conflict proposals show numbered, tinted conflict and result
+  panes beside the sections and their confidence.
+
+### Lua write recovery security fixes
+
+- Keep redirected POST/PUT/PATCH/DELETE results uncertain: the service may have
+  applied the write before returning a redirect. Restart retains the recovery
+  guard until the user checks the remote result and acknowledges it.
+- Serialize protected integration settings saves across Rocket processes with a
+  persistent OS file lock. A competing save preserves the existing file and
+  draft, reports a retryable busy error, and still rejects stale snapshots.
+  Close older Rocket processes before using the updated build.
+
+### Lua coding playground and MCP conflict proposals
+
+- Replace the component-demo install entry with a Lua editor, Run/Cancel and an
+  interactive native preview, including compact code/preview tabs. Preserve the
+  previous successful preview and callback state after failures/cancellation.
+- Save scratch source in separate protected local storage with external-change
+  checks and a normal-exit save guard. Restart never runs scratch code. Existing
+  installed component demos remain intact.
+- Add user-approved conflict snapshots for connected MCP agents, with validated
+  per-section proposals, explanations and agent confidence. Apply updates only
+  the editor draft; file saves retain existing backups and external-edit checks.
+- Add authenticated localhost proposal tools that work without a development
+  window. Cancellation/expiry revoke shared context; general MCP state and logs
+  omit source and proposals. No AI API key, model invocation or automatic merge
+  commit is introduced.
+
+### Lua developer tools and Jira workflows
+
+- Add native Lua syntax validation and bounded local action diagnostics with source
+  locations. Validation never executes module initialization or the callback.
+- Extend the Jira Cloud example with JQL pagination, issue details/edit metadata,
+  reviewed edits/transitions and create-field inspection. Preserve rich descriptions
+  unless replacement is selected; reject checked writes when the update marker
+  changes. This preflight is not an atomic service-side lock.
+- Add explicit per-connection permission for read-only branch, commit IDs and
+  change counts, plus an offline example. Paths, remotes, identities and file
+  contents remain outside the context. Existing connections default to no access.
+- Drop obsolete field values when a callback changes a control's type or choices.
+  Existing example folders are never replaced. Live Jira remains unverified.
+
+### Integration connections and saved drafts
+
+- Report invalid packages independently so healthy integrations remain usable;
+  refuse all copies of a duplicate ID and keep their files unchanged.
+- Add up to 16 named connections per integration, with separate credentials,
+  permissions, settings and uncertain-write recovery. Existing connections migrate
+  to Default without changing the old protected file until a successful save.
+- Save bounded forms, script state and their native panel locally in protected
+  storage. Switching/restarting restores the same connection's draft without
+  running Lua or sending requests. Writes and previews never replay.
+- Bind saved drafts to exact source and connection identity. Preserve incompatible
+  drafts for repair or explicit clearing; refuse external-file overwrites. Drain
+  pending draft saves before exit and keep the window open on save failure.
+
+### Lua integrations and native panels
+
+- Add an Integrations page and Preferences section for explicitly enabled local
+  Lua packages. Expose versioned native layouts, forms, tables and action buttons.
+- Bundle a bounded Lua 5.5.1 worker; keep HTTP, credentials, request review and
+  cancellation in Rocket. No system Lua or Node runtime is needed.
+- Add an offline UI playground and Jira Cloud example for reading issues and
+  reviewing issue/comment creation. Existing folders are preserved.
+- Bind approval to exact source/manifest contents. Protect optional saved tokens
+  separately and persist uncertain write outcomes before sending; restart never
+  retries a write. Real Jira acceptance remains unverified.
+
+### PR collaboration and saved drafts
+
+- Protect PR review/line/reply drafts locally and persist uncertain review,
+  discussion and merge outcomes before sending. Restore requires the same account
+  and fresh reads; previous previews and writes never replay automatically.
+- Add GitHub/GHES thread replies, resolve/reopen previews and multiline comments
+  within a complete diff hunk. Preserve stale text and honor thread permissions.
+- Add PR details, provider-supported comments/approvals/change votes and reviewed
+  merges to GitLab, Bitbucket Cloud/Server, Azure Services/Server and Gitea.
+  Show bounded/unsupported data and provider-specific concurrency limitations.
+- Keep local files, existing credentials and provider policy protections intact;
+  no new dependencies or embedded scripting runtime are included.
+
+### Parallel-load reliability
+
+- Speed up secret scanning of large files with bounded candidate searches while
+  retaining cancellation, token detection and existing scan limits.
+- Check an object batch's complete size metadata before reading its payloads,
+  so a known over-budget scan reports the size limit promptly.
+- Avoid repeated waits once a diagnostic log lock is known to be busy. Batch
+  recovery flushes across retained files and keep all overflow copies until
+  every destination flush succeeds, including after rotation or a failed flush.
+
+### Azure DevOps Server
+
+- Add a separate on-premises hosting provider with HTTPS collection URLs,
+  server-issued PATs and API 6.0/7.0/7.1 choices, persisted in protected profiles.
+- Verify an active authenticated account; browse paged PRs and project work items,
+  and review both branch tips before creating a same-repository PR. Scope pages
+  and previews to the account, collection, repository, filters and API version.
+- Preserve local files and existing credentials, TLS checks, immediate stopping
+  feedback and uncertain-create recovery. Show fixed authentication, API, redirect,
+  certificate and service errors without logging tokens or response payloads.
+- Include a mockup and focused temporary-repository/mock-API coverage. Windows
+  authentication/SSO and live Azure DevOps Server compatibility remain unverified.
+- Clear the previous successful PR link when reviewing another creation, so an
+  interrupted attempt cannot appear to refer to the earlier pull request.
+
+### Re-audit fixes
+
+- Warn before closing with unsent pull request review text or inline comments.
+  Cancel keeps the review open. The newer PR collaboration storage preserves
+  these drafts on confirmed exit instead of discarding them.
+- Finish image loading in separate commit review windows and
+  release their preview state on close.
+- Share unchanged retained draft text between autosave snapshots, including tab
+  close and reverted edits, to avoid scanning/copying all retained text each poll.
+  The state v18 format, complete draft content and save retry behavior stay intact.
+- Report a changed interactive-rebase journal as a plan mismatch before decoding
+  it; keep refusing Abort, Continue and Skip until the reviewed plan is restored.
+
+### GitHub Enterprise Server
+
+- Add a separate Enterprise Server provider with configurable HTTPS origin,
+  server-issued tokens and optional protected account persistence.
+- Reuse GitHub PR/issue search, pagination, reviewed creation, details, inline
+  reviews and merging against the enterprise `/api/v3` endpoint. Match remotes
+  only to the explicitly selected server; preserve public-only OAuth/publishing.
+- Show reported server version and distinct certificate, redirect, unavailable
+  service and retired-API errors. Keep credentials/private response data out of
+  diagnostics, certificate checks enabled and cancellation/uncertain-write guards.
+- Add an interactive mockup, focused backend and native localhost MCP coverage
+  with disposable repos/accounts. Real GHES deployments remain unverified.
+
+### GitHub PR workflows
+
+- Queue, edit and remove inline comments from validated old/new diff lines;
+  submit them together in a review tied to the original PR revision. Preserve
+  Unicode rename paths and refuse missing, unsafe or incomplete locations.
+- Review merge, squash or rebase on GitHub with current permissions/method checks,
+  a head-SHA condition and explicit uncertain-outcome recovery. No local checkout
+  writes, branch deletion, automatic retry or merge-queue operation.
+- Create a PR from an existing fork after reviewing both repositories and branch
+  IDs, rechecking their fork network and tips. No automatic fork or branch push.
+- Extend the isolated localhost MCP acceptance runner and user documentation.
+  GitHub live policy/scope acceptance remains separate from synthetic API tests.
+
+### Guided setup, repository summary and Safe Undo
+
+- Add Help → Guided setup with existing Git preferences, Open/New/Clone,
+  repository identity and Changes entry points. No automatic writes or sign-in.
+- Add Summary in the sidebar and command palette: staged/unstaged/untracked/
+  conflict counts, branch state, local upstream comparison and a next-step hint.
+  It reuses existing refresh data and marks missing or stale information.
+- Add reviewed Edit → Undo last commit for the latest ordinary commit created
+  in this UI session, including a first commit. Retain a recovery ref before
+  moving the branch; preserve index and working files. Refuse later staging,
+  moved tips, active operations, known publication and stale external edits.
+- Reconcile cancellation against the actual branch/index/recovery result, with
+  fixed diagnostic failure codes. No general Undo/Redo or CLI command is added.
+  Existing release bundles are unchanged; this is a local development build.
+
+### Draft storage and responsiveness
+
+- Save more than 64 retained drafts and messages above 128 KiB in a streamed
+  archive. Atomic state v18 migration preserves prior saves on failure. Close
+  Rocket before backing up the whole state folder; older builds cannot read
+  state v18. The composer now
+  explicitly rejects edits above the existing 1 MiB commit-message limit.
+- Share unchanged terminal rows between snapshots and skip output snapshots for
+  hidden terminals while continuing to observe process shutdown.
+- Generate image difference textures on demand and cap retained image textures
+  across tabs and review windows at 192 MiB. Least recently viewed previews can
+  be released and offer Reload. Decoding buffers and driver overhead are separate.
+- Correct the mail-import test's startup preference setup and add phase-specific
+  timeout diagnostics without increasing its deadline. The earlier intermittent
+  timeout's precise cause is not established by this fixture correction.
+
+### Audit corrections
+
+- Bound retained worktree presentation settings so opening more than 256
+  repositories over time does not stop draft/settings saves. Add Retry save for
+  failed writes while preserving unread or unowned state files.
+- Cancel obsolete queued spelling checks, bound pending text, and keep disabling
+  or closing responsive. Accepted dictionary changes finish asynchronously.
+- Repair the reflog, privacy and contextual-workflow test expectations, plus
+  hook-timeout and asynchronous terminal test fixtures. Clean up workspace
+  Clippy warnings. The release version and packaged binaries are unchanged.
 
 ## 0.92.0 — Local crash reports
 
@@ -918,233 +1977,6 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   entries lack resolved sources. This guards an OSV 2.7 false-negative case before
   accepting either scanner output or a previously cached clean result.
 
-## Unreleased — Dependency scanner setup
-
-- Security now guides first-run users through choosing the reviewed OSV-Scanner
-  and downloading public advisory data for the open repository. Scanner choices
-  persist per profile; OSV remains an optional, separately obtained executable.
-- Unreviewed, missing or changed scanners are refused. Failed/cancelled choices
-  preserve the prior selection, and another window's change requires reloading.
-- Fresh profiles show when scanner setup is required. Local caches remain separate
-  for each user. With warnings enabled, an advisory download is followed by an
-  offline scan.
-
-## Unreleased — Password detection
-
-- Secret protection now checks quoted passwords beginning with `$` or `%` and
-  passwords containing punctuation such as `:`, brackets and escaped quotes.
-  These literals could previously pass both commit and push checks.
-- Complete environment/template placeholders remain accepted. Prefixes alone
-  and placeholders with appended literal material no longer exempt a quoted
-  password from the existing credential checks.
-
-## Unreleased — Commit link dialog
-
-- Clearer destination cards and a full, wrapped link preview. Copy link and Open
-  in browser remain visible; custom remote/server settings are under Link options.
-- Compact windows scroll the body while keeping Close and the footer reachable.
-  Correcting settings clears stale errors and destinations before a fresh read.
-- Local link generation, explicit remote selection and cancellation remain intact.
-
-## Unreleased — Rebase stopped after its branch moved
-
-- A rebase whose branch has moved from its saved tip now says so in the paused banner
-  and asks you to finish it with Git. It used to say "stopped as planned" and offer
-  Continue, which the review then refused. This covers Stop landing after the branch
-  moved and another client moving the branch during a pause. Continue, Skip and Abort
-  are still refused the same way, and history and the recovery reference are untouched.
-
-## Unreleased — Pull preparation
-
-- Pull preparation avoids duplicate checkout reads and combines upstream/remote
-  configuration reads at each checkpoint. Reviews still recheck live state after
-  calculation and again under the write lock before applying. Included config,
-  hidden index flags, cancellation and stale targets remain guarded.
-- Diagnostics separate ancestry calculation from the surrounding pull checks.
-
-## Unreleased — Refresh timing diagnostics
-
-- Activity details now separate bundled Git verification from process startup and
-  execution, making remaining refresh delays easier to locate. Timing labels wrap
-  inside narrow cards. Verification checks and fallback scans remain enabled.
-
-## Unreleased — Revert, Cherry-pick and Abort import screens
-
-- Revert and Cherry-pick are in a commit's right-click menu, for one commit or a
-  selection.
-- Their reviews show the commit, a small picture of what happens to your branch and a
-  colored diff of what the new commit changes, instead of a raw patch and a full ID.
-  Several commits show as a list beside each commit's own change.
-- Reverting a merge opens already reviewed, on the side it merged into, and names both
-  sides by commit. It used to open on a red error and two raw IDs.
-- A stopped revert or cherry-pick gets the same banner as a rebase: which commit, what
-  to do next, Continue and Abort, and Skip when commits come after it. Skip is gone
-  from a single commit, where Abort does the same. It's marked paused, not failed, in
-  Activity and opens its first conflict, and Continue revert or Continue cherry-pick
-  takes over the main button in Changes once your fix is staged.
-- Continue, Skip and Abort of a revert or cherry-pick show the same steps as an import,
-  with your fix or the edits that go as a colored diff.
-- Abort import lists every patch: what comes off, where it stopped and what never
-  arrived. Skip patch and Abort import can show the edits that go.
-- If you commit a fix by hand partway through several commits, Continue counts it as
-  done and Abort says it will leave your branch where it is, which is what Git does.
-- Reverting changes that are already gone says Nothing to undo instead of failing.
-- These refusals read in plain words. Error codes stay in Activity details and the MCP
-  dialog state. Activity says what finished, such as Reverted 3 commits on feature.
-
-## Unreleased — Commit series and rebase screens
-
-- Rebase's Onto is now On top of, beside a read-only From that names your branch, so
-  the dialog says what moves and what stays. The same word replaces Commits after,
-  Destination, base and rebasing onto in interactive rebase, the paused reviews, the
-  sidebar menu, branch drops, Sync, Stash + rebase, Pull and the conflict editor.
-  `rocket-cli`'s `--expect-onto` and its `onto` JSON key are unchanged.
-- Export Commit Series has its own row in Repository → Patches, a palette entry and a
-  right-click on commits. Its range is First to Last, both included, picked from
-  lists; it used to be an excluded commit and a typed tip. It can't start at a
-  repository's first commit, as before.
-- Import Commit Series is in the palette. Both dialogs show each commit beside its
-  colored diff instead of raw mail text, with a Browse button for the folder.
-- A paused rebase or import says which commit or patch it stopped at and what to do
-  next, opens its first conflict, and is marked paused, not failed, in Activity. While
-  rebasing, the window names your branch instead of a detached commit. Once your fix
-  is staged, Continue lights up and the main button in Changes becomes Continue import
-  or Continue rebase.
-- Continue, Skip and Abort show the series step by step with the changes that matter.
-  Fixed: at patch 2 of 4 these dialogs opened on patch 1, so Skip previewed the wrong
-  patch. Continue with nothing staged is refused in its review; Git refused it anyway.
-- Series and rebase refusals read in plain words. Error codes stay in Activity details
-  and the MCP dialog state. Finished work names what happened and opens Commits.
-- Import, Continue, Skip and Abort are named the same everywhere: Continue import, Skip
-  patch and Abort import.
-- Interactive rebase opens at its final size, with the commit list and editor already in
-  place, so it no longer jumps when the plan loads. On top of fills its row.
-
-## Unreleased — Bundled Git starts faster
-
-- A command on the bundled Git no longer starts by reading all 871 of its directories, which took
-  about 190 ms each time. Rocket now checks the drive's change journal before each launch, and reads
-  the directories after a change to them and at most every 2 minutes otherwise. A file added to the
-  bundle still blocks the next Git command.
-- A bundle on a drive with no active change journal reads its directories before every launch, as it
-  did before. Second drives often have none, and turning one on takes an administrator.
-- A junction set on an empty bundle folder is now refused at once. Before, it was only noticed after
-  the program that set it closed its handle.
-
-## Unreleased — New MCP test windows stay in the background
-
-- A new `rocket-mcp` window, main or review, no longer takes the Windows foreground when it opens, so
-  the user's typing can't land in it. It opened as an active window, and Windows hands the foreground to
-  one of those once the desktop has seen no input for 200 s. The desktop app is unchanged: its review
-  windows still open active.
-
-## Unreleased — One reconciliation snapshot after fetch
-
-- UI fetch and the fetch step of Pull now read one fresh repository snapshot for
-  both reconciliation and display. They no longer discard status/branch/operation
-  observations and immediately read them again, including after cancellation.
-- A changed history view or automatic-refresh setting requests a new matching
-  snapshot. Live repository watchers and fresh diff/config reads remain in place.
-- Standard backend/CLI fetch and pull reports retain their independent results
-  and refresh errors. Bundled Git verification is unchanged by this optimization.
-
-## Unreleased — MCP scope check covers force, atomic and tag pushes
-
-- Under MCP, force-with-lease, atomic and remote tag pushes skipped the fixture scope check when they
-  ran, so a local receiver's hooks could run and a reviewed command's own `-c` options came after the
-  hook and HTTPS policy. They now get the destination check and hook refusal `SECURITY.md` describes,
-  the same as a plain push, and that policy comes last. A Git command with a global option Rocket
-  doesn't recognize is refused under MCP. The desktop app and CLI don't use this check.
-
-## Unreleased — Background network refresh
-
-- Fetch, fetch-for-pull and push now reconcile in the background without blocking
-  repository navigation. Full reads still refresh the selected diff.
-- Reuse issue-link rules only when effective Git configuration and repository identity
-  match, including included config files. Display reads reuse the verified repository
-  instead of rediscovering Git. Explicit refresh still rereads the rules.
-- Superseded rule reads are cancelled and completion wakes the viewport. No changes
-  to bundled-Git verification, credentials or dependencies. Focused test evidence is
-  recorded in `VALIDATION.md`.
-
-## Unreleased — Public website
-
-- `docs/` now holds a static site for GitHub Pages: Home, Get Rocket and a page-not-found, in light
-  and dark, with a 29-second demo video. It has no build step, external fonts or analytics.
-- The site offers no download, because there is no public release. Get Rocket gives the build steps.
-- `tools/website/` previews the site the way Pages serves it, checks its links and content, and
-  retakes its pictures and video from a disposable demo repository.
-
-## Unreleased — Conflict tags on wrapped lines
-
-- In the conflict editor, tags and buttons no longer sit on the code when a line wraps: the resolved
-  tag and Undo in Result, and Use ours, Use theirs, Used and Not used in the side panes. A line with
-  a button now wraps before it, and the words take a row with room for them. Used and Not used also
-  show when only a later row has room. Other lines wrap as before, and short lines look the same.
-- With Linked scrolling on, a side pane that wraps can scroll to its end in a narrow window.
-
-## Unreleased — MCP test window stays in the background
-
-- The MCP test window no longer takes the foreground on each MCP call, so typing in another app stays
-  in that app. It was forced forward with a simulated Alt key press, which also reached the other app.
-  A minimized test window is still restored, because it can't draw until it is.
-
-## Unreleased — MCP review windows stay in the background
-
-- MCP calls to a review window no longer take the foreground either, so typing in another app stays in
-  that app. A minimized review window is still restored.
-
-## Unreleased — All diagnostics, On origin and MCP input check
-
-- Activity & diagnostics (the Activity drawer's All diagnostics) has the header of other pages,
-  with Close at the right, and two cards. Operations read in words (Fetch, Review tag), times use
-  this computer's clock, and a failure shows Rocket's explanation and next step with its code and
-  where it stopped. It no longer says Git reported a problem when Rocket refused something.
-- Reads Rocket does by itself are hidden unless they fail or are cancelled. Show reads lists them,
-  and a search always covers them. Rows are shorter, and rows that need a look say why.
-- Steps lists each step once, nested, with setup folded. Records is the full timeline it replaces.
-- The page no longer jumps while Live reads, and it has its own reading, nothing to show, no match,
-  failed, stopped and missing-records states. A narrow window shows Operations and Details as tabs.
-  Request and session moved to the card's foot, and log status to the list's foot, in words.
-- On origin (the Tags page's remote tab) has count buttons for what stands where. The first tag is
-  selected after a read, the read stays when you change tabs, and every tag shows, with no Show more.
-- Where it points gives the commit on both sides, named when this repository has it. The note no
-  longer mixes tag object and commit IDs, and "Not in this repository" no longer shows for a commit
-  that is here. An indirect tag no longer claims to be lightweight.
-- Publish and Delete show only for tags they apply to. A tag that differs says how to replace it, and
-  Show in history joins this tab. After a verified change the row updates with no further read.
-- Failed reads have their own states, and the dropdown appears only with two or more remotes.
-  `dialog-remote-tag-more` is gone. New ids: `dialog-remote-tags-all`, `-here`, `-there`,
-  `-different`, `-same`, `-indirect`, `dialog-remote-tag-retry`, `-clear`, `-dismiss`,
-  `-show-commit`, `activity-reads`, `activity-retry`, `activity-resume`, `activity-clear`,
-  `activity-show-reads`, `activity-setup`, `activity-view-steps`, `activity-view-records`,
-  `activity-group-N`, `activity-tab-list`, `activity-tab-details`, `dialog-remote-tags-list`,
-  `dialog-remote-tags-details`.
-- The MCP input check shows only after a second, in Rocket's dialog style, with its checks as a list
-  and Stop instead of Cancel input. The status bar says briefly why a click was dropped. MCP clients
-  keep the existing error text. Try again on On origin and Publish on This repository, which read
-  the remote, now go through the check too. Once the dialog is up, a click on it no longer counts
-  as using the window.
-
-## Unreleased — Shell setting and known tools
-
-- Preferences → Terminal chooses the shell the Terminal drawer runs: Windows PowerShell (the
-  default, unchanged), Git Bash, Command Prompt, PowerShell 7 or a custom program with its
-  arguments. Git Bash is the bash beside the Git Rocket uses, so the bundled Git supplies it.
-  The saved format is v23, written only once the setting differs from its default.
-- The drawer names the session's real shell, shows while it starts, and says why when it can't
-  start, with Terminal settings and Try again. It never falls back to another shell. Command
-  Prompt refuses a network folder, where it would run commands in the Windows folder.
-- Git Bash saves history after each command, so End session, closing a tab and quitting keep it.
-- The shell's program and arguments come only from this profile's settings. MCP can't change
-  them: the page is locked in an MCP window, which always runs Windows PowerShell.
-  `state.terminal.shell` names the running shell.
-- Add on Preferences → External tools now lists known tools for that type: 11 in all, with the
-  ones on this computer first. Choosing one only fills in the form, runs nothing and saves
-  nothing. Runners open the list and choose `tools-known-empty` for the old blank profile.
-- A saved tool profile whose program has gone says so on the form.
-- The Preferences dialog is up to 40 pt taller, so its sidebar needs no scrolling at the usual size.
-
 ## 0.88.0 — Reviewed application updates (2026-11-01)
 
 - Check public JasXTD/Rocket Releases once at desktop launch, with a manual
@@ -1168,283 +2000,10 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   including clients that already verified the runtime. Added files, directories
   or reparse points stop the operation; existing verified files remain locked.
 - Use a new local package version for the current development source, including
-  the changes described in the Unreleased entries. Earlier 0.87.2 packages stay
+  the development changes recorded with this build. Earlier 0.87.2 packages stay
   unchanged. Rocket executables remain unsigned and require no certificate.
 - Keep Unreleased sections out of the version list in the Release notes dialog,
   including sections between historical releases.
-
-## Unreleased — Reliable Stop input
-
-- Keep status-bar Stop in a stable position with a stable widget identity while
-  progress text and progress bars change.
-- Resolve localhost MCP Stop clicks against the latest rendered position after
-  the existing visibility, fixture and expiry checks.
-
-## Unreleased — Guide and README
-
-- Help → Guide adds Files, Statistics, AI tools and AI review under Getting started, and
-  Dependency advisories and Storage under Preferences and tools. It now says where to find
-  Commit messages, Issue links and All diagnostics.
-- The Guide no longer shows bold marks and code marks as typed, and Repository benchmark
-  follows the Activity notes instead of splitting them from their topic.
-- README and the wiki's SSH steps follow the current pages.
-
-## Unreleased — Bundled Git
-
-- Include a separate, relocatable Git for Windows 2.56.0.windows.4 runtime in new
-  Windows x64 bundles. Automatic prefers it when included; explicit installed or
-  custom selections still override it, and builds without a runtime use PATH.
-- Preferences → Git adds Bundled Git, full-file verification progress and Stop.
-  Stopped/failed checks and externally changed selections do not publish a choice.
-  A damaged included runtime reports an error instead of silently switching Git.
-- Build and packaging scripts verify the pinned inventory and preserve the vendor
-  licenses. Source-only packaging remains available through `-WithoutBundledGit`.
-  System Git, PATH and existing credential/SSH configuration are not changed.
-- Recognize the bundled Git LFS helper in modern `ucrt64/bin` layouts while
-  preserving older installations and the Git LFS security version gate.
-
-## Unreleased — Extension commands, Jira and PlayGround
-
-- Extensions can declare commands. Lua API 1 gains a `commands` list in the manifest: up to 8, each
-  with an ID, a label and an optional target of commit or branch. A package says what a command
-  acts on and Rocket decides where it shows: the palette, Repository → Extensions, or the
-  right-click menu of commits and branches. Existing packages load and run as they did. There is
-  no API 2; `INTEGRATIONS.md` now says API 1 can grow, with nothing removed or changed in meaning.
-- A command opens its extension's page and runs there, in the same worker with the same limits as
-  a button, with `ctx.command` and `ctx.target`. The target is the row you chose, and a commit or
-  branch command needs the connection's Share switch. It ends in a view, or in one write that stops
-  at the request review.
-- Rows come from the approved copy, name included, so unreviewed text never reaches a menu. Off means
-  no rows. With changed files, no server, or a saved draft that no longer fits, one row opens the
-  review, the connection or the page with Clear draft, and the palette keeps the commands greyed with
-  their reason. Reviews and extension details list commands; a review marks them New, Changed or
-  Removed.
-- Turning a connection's Share switch on keeps its saved draft, which used to be blocked until
-  cleared. Turning it off still blocks a draft saved while sharing. Going back to an extension
-  whose request review is open keeps the review.
-- The panel API gains clickable table rows (`id`, `keys`, `selected`), pills and monospace in table
-  cells, `ui.split`, `ui.segments`, `ui.code`, `placeholder` and `submit` on `ui.input`, `tone` and
-  `small` on `ui.text`, and `ctx.confirmed`, which tells the next callback that a reviewed request
-  went through. `ui.column` takes `small` to keep its children close. Every package gets three fixes:
-  work in progress shows in the Refresh panel row, so the panel no longer jumps after every result;
-  tables fill their card, with lines between rows in place of stripes that stopped at the text; and
-  progress is a thin bar under its label.
-- Jira 1.2.0 is redesigned: one search box for a key, words or JQL, issues beside the chosen issue,
-  filters that apply at once, readable comments, and Edit and Create issue only when asked for.
-  Create lists the project's issue types, so Issue type ID leaves Settings. It adds four commands.
-- UI playground is now PlayGround 1.1.0: sections of live controls beside the Lua that draws them,
-  and two commands that show what a command receives. It ships with Rocket, off, so an installed
-  copy can update. The Lua editor's page is now titled Lua playground.
-
-## Unreleased — Extensions
-
-- Integrations are now Extensions, with their own group in Preferences after Connections. The
-  group has All extensions and a row for each enabled extension, and a puzzle piece replaces the
-  second plug. Connections keeps Accounts, SSH keys and MCP server.
-- The list shows each extension with its version, what it can reach and an Enable switch.
-  Install from file takes a package's integration.json, with main.lua beside it. A click opens
-  the details: Enable, permissions, Update and Remove first, then the connection as one form.
-  Save and Discard show only after an edit. An extension with no network has Settings instead.
-- Jira is a bundled extension, listed from the first run and off. Enable reviews it and copies it
-  into the extensions folder. Add Jira example is gone. Add repository example moved to Developer
-  tools as Add sample, beside the folder and Open playground.
-- Enable, Install, Update and Review again share one review: where the extension came from, its
-  code, its three permissions and what it can never do. A file says Rocket can't confirm who made
-  it. An update marks new permissions, counts changed lines against the approved copy, shows
-  them, lists what stays, and leaves the extension on or off as it was. No review runs a script.
-- Each enabled extension has its own entry in the sidebar, the icon rail, View → Go to and the
-  palette, and a page headed with its name. An amber dot marks a review or an unchecked write. The
-  shared Integrations page and its row of package names are gone. The palette adds Extensions,
-  Install extension from file and Lua playground.
-- Folders that can't load are rows with their reason, and one copy of a duplicate ID can be
-  removed from the list. Errors show their words without the code.
-- A file can't use bundled Jira's ID, so it can't inherit saved tokens. Update and Remove wait
-  while a request may have reached the service.
-- Stopping a Lua run just after it started could report clean Lua sandbox instead of the stop, and
-  left a rocket-lua folder in Temp. Rocket now waits up to 5 seconds for the file, and how the run
-  ended comes first. A successful run that still can't clean up reports it, as before.
-- Migration: none needed. Folders stay in integrations, connections stay in
-  integration-accounts.dpapi in the same format, and packages enabled today stay enabled with no
-  new review. The Enable switch reads the connections' saved state, and one review now covers all
-  of an extension's connections; Allow writes and Share stay per connection. A draft stays bound
-  to the exact files and connection, so after an update it stays saved but blocked, and the Update
-  review says so first.
-- Automation: int-install-jira goes with its button. int-enable moves to the Enable switch, with
-  int-disable as its name while on, and Save is int-save. goto-integrations opens the list, and
-  each extension has goto-ext-{id} and view-ext-{id} in place of view-integrations. int-open-panel
-  goes; other int-* ids stay. Lua API 1, its manifest and error codes are unchanged.
-
-## Unreleased — General settings
-
-- Preferences → General adds three cards, and every new setting starts at Rocket's behaviour
-  before it existed. Window and Updates keep their rows and take the header bar.
-- Repositories. Source code folder: where Clone's Parent folder and New repository's Project folder
-  start, with Browse and ×; a missing folder or a file at that path turns the row amber and Clone
-  starts next to the latest repository. Tags in fetch: where the Fetch dialog starts and what
-  automatic fetch brings. Space in branch names: spaces become - or _ as you type or paste, in New
-  branch, Rename, New worktree and branch recovery. Update submodules on checkout: after a branch
-  switch, initialized and clean submodules move to the recorded commit with no review; others are
-  left alone and named in Activity. Push after commit: Commit & Push takes the main button and
-  Ctrl+Enter in Changes, and its review still opens first.
-- Diff view, with a live preview: show or hide the − and + marks, font size 11 to 16, and Syntax
-  highlighting for every tab. These apply to Changes, Commits, Compare and review windows. The
-  Syntax checkbox in a diff's toolbar still flips one tab.
-- Commit list, with a live preview: Compact branch labels folds a branch and the remote branch it
-  tracks into one chip, drops the remote's name when there is only one remote, shortens folders to
-  their first letter, and counts what doesn't fit as +2. Hover shows the full names.
-- The Changes button reads Commit & Push, without the ellipsis.
-- Migration: saved state gains format v22, written only once one of these settings differs from
-  its default. Older Rocket builds then refuse the state file instead of losing data.
-
-## Unreleased — Repository benchmark page
-
-- View → Repository Benchmark uses the shared page header: an icon tile, "Local read timings · 3
-  passes · read only", Run benchmark as the main button and a quiet Close. Stop takes Run's place
-  while it runs and reads Stopping until the Git processes exit.
-- The results are one Timings card. Its bar shows the run's status (Ready, Waiting for other
-  operations, Pass 2 of 3 · History with a spinner, Stopping, Complete, Stopped, Failed) and the
-  reads and time so far. The table aligns First, Repeat median (bold) and Range on the right;
-  while it runs the read in progress has a tint and a spinner and reads still to come show
-  placeholders, so the table keeps its shape. A repository with no commits shows History and
-  Commit diff as "Skipped · no commits yet".
-- Errors and the changed-during-the-run, unavailable-observation and limit warnings are one line
-  each inside the card instead of full-width boxes above it. Copy summary moved to the card's
-  foot and reads Copied after a click. The explanations moved to the Guide.
-- Automation ids and the measurement itself are unchanged (benchmark-open/run/stop/close/copy/
-  scroll, `state.benchmark`, the report and its JSON).
-
-## Unreleased — Repository manager
-
-- File → Repository manager has its own sidebar in the app sidebar's place: Library (All saved,
-  Ungrouped), Folders and Workspaces with their counts, a + to make a folder or a workspace, and
-  nested workspaces indented under their chevron.
-- The header shows the counts with Save open tabs, Add repository and a quiet Close. The
-  repositories sit in a card whose bar names the selection and holds Filter (a folder adds Rename
-  and Remove); rows show the name, the path on one line and Open, Unavailable, Opening or Waiting.
-  A workspace lists what it opens, marking its active tab and the nested workspace each repository
-  comes from.
-- The selected repository or workspace has a details card with Open, Edit and a red Remove (and
-  New child) in its foot. While repositories open, Stop takes Open's place and the foot says which
-  one is opening of how many; the result ("Opened 2 · 1 unavailable") stays there, and an
-  unavailable repository shows its error in its own card. The save notices are gone.
-- Forms use a label column and full-height fields: Add repository gets Browse (the folder picker
-  in repository mode) and a Folder dropdown, and a workspace's repositories are one list with an
-  Active tab column. Removal reviews say what goes and what stays, with a red Remove. A location
-  without a repository reads "No Git repository at this location".
-- Automation: every manager-* id is kept; manager-stop now sits in the details card's foot. New
-  ids manager-browse, manager-folder (manager-folder-choice-* are inside it), manager-empty-add,
-  manager-empty-save and manager-filter-clear; rocket-mcp allows manager-browse and manager-folder
-  while a form is open. No library model, persistence or settings-format change.
-
-## Unreleased — CLI maintenance, identity, Git LFS and SSH keys
-
-- `remote rename`, `remote prune` (obsolete tracking refs only, with a recovery
-  ref), `branch delete-remote --expect ID` (never the server's default branch) and
-  `branch fast-forward` (to already-fetched upstreams, with a recovery ref).
-- `worktree move`, `repair` and `prune` for one linked worktree, pinned to its HEAD;
-  `fetch --tags`, `tag list --order newest` and signed tags with `tag create --sign`.
-- `identity show` and `identity set` for the repository-local user.name and
-  user.email, refused when the configuration changed after it was read.
-- Git LFS: `lfs status`, `track` (`--literal`), `untrack`, `fetch`, `push`,
-  `checkout`, `locks`, `lock` and `unlock` (your own locks only).
-- SSH: `ssh keys` and `ssh check` read public keys and Rocket's profiles; `ssh use`
-  and `ssh restore` bind this repository's `core.sshCommand` to a profile or put
-  back the earlier configuration, pinned to the configuration's SHA-256.
-- Writes repeat the `--preview` review and call the desktop's backend operations
-  under its write ownership. New refusal codes include `remote_branch_changed`,
-  `ssh_config_changed` and the backend's LFS lock codes. Forced LFS unlocks,
-  pruning, and SSH key creation, import and unlocking stay in the desktop. JSON
-  stays schema 1. No rocket-git, desktop, MCP, dependency or settings-format changes.
-
-## Unreleased — Slider clicks in the MCP
-
-- `rocket_click` now moves the Preferences → Appearance Visibility slider (`theme-visibility`):
-  its release arrives one frame after the press, so egui's slider, which senses drags only,
-  moves to the clicked point, the control's centre (35%). Every other control keeps its
-  one-frame click, and the click guard and fixture checks are unchanged. This supersedes
-  "Visibility can be read but not moved" under Themes in the MCP.
-- `tools/tests/test-mcp-themes.cjs` moves Visibility from 30% to 35%, checks it in
-  `state.appearance` through later clicks and reopening, and checks that a click is refused
-  while Visibility is off.
-
-## Unreleased — CLI undo, commit operations, rebase start, reset and history reads
-
-- `commit` JSON adds `undo` (branch, commit, previous, index SHA-256). `undo-commit`
-  with those values undoes that commit when nothing was staged since and no
-  remote-tracking branch has it, keeping its changes staged and a recovery ref.
-- `cherry-pick` and `revert` (1–100 full IDs, `--mainline`, optional HEAD pin) and
-  `amend --expect HEAD_ID`, with `continue`, `skip` and `abort`.
-- `rebase start TARGET`, applied with the reviewed original and destination IDs;
-  `--interactive` lists the range as a plan, and `--plan FILE` applies a data-only
-  plan (pick, reword, edit, squash, fixup, drop). Plans with `exec` are refused.
-- `reset --soft|--mixed|--hard ID --expect HEAD_ID` keeps the old tip as a recovery
-  ref and refuses work it would discard; `reflog` lists all five scopes.
-- Reads: `verify commit|tag` (`--require-valid`), `signing show`, `blame`,
-  `file-history`, `search` (text, path or content) and `compare`.
-- Backend: `UndoCommit::index_digest`, `Repository::pinned_undo_commit` and the
-  public `undo_failure_code`. Rebase reports gain `stop`. Desktop behavior is
-  unchanged; no dependencies or settings formats changed.
-
-## Unreleased — Repository benchmark
-
-- View → Repository Benchmark measures three passes of full refresh, HEAD
-  history and commit-diff preparation using the desktop's real read backend.
-  Shows first-pass/repeat timings, skips empty history, flags bounded results
-  and observed repository changes, and keeps partial results after stopping.
-- Stop gives immediate feedback while Git exits. Closing waits for cleanup;
-  normal refresh resumes afterward. Scheduled fetches wait during a benchmark.
-- Copy summary exports timings/counts and fixed outcome codes without repository
-  paths, names, refs, identity or content. Activity records each benchmark phase.
-
-## Unreleased — Themes in the MCP
-
-- `rocket_state` gains an `appearance` section: the chosen theme, the palette on screen
-  (System follows Windows' app mode, reported as `windows_mode`) and the accent; while Custom
-  is chosen, its base, accent, picture, size, position and visibility, and whether its
-  picture is showing yet. Your own picture is named by the file name Rocket keeps it under,
-  never by a path.
-- Automation can now change the theme: the Preferences → Appearance controls (the MCP refused
-  them while Preferences was open), the #RRGGBB field, and View → Appearance, whose row is now
-  published as `view-appearance` (before, its view-theme-* items could not be reached). The
-  Visibility slider can be read but not moved: an MCP click presses and releases in one
-  frame, which an egui slider ignores.
-- New runner `tools/tests/test-mcp-themes.cjs`: all five themes from both places, the Custom
-  options, the four built-in pictures, a picture chosen in the fixture-only picker (a file
-  that is not a picture is refused) and reopening the window.
-
-## Unreleased — CLI conflicts, line staging, bisect, remote tags and stash selection
-
-- `rocket-cli` gains the reviewed desktop operations it lacked since 0.84. Each read
-  prints a review; the write repeats it and refuses a mismatch with the SHA-256 or
-  object ID passed back, before the backend's own checks under write ownership.
-- Line staging: `hunks -- PATH` lists changed-line IDs and the patch SHA-256;
-  `stage`/`unstage --lines ... --expect-patch ...` change only the index.
-- Conflicts: `conflict show`, `conflict resolve` (choices per conflict, or a whole
-  result file; `--stage` refuses remaining markers), `conflict keep` (one whole
-  version, pinned by blob ID) and `conflict mark-resolved`, with recovery copies.
-- Bisect: `bisect status/start/good/bad/skip/resume/restore`, decisions pinned to the
-  tested commit, and `bisect run` with a reviewed `.exe` pinned by SHA-256. A run
-  holds write ownership for the whole search; a test timeout exits 124 and Ctrl+C
-  130, both keeping the search. Results appear on the desktop's Bisect page.
-- Remote tags: `tag remote`, `tag publish` (new remote tags only) and
-  `tag delete-remote`, each pinned to the reviewed objects.
-- Stash: `stash save -- PATH...`, `stash save --lines`, `stash show`, applying part
-  of a stash (`stash apply ... -- PATH...` with `--hunks` or `--lines`) and
-  `stash pop` with a backup ref. JSON schema 1 only gains commands and fields.
-- Backend: public `sha256_bytes`, `BisectAutoPreview::program_digest()` and
-  `ConflictPreview::original()`; five new diagnostic operation labels. Desktop
-  behavior is unchanged; no dependencies or settings formats changed.
-
-## Unreleased — Nested workspaces
-
-- Organize saved workspaces into a tree with empty groups, child creation, parent
-  selection, breadcrumbs and collapse/expand controls. Moves keep membership;
-  removal promotes children and refuses duplicate names under the same parent.
-- Optionally open descendant repositories with deduplication and a 64-repository
-  limit. Existing tabs, terminal sessions and drafts remain open; Stop cancels the
-  remaining queue. Hierarchies are bounded to eight levels and 128 workspaces.
-- Existing flat settings retain their format. Nested settings use v21 inside the
-  existing draft envelope; older builds refuse this format instead of losing parents.
 
 ## 0.87.2 — Security bundle (2026-10-30)
 
@@ -1459,533 +2018,6 @@ See [release notes](docs/releases/0.92.1.md) for requirements and verification.
   Existing choice, undo, scrolling and reviewed-save paths remain in use.
 - This local package contains the current development changes described below.
   Earlier 0.87.1 bundles remain unchanged and predate these security controls.
-
-## Unreleased — Details card scrolling
-
-- A page's details card (Git LFS, Tags, Worktrees, Submodules and the other
-  list-and-details pages) sizes its scroll area to the part that is on screen.
-  With the Activity drawer open or a long notice in a short window, its last
-  action (for example Git LFS Review checkout) can still be scrolled into view;
-  before, it could stay hidden under the drawer.
-
-## Unreleased — Diff overview
-
-- Text diffs show added/removed-line markers and the current viewport in an
-  overview strip. Click or drag it to scroll; when focused, arrows, Page Up/Down
-  and Home/End navigate. It follows unified and split layouts and hides when the
-  loaded diff fits. Markers describe the loaded diff, including its preview limit.
-- The existing conflict marker rail gains a viewport indicator and scroll
-  navigation, respecting linked and independent panes. Conflict selection,
-  resolution choices, save reviews and recovery copies keep their existing paths.
-- Summaries are cached when text/layout changes and use at most 1,024 paint
-  buckets. No additional Git commands, background scans or dependencies.
-
-## Unreleased — Menus
-
-- Repository goes from 39 rows to 13, so it no longer scrolls: Fetch, Pull, Push and Push
-  Branches Together, then submenus by task: Commit, Branch, Git Flow, Stash, Patches,
-  History & Recovery, Custom Commands, Remotes & Hosting and Settings. Items keep their
-  shortcuts; a few have new names: Workflows & Cleanup, Ignored Files (.gitignore), File
-  Backups & Restore, Signing & Verification, GitHub Repositories & Notifications.
-- Tags, Worktrees, Submodules, Git LFS, Statistics, Integrations and AI review opened the
-  same pages as the sidebar; they move to a new View → Go to, which lists every sidebar page
-  in the sidebar's order and ticks the current one. View's Compare commits and branches is
-  now Go to → Compare.
-- Edit's Undo, Redo, Cut, Copy, Paste and Select All work: they act on the text field you
-  were typing in, with its selection, and are grey when no field has focus (Cut and Copy
-  also need selected text). Undo Last Commit stays a separate item. Outside a text field,
-  Ctrl+V still applies a patch from the clipboard.
-- The command palette, hints and the Guide use the new names and menu paths; the Guide
-  has a short Menus section under Getting started.
-- Automation: item ids are unchanged. Submenu rows are repository-commit-menu,
-  -branch-menu, -stash-menu, -patches-menu, -history-menu, -remotes-menu and
-  -settings-menu (Git Flow and Custom Commands keep theirs); Go to is view-goto with goto-*
-  rows; the text commands are edit-undo, edit-redo, edit-cut, edit-copy, edit-paste and
-  edit-select-all. Runners open a moved item's submenu first (tools/tests/menu-paths.cjs);
-  test-mcp-menus.cjs covers the menus.
-
-## Unreleased — Shortcuts page name
-
-- Preferences → Keyboard & mouse is now called Shortcuts, and so is its command palette
-  entry (formerly Keyboard shortcuts). The page still sets keyboard and mouse bindings, and
-  Preferences search still finds it by keyboard, mouse or hotkeys.
-
-## Unreleased — SSH keys, keys first
-
-- Preferences → SSH keys lists every key once, beside the chosen key's location,
-  fingerprint and public key with Copy public key: the key pairs found in the SSH folder
-  and the keys Rocket made or set up. A key found in the folder no longer needs a profile
-  to be copied, unlocked or removed from ssh-agent.
-- A tick before each key shows whether it is unlocked in ssh-agent. Tick to unlock it
-  (ssh-add asks for the passphrase); untick to remove only that key. A found key is used
-  only while its files are the ones the scan read.
-- New key and Add key file sit under the list, and an empty page offers both. Use only
-  this key reviews the open repository's SSH setting; for a found key it first asks for
-  the host, user and port, taken from the repository's SSH remote when it has one.
-  Restore previous setting stays available, also when there are no keys.
-- Rescan also reads ssh-agent again. Check profile is now Check settings: it reads the
-  key's SSH config with `ssh -G` and does not connect. The Discovered keys card and its
-  Set up profile buttons are gone.
-
-## Unreleased — SSH key discovery
-
-- Preferences → SSH keys automatically lists public/private filename pairs in the
-  user's SSH folder, with Rescan, Unicode filenames, fingerprints and a reviewed
-  profile form. Discovery is bounded, cancellable and does not activate keys or
-  modify SSH config. Import rechecks the selected files and verifies the key pair.
-- Cancellation preserves the previous list; diagnostics report scan phases,
-  counts, skipped entries and typed failures without key contents or filenames.
-
-## Unreleased — Themes
-
-- Preferences → Appearance, View → Appearance and the command palette choose a theme:
-  Default (Rocket's navy, unchanged), Dark (neutral graphite), Light, System (Light or
-  Dark, following Windows as it changes) and Custom. A theme applies at once; the window
-  title bar keeps following Windows.
-- Custom starts from Default, Dark or Light and takes an accent: a swatch, a colour code or
-  From picture (a built-in picture's own colour, or your picture's most common vivid
-  colour). It can show a picture behind the main window's panes, which turn see-through by
-  the Visibility amount (10–60%): Astronaut, Space cat, Planet, Stars, or your own PNG, JPG
-  or WebP (up to 32 MB). Fill covers the
-  window; Fit shows the whole picture, its inner edge fading into the theme. Rocket dims (on
-  Light, lightens) parts of the picture that would make text hard to read. Dialogs, menus
-  and cards stay solid. A chosen picture is copied into Rocket's storage, at most 2,560
-  pixels on its long side, and replaces the one chosen before.
-- Every colour now comes from the active theme's palette (about 90 roles). Diff rows,
-  syntax colours, terminal colours and graph lanes follow the theme; the diff row cache
-  rebuilds when the palette changes. The Guide has a Themes topic, which "?" on the
-  Appearance page opens.
-- Local settings with a non-default theme use inner format v20; older binaries refuse it.
-  The Default theme keeps writing the earlier format. No dependencies were added; the four
-  built-in pictures ship as JPEGs with their SVG sources in `crates/rocket-ui/assets/themes`.
-- Automation: new ids theme-default/-dark/-light/-system/-custom, theme-base-*,
-  theme-accent-picture/-<swatch>/-code, theme-picture-none/-astronaut/-space-cat/-planet/
-  -stars/-choose/-own, theme-size-*, theme-position-*, theme-visibility and View →
-  Appearance's view-theme-*. rows-* are kept.
-
-## Unreleased — Keyboard and mouse shortcuts
-
-- Preferences → Keyboard & mouse now edits 21 common commands. Record up to two
-  keyboard/mouse bindings per command, review duplicates/reserved inputs, remove
-  a binding, or restore defaults. Back/forward buttons work alone; other clicks
-  and wheel directions require Ctrl, Alt or Shift.
-- Bound gestures are consumed before widget input, preventing a second click,
-  scroll or zoom. Terminal focus, modal reviews, ordinary editing and existing
-  command guards remain respected. Menu/palette hints follow saved bindings.
-- Local settings with shortcut overrides use inner format v19; older binaries
-  refuse it instead of silently dropping bindings. Streamed draft storage is
-  retained. No dependencies were added.
-
-## Unreleased — Shortcut table, conflict editor, review windows, Hosting lists and Git preferences
-
-- Keyboard & mouse is a table of Command, Shortcut and Alternate. Click a cell and press the
-  keys or a mouse gesture; it is saved at once. Esc cancels; Delete or Backspace clears the
-  cell. A clash shows under its row with Use for <command> or Keep; an input that cannot be
-  used shows why, with Record again and Cancel. Changed commands carry a dot and a reset
-  button; mouse buttons and the wheel read as chips (Mouse forward, Ctrl + Wheel up).
-- Conflict editor: the result has line numbers, tinted ours and theirs and a dimmed base and
-  markers. Use ours, Use theirs and Use both sit on each conflict's first line instead of the
-  toolbar (shorter words in narrow columns); an amber bar marks the selected conflict. Save
-  and stage no longer ends in an ellipsis.
-- Review windows open with a page header: the commit title, author, date, its ID (click to
-  copy) and Pinned · read only. Commit reviews list changed files beside the diff (a menu
-  below 760 px); file and blame reviews no longer repeat the history header. The window's
-  own close button closes it, so the in-window Close is gone; Retry appears after a stopped
-  or failed read.
-- Hosting: New pull request and Publish repository move from the tabs to the header; the tabs
-  are Pull requests, Issues and Saved drafts. GitHub search is one row: words, author:,
-  assignee:, recent searches behind a clock button (Clear recent searches ends that list) and
-  Search; Enter also searches. Each pull request row has Details beside Open in browser.
-- Preferences → Git uses two cards: Git program (the Git in use, Find Git automatically,
-  installed copies as choices, a path with Browse, Check and Use this Git) and Commit
-  identity (Name, Email, Reload or Discard changes, Save identity). Its notes moved to the
-  Guide.
-- Preferences no longer shows the Rocket version under its page list; Help → About shows it.
-- Automation: existing ids are kept (pref-shortcut-<command>-edit-N/-add/-reset,
-  pref-shortcut-cancel/-again, git-*, review-*, hosting-tab-create/-publish, hosting-search-*;
-  conflict-ours/-theirs/-both name the selected conflict's choices). New: pref-shortcut-move,
-  review-copy-id and per-conflict conflict-ours-N/-theirs-N/-both-N; pref-shortcut-save is
-  gone. MCP rocket_review_click on review-close closes the window as its close button does.
-
-## Unreleased — Compare page
-
-- One compare bar: Revisions, Staging area or Working tree as a segmented switch; Base and
-  Target as single fields with the branch list inside; Swap as an icon between them; and
-  Compare as the main button, which Stop replaces only while a read runs. In Staging area
-  and Working tree, Target is fixed. The always-disabled Stop and the standing hints are gone.
-- One result line: both commit IDs (click to copy), the files by kind (added, modified,
-  deleted, renamed) and when it was compared. When the fields change it says Not compared yet.
-- Files are rows like Changes: a coloured letter, the name, then its folder or where it came
-  from. A file that was only renamed or copied shows a card saying where it moved, instead of
-  Git's raw headers with escaped paths.
-- Before comparing, while reading, no differences and errors show a centered message; Retry
-  for a file's diff sits in the diff area. A narrow window wraps the bar, and Files and Diff
-  take turns as two tabs. The diff view itself is unchanged.
-- Automation: ids keep their meaning (compare-load and compare-cancel take turns; compare-swap
-  and compare-target exist in Revisions; compare-toggle-files is on the tab that switches).
-  New: compare-copy-base and compare-copy-target.
-
-## Unreleased — Apply part of a stash, Undo last commit and loading states
-
-- Apply part of a stash (Stashes → Apply selected) lists the stash's files with a checkbox
-  each (all, some or none of it) and their added and removed lines. Beside the list, the
-  picked file's changes are numbered cards with line numbers and a checkbox per changed line.
-  Each choice is checked at once, so Review selection is gone: Apply selected changes applies
-  a checked selection, and Check again appears only after a refused or stopped check. The
-  dialog's rules moved to the Guide.
-- Undo last commit shows the commit being undone and the commit the branch moves back to as
-  two cards, then what was checked, Copy recovery name and one Undo commit button. An open
-  review checks again by itself before Git's two-minute limit; Check again appears only
-  after a refusal. The dialog's notes moved to the Guide.
-- A pane, page or dialog with nothing to show yet centers its spinner and text (Loading diff
-  keeps Stop under them) instead of starting in the top-left corner. Status lines under
-  content stay in place.
-- Automation: the stash dialog adds dialog-stash-show-N (shows a file's changes) and
-  dialog-stash-whole; change and line checkboxes exist for the shown file.
-  dialog-preview-refresh (stash) and dialog-undo-refresh appear only after a refused or
-  stopped check, and Undo's dialog-submit only while there is a review to undo.
-
-## Unreleased — Conflict editor: three clear panes
-
-- Ours, Result and Theirs are matching boxes with line numbers, each under a header saying
-  what it is: Ours (HEAD, your branch), Result (saved to the file) and Theirs (the incoming
-  branch); rebase, cherry-pick and revert use their own words. After a choice, a file that fits
-  no longer scrolls past its end, leaving the panes mostly empty.
-- Each conflict has the same number in all three panes (amber while open, green once
-  resolved), and a band joins its lines across the gaps. Use ours sits on the Ours lines and
-  Use theirs on the Theirs lines; Result keeps Use both, and all three in a narrow window. A
-  resolved conflict says Used or Not used on each side. Text in Ours and Theirs can be selected.
-- Result's rail marks sit beside their lines on a file that fits, and the conflict counter
-  numbers conflicts as the badges do.
-- Automation: conflict-ours(-N) and conflict-theirs(-N) name the side panes' choices in the
-  three-column view; no ids were removed.
-
-## Unreleased — Find a shortcut by its keys; undo a resolved conflict
-
-- Keyboard & mouse: a keyboard button at the end of the search box waits for one chord or mouse
-  gesture and lists only the command that uses it; the box shows the input, such as Ctrl+K. It
-  never changes a binding. Esc or a plain click cancels; plain wheel scrolling still scrolls.
-- Conflict editor: a conflict resolved with Use ours, Use theirs or Use both stays tinted green,
-  with "Conflict N · resolved · used both" (shorter on a long line) and Undo on its first line
-  and a green mark on the scroll rail. Undo puts the original block back and selects it. Typing
-  elsewhere keeps Undo; typing on the resolved lines, Reload, a merge-tool or AI result, or a
-  failed save ends it. The header reads "N of M left" while resolved conflicts can be undone.
-- Automation: new ids pref-shortcuts-find and conflict-undo-N. state.shortcuts adds finding (pass
-  it as the rocket_shortcut recording_id) and found.
-
-## Unreleased — Git, Custom commands and MCP server in Preferences
-
-- Preferences → Git lists the ways to run Git in one card: Automatic (the first git.exe on
-  PATH), each installed copy with its version, and Custom path with Browse. Choosing one
-  runs git --version and saves it when it passes, so Check and Use this Git are gone; a copy
-  that is too old or does not run cannot be chosen, and a failed Custom path keeps the saved
-  choice. The card says when a restart is needed. Commit identity has full-height Name and
-  Email fields; Save and Discard appear only after an edit, and the config file is named on
-  the info icon. The page footer is gone.
-- Custom commands are edited in Preferences → Custom commands instead of a separate window.
-  Commands are grouped by the menu they show in and edited under their row; Find, Import,
-  Export and New command sit above the list, Save commands and Discard in the footer, and
-  Preferences stays open while changes are unsaved. New: Duplicate. Repository → Custom
-  Commands → Edit Custom Commands and the palette open the page.
-- Preferences → MCP server uses the same cards. While Rocket checks the server, the card
-  says Checking and the rows the answer fills hold placeholders, so nothing jumps when it
-  arrives. Start server or Stop server sits at the server card's foot. Port and folder are
-  full-height fields; Save and Discard appear only after an edit, and Start server waits
-  for them. Errors show on the card they concern; the protocol line moved to the guide.
-- Automation: the custom-commands dialog kind is gone; state.preferences.page is commands. New ids
-  dialog-commands-save, -discard, -duplicate and -filter, git-custom; git-reload is Discard
-  or Try again; git-check and pref-manage-commands are gone. Under MCP,
-  dialog-commands-save keeps the fixed-test-command rule, and a Git row may be chosen only
-  for the Git the window runs. MCP server: mcp-save shows only after an edit; new
-  mcp-discard; mcp-guide is gone.
-
-## Unreleased — Setup Guide and the Help menu
-
-- Guided setup is now called Setup Guide: in the Help menu, on the welcome screen and the
-  Summary page, in the command palette and in the guide.
-- Help no longer lists Keyboard Shortcuts. They live in Preferences → Keyboard & mouse,
-  which the command palette's Keyboard shortcuts entry also opens.
-- Automation: help-shortcuts is gone; help-setup, summary-setup and welcome-setup keep
-  their ids.
-
-## Unreleased — Dialog footers
-
-- Dialogs no longer repeat their header × with a footer Close or Cancel: the ×, or
-  Escape, closes them as that button did, with the same checks while work runs.
-  Among them: Push, Pull, Merge, Rebase, Git Flow, tag, worktree, submodule and Git
-  LFS reviews, Commit link, Undo, Bisect, recovery, Open and Clone.
-- While work runs, the button that ends it reads Stop. File restore and patch
-  reviews show it only then; Preferences (Git, SSH keys, Accounts, Dependencies), the
-  commit link remote read and custom command transfers say Stop instead of Cancel.
-- Pages say Stop for running work too: Hosting, GitHub, Playground, Integrations,
-  AI review, Compare, Path history and Files. Review windows say Stop reading, the
-  repository manager Stop opening, the commit message box Stop drafting and the
-  conflict editor Stop saving. Git LFS and Submodules keep Cancel read: that button
-  also closes the page. Control names are unchanged.
-- The remote tag review's × now returns to the remote tab; it did nothing before.
-- Automation: the × also answers to `dialog-cancel` and to a removed button's own
-  name (`dialog-tag-back`, `manager-cancel`, `picker-cancel`, `commit-link-close` and
-  others); a footer Stop keeps `dialog-cancel` while work runs.
-
-## Unreleased — AI conflict proposal page
-
-- AI conflict proposal has one layout from start to finish: the code on the left, a column on
-  the right, and the main button in one place at the top right: Send, then Stop, then Apply.
-  The page shows an AI mark, and so does AI resolve, which also sits beside Open conflict editor
-  in Changes (`conflict-open-ai`).
-- Who answers is Claude Code, Codex or Connected agent, starting on the first program found.
-  Codex is new here (`conflict-ai-source-codex`, `conflict-ai-codex`, diagnostics
-  `ai-conflict-codex`). Goes to says who gets the code, with Found or Not found checked for real:
-  the page used to show claude.exe even with nothing installed, and fail after Send. Not found
-  offers Browse on the page (`conflict-ai-browse`), and a stopped MCP server offers its
-  Preferences page (`conflict-ai-server`).
-- Prepare snapshot is gone (`conflict-ai-prepare`): the page prepares by itself, and each send
-  checks the file again. Show what will be sent became Show exact data, in the code pane
-  (`conflict-ai-exact`). Sends now says the whole file goes, which is what always happened.
-- Review: Conflict and Proposed result use the editor's colours and numbers, changed lines are
-  green, and each conflict names its lines. Clicking one moves both panes to it
-  (`conflict-ai-section-N`). Discard reads Ask again; its id stays. Errors say what happened and
-  what to do; the code and the program's own message move under Details.
-- Apply lands each conflict in the editor as resolved, marked AI, with its own Undo. An AI result
-  used to end Undo. A narrow window puts the card first and shows the conflicts as chips above
-  the code.
-- MCP state: `conflict_editor.ai.source` can be `codex`, `error` is now always the code alone, and
-  `refused` and `selected` are new.
-
-## Unreleased — Claude Code conflict proposals
-
-- AI resolve can ask Claude Code on this computer as well as a connected MCP agent:
-  choose Claude Code in Ask for a proposal, prepare the snapshot, check what will be
-  sent, then Send to Claude Code. Rocket starts the Claude program from Preferences →
-  Commit messages once, from an empty folder, with no tools or project settings, and
-  sends only the prepared snapshot with fixed instructions. The reply goes through the
-  same review as an agent's proposal; nothing changes until Apply. Your Claude plan or
-  API usage applies; no API key is stored.
-- While Claude Code works, a status card shows the elapsed time and Stop, which ends
-  its process tree; a request stops after 5 minutes. Other running AI work on the page
-  shows Stop instead of Cancel. The page subtitle names the conflicted file.
-- Automation: `conflict-ai-source-agent`, `conflict-ai-source-claude` and
-  `conflict-ai-claude`; MCP state reports `conflict_editor.ai.source`; under MCP only
-  the fixture's stub program may run, as for commit drafts. Diagnostics name the
-  request `ai-conflict-claude`.
-
-## Unreleased — UI revamp: Preferences connections and newer screens
-
-- Edit → Preferences gains Accounts and SSH keys under a new Connections group;
-  its sidebar is grouped (Workspace, Git, Connections, Security & data) and scrolls
-  in short windows. File → Configure SSH Keys, File → Accounts and Repository →
-  SSH Keys and Accounts are removed; Repository → Hosting replaces Hosting and
-  Accounts. The command palette lists Accounts and SSH keys.
-- Hosting has no Accounts tab. Accounts beside the sign-in status, and Open
-  Accounts when signed out, open Preferences; closing it, or connecting an account,
-  returns to Hosting with any error message kept.
-- The account form names the account it edits, groups providers as Cloud and
-  Self-hosted, and gives each provider one line about its token; details moved to
-  the Hosting guide. SSH keys shows profiles as rows with a details card, a
-  passphrase card for OpenSSH prompts and a review card for Use for <repository>,
-  which needs an open repository. Closing Preferences waits while OpenSSH runs.
-- Automation: control names of both pages are kept (`hosting-tab-accounts` reaches
-  the Hosting link); MCP state reports `preferences.page`. No new dependencies,
-  credential or SSH configuration changes.
-- Integrations: Preferences lists packages as rows and edits a connection in Service,
-  Package settings and Permissions cards (permissions are switches). The page has a
-  header and toolbar; the request review shows the method, address and numbered
-  body. Lua panels get Rocket's spacing, padded cards, accent primary buttons and
-  pills without package changes.
-- Hosting pull request details: breadcrumb, a header card with state, branches, head
-  and base, Write a review as the main action, and tabs with counts. Commit link is a
-  review-style dialog; Open in browser appears once a remote is chosen.
-- Bisect keeps its dialog with short IDs, a First bad commit card, decisions as
-  pills and Restore original as the main action once the search ends. Summary shows
-  count tiles, a Next step card and the branch's upstream state; Guided setup is a
-  stepper with progress. The playground has Run in its header, numbered lines and a
-  framed preview; AI conflict proposals show numbered, tinted conflict and result
-  panes beside the sections and their confidence.
-
-## Unreleased — Lua write recovery security fixes
-
-- Keep redirected POST/PUT/PATCH/DELETE results uncertain: the service may have
-  applied the write before returning a redirect. Restart retains the recovery
-  guard until the user checks the remote result and acknowledges it.
-- Serialize protected integration settings saves across Rocket processes with a
-  persistent OS file lock. A competing save preserves the existing file and
-  draft, reports a retryable busy error, and still rejects stale snapshots.
-  Close older Rocket processes before using the updated build.
-
-## Unreleased — Lua coding playground and MCP conflict proposals
-
-- Replace the component-demo install entry with a Lua editor, Run/Cancel and an
-  interactive native preview, including compact code/preview tabs. Preserve the
-  previous successful preview and callback state after failures/cancellation.
-- Save scratch source in separate protected local storage with external-change
-  checks and a normal-exit save guard. Restart never runs scratch code. Existing
-  installed component demos remain intact.
-- Add user-approved conflict snapshots for connected MCP agents, with validated
-  per-section proposals, explanations and agent confidence. Apply updates only
-  the editor draft; file saves retain existing backups and external-edit checks.
-- Add authenticated localhost proposal tools that work without a development
-  window. Cancellation/expiry revoke shared context; general MCP state and logs
-  omit source and proposals. No AI API key, model invocation or automatic merge
-  commit is introduced.
-
-## Unreleased — Lua developer tools and Jira workflows
-
-- Add native Lua syntax validation and bounded local action diagnostics with source
-  locations. Validation never executes module initialization or the callback.
-- Extend the Jira Cloud example with JQL pagination, issue details/edit metadata,
-  reviewed edits/transitions and create-field inspection. Preserve rich descriptions
-  unless replacement is selected; reject checked writes when the update marker
-  changes. This preflight is not an atomic service-side lock.
-- Add explicit per-connection permission for read-only branch, commit IDs and
-  change counts, plus an offline example. Paths, remotes, identities and file
-  contents remain outside the context. Existing connections default to no access.
-- Drop obsolete field values when a callback changes a control's type or choices.
-  Existing example folders are never replaced. Live Jira remains unverified.
-
-## Unreleased — Integration connections and saved drafts
-
-- Report invalid packages independently so healthy integrations remain usable;
-  refuse all copies of a duplicate ID and keep their files unchanged.
-- Add up to 16 named connections per integration, with separate credentials,
-  permissions, settings and uncertain-write recovery. Existing connections migrate
-  to Default without changing the old protected file until a successful save.
-- Save bounded forms, script state and their native panel locally in protected
-  storage. Switching/restarting restores the same connection's draft without
-  running Lua or sending requests. Writes and previews never replay.
-- Bind saved drafts to exact source and connection identity. Preserve incompatible
-  drafts for repair or explicit clearing; refuse external-file overwrites. Drain
-  pending draft saves before exit and keep the window open on save failure.
-
-## Unreleased — Lua integrations and native panels
-
-- Add an Integrations page and Preferences section for explicitly enabled local
-  Lua packages. Expose versioned native layouts, forms, tables and action buttons.
-- Bundle a bounded Lua 5.5.1 worker; keep HTTP, credentials, request review and
-  cancellation in Rocket. No system Lua or Node runtime is needed.
-- Add an offline UI playground and Jira Cloud example for reading issues and
-  reviewing issue/comment creation. Existing folders are preserved.
-- Bind approval to exact source/manifest contents. Protect optional saved tokens
-  separately and persist uncertain write outcomes before sending; restart never
-  retries a write. Real Jira acceptance remains unverified.
-
-## Unreleased — PR collaboration and saved drafts
-
-- Protect PR review/line/reply drafts locally and persist uncertain review,
-  discussion and merge outcomes before sending. Restore requires the same account
-  and fresh reads; previous previews and writes never replay automatically.
-- Add GitHub/GHES thread replies, resolve/reopen previews and multiline comments
-  within a complete diff hunk. Preserve stale text and honor thread permissions.
-- Add PR details, provider-supported comments/approvals/change votes and reviewed
-  merges to GitLab, Bitbucket Cloud/Server, Azure Services/Server and Gitea.
-  Show bounded/unsupported data and provider-specific concurrency limitations.
-- Keep local files, existing credentials and provider policy protections intact;
-  no new dependencies or embedded scripting runtime are included.
-
-## Unreleased — Parallel-load reliability
-
-- Speed up secret scanning of large files with bounded candidate searches while
-  retaining cancellation, token detection and existing scan limits.
-- Check an object batch's complete size metadata before reading its payloads,
-  so a known over-budget scan reports the size limit promptly.
-- Avoid repeated waits once a diagnostic log lock is known to be busy. Batch
-  recovery flushes across retained files and keep all overflow copies until
-  every destination flush succeeds, including after rotation or a failed flush.
-
-## Unreleased — Azure DevOps Server
-
-- Add a separate on-premises hosting provider with HTTPS collection URLs,
-  server-issued PATs and API 6.0/7.0/7.1 choices, persisted in protected profiles.
-- Verify an active authenticated account; browse paged PRs and project work items,
-  and review both branch tips before creating a same-repository PR. Scope pages
-  and previews to the account, collection, repository, filters and API version.
-- Preserve local files and existing credentials, TLS checks, immediate stopping
-  feedback and uncertain-create recovery. Show fixed authentication, API, redirect,
-  certificate and service errors without logging tokens or response payloads.
-- Include a mockup and focused temporary-repository/mock-API coverage. Windows
-  authentication/SSO and live Azure DevOps Server compatibility remain unverified.
-- Clear the previous successful PR link when reviewing another creation, so an
-  interrupted attempt cannot appear to refer to the earlier pull request.
-
-## Unreleased — Re-audit fixes
-
-- Warn before closing with unsent pull request review text or inline comments.
-  Cancel keeps the review open. The newer PR collaboration storage preserves
-  these drafts on confirmed exit instead of discarding them.
-- Finish image loading in separate commit review windows and
-  release their preview state on close.
-- Share unchanged retained draft text between autosave snapshots, including tab
-  close and reverted edits, to avoid scanning/copying all retained text each poll.
-  The state v18 format, complete draft content and save retry behavior stay intact.
-- Report a changed interactive-rebase journal as a plan mismatch before decoding
-  it; keep refusing Abort, Continue and Skip until the reviewed plan is restored.
-
-## Unreleased — GitHub Enterprise Server
-
-- Add a separate Enterprise Server provider with configurable HTTPS origin,
-  server-issued tokens and optional protected account persistence.
-- Reuse GitHub PR/issue search, pagination, reviewed creation, details, inline
-  reviews and merging against the enterprise `/api/v3` endpoint. Match remotes
-  only to the explicitly selected server; preserve public-only OAuth/publishing.
-- Show reported server version and distinct certificate, redirect, unavailable
-  service and retired-API errors. Keep credentials/private response data out of
-  diagnostics, certificate checks enabled and cancellation/uncertain-write guards.
-- Add an interactive mockup, focused backend and native localhost MCP coverage
-  with disposable repos/accounts. Real GHES deployments remain unverified.
-
-## Unreleased — GitHub PR workflows
-
-- Queue, edit and remove inline comments from validated old/new diff lines;
-  submit them together in a review tied to the original PR revision. Preserve
-  Unicode rename paths and refuse missing, unsafe or incomplete locations.
-- Review merge, squash or rebase on GitHub with current permissions/method checks,
-  a head-SHA condition and explicit uncertain-outcome recovery. No local checkout
-  writes, branch deletion, automatic retry or merge-queue operation.
-- Create a PR from an existing fork after reviewing both repositories and branch
-  IDs, rechecking their fork network and tips. No automatic fork or branch push.
-- Extend the isolated localhost MCP acceptance runner and user documentation.
-  GitHub live policy/scope acceptance remains separate from synthetic API tests.
-
-## Unreleased — Guided setup, repository summary and Safe Undo
-
-- Add Help → Guided setup with existing Git preferences, Open/New/Clone,
-  repository identity and Changes entry points. No automatic writes or sign-in.
-- Add Summary in the sidebar and command palette: staged/unstaged/untracked/
-  conflict counts, branch state, local upstream comparison and a next-step hint.
-  It reuses existing refresh data and marks missing or stale information.
-- Add reviewed Edit → Undo last commit for the latest ordinary commit created
-  in this UI session, including a first commit. Retain a recovery ref before
-  moving the branch; preserve index and working files. Refuse later staging,
-  moved tips, active operations, known publication and stale external edits.
-- Reconcile cancellation against the actual branch/index/recovery result, with
-  fixed diagnostic failure codes. No general Undo/Redo or CLI command is added.
-  Existing release bundles are unchanged; this is a local development build.
-
-## Unreleased — Draft storage and responsiveness
-
-- Save more than 64 retained drafts and messages above 128 KiB in a streamed
-  archive. Atomic state v18 migration preserves prior saves on failure. Close
-  Rocket before backing up the whole state folder; older builds cannot read
-  state v18. The composer now
-  explicitly rejects edits above the existing 1 MiB commit-message limit.
-- Share unchanged terminal rows between snapshots and skip output snapshots for
-  hidden terminals while continuing to observe process shutdown.
-- Generate image difference textures on demand and cap retained image textures
-  across tabs and review windows at 192 MiB. Least recently viewed previews can
-  be released and offer Reload. Decoding buffers and driver overhead are separate.
-- Correct the mail-import test's startup preference setup and add phase-specific
-  timeout diagnostics without increasing its deadline. The earlier intermittent
-  timeout's precise cause is not established by this fixture correction.
-
-## Unreleased — Audit corrections
-
-- Bound retained worktree presentation settings so opening more than 256
-  repositories over time does not stop draft/settings saves. Add Retry save for
-  failed writes while preserving unread or unowned state files.
-- Cancel obsolete queued spelling checks, bound pending text, and keep disabling
-  or closing responsive. Accepted dictionary changes finish asynchronously.
-- Repair the reflog, privacy and contextual-workflow test expectations, plus
-  hook-timeout and asynchronous terminal test fixtures. Clean up workspace
-  Clippy warnings. The release version and packaged binaries are unchanged.
 
 ## 0.87.1 — Large-file secret protection
 

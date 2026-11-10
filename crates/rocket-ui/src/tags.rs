@@ -106,9 +106,9 @@ impl DialogState {
         if self.remote.snapshot.is_some() {
             if self.remote_read_outdated() {
                 self.remote.stale = true;
-                self.remote.notice = Some("Tags changed here since this read.".into());
+                self.remote.notice = Some(crate::i18n::tr("Tags changed here since this read.").into());
             } else if self.remote.stale && self.remote.notice.is_none() {
-                self.remote.notice = Some(remote::OUT_OF_DATE.into());
+                self.remote.notice = Some(crate::i18n::tr(remote::OUT_OF_DATE).into());
             }
         }
     }
@@ -311,10 +311,9 @@ impl Rocket {
             s.message.clear();
             self.start_tag_read();
         } else {
-            d.error = Some(format!(
-                "{}\n{}\nReturn to the list and refresh before retrying.",
-                outcome.summary,
-                outcome.details.join("\n")
+            d.error = Some(crate::i18n::trf!(
+                "{summary}\n{details}\nReturn to the list and refresh before retrying.",
+                summary = outcome.summary, details = outcome.details.join("\n")
             ));
         }
     }
@@ -382,12 +381,12 @@ impl Rocket {
             }
             let some = s.page.as_ref().is_some_and(|p| p.entries.iter().any(|e| !e.symbolic));
             pages::toolbar(ui, |ui| {
-                let r = search_field(ui, &mut s.filter, "Filter tags", 280.0);
+                let r = search_field(ui, &mut s.filter, crate::i18n::tr("Filter tags"), 280.0);
                 control(widgets, "dialog-tags-filter", &r, ui.clip_rect());
                 ui.add_enabled_ui(!waiting, |ui| {
                     let orders = [
-                        ("dialog-tags-sort-newest", "Newest", TagOrder::Newest),
-                        ("dialog-tags-sort-name", "Name", TagOrder::Name),
+                        ("dialog-tags-sort-newest", crate::i18n::tr("Newest"), TagOrder::Newest),
+                        ("dialog-tags-sort-name", crate::i18n::tr("Name"), TagOrder::Name),
                     ];
                     let items = orders.map(|(_, label, order)| (label, s.order == order));
                     for (r, (key, _, order)) in pages::segments(ui, &items).iter().zip(orders) {
@@ -400,7 +399,7 @@ impl Rocket {
                     }
                 });
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let r = pages::ghost(ui, !waiting && writable && some, "Select several");
+                    let r = pages::ghost(ui, !waiting && writable && some, crate::i18n::tr("Select several"));
                     control(widgets, "dialog-tags-batch", &r, ui.clip_rect());
                     if r.clicked() {
                         s.batch = Some(Default::default());
@@ -496,17 +495,17 @@ impl Rocket {
             .or_else(|| s.selected.as_ref().map(|e| display(&e.name)))
             .unwrap_or_default();
         let title = if create {
-            "Create tag".to_owned()
+            crate::i18n::tr("Create tag").to_owned()
         } else {
-            format!("Delete tag {name}?")
+            crate::i18n::trf!("Delete tag {name}?", name)
         };
         let head = pages::ReviewHeader {
             image: Icon::Tag,
             title: &title,
             subtitle: if create {
-                "Name a commit, such as a release. Existing tags are never replaced."
+                crate::i18n::tr("Name a commit, such as a release. Existing tags are never replaced.")
             } else {
-                "Removes the tag from this repository. The commit it marks stays."
+                crate::i18n::tr("Removes the tag from this repository. The commit it marks stays.")
             },
             danger: !create,
         };
@@ -525,7 +524,7 @@ impl Rocket {
                         let taken = s.page.as_ref().is_some_and(|p| {
                             p.entries.iter().any(|e| e.name == d.first.trim().as_bytes())
                         });
-                        form_row(ui, "Name", |ui| {
+                        form_row(ui, crate::i18n::tr("Name"), |ui| {
                             let r = ui.add_enabled(
                                 !s.applying,
                                 TextEdit::singleline(&mut d.first)
@@ -537,12 +536,12 @@ impl Rocket {
                             control(widgets, "dialog-tag-name", &r, ui.clip_rect());
                             edited |= r.changed();
                             if taken {
-                                check(ui, false, "A tag with this name already exists");
+                                check(ui, false, crate::i18n::tr("A tag with this name already exists"));
                             } else if !d.first.trim().is_empty() {
-                                check(ui, true, "New tag name");
+                                check(ui, true, crate::i18n::tr("New tag name"));
                             }
                         });
-                        form_row(ui, "Points to", |ui| {
+                        form_row(ui, crate::i18n::tr("Points to"), |ui| {
                             let r = ui.add_enabled(
                                 !s.applying,
                                 TextEdit::singleline(&mut s.target)
@@ -555,12 +554,12 @@ impl Rocket {
                             edited |= r.changed();
                             match s.preview.as_ref().map(|p| p.details()) {
                                 Some(details) => commit_line(ui, &details.target, details.commit.as_ref(), true),
-                                None => pages::note(ui, "A branch, tag or commit ID; checked when you review."),
+                                None => pages::note(ui, crate::i18n::tr("A branch, tag or commit ID; checked when you review.")),
                             }
                         });
-                        form_row(ui, "Type", |ui| {
+                        form_row(ui, crate::i18n::tr("Type"), |ui| {
                             ui.add_enabled_ui(!s.applying, |ui| {
-                                let kinds = [(false, "Lightweight", "light"), (true, "Annotated", "annotated")];
+                                let kinds = [(false, crate::i18n::tr("Lightweight"), "light"), (true, crate::i18n::tr("Annotated"), "annotated")];
                                 let items = kinds.map(|(value, label, _)| (label, s.annotated == value));
                                 for (r, (value, _, id)) in pages::segments(ui, &items).iter().zip(kinds) {
                                     control(widgets, format!("dialog-tag-{id}"), r, ui.clip_rect());
@@ -573,14 +572,14 @@ impl Rocket {
                             pages::note(
                                 ui,
                                 if s.annotated {
-                                    "Also records who tagged it, when, and a message."
+                                    crate::i18n::tr("Also records who tagged it, when, and a message.")
                                 } else {
-                                    "Only a name for the commit: no tagger, date or message."
+                                    crate::i18n::tr("Only a name for the commit: no tagger, date or message.")
                                 },
                             );
                         });
                         if s.annotated {
-                            form_row(ui, "Message", |ui| {
+                            form_row(ui, crate::i18n::tr("Message"), |ui| {
                                 let r = ui.add_enabled(
                                     !s.applying,
                                     TextEdit::multiline(&mut s.message)
@@ -594,12 +593,12 @@ impl Rocket {
                                 ui.horizontal(|ui| {
                                     let r = ui.add_enabled(
                                         !s.applying,
-                                        checkbox(&mut s.sign, "Sign with your signing key"),
+                                        checkbox(&mut s.sign, crate::i18n::tr("Sign with your signing key")),
                                     );
                                     control(widgets, "dialog-tag-sign", &r, ui.clip_rect());
                                     edited |= r.changed();
                                     ui.label(
-                                        RichText::new("· from Repository settings")
+                                        RichText::new(crate::i18n::tr("· from Repository settings"))
                                             .size(12.0)
                                             .color(FAINT()),
                                     );
@@ -619,14 +618,14 @@ impl Rocket {
                         pages::callout(
                             ui,
                             AMBER(),
-                            &format!(
-                                "Only this repository's tag is deleted. If a remote such as {remote} has {name}, the next fetch brings it back."
+                            &crate::i18n::trf!(
+                                "Only this repository's tag is deleted. If a remote such as {remote} has {name}, the next fetch brings it back.", remote, name
                             ),
                         );
                     }
                     // A running tag operation shows its status and Stop in the footer.
                     if waiting && !s.applying {
-                        pages::waiting(ui, "Reading tags and the reviewed object…");
+                        pages::waiting(ui, crate::i18n::tr("Reading tags and the reviewed object…"));
                     }
                     if let Some(error) = &d.error {
                         pages::callout(ui, RED(), error);
@@ -638,16 +637,16 @@ impl Rocket {
                 pages::Part::Footer => {
                     let ready = !waiting && writable && s.preview.is_some() && d.error.is_none();
                     let r = if create {
-                        pages::primary(ui, ready, "Create tag")
+                        pages::primary(ui, ready, crate::i18n::tr("Create tag"))
                     } else {
-                        pages::danger(ui, ready, "Delete tag")
+                        pages::danger(ui, ready, crate::i18n::tr("Delete tag"))
                     };
                     control(widgets, "dialog-submit", &r, ui.clip_rect());
                     f.submit = r.clicked();
                     let r = if s.preview.is_some() || d.error.is_some() || !create {
-                        ui.add_enabled(!waiting, Button::new("Review again"))
+                        ui.add_enabled(!waiting, Button::new(crate::i18n::tr("Review again")))
                     } else {
-                        pages::primary(ui, !waiting, "Review")
+                        pages::primary(ui, !waiting, crate::i18n::tr("Review"))
                     };
                     control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                     f.refresh |= r.clicked();
@@ -685,7 +684,7 @@ impl Rocket {
             if self.write.is_none() {
                 s.applying = false;
                 d.error =
-                    Some("Could not start. Wait for the repository, then review again.".into());
+                    Some(crate::i18n::tr("Could not start. Wait for the repository, then review again.").into());
             }
         }
         if !f.dismiss {
@@ -709,13 +708,13 @@ struct Flags {
 /// The footer line of a review: where it stands.
 pub(crate) fn review_status(waiting: bool, error: bool, reviewed: bool) -> &'static str {
     if waiting {
-        "Reviewing"
+        crate::i18n::tr("Reviewing")
     } else if error {
-        "Fix the problem above, then review again"
+        crate::i18n::tr("Fix the problem above, then review again")
     } else if reviewed {
-        "Reviewed · nothing has changed yet"
+        crate::i18n::tr("Reviewed · nothing has changed yet")
     } else {
-        "Review to see exactly what will happen"
+        crate::i18n::tr("Review to see exactly what will happen")
     }
 }
 
@@ -723,7 +722,7 @@ pub(crate) fn review_status(waiting: bool, error: bool, reviewed: bool) -> &'sta
 pub(crate) fn remote_name(d: &Dialog) -> String {
     d.remotes
         .get(d.remote)
-        .map_or_else(|| "a remote".into(), |r| display(r))
+        .map_or_else(|| crate::i18n::tr("a remote").into(), |r| display(r))
 }
 
 /// What the Tags page's title row and tabs show; both tabs share them.
@@ -755,29 +754,29 @@ fn top(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, t: Top) -> TopClic
     pages::header(
         ui,
         Icon::Tag,
-        "Tags",
-        "Names for important commits, such as releases. Shared by this repository's worktrees.",
+        crate::i18n::tr("Tags"),
+        crate::i18n::tr("Names for important commits, such as releases. Shared by this repository's worktrees."),
         |ui| {
-            let r = pages::ghost(ui, t.can_close, "Close");
+            let r = pages::ghost(ui, t.can_close, crate::i18n::tr("Close"));
             control(widgets, "dialog-cancel", &r, ui.clip_rect());
             out.close = r.clicked();
-            let r = pages::primary(ui, t.can_create, "New tag");
+            let r = pages::primary(ui, t.can_create, crate::i18n::tr("New tag"));
             control(widgets, "dialog-tag-new", &r, ui.clip_rect());
             out.new_tag = r.clicked();
             if let Some(enabled) = t.can_refresh {
                 let r = crate::chrome::icon_button(ui, Icon::Refresh, enabled, false, 32.0)
-                    .on_hover_text("Refresh");
+                    .on_hover_text(crate::i18n::tr("Refresh"));
                 control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                 out.refresh = r.clicked();
             }
         },
     );
-    let remote = format!("On {}", t.remote_name);
+    let remote = crate::i18n::trf!("On {remote}", remote = t.remote_name);
     let picked = pages::tabs(
         ui,
         &[
             pages::TabItem {
-                label: "This repository",
+                label: crate::i18n::tr("This repository"),
                 count: t.count,
                 selected: !t.remote,
                 enabled: t.can_switch,
@@ -808,11 +807,11 @@ pub(crate) fn summary_in<'a>(page: Option<&'a TagPage>, name: &[u8]) -> Option<&
 /// A tag's kind, as its pill shows it.
 pub(crate) fn kind(entry: &TagEntry) -> (&'static str, Color32) {
     if entry.symbolic {
-        ("Symbolic", pages::NEUTRAL())
+        (crate::i18n::tr("Symbolic"), pages::NEUTRAL())
     } else if entry.annotated() {
-        ("Annotated", pages::INFO())
+        (crate::i18n::tr("Annotated"), pages::INFO())
     } else {
-        ("Lightweight", pages::NEUTRAL())
+        (crate::i18n::tr("Lightweight"), pages::NEUTRAL())
     }
 }
 
@@ -987,29 +986,27 @@ fn tag_list(
     );
     match &s.page {
         Some(page) if page.entries.is_empty() => {
-            pages::empty(ui, "No tags yet. New tag names a commit, such as a release.");
+            pages::empty(ui, crate::i18n::tr("No tags yet. New tag names a commit, such as a release."));
         }
         Some(page) => {
             if rows.is_empty() {
-                pages::empty(ui, "No tags match the filter.");
+                pages::empty(ui, crate::i18n::tr("No tags match the filter."));
             }
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 let total = page.entries.len();
                 let order = match s.order {
-                    TagOrder::Newest => "newest first",
-                    TagOrder::Name => "by name",
+                    TagOrder::Newest => crate::i18n::tr("newest first"),
+                    TagOrder::Name => crate::i18n::tr("by name"),
                 };
                 let count = if rows.len() < total {
-                    format!("{} of {total} tags", rows.len())
-                } else if total == 1 {
-                    "1 tag".into()
+                    crate::i18n::trf!("Tags: {shown} of {total}", shown = rows.len(), total)
                 } else {
-                    format!("{total} tags")
+                    crate::i18n::trf!("Tags: {count}", count = total)
                 };
                 ui.label(RichText::new(format!("{count} · {order}")).size(12.0).color(FAINT()));
                 if page.more {
-                    let r = pages::ghost(ui, !waiting && s.limit < 2000, "Show more");
+                    let r = pages::ghost(ui, !waiting && s.limit < 2000, crate::i18n::tr("Show more"));
                     control(widgets, "dialog-tags-more", &r, ui.clip_rect());
                     if r.clicked() {
                         s.limit = (s.limit + 200).min(2000);
@@ -1019,10 +1016,10 @@ fn tag_list(
                 }
             });
             if page.more && s.limit == 2000 {
-                pages::callout(ui, AMBER(), "Showing the first 2,000 tags.");
+                pages::callout(ui, AMBER(), crate::i18n::tr("Showing the first 2,000 tags."));
             }
         }
-        None if waiting => pages::loading(ui, "Reading tags…"),
+        None if waiting => pages::loading(ui, crate::i18n::tr("Reading tags…")),
         None => {}
     }
     changed
@@ -1053,9 +1050,9 @@ fn details_panel(
 ) -> Option<Act> {
     let Some(details) = &s.details else {
         if s.detail_task.is_some() {
-            pages::loading(ui, "Reading the tag…");
+            pages::loading(ui, crate::i18n::tr("Reading the tag…"));
         } else {
-            pages::empty(ui, "Select a tag to see the commit it marks and its message.");
+            pages::empty(ui, crate::i18n::tr("Select a tag to see the commit it marks and its message."));
         }
         return None;
     };
@@ -1069,54 +1066,53 @@ fn details_panel(
         let (kind, color) = kind(&details.entry);
         pages::pill(ui, kind, color);
         if signed {
-            pages::pill(ui, "Signed · not checked", AMBER());
+            pages::pill(ui, crate::i18n::tr("Signed · not checked"), AMBER());
         } else {
-            pages::pill(ui, "Not signed", pages::NEUTRAL());
+            pages::pill(ui, crate::i18n::tr("Not signed"), pages::NEUTRAL());
         }
     });
-    card(ui, "Points to", |ui| {
+    card(ui, crate::i18n::tr("Points to"), |ui| {
         if let Some(commit) = &details.commit {
             ui.add(Label::new(RichText::new(subject(commit)).strong()).wrap());
             commit_line(ui, &details.target, Some(commit), false);
             let r = ui.add(
-                Button::new(RichText::new("Show in history").size(12.5).color(BLUE())).frame(false),
+                Button::new(RichText::new(crate::i18n::tr("Show in history")).size(12.5).color(BLUE())).frame(false),
             );
             control(widgets, "dialog-tag-show-commit", &r, ui.clip_rect());
             if r.clicked() {
                 act = Some(Act::Show(details.target.clone()));
             }
         } else {
-            ui.label(format!("A {} object, not a commit", details.target_type));
+            ui.label(crate::i18n::trf!("A {kind} object, not a commit", kind = details.target_type));
             ui.label(RichText::new(details.target.as_str()).monospace().size(12.0).color(MUTED()));
         }
     });
     if let Some(parts) = annotation {
-        card(ui, "Message", |ui| {
+        card(ui, crate::i18n::tr("Message"), |ui| {
             let message = String::from_utf8_lossy(&parts.message);
             let message = message.trim_end();
             if message.is_empty() {
-                pages::note(ui, "No message.");
+                pages::note(ui, crate::i18n::tr("No message."));
             } else {
                 let (text, cut) = preview_text(message.as_bytes());
                 ui.add(Label::new(text).wrap());
                 if cut {
-                    pages::note(ui, "Showing the first 16,000 characters.");
+                    pages::note(ui, crate::i18n::tr("Showing the first 16,000 characters."));
                 }
             }
             if let Some(tagger) = &parts.tagger {
                 pages::note(
                     ui,
-                    &format!(
-                        "Tagged by {} · {}",
-                        display(&tagger.name),
-                        date(tagger.timestamp, tagger.offset_minutes)
+                    &crate::i18n::trf!(
+                        "Tagged by {name} · {date}", name = display(&tagger.name),
+                        date = date(tagger.timestamp, tagger.offset_minutes)
                     ),
                 );
             }
         });
     }
     if let Some(raw) = &details.annotation {
-        let r = pages::disclosure(ui, s.raw, "Raw tag object");
+        let r = pages::disclosure(ui, s.raw, crate::i18n::tr("Raw tag object"));
         control(widgets, "dialog-tag-raw", &r, ui.clip_rect());
         if r.clicked() {
             act = Some(Act::Raw);
@@ -1132,33 +1128,33 @@ fn details_panel(
                     ui.add(Label::new(RichText::new(text).monospace().size(12.0)).wrap());
                 });
             if truncated {
-                pages::callout(ui, AMBER(), "Showing the first 16,000 characters.");
+                pages::callout(ui, AMBER(), crate::i18n::tr("Showing the first 16,000 characters."));
             }
         }
     } else if !details.entry.symbolic {
         pages::note(
             ui,
-            "A lightweight tag is only a name for this commit: it has no tagger, date or message.",
+            crate::i18n::tr("A lightweight tag is only a name for this commit: it has no tagger, date or message."),
         );
     }
     pages::divider(ui);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         let name = details.entry.name.clone();
-        let label = format!("Publish to {}", can.remote.unwrap_or("a remote"));
+        let label = crate::i18n::trf!("Publish to {remote}", remote = can.remote.unwrap_or(crate::i18n::tr("a remote")));
         let r = ui
             .add_enabled(
                 !can.waiting && can.remote.is_some() && !details.entry.symbolic,
                 Button::new(label),
             )
-            .on_disabled_hover_text("Add a remote in Repository → Remotes & Hosting → Manage Remotes first.");
+            .on_disabled_hover_text(crate::i18n::tr("Add a remote in Repository → Remotes & Hosting → Manage Remotes first."));
         control(widgets, "dialog-tag-publish", &r, ui.clip_rect());
         if r.clicked() {
             act = Some(Act::Publish(name));
         }
         // Any annotated tag: checking an unsigned one reports that it has no signature.
         if details.entry.annotated() {
-            let r = ui.add_enabled(!can.waiting, Button::new("Verify signature"));
+            let r = ui.add_enabled(!can.waiting, Button::new(crate::i18n::tr("Verify signature")));
             control(widgets, "dialog-tag-verify", &r, ui.clip_rect());
             if r.clicked() {
                 act = Some(Act::Verify(details.entry.clone()));
@@ -1168,7 +1164,7 @@ fn details_panel(
             let r = pages::danger_ghost(
                 ui,
                 !can.waiting && can.writable && !can.error && !details.entry.symbolic,
-                "Delete tag",
+                crate::i18n::tr("Delete tag"),
             );
             control(widgets, "dialog-tag-delete", &r, ui.clip_rect());
             if r.clicked() {
@@ -1249,7 +1245,7 @@ fn first_line(parts: &TagAnnotation) -> String {
     let line = message.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
     let mut line: String = line.chars().take(200).collect();
     if line.is_empty() {
-        line = "No message".into();
+        line = crate::i18n::tr("No message").into();
     }
     line
 }
@@ -1260,33 +1256,33 @@ fn creates_card(ui: &mut Ui, p: &TagPreview) {
     pages::titled_card(
         ui,
         |ui| {
-            ui.label(RichText::new(format!("Creates {}", display(&details.entry.name))).strong());
+            ui.label(RichText::new(crate::i18n::trf!("Creates {name}", name = display(&details.entry.name))).strong());
             let (kind, color) = kind(&details.entry);
             pages::pill(ui, kind, color);
         },
         |ui| {
-            pages::key_value(ui, "Points to", 104.0, |ui| {
+            pages::key_value(ui, crate::i18n::tr("Points to"), 104.0, |ui| {
                 commit_ref(ui, &details.target, details.commit.as_ref(), "");
             });
             if let Some(raw) = &details.annotation {
                 let parts = TagAnnotation::parse(raw);
                 if let Some(tagger) = &parts.tagger {
-                    pages::key_value(ui, "Tagged by", 104.0, |ui| {
+                    pages::key_value(ui, crate::i18n::tr("Tagged by"), 104.0, |ui| {
                         let mut job = text::LayoutJob::default();
                         job.append(&display(&tagger.name), 0.0, TextFormat::simple(FontId::proportional(13.0), TEXT()));
-                        job.append(" · when you create it", 0.0, TextFormat::simple(FontId::proportional(13.0), FAINT()));
+                        job.append(crate::i18n::tr(" · when you create it"), 0.0, TextFormat::simple(FontId::proportional(13.0), FAINT()));
                         ui.label(job);
                     });
                 }
-                pages::key_value(ui, "Message", 104.0, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Message"), 104.0, |ui| {
                     ui.add(Label::new(first_line(&parts)).truncate());
                 });
-                pages::key_value(ui, "Signature", 104.0, |ui| match p.signing() {
+                pages::key_value(ui, crate::i18n::tr("Signature"), 104.0, |ui| match p.signing() {
                     Some(signing) => {
-                        ui.label(format!("Signed with your {} key when created", signing.format()));
+                        ui.label(crate::i18n::trf!("Signed with your {format} key when created", format = signing.format()));
                     }
                     None => {
-                        ui.label(RichText::new("Not signed").color(MUTED()));
+                        ui.label(RichText::new(crate::i18n::tr("Not signed")).color(MUTED()));
                     }
                 });
             }
@@ -1300,23 +1296,23 @@ fn deletes_card(ui: &mut Ui, p: &TagPreview) {
     pages::titled_card(
         ui,
         |ui| {
-            ui.label(RichText::new(format!("Deletes {}", display(&details.entry.name))).strong());
+            ui.label(RichText::new(crate::i18n::trf!("Deletes {name}", name = display(&details.entry.name))).strong());
             let (kind, color) = kind(&details.entry);
             pages::pill(ui, kind, color);
         },
         |ui| {
-            pages::key_value(ui, "Points to", 104.0, |ui| {
-                commit_ref(ui, &details.target, details.commit.as_ref(), " · the commit stays");
+            pages::key_value(ui, crate::i18n::tr("Points to"), 104.0, |ui| {
+                commit_ref(ui, &details.target, details.commit.as_ref(), crate::i18n::tr(" · the commit stays"));
             });
             if let Some(raw) = &details.annotation {
                 let parts = TagAnnotation::parse(raw);
-                pages::key_value(ui, "Message", 104.0, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Message"), 104.0, |ui| {
                     ui.add(Label::new(first_line(&parts)).truncate());
                 });
             }
             if let Some(reference) = p.recovery_reference() {
-                pages::key_value(ui, "Recovery", 104.0, |ui| {
-                    ui.label("Kept in refs/rocket/deleted-tags")
+                pages::key_value(ui, crate::i18n::tr("Recovery"), 104.0, |ui| {
+                    ui.label(crate::i18n::tr("Kept in refs/rocket/deleted-tags"))
                         .on_hover_text(reference);
                 });
             }

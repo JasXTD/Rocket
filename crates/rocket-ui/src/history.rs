@@ -96,7 +96,7 @@ pub(crate) fn search_path(text: &str) -> std::result::Result<Option<RepoPath>, S
     }
     RepoPath::new(text.as_bytes().to_vec())
         .map(Some)
-        .map_err(|_| "Use a path inside the repository, like src/net.".to_owned())
+        .map_err(|_| crate::i18n::tr("Use a path inside the repository, like src/net.").to_owned())
 }
 
 impl Rocket {
@@ -168,7 +168,7 @@ impl Rocket {
         let Some(history) = &snapshot.history else {
             tab.search_state.due = None;
             tab.search_state.error =
-                Some("History is unavailable; refresh or choose another branch.".into());
+                Some(crate::i18n::tr("History is unavailable; refresh or choose another branch.").into());
             return;
         };
         let state = &mut tab.search_state;

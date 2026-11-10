@@ -16,7 +16,10 @@
   "Changes require an available working tree.": "Ändringar kräver en tillgänglig arbetskatalog.",
   "Checked out at": "Utcheckad i",
   "Cherry-pick commit": "Cherry-picka commit",
-  "Cherry-pick {n} commits": "Cherry-picka {n} commits",
+  "Cherry-pick {n} commits": {
+    "one": "Cherry-picka {n} commit",
+    "other": "Cherry-picka {n} commits"
+  },
   "Choose what the commit search looks at": "Välj vad commit-sökningen tittar på",
   "Clear recent messages": "Rensa senaste meddelanden",
   "Clear the path": "Rensa sökvägen",
@@ -27,10 +30,16 @@
   "Collapse merge": "Fäll ihop merge",
   "Collapse {group}": "Fäll ihop {group}",
   "Commit & Push": "Commit & push",
-  "Commit & Push {n} staged files": {"one": "Committa & pusha {n} köad fil", "other": "Committa & pusha {n} köade filer"},
+  "Commit & Push {n} staged files": {
+    "one": "Committa & pusha {n} köad fil",
+    "other": "Committa & pusha {n} köade filer"
+  },
   "Commit date": "Commit-datum",
   "Commit template unavailable": "Commit-mall inte tillgänglig",
-  "Commit {n} staged files": {"one": "Committa {n} köad fil", "other": "Committa {n} köade filer"},
+  "Commit {n} staged files": {
+    "one": "Committa {n} köad fil",
+    "other": "Committa {n} köade filer"
+  },
   "Compare selected commits": "Jämför markerade commits",
   "Compare with HEAD": "Jämför med HEAD",
   "Conflict": "Konflikt",
@@ -146,7 +155,10 @@
   "Resume continues with older commits.": "Återuppta fortsätter med äldre commits.",
   "Retry Git discovery": "Leta efter Git igen",
   "Revert commit": "Reverta commit",
-  "Revert {n} commits": "Reverta {n} commits",
+  "Revert {n} commits": {
+    "one": "Reverta {n} commit",
+    "other": "Reverta {n} commits"
+  },
   "Review an amended latest commit with the staged changes": "Granska en ändrad senaste commit med de köade ändringarna",
   "Review stopping tracking while keeping the local file. Unstage selected changes first.": "Granska att sluta spåra filen men behålla den lokalt. Ta först markerade ändringar ur kön.",
   "Save, switch & restore…": "Spara, växla & återställ…",
@@ -206,17 +218,41 @@
   "tracks {upstream}": "spårar {upstream}",
   "{ahead} ahead · {behind} behind": "{ahead} före · {behind} efter",
   "{checked} commits checked": "{checked} commits kontrollerade",
-  "{found} commits": {"one": "{found} commit", "other": "{found} commits"},
-  "{found} commits · {checked} checked": {"one": "{found} commit · {checked} kontrollerade", "other": "{found} commits · {checked} kontrollerade"},
+  "{found} commits": {
+    "one": "{found} commit",
+    "other": "{found} commits"
+  },
+  "{found} commits · {checked} checked": {
+    "one": "{found} commit · {checked} kontrollerade",
+    "other": "{found} commits · {checked} kontrollerade"
+  },
   "{hidden} commits of this merge are hidden. Click, or press → on the row, to show them.": "{hidden} commits i den här mergen är dolda. Klicka, eller tryck på → på raden, för att visa dem.",
   "{local} local · {tracking} remote-tracking · on {head}": "{local} lokala · {tracking} fjärrspårande · på {head}",
-  "{n} URLs": {"one": "{n} URL", "other": "{n} URL:er"},
-  "{n} branches": {"one": "{n} gren", "other": "{n} grenar"},
+  "{n} URLs": {
+    "one": "{n} URL",
+    "other": "{n} URL:er"
+  },
+  "{n} branches": {
+    "one": "{n} gren",
+    "other": "{n} grenar"
+  },
   "{n} configured · editing a remote does not contact its server": "{n} konfigurerade · att redigera en remote kontaktar inte dess server",
-  "{n} files": {"one": "{n} fil", "other": "{n} filer"},
-  "{n} files · drop to stage": {"one": "{n} fil · släpp för att köa", "other": "{n} filer · släpp för att köa"},
-  "{n} files · drop to unstage": {"one": "{n} fil · släpp för att ta ur kön", "other": "{n} filer · släpp för att ta ur kön"},
-  "{n} remote-tracking branches": {"one": "{n} fjärrspårande gren", "other": "{n} fjärrspårande grenar"},
+  "{n} files": {
+    "one": "{n} fil",
+    "other": "{n} filer"
+  },
+  "{n} files · drop to stage": {
+    "one": "{n} fil · släpp för att köa",
+    "other": "{n} filer · släpp för att köa"
+  },
+  "{n} files · drop to unstage": {
+    "one": "{n} fil · släpp för att ta ur kön",
+    "other": "{n} filer · släpp för att ta ur kön"
+  },
+  "{n} remote-tracking branches": {
+    "one": "{n} fjärrspårande gren",
+    "other": "{n} fjärrspårande grenar"
+  },
   "{n} selected · drag to the other group": "{n} markerade · dra till den andra gruppen",
   "{order} order: parents follow their children. All branches combines local and remote-tracking branches, plus HEAD.": "Ordning {order}: föräldrar följer sina barn. Alla grenar omfattar lokala och fjärrspårande grenar samt HEAD.",
   "{progress} · current phase {percent}%": "{progress} · aktuell fas {percent} %",

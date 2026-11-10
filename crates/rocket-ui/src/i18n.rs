@@ -360,7 +360,7 @@ macro_rules! files {
     };
 }
 const FILES: &[(Language, &str, &str)] =
-    files!["common", "menus", "chrome", "views", "diff", "preferences", "git-settings", "terminal", "commit-draft", "agents"];
+    files!["common", "menus", "chrome", "views", "diff", "preferences", "git-settings", "terminal", "commit-draft", "settings-extra", "dialogs-extra", "advanced-views", "advanced-workflows", "dialogs-more", "custom-command-extra", "workflow-ui", "map-extra", "actions-extra", "batch-extra", "recovery-extra", "commit-actions-extra", "hosting-extra", "agents"];
 
 /// One catalog entry: a text, or a counted phrase's forms by CLDR category.
 #[derive(Clone, Debug)]
@@ -1137,6 +1137,21 @@ With a second line.
     }
 
     #[test]
+    fn localized_actions_keep_protocol_and_guide_keys_stable() {
+        use crate::actions::{Reach, Show};
+        let topics: Vec<_> = crate::guide::Topic::ALL.into_iter().map(|topic| (topic, topic.title())).collect();
+        for language in Language::ALL {
+            scoped(language, || {
+                assert_eq!([Show::All.key(), Show::Failed.key(), Show::Running.key()], ["all", "failed", "running"]);
+                assert_eq!([Reach::Ready.key(), Reach::SigningIn.key(), Reach::NoRemote.key()], ["ready", "signing_in", "no_remote"]);
+                for &(topic, key) in &topics {
+                    assert_eq!(topic.title(), key, "guide lookup and scroll identity must not depend on {language:?}");
+                }
+            });
+        }
+    }
+
+    #[test]
     fn settings_translate_visible_labels_without_changing_user_data() {
         crate::test_common::isolated("ROCKET_TRANSLATED_SETTINGS_CASE", "i18n::tests::settings_translate_visible_labels_without_changing_user_data", || {
             use crate::{app::Rocket, preferences::Page, terminal_settings::Choice};
@@ -1165,6 +1180,10 @@ With a second line.
             app.drafting.executable = program.clone();
             app.drafting.codex_executable = program.clone();
             let original_draft_language = app.drafting.language.clone();
+            app.external.profiles.0[0].entries[0].name = "Automatic 文".into();
+            app.external.reset_edits();
+            let original_tool_profiles = app.external.profiles.clone();
+            let original_protections = (app.secret_protection, app.guard_ai_api_keys, app.secret_scan_mib);
             let mut english_cut = HashMap::new();
             let mut problems = Vec::new();
             for language in Language::ALL {
@@ -1174,6 +1193,8 @@ With a second line.
                         (Page::Git, "Git program", "Automatic"),
                         (Page::Terminal, "Shell", "Program"),
                         (Page::Commit, "AI drafts", "Draft with"),
+                        (Page::Tools, "Editor", "Open a working file"),
+                        (Page::Security, "Secret protection", "Blocks commits & pushes"),
                     ] {
                         app.show_preferences(page);
                         for (width, height) in [(1280.0, 900.0), (780.0, 620.0)] {
@@ -1219,6 +1240,9 @@ With a second line.
             assert_eq!(app.terminal_shell.editing.program, program);
             assert_eq!(app.terminal_shell.editing.arguments, "--name\nAutomatic 文");
             assert_eq!(app.drafting.language, original_draft_language, "UI language must not change AI output settings");
+            assert_eq!(app.external.profiles, original_tool_profiles, "UI language must not translate saved tool names, programs or arguments");
+            assert_eq!(app.external.editing, original_tool_profiles, "Rendering must preserve the tool editor's data");
+            assert_eq!((app.secret_protection, app.guard_ai_api_keys, app.secret_scan_mib), original_protections, "UI language must preserve protection policy");
             assert!(problems.is_empty(), "Translation layout regressions:\n{}", problems.join("\n"));
         });
     }

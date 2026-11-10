@@ -83,7 +83,7 @@ impl State {
     }
     pub fn leave(&mut self) {
         if self.running() {
-            self.notice = Some("Comparison read cancelled when leaving this view.".into());
+            self.notice = Some(crate::i18n::tr("Comparison read cancelled when leaving this view.").into());
         }
         self.listing = None;
         self.content = None;
@@ -159,7 +159,7 @@ fn load_file(ctx: &Context, tab: &mut Tab, backend: Backend, index: usize) {
             }
             if patch.files.len() > 1 {
                 patch.notice = Some(
-                    "This path pair includes additional changes. Review each patch in the list."
+                    crate::i18n::tr("This path pair includes additional changes. Review each patch in the list.")
                         .into(),
                 );
             }
@@ -289,7 +289,7 @@ impl Rocket {
                     }
                     Err(Error::Cancelled) => {
                         tab.compare.notice =
-                            Some("Comparison cancelled. Previous results retained.".into())
+                            Some(crate::i18n::tr("Comparison cancelled. Previous results retained.").into())
                     }
                     Err(e) => tab.compare.error = Some(error(&e)),
                 }
@@ -300,7 +300,7 @@ impl Rocket {
                     Ok(patch) => tab.patch = Some(patch),
                     Err(Error::Cancelled) => {
                         tab.compare.notice =
-                            Some("File diff cancelled. Retry or select another file.".into())
+                            Some(crate::i18n::tr("File diff cancelled. Retry or select another file.").into())
                     }
                     Err(e) => tab.compare.error = Some(error(&e)),
                 }
@@ -319,23 +319,20 @@ impl Rocket {
 
 fn error(e: &Error) -> String {
     match e {
-        Error::Git { code, .. } => format!(
-            "Could not compare these revisions. Check both branch, tag or commit names and that their objects are available locally. [git_exit_{}]",
-            code.map_or_else(|| "unknown".into(), |c| c.to_string())
-        ),
+        Error::Git { code, .. } => crate::i18n::trf!("Could not compare these revisions. Check both branch, tag or commit names and that their objects are available locally. [git_exit_{code}]", code = code.map_or_else(|| "unknown".into(), |c| c.to_string())),
         _ => user_error(e),
     }
 }
 
 pub fn change_label(change: Change) -> &'static str {
     match change {
-        Change::Added => "Added",
-        Change::Deleted => "Deleted",
-        Change::Modified => "Modified",
-        Change::Renamed => "Renamed",
-        Change::Copied => "Copied",
-        Change::TypeChanged => "Type changed",
-        _ => "Changed",
+        Change::Added => crate::i18n::tr("Added"),
+        Change::Deleted => crate::i18n::tr("Deleted"),
+        Change::Modified => crate::i18n::tr("Modified"),
+        Change::Renamed => crate::i18n::tr("Renamed"),
+        Change::Copied => crate::i18n::tr("Copied"),
+        Change::TypeChanged => crate::i18n::tr("Type changed"),
+        _ => crate::i18n::tr("Changed"),
     }
 }
 
@@ -368,17 +365,17 @@ pub(crate) fn letter(change: Change) -> char {
 /// The result line's counts: each kind present, in a fixed order, with its letter.
 pub(crate) fn kinds(files: &[ComparedFile]) -> Vec<(usize, &'static str, char)> {
     const ORDER: [(Change, &str); 6] = [
-        (Change::Added, "added"),
-        (Change::Modified, "modified"),
-        (Change::Deleted, "deleted"),
-        (Change::Renamed, "renamed"),
-        (Change::Copied, "copied"),
-        (Change::TypeChanged, "type changed"),
+        (Change::Added, crate::i18n::mark("added")),
+        (Change::Modified, crate::i18n::mark("modified")),
+        (Change::Deleted, crate::i18n::mark("deleted")),
+        (Change::Renamed, crate::i18n::mark("renamed")),
+        (Change::Copied, crate::i18n::mark("copied")),
+        (Change::TypeChanged, crate::i18n::mark("type changed")),
     ];
     let mut out: Vec<_> = ORDER
         .iter()
         .map(|&(change, word)| {
-            (files.iter().filter(|f| f.change == change).count(), word, letter(change))
+            (files.iter().filter(|f| f.change == change).count(), crate::i18n::tr(word), letter(change))
         })
         .filter(|(count, ..)| *count > 0)
         .collect();
@@ -387,7 +384,7 @@ pub(crate) fn kinds(files: &[ComparedFile]) -> Vec<(usize, &'static str, char)> 
         .filter(|f| !ORDER.iter().any(|(change, _)| *change == f.change))
         .count();
     if other > 0 {
-        out.push((other, "changed", 'M'));
+        out.push((other, crate::i18n::tr("changed"), 'M'));
     }
     out
 }
@@ -432,8 +429,8 @@ pub(crate) fn view(
         pages::header(
             ui,
             Icon::Branch,
-            "Compare",
-            "Read only · nothing in the repository changes",
+            crate::i18n::tr("Compare"),
+            crate::i18n::tr("Read only · nothing in the repository changes"),
             |_| {},
         );
     }
@@ -448,13 +445,13 @@ pub(crate) fn view(
     let s = &tab.compare;
     let Some(loaded) = &s.loaded else {
         if s.listing() {
-            match crate::preview_tab::downloading(ui, downloads.as_ref(), "Downloading the changed files", "compare-download-stop", widgets) {
+            match crate::preview_tab::downloading(ui, downloads.as_ref(), crate::i18n::tr("Downloading the changed files"), "compare-download-stop", widgets) {
                 Some(stop) => {
                     if stop {
                         emit(intents, CompareIntent::Cancel);
                     }
                 }
-                None => pages::loading(ui, "Reading the comparison…"),
+                None => pages::loading(ui, crate::i18n::tr("Reading the comparison…")),
             }
         } else if s.error.is_some()
             && let Some(retry) = crate::preview_tab::not_downloaded(ui, downloads.as_ref(), "compare-download-retry", widgets)
@@ -463,13 +460,13 @@ pub(crate) fn view(
                 emit(intents, CompareIntent::Retry);
             }
         } else if s.error.is_some() {
-            message(ui, None, "Nothing to show until a comparison succeeds.", "", |_| ());
+            message(ui, None, crate::i18n::tr("Nothing to show until a comparison succeeds."), "", |_| ());
         } else {
             message(
                 ui,
                 Some((Icon::Branch, BLUE())),
-                "Choose what to compare",
-                "Pick a base and a target above. Branches, tags and commit IDs all work.",
+                crate::i18n::tr("Choose what to compare"),
+                crate::i18n::tr("Pick a base and a target above. Branches, tags and commit IDs all work."),
                 |_| (),
             );
         }
@@ -478,15 +475,15 @@ pub(crate) fn view(
     let total = loaded.comparison.files.len();
     if total == 0 {
         let target = match loaded.comparison.local_staged {
-            Some(true) => "the staging area",
-            Some(false) => "the working tree's tracked files",
+            Some(true) => crate::i18n::tr("the staging area"),
+            Some(false) => crate::i18n::tr("the working tree's tracked files"),
             None => loaded.target_input.as_str(),
         };
         message(
             ui,
             Some((Icon::Check, GREEN())),
-            "No differences",
-            &format!("{} and {target} have the same content.", loaded.base_input),
+            crate::i18n::tr("No differences"),
+            &crate::i18n::trf!("{base} and {target} have the same content.", base = loaded.base_input, target),
             |_| (),
         );
         return;
@@ -556,11 +553,11 @@ fn bar(
 
 fn modes(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>) {
     const MODES: [(&str, &str, Option<bool>); 3] = [
-        ("compare-mode-revision", "Revisions", None),
-        ("compare-mode-index", "Staging area", Some(true)),
-        ("compare-mode-working", "Working tree", Some(false)),
+        ("compare-mode-revision", crate::i18n::mark("Revisions"), None),
+        ("compare-mode-index", crate::i18n::mark("Staging area"), Some(true)),
+        ("compare-mode-working", crate::i18n::mark("Working tree"), Some(false)),
     ];
-    let items = MODES.map(|(_, label, value)| (label, s.local_staged == value));
+    let items = MODES.map(|(_, label, value)| (crate::i18n::tr(label), s.local_staged == value));
     for (r, (key, _, value)) in pages::segments(ui, &items).iter().zip(MODES) {
         pages::control(widgets, key, r, ui.clip_rect());
         if r.clicked() {
@@ -581,7 +578,7 @@ fn fields(
         ui.spacing_mut().item_spacing.x = 8.0;
         let action = 84.0;
         let field = ((ui.available_width() - action - 30.0 - 3.0 * 8.0) / 2.0).max(110.0);
-        let base = RefField { key: "compare-base", label: "BASE", hint: "Branch, tag or commit", invalid: false };
+        let base = RefField { key: "compare-base", label: crate::i18n::tr("BASE"), hint: crate::i18n::tr("Branch, tag or commit"), invalid: false };
         ref_field(ui, widgets, base, &mut s.base, &s.branch_choices, field, &mut enter);
         match local {
             Some(staged) => {
@@ -593,12 +590,12 @@ fn fields(
                 if swap_button(ui, widgets, "compare-swap", !s.cancelling) {
                     emit(intents, CompareIntent::Swap);
                 }
-                let target = RefField { key: "compare-target", label: "TARGET", hint: "Branch, tag or commit", invalid: false };
+                let target = RefField { key: "compare-target", label: crate::i18n::tr("TARGET"), hint: crate::i18n::tr("Branch, tag or commit"), invalid: false };
                 ref_field(ui, widgets, target, &mut s.target, &s.branch_choices, field, &mut enter);
             }
         }
         if s.running() {
-            let label = if s.cancelling { "Stopping" } else { "Stop" };
+            let label = if s.cancelling { crate::i18n::tr("Stopping") } else { crate::i18n::tr("Stop") };
             let r = ui.add_enabled(!s.cancelling, Button::new(label).min_size(vec2(action, 30.0)));
             pages::control(widgets, "compare-cancel", &r, ui.clip_rect());
             if r.clicked() {
@@ -606,7 +603,7 @@ fn fields(
             }
         } else {
             let valid = !s.base.trim().is_empty() && (local.is_some() || !s.target.trim().is_empty());
-            let compare = Button::new(RichText::new("Compare").color(ACCENT_INK()).strong())
+            let compare = Button::new(RichText::new(crate::i18n::tr("Compare")).color(ACCENT_INK()).strong())
                 .fill(BLUE())
                 .min_size(vec2(action, 30.0));
             let r = ui.add_enabled(valid, compare);
@@ -682,21 +679,21 @@ fn fixed_target(ui: &mut Ui, staged: bool, width: f32) {
     let label = ui.painter().text(
         pos2(rect.left() + 10.0, y),
         Align2::LEFT_CENTER,
-        "TARGET",
+        crate::i18n::tr("TARGET"),
         semibold(10.5),
         FAINT(),
     );
     ui.painter().text(
         pos2(label.right() + 8.0, y),
         Align2::LEFT_CENTER,
-        if staged { "Staging area" } else { "Working tree" },
+        if staged { crate::i18n::tr("Staging area") } else { crate::i18n::tr("Working tree") },
         FontId::proportional(13.0),
         MUTED(),
     );
     r.on_hover_text(if staged {
-        "What is staged now (the index)"
+        crate::i18n::tr("What is staged now (the index)")
     } else {
-        "Tracked files in the working tree; untracked files aren't included"
+        crate::i18n::tr("Tracked files in the working tree; untracked files aren't included")
     });
 }
 
@@ -713,8 +710,8 @@ fn arrow(painter: &Painter, at: Pos2, back: bool, color: Color32) {
 pub(crate) fn swap_button(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, key: &str, enabled: bool) -> bool {
     let r = ui
         .add_enabled(enabled, Button::new("").min_size(vec2(30.0, 30.0)))
-        .on_hover_text("Swap base and target");
-    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, "Swap base and target"));
+        .on_hover_text(crate::i18n::tr("Swap base and target"));
+    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, crate::i18n::tr("Swap base and target")));
     let color = if enabled { TEXT() } else { FAINT() };
     let c = r.rect.center();
     arrow(ui.painter(), c - vec2(0.0, 3.5), false, color);
@@ -732,11 +729,11 @@ fn status(ui: &mut Ui, s: &State, widgets: &mut HashMap<String, UiControl>, narr
             ui.set_width(ui.available_width());
             if let Some(loaded) = &s.loaded {
                 if s.listing() {
-                    let text = if s.cancelling { "Stopping the comparison…" } else { "Reading the comparison…" };
+                    let text = if s.cancelling { crate::i18n::tr("Stopping the comparison…") } else { crate::i18n::tr("Reading the comparison…") };
                     pages::busy_line(ui, text);
                 } else if s.changed_inputs() {
                     ui.label(
-                        RichText::new("Not compared yet · the files below are from the last comparison")
+                        RichText::new(crate::i18n::tr("Not compared yet · the files below are from the last comparison"))
                             .size(12.5)
                             .color(AMBER()),
                     );
@@ -756,8 +753,8 @@ fn summary(ui: &mut Ui, loaded: &Loaded, widgets: &mut HashMap<String, UiControl
     let c = &loaded.comparison;
     let age = loaded.at.elapsed().as_secs();
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
-    let scope = if c.local_staged.is_some() { "Tracked files only" } else { "Direct comparison" };
-    let when = format!("{scope} · compared {}", ago(age, now.saturating_sub(age) as i64));
+    let scope = if c.local_staged.is_some() { crate::i18n::tr("Tracked files only") } else { crate::i18n::tr("Direct comparison") };
+    let when = crate::i18n::trf!("{scope} · compared {when}", scope, when = ago(age, now.saturating_sub(age) as i64));
     // Keep "compared … ago" current while the page is idle.
     ui.ctx().request_repaint_after(Duration::from_secs(30));
     let line = |ui: &mut Ui| {
@@ -766,16 +763,16 @@ fn summary(ui: &mut Ui, loaded: &Loaded, widgets: &mut HashMap<String, UiControl
         ui.label(RichText::new("→").color(HINT()));
         match c.local_staged {
             Some(staged) => {
-                ui.label(RichText::new(if staged { "staging area" } else { "working tree" }).color(MUTED()));
+                ui.label(RichText::new(if staged { crate::i18n::tr("staging area") } else { crate::i18n::tr("working tree") }).color(MUTED()));
             }
             None => sha(ui, widgets, "compare-copy-target", &c.target, &loaded.target_input),
         }
         let n = c.files.len();
         if n == 0 {
-            ui.label(RichText::new("no differences").color(MUTED()));
+            ui.label(RichText::new(crate::i18n::tr("no differences")).color(MUTED()));
             return;
         }
-        ui.label(RichText::new(format!("{n} file{}", if n == 1 { "" } else { "s" })).font(semibold(13.0)));
+        ui.label(RichText::new(crate::i18n::trn!(n, "{n} file", "{n} files")).font(semibold(13.0)));
         for (count, word, kind) in kinds(&c.files) {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 5.0;
@@ -806,7 +803,7 @@ pub(crate) fn sha(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, key: &s
         .stroke(Stroke::NONE)
         .corner_radius(4)
         .min_size(vec2(0.0, 20.0));
-    let r = ui.add(chip).on_hover_text(format!("{name}\n{id}\nClick to copy the full ID"));
+    let r = ui.add(chip).on_hover_text(crate::i18n::trf!("{name}\n{id}\nClick to copy the full ID", name, id));
     pages::control(widgets, key, &r, ui.clip_rect());
     if r.clicked() {
         ui.ctx().copy_text(id.to_string());
@@ -842,8 +839,8 @@ fn view_tabs(ui: &mut Ui, s: &mut State, total: usize, widgets: &mut HashMap<Str
         .inner_margin(Margin { left: 10, right: 10, top: 8, bottom: 2 })
         .show(ui, |ui| {
             ui.horizontal(|ui| {
-                let files = format!("Files {total}");
-                let r = pages::segments(ui, &[(files.as_str(), s.show_files), ("Diff", !s.show_files)]);
+                let files = crate::i18n::trf!("Files {total}", total);
+                let r = pages::segments(ui, &[(files.as_str(), s.show_files), (crate::i18n::tr("Diff"), !s.show_files)]);
                 pages::control(widgets, "compare-toggle-files", &r[usize::from(s.show_files)], ui.clip_rect());
                 if r[0].clicked() {
                     s.show_files = true;
@@ -862,20 +859,20 @@ fn diff_side(
     widgets: &mut HashMap<String, UiControl>,
 ) {
     if tab.compare.content_running() {
-        pages::loading(ui, "Loading the file's changes…");
+        pages::loading(ui, crate::i18n::tr("Loading the file's changes…"));
         return;
     }
     let Some(patch) = &tab.patch else {
         if tab.compare.selected.is_some() {
             let listing = tab.compare.listing();
-            message(ui, None, "This file's changes didn't load.", "", |ui| {
+            message(ui, None, crate::i18n::tr("This file's changes didn't load."), "", |ui| {
                 ui.add_space(6.0);
-                if button(ui, widgets, "compare-retry", "Retry", !listing) {
+                if button(ui, widgets, "compare-retry", crate::i18n::tr("Retry"), !listing) {
                     emit(intents, CompareIntent::Retry);
                 }
             });
         } else {
-            message(ui, None, "Select a file to see its changes.", "", |_| ());
+            message(ui, None, crate::i18n::tr("Select a file to see its changes."), "", |_| ());
         }
         return;
     };
@@ -924,19 +921,19 @@ pub(crate) fn rename_card(ui: &mut Ui, file: &ComparedFile) {
                     ui.horizontal(|ui| {
                         let (badge, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
                         status_badge(ui.painter(), badge.center(), 'R');
-                        let title = if copied { "Copied · no content changes" } else { "Renamed · no content changes" };
+                        let title = if copied { crate::i18n::tr("Copied · no content changes") } else { crate::i18n::tr("Renamed · no content changes") };
                         ui.label(RichText::new(title).font(semibold(13.5)));
                     });
-                    for (label, path, color) in [("From", &from, MUTED()), ("To", &to, TEXT())] {
+                    for (label, path, color) in [(crate::i18n::tr("From"), &from, MUTED()), (crate::i18n::tr("To"), &to, TEXT())] {
                         ui.horizontal(|ui| {
                             let (cell, _) = ui.allocate_exact_size(vec2(40.0, 18.0), Sense::hover());
                             ui.painter().text(cell.left_center(), Align2::LEFT_CENTER, label, FontId::proportional(12.0), HINT());
                             ui.add(Label::new(RichText::new(path).monospace().size(12.0).color(color)).truncate());
                         });
                     }
-                    let similar = file.similarity.map_or_else(String::new, |n| format!("{n}% similar · "));
+                    let similar = file.similarity.map_or_else(String::new, |n| crate::i18n::trf!("{n}% similar · ", n));
                     ui.label(
-                        RichText::new(format!("{similar}the file's content is the same on both sides"))
+                        RichText::new(crate::i18n::trf!("{similar}the file's content is the same on both sides", similar))
                             .size(12.0)
                             .color(HINT()),
                     );
@@ -965,7 +962,7 @@ fn file_list(
             icon(ui.painter(), glass, Icon::Search, FAINT());
             let inside = Rect::from_min_max(pos2(rect.left() + 28.0, rect.top()), pos2(rect.right() - 6.0, rect.bottom()));
             let mut field = ui.new_child(UiBuilder::new().max_rect(inside).layout(Layout::left_to_right(Align::Center)));
-            let hint = format!("Filter {total} file{}", if total == 1 { "" } else { "s" });
+            let hint = crate::i18n::trf!("Filter files: {total}", total);
             let r = field.add(
                 TextEdit::singleline(&mut tab.compare.filter)
                     .frame(Frame::NONE)
@@ -1005,7 +1002,7 @@ fn file_list(
     let visible = &tab.compare.filtered.as_ref().unwrap().1;
     if visible.is_empty() {
         ui.add_space(8.0);
-        ui.vertical_centered(|ui| ui.label(RichText::new("No files match this filter.").color(FAINT())));
+        ui.vertical_centered(|ui| ui.label(RichText::new(crate::i18n::tr("No files match this filter.")).color(FAINT())));
     }
     let enabled = !tab.compare.listing();
     ui.spacing_mut().item_spacing.y = 0.0;
@@ -1021,7 +1018,7 @@ fn file_list(
                 let detail = match &file.original_path {
                     Some(old) => format!(
                         "{} {}",
-                        if file.change == Change::Copied { "copy of" } else { "from" },
+                        if file.change == Change::Copied { crate::i18n::tr("copy of") } else { crate::i18n::tr("from") },
                         crate::text::raw_path_label(old.as_bytes())
                     ),
                     None => dir.to_owned(),
@@ -1076,6 +1073,20 @@ fn file_list(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn translated_change_labels_keep_raw_paths_and_status_codes() {
+        let files = [file("Added/新.rs", Change::Added, None)];
+        for language in crate::i18n::Language::ALL.into_iter().skip(1) {
+            crate::i18n::scoped(language, || {
+                assert_ne!(change_label(Change::Added), "Added", "{language:?}");
+                let counts = kinds(&files);
+                assert_eq!((counts[0].0, counts[0].2), (1, 'A'));
+                assert_ne!(counts[0].1, "added", "{language:?}");
+                assert_eq!(files[0].path.as_bytes(), "Added/新.rs".as_bytes());
+            });
+        }
+    }
 
     fn file(path: &str, change: Change, original: Option<&str>) -> ComparedFile {
         ComparedFile {

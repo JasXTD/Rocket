@@ -82,7 +82,7 @@ pub(super) fn card(
                     };
                     match pick {
                         Pick::Empty => {
-                            ui.label(RichText::new("Select a card to see what it connects to").color(HINT()));
+                            ui.label(RichText::new(tr("Select a card to see what it connects to")).color(HINT()));
                         }
                         Pick::Cell(p, a) => cell(ui, &data, p, a, &mut out),
                         Pick::Line(l) => line(ui, view, &data, l, &mut out),
@@ -182,32 +182,29 @@ fn initials(name: &str) -> String {
 }
 fn area_name(data: &RepositoryMap, a: usize) -> String {
     match data.nodes[a].path.as_deref() {
-        Some(b"/") => "the top folder".into(),
+        Some(b"/") => tr("the top folder").into(),
         Some(path) => label(path),
         None => label(&data.nodes[a].label),
     }
 }
-fn plural(count: usize, one: &str, many: &str) -> String {
-    format!("{} {}", pages::number_text(count), if count == 1 { one } else { many })
-}
 fn heading(s: &MapPage, data: &RepositoryMap, pick: &Pick) -> (Mark, String, String) {
     match *pick {
-        Pick::Empty => (Mark::Icon(Icon::Map, BLUE()), "Details".into(), "Nothing selected".into()),
+        Pick::Empty => (Mark::Icon(Icon::Map, BLUE()), crate::i18n::tr("Details").into(), tr("Nothing selected").into()),
         Pick::Cell(p, a) => {
             let name = label(&data.nodes[p].label);
-            (Mark::Person(initials(&name)), name, format!("in {}", area_name(data, a)))
+            (Mark::Person(initials(&name)), name, trf!("in {folder}", folder = area_name(data, a)))
         }
         Pick::Line(l) => match &s.topology.as_ref().expect("picked line").lines[l] {
             Line::Commit { node, merged } if !merged.is_empty() => (
                 Mark::Icon(Icon::Merge, VIOLET()),
                 lists::merge_name(&label(&data.nodes[*node].label)),
-                "Merged branch".into(),
+                tr("Merged branch").into(),
             ),
             Line::Commit { node, .. } => node_heading(s, data, *node),
             Line::Run { nodes } => (
                 Mark::Icon(Icon::Commit, BLUE()),
-                plural(nodes.len(), "commit", "commits"),
-                "Commits in a row".into(),
+                trn!(nodes.len(), "{n} commit", "{n} commits"),
+                tr("Commits in a row").into(),
             ),
         },
         Pick::Node(i) => node_heading(s, data, i),
@@ -217,20 +214,20 @@ fn node_heading(s: &MapPage, data: &RepositoryMap, i: usize) -> (Mark, String, S
     let n = &data.nodes[i];
     let name = label(&n.label);
     match n.kind {
-        MapNodeKind::Crate if s.alternate => (Mark::Icon(Icon::Package, TEAL()), name, "Cargo package".into()),
-        MapNodeKind::Crate => (Mark::Icon(Icon::Folder, TEAL()), drawing::folder_name(n), "Folder · Cargo package".into()),
-        MapNodeKind::Directory => (Mark::Icon(Icon::Folder, TEAL()), drawing::folder_name(n), "Folder".into()),
-        MapNodeKind::File => (Mark::Icon(Icon::File, MUTED()), name, "File".into()),
-        MapNodeKind::Person => (Mark::Person(initials(&name)), name, "Contributor".into()),
+        MapNodeKind::Crate if s.alternate => (Mark::Icon(Icon::Package, TEAL()), name, tr("Cargo package").into()),
+        MapNodeKind::Crate => (Mark::Icon(Icon::Folder, TEAL()), drawing::folder_name(n), tr("Folder · Cargo package").into()),
+        MapNodeKind::Directory => (Mark::Icon(Icon::Folder, TEAL()), drawing::folder_name(n), crate::i18n::tr("Folder").into()),
+        MapNodeKind::File => (Mark::Icon(Icon::File, MUTED()), name, crate::i18n::tr("File").into()),
+        MapNodeKind::Person => (Mark::Person(initials(&name)), name, tr("Contributor").into()),
         MapNodeKind::Area => {
             let title = match n.path.as_deref() {
-                Some(b"/") => "Top folder".to_owned(),
+                Some(b"/") => tr("Top folder").to_owned(),
                 _ => area_name(data, i),
             };
-            (Mark::Icon(Icon::Folder, TEAL()), title, "Folder".into())
+            (Mark::Icon(Icon::Folder, TEAL()), title, crate::i18n::tr("Folder").into())
         }
-        MapNodeKind::Commit if n.count > 1 => (Mark::Icon(Icon::Merge, BLUE()), name, "Merge commit".into()),
-        MapNodeKind::Commit => (Mark::Icon(Icon::Commit, BLUE()), name, "Commit".into()),
+        MapNodeKind::Commit if n.count > 1 => (Mark::Icon(Icon::Merge, BLUE()), name, tr("Merge commit").into()),
+        MapNodeKind::Commit => (Mark::Icon(Icon::Commit, BLUE()), name, crate::i18n::tr("Commit").into()),
     }
 }
 fn single(text: &str, font: FontId, color: Color32, width: f32) -> text::LayoutJob {
@@ -279,7 +276,7 @@ fn header(
     }
     let button = Rect::from_center_size(pos2(rect.right() - 24., rect.center().y), vec2(28., 28.));
     ui.scope_builder(UiBuilder::new().max_rect(button), |ui| {
-        let r = crate::chrome::icon_button(ui, Icon::Close, true, false, 28.).on_hover_text("Close details");
+        let r = crate::chrome::icon_button(ui, Icon::Close, true, false, 28.).on_hover_text(tr("Close details"));
         register(ui, widgets, "map-close-details", &r);
         r.clicked()
     })
@@ -367,7 +364,7 @@ fn row_link(ui: &mut Ui, out: &mut Out, image: Icon, tint: Color32, text: &str, 
 }
 fn more(ui: &mut Ui, shown: usize, total: usize) {
     if total > shown {
-        ui.label(RichText::new(format!("{} more", pages::number_text(total - shown))).size(12.).color(HINT()));
+        ui.label(RichText::new(trf!("{count} more", count = pages::number_text(total - shown))).size(12.).color(HINT()));
     }
 }
 /// A list of paths; a click shows the commits that changed one.
@@ -381,7 +378,7 @@ fn paths(ui: &mut Ui, out: &mut Out, title: &str, list: &[&Vec<u8>], total: usiz
             .strip_prefix(strip)
             .and_then(|p| p.strip_prefix(b"/"))
             .unwrap_or(path);
-        let hover = if to_code { "Show it in the folder map" } else { "Commits that changed this file" };
+        let hover = if to_code { tr("Show it in the folder map") } else { tr("Commits that changed this file") };
         let hover = format!("{}\n{hover}", label(path));
         if row(ui, out.widgets, &format!("map-path-{k}"), Icon::File, MUTED(), &label(shown), "", false, &hover) {
             out.emit(if to_code {
@@ -400,9 +397,9 @@ fn node(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Out)
         MapNodeKind::Crate | MapNodeKind::Directory => folder(ui, s, data, i, out),
         MapNodeKind::File => {
             let path = data.nodes[i].path.clone().unwrap_or_default();
-            fact_mono(ui, "Path", &label(&path));
+            fact_mono(ui, crate::i18n::tr("Path"), &label(&path));
             actions(ui, |ui| {
-                if button(ui, out.widgets, "map-history", "Commits here", !path.is_empty()) {
+                if button(ui, out.widgets, "map-history", tr("Commits here"), !path.is_empty()) {
                     out.emit(MapIntent::Path(path.clone(), String::new()));
                 }
             });
@@ -434,19 +431,19 @@ fn package(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut O
         list
     };
     let (uses, used) = (collect(true), collect(false));
-    fact_mono(ui, "Folder", &label(&path));
-    fact(ui, "Files", &pages::number_text(n.files));
-    fact(ui, "Uses", &if uses.is_empty() { "No local packages".into() } else { plural(uses.len(), "package", "packages") });
-    fact(ui, "Used by", &if used.is_empty() { "No local packages".into() } else { plural(used.len(), "package", "packages") });
+    fact_mono(ui, crate::i18n::tr("Folder"), &label(&path));
+    fact(ui, crate::i18n::tr("Files"), &pages::number_text(n.files));
+    fact(ui, tr("Uses"), &if uses.is_empty() { tr("No local packages").into() } else { trn!(uses.len(), "{n} package", "{n} packages") });
+    fact(ui, tr("Used by"), &if used.is_empty() { tr("No local packages").into() } else { trn!(used.len(), "{n} package", "{n} packages") });
     actions(ui, |ui| {
-        if button(ui, out.widgets, "map-show-folders", "Show folders", !path.is_empty()) {
+        if button(ui, out.widgets, "map-show-folders", crate::i18n::tr("Show folders"), !path.is_empty()) {
             out.emit(MapIntent::Code(path.clone()));
         }
-        if button(ui, out.widgets, "map-history", "Commits here", !path.is_empty()) {
+        if button(ui, out.widgets, "map-history", tr("Commits here"), !path.is_empty()) {
             out.emit(MapIntent::Path(path.clone(), String::new()));
         }
     });
-    for (title, list, image) in [("USES", &uses, Icon::ArrowDown), ("USED BY", &used, Icon::ArrowUp)] {
+    for (title, list, image) in [(tr("USES"), &uses, Icon::ArrowDown), (tr("USED BY"), &used, Icon::ArrowUp)] {
         if list.is_empty() {
             continue;
         }
@@ -474,26 +471,26 @@ fn folder(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Ou
     let name = |k: &usize| drawing::folder_name(&data.nodes[*k]).to_lowercase();
     folders.sort_by_key(name);
     files.sort_by_key(name);
-    fact_mono(ui, "Path", &label(&path));
+    fact_mono(ui, crate::i18n::tr("Path"), &label(&path));
     fact(
         ui,
-        "Files",
+        crate::i18n::tr("Files"),
         &if folders.is_empty() {
             pages::number_text(n.files)
         } else {
-            format!(
-                "{} · {} here, {} in folders",
-                pages::number_text(n.files),
-                pages::number_text(files.len()),
-                pages::number_text(n.files.saturating_sub(files.len()))
+            trf!(
+                "{total} · {here} here, {nested} in folders",
+                total = pages::number_text(n.files),
+                here = pages::number_text(files.len()),
+                nested = pages::number_text(n.files.saturating_sub(files.len()))
             )
         },
     );
     if n.kind == MapNodeKind::Crate {
-        pages::key_value(ui, "Package", KEY, |ui| {
+        pages::key_value(ui, tr("Package"), KEY, |ui| {
             let r = ui
                 .add(Label::new(RichText::new(label(&n.label)).color(BLUE())).sense(Sense::click()))
-                .on_hover_text("Show it among the packages");
+                .on_hover_text(tr("Show it among the packages"));
             register(ui, out.widgets, "map-package", &r);
             if r.clicked() {
                 *out.act = Some(Act::Package(i));
@@ -501,18 +498,18 @@ fn folder(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Ou
         });
     }
     actions(ui, |ui| {
-        if button(ui, out.widgets, "map-history", "Commits here", !path.is_empty()) {
+        if button(ui, out.widgets, "map-history", tr("Commits here"), !path.is_empty()) {
             out.emit(MapIntent::Path(path.clone(), String::new()));
         }
         if !folders.is_empty() || !files.is_empty() {
             let open = !s.collapsed.contains(&n.key);
-            if button(ui, out.widgets, "map-group", if open { "Close folder" } else { "Open folder" }, true) {
+            if button(ui, out.widgets, "map-group", if open { tr("Close folder") } else { crate::i18n::tr("Open folder") }, true) {
                 *out.act = Some(Act::Toggle(i));
             }
         }
     });
     if !folders.is_empty() {
-        section(ui, "FOLDERS", folders.len());
+        section(ui, tr("FOLDERS"), folders.len());
         for &k in folders.iter().take(ROWS) {
             let count = pages::number_text(data.nodes[k].files);
             if row_link(ui, out, Icon::Folder, TEAL(), &drawing::folder_name(&data.nodes[k]), &count, false, "") {
@@ -522,16 +519,16 @@ fn folder(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Ou
         more(ui, folders.len().min(ROWS), folders.len());
     }
     let list: Vec<&Vec<u8>> = files.iter().filter_map(|&k| data.nodes[k].path.as_ref()).collect();
-    paths(ui, out, "FILES HERE", &list, list.len(), &path, false);
+    paths(ui, out, tr("FILES HERE"), &list, list.len(), &path, false);
 }
 
 fn person(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Out) {
     let n = &data.nodes[i];
     let name = label(&n.label);
-    fact(ui, "Commits", &pages::number_text(n.count));
-    fact(ui, "Files", &pages::number_text(n.files));
+    fact(ui, crate::i18n::tr("Commits"), &pages::number_text(n.count));
+    fact(ui, crate::i18n::tr("Files"), &pages::number_text(n.files));
     actions(ui, |ui| {
-        let r = button(ui, out.widgets, "map-history", "Show commits", true);
+        let r = button(ui, out.widgets, "map-history", tr("Show commits"), true);
         if r {
             out.emit(MapIntent::History(name.clone()));
         }
@@ -551,11 +548,11 @@ fn person(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Ou
     if list.is_empty() {
         return;
     }
-    section(ui, if s.alternate { "SHARES FILES WITH" } else { "FOLDERS" }, list.len());
+    section(ui, if s.alternate { tr("SHARES FILES WITH") } else { tr("FOLDERS") }, list.len());
     for (other, weight, evidence) in list.iter().take(ROWS) {
         if s.alternate {
-            let hover = format!("Files both changed (up to 24):\n{evidence}");
-            if row_link(ui, out, Icon::User, VIOLET(), &label(&data.nodes[*other].label), &plural(*weight, "file", "files"), false, &hover) {
+            let hover = trf!("Files both changed (up to 24):\n{evidence}", evidence = evidence);
+            if row_link(ui, out, Icon::User, VIOLET(), &label(&data.nodes[*other].label), &trn!(*weight, "{n} file", "{n} files"), false, &hover) {
                 *out.act = Some(Act::Select(*other));
             }
         } else if row_link(ui, out, Icon::Folder, TEAL(), &area_name(data, *other), &pages::number_text(*weight), false, "") {
@@ -576,15 +573,15 @@ fn area(ui: &mut Ui, data: &RepositoryMap, a: usize, out: &mut Out) {
         .map(|e| (e.from, e.weight))
         .collect();
     people.sort_by(|x, y| y.1.cmp(&x.1).then_with(|| x.0.cmp(&y.0)));
-    fact(ui, "Commits", &pages::number_text(n.count));
-    fact(ui, "Files", &pages::number_text(n.files));
-    fact(ui, "People", &pages::number_text(people.len()));
+    fact(ui, crate::i18n::tr("Commits"), &pages::number_text(n.count));
+    fact(ui, crate::i18n::tr("Files"), &pages::number_text(n.files));
+    fact(ui, tr("People"), &pages::number_text(people.len()));
     if !top {
         actions(ui, |ui| {
-            if button(ui, out.widgets, "map-history", "Commits here", true) {
+            if button(ui, out.widgets, "map-history", tr("Commits here"), true) {
                 out.emit(MapIntent::Path(path.clone(), String::new()));
             }
-            if button(ui, out.widgets, "map-show-folder", "Show folder", true) {
+            if button(ui, out.widgets, "map-show-folder", tr("Show folder"), true) {
                 out.emit(MapIntent::Code(path.clone()));
             }
         });
@@ -592,7 +589,7 @@ fn area(ui: &mut Ui, data: &RepositoryMap, a: usize, out: &mut Out) {
     if people.is_empty() {
         return;
     }
-    section(ui, "PEOPLE", people.len());
+    section(ui, tr("PEOPLE"), people.len());
     for &(p, weight) in people.iter().take(ROWS) {
         if row_link(ui, out, Icon::User, VIOLET(), &label(&data.nodes[p].label), &pages::number_text(weight), false, "") {
             *out.act = Some(Act::Cell(p, a));
@@ -622,45 +619,45 @@ fn cell(ui: &mut Ui, data: &RepositoryMap, p: usize, a: usize, out: &mut Out) {
     let files: Vec<&Vec<u8>> = person.evidence.iter().filter(|f| in_area(f, &path)).collect();
     fact(
         ui,
-        "Commits",
-        &format!("{} here · {} in total", pages::number_text(here), pages::number_text(person.count)),
+        crate::i18n::tr("Commits"),
+        &trf!("{here} here · {total} in total", here = pages::number_text(here), total = pages::number_text(person.count)),
     );
-    fact(ui, "Files", &format!("{} in {}", pages::number_text(files.len()), area_name(data, a)));
+    fact(ui, crate::i18n::tr("Files"), &trf!("{count} in {folder}", count = pages::number_text(files.len()), folder = area_name(data, a)));
     actions(ui, |ui| {
-        if button(ui, out.widgets, "map-history", "Show commits", true) {
+        if button(ui, out.widgets, "map-history", tr("Show commits"), true) {
             out.emit(if top {
                 MapIntent::History(name.clone())
             } else {
                 MapIntent::Path(path.clone(), name.clone())
             });
         }
-        if !top && button(ui, out.widgets, "map-show-folder", "Show folder", true) {
+        if !top && button(ui, out.widgets, "map-show-folder", tr("Show folder"), true) {
             out.emit(MapIntent::Code(path.clone()));
         }
     });
     let strip: &[u8] = if top { b"" } else { &path };
-    paths(ui, out, "FILES CHANGED HERE", &files, files.len(), strip, false);
+    paths(ui, out, tr("FILES CHANGED HERE"), &files, files.len(), strip, false);
 }
 
 fn commit(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Out) {
     let n = &data.nodes[i];
     let author = label(&n.detail);
-    fact(ui, "Author", &author);
+    fact(ui, crate::i18n::tr("Author"), &author);
     let when = lists::date(data, i);
     if !when.is_empty() {
-        fact(ui, "Date", &when);
+        fact(ui, tr("Date"), &when);
     }
     if let Some(id) = &n.commit {
-        fact_mono(ui, "Commit", &id.as_str()[..12]);
+        fact_mono(ui, crate::i18n::tr("Commit"), &id.as_str()[..12]);
     }
     if n.count > 1 {
-        fact(ui, "Parents", &pages::number_text(n.count));
+        fact(ui, tr("Parents"), &pages::number_text(n.count));
     }
     if let Some((_, ahead)) = s.topology.as_ref().and_then(|t| t.tips.iter().find(|(tip, _)| *tip == i)) {
-        fact(ui, "Ahead", &format!("{} of the main line", plural(ahead.len(), "commit", "commits")));
+        fact(ui, tr("Ahead"), &trn!(ahead.len(), "{n} commit ahead of the main line", "{n} commits ahead of the main line"));
     }
     if !n.refs.is_empty() {
-        pages::key_value(ui, "Refs", KEY, |ui| {
+        pages::key_value(ui, tr("Refs"), KEY, |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = vec2(6., 6.);
                 for r in n.refs.iter().take(12) {
@@ -671,23 +668,23 @@ fn commit(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Ou
                     }
                 }
                 if n.refs.len() > 12 {
-                    ui.label(RichText::new(format!("{} more", n.refs.len() - 12)).color(HINT()));
+                    ui.label(RichText::new(trf!("{count} more", count = n.refs.len() - 12)).color(HINT()));
                 }
             });
         });
     }
     actions(ui, |ui| {
-        if button(ui, out.widgets, "map-inspect-commit", "Open commit", n.commit.is_some())
+        if button(ui, out.widgets, "map-inspect-commit", tr("Open commit"), n.commit.is_some())
             && let Some(id) = &n.commit
         {
             out.emit(MapIntent::InspectCommit(id.clone()));
         }
-        if button(ui, out.widgets, "map-person", "Find contributor", !author.is_empty()) {
+        if button(ui, out.widgets, "map-person", tr("Find contributor"), !author.is_empty()) {
             out.emit(MapIntent::People(author.clone()));
         }
     });
     let list: Vec<&Vec<u8>> = n.evidence.iter().collect();
-    paths(ui, out, "CHANGED PATHS", &list, n.files.max(list.len()), b"", true);
+    paths(ui, out, tr("CHANGED PATHS"), &list, n.files.max(list.len()), b"", true);
 }
 
 /// Branches & merges: a merged branch, a commit worth naming, or a run of commits.
@@ -696,22 +693,22 @@ fn line(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, l: usize, out: &mut Out)
     match &topology.lines[l] {
         Line::Commit { node, merged } if !merged.is_empty() => {
             let n = &data.nodes[*node];
-            fact(ui, "Into", &main_name(s, data));
+            fact(ui, tr("Into"), &main_name(s, data));
             let when = lists::date(data, *node);
             let by = label(&n.detail);
-            fact(ui, "Merged", &if when.is_empty() { format!("by {by}") } else { format!("{when} by {by}") });
+            fact(ui, tr("Merged"), &if when.is_empty() { trf!("by {author}", author = by) } else { trf!("{when} by {author}", when = when, author = by) });
             fact(
                 ui,
-                "Commits",
+                crate::i18n::tr("Commits"),
                 &format!("{} · {}", pages::number_text(merged.len()), lists::authors(data, merged)),
             );
             let files: BTreeSet<&Vec<u8>> = merged.iter().flat_map(|&c| data.nodes[c].evidence.iter()).collect();
-            fact(ui, "Changes", &plural(files.len(), "file", "files"));
+            fact(ui, crate::i18n::tr("Changes"), &trn!(files.len(), "{n} file", "{n} files"));
             if let Some(id) = &n.commit {
-                fact_mono(ui, "Merge", &id.as_str()[..12]);
+                fact_mono(ui, crate::i18n::tr("Merge"), &id.as_str()[..12]);
             }
             actions(ui, |ui| {
-                if button(ui, out.widgets, "map-inspect-commit", "Open merge", n.commit.is_some())
+                if button(ui, out.widgets, "map-inspect-commit", tr("Open merge"), n.commit.is_some())
                     && let Some(id) = &n.commit
                 {
                     out.emit(MapIntent::InspectCommit(id.clone()));
@@ -721,18 +718,18 @@ fn line(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, l: usize, out: &mut Out)
         }
         Line::Commit { node, .. } => commit(ui, s, data, *node, out),
         Line::Run { nodes } => {
-            fact(ui, "Authors", &lists::authors(data, nodes));
+            fact(ui, crate::i18n::tr("Authors"), &lists::authors(data, nodes));
             let newest = lists::date(data, nodes[0]);
             let oldest = lists::date(data, nodes[nodes.len() - 1]);
             if !newest.is_empty() {
-                fact(ui, "When", &if newest == oldest { newest } else { format!("{oldest} to {newest}") });
+                fact(ui, tr("When"), &if newest == oldest { newest } else { trf!("{oldest} to {newest}", oldest = oldest, newest = newest) });
             }
             commits(ui, data, nodes, out);
         }
     }
 }
 fn commits(ui: &mut Ui, data: &RepositoryMap, list: &[usize], out: &mut Out) {
-    section(ui, "COMMITS", list.len());
+    section(ui, tr("COMMITS"), list.len());
     for (k, &c) in list.iter().take(ROWS).enumerate() {
         let n = &data.nodes[c];
         let id = n.commit.as_ref().map(|id| short(id).to_owned()).unwrap_or_default();
@@ -766,7 +763,7 @@ fn notes(ui: &mut Ui, data: &RepositoryMap, widgets: &mut HashMap<String, UiCont
     ui.add_space(10.);
     let id = ui.make_persistent_id("map-notes-open");
     let open = ui.data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-    let r = pages::disclosure(ui, open, "About this map");
+    let r = pages::disclosure(ui, open, tr("About this map"));
     register(ui, widgets, "map-notes", &r);
     if r.clicked() {
         ui.data_mut(|d| d.insert_temp(id, !open));

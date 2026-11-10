@@ -54,9 +54,9 @@ impl Reviewed {
 impl Confidence {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Low => "Low",
-            Self::Medium => "Medium",
-            Self::High => "High",
+            Self::Low => crate::i18n::tr("Low"),
+            Self::Medium => crate::i18n::tr("Medium"),
+            Self::High => crate::i18n::tr("High"),
         }
     }
 }

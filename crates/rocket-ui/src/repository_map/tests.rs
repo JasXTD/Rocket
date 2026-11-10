@@ -482,6 +482,30 @@ fn people_cells_keep_files_inside_their_folder() {
 }
 
 #[test]
+fn translated_folder_captions_change_without_reloading_or_relaying_out() {
+    use crate::i18n::{Language, scoped};
+    let mut snapshot = data(4);
+    for n in &mut snapshot.nodes { n.kind = MapNodeKind::File; }
+    let mut page = MapPage { data: Some(Arc::new(snapshot)), ..Default::default() };
+    scoped(Language::English, || page.rebuild());
+    let data = page.data.as_ref().unwrap();
+    let group = &page.file_groups[0];
+    let position = group.at;
+    let original = scoped(Language::English, || drawing::group_about(group, data));
+    assert_eq!(original, "in the top folder");
+    for language in Language::ALL.into_iter().skip(1) {
+        let shown = scoped(language, || drawing::group_about(group, data));
+        assert_ne!(shown, original, "{language:?}");
+        assert_eq!(group.at, position);
+        assert_eq!(group.files, 4);
+    }
+    let few = FileGroup { folder: None, files: 1, about: "資料 🚀.rs".into(), at: Pos2::ZERO };
+    for language in Language::ALL {
+        assert_eq!(scoped(language, || drawing::group_about(&few, data)), "資料 🚀.rs");
+    }
+}
+
+#[test]
 fn folder_tree_counts_files_in_their_folder_and_opens_a_path() {
     let mut d = data(5);
     let entries = [
@@ -605,5 +629,41 @@ fn a_wide_toolbar_keeps_one_centre_line() {
     for id in ["map-mode-topology", "map-mode-commits", "map-all-branches", "map-neighbors", "map-revision-pick"] {
         let r = controls[id].rect;
         assert!((r.center().y - search.center().y).abs() < 1., "{id} {r:?} is off the line of {search:?}");
+    }
+}
+
+#[test]
+fn translated_map_zoom_controls_keep_their_complete_labels() {
+    for language in crate::i18n::Language::ALL {
+        crate::i18n::scoped(language, || {
+            let ctx = Context::default();
+            crate::style::install(&ctx);
+            ctx.set_fonts(crate::fonts::definitions());
+            let mut tab = Tab::new(std::path::PathBuf::from("synthetic"), None);
+            tab.map.page_mut().data = Some(Arc::new(data(3)));
+            tab.map.page_mut().selected = Some(0);
+            for width in [560., 780., 1280.] {
+                let screen = Rect::from_min_size(Pos2::ZERO, vec2(width, 620.));
+                let mut controls = HashMap::new();
+                let mut minimum = HashMap::new();
+                for _ in 0..3 {
+                    controls.clear();
+                    ctx.run_ui(RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| {
+                        for (id, label) in [("map-fit", tr("Fit")), ("map-focus", tr("Focus"))] {
+                            let text = WidgetText::from(label).into_galley(ui, Some(TextWrapMode::Extend), f32::INFINITY, TextStyle::Button);
+                            minimum.insert(id, text.size().x + 2. * ui.spacing().button_padding.x);
+                        }
+                        view(ui, &mut tab, &mut Vec::new(), &mut controls);
+                    }).drop_without_applying_deltas();
+                }
+                for (id, width_needed) in &minimum {
+                    let control = &controls[*id];
+                    assert!(control.enabled, "{language:?} {id}");
+                    assert!(control.rect.width() + 1. >= *width_needed,
+                        "{language:?} at {width}: {id} clips its label: {:?}, needs {width_needed}", control.rect);
+                    assert!(screen.contains_rect(control.rect), "{language:?} {id} leaves the viewport");
+                }
+            }
+        });
     }
 }

@@ -9,6 +9,14 @@ use crate::{
 use eframe::egui::*;
 use rocket_git::*;
 use std::{collections::HashMap, sync::Arc};
+fn file_state_label(state: LfsFileState) -> &'static str {
+    match state {
+        LfsFileState::Pointer => crate::i18n::tr("Pointer"),
+        LfsFileState::Content => crate::i18n::tr("Content / local edits"),
+        LfsFileState::Missing => crate::i18n::tr("Missing working file"),
+        LfsFileState::Unsupported => crate::i18n::tr("Unsupported path"),
+    }
+}
 #[derive(Default)]
 pub struct DialogState {
     pub locks_tab: bool,
@@ -178,29 +186,28 @@ impl Rocket {
         };
         ui.add_enabled_ui(!reviewing, |ui| {
             let description = s.status.as_ref().map_or_else(
-                || "Large files stored outside Git history".to_owned(),
+                || crate::i18n::tr("Large files stored outside Git history").to_owned(),
                 |status| {
-                    format!(
-                        "{} · {} tracked files in the current index",
-                        status.version,
-                        status.entries.len()
+                    crate::i18n::trf!(
+                        "{version} · tracked files in the current index: {count}",
+                        version = status.version, count = status.entries.len()
                     )
                 },
             );
-            pages::header(ui, Icon::Database, "Git LFS", &description, |ui| {
+            pages::header(ui, Icon::Database, crate::i18n::tr("Git LFS"), &description, |ui| {
                 let r = pages::ghost(
                     ui,
                     !s.applying,
-                    if waiting { "Cancel read" } else { "Close" },
+                    if waiting { crate::i18n::tr("Cancel read") } else { crate::i18n::tr("Close") },
                 );
                 control(widgets, "dialog-cancel", &r, ui.clip_rect());
                 f.dismiss = r.clicked();
                 let r = ui.add_enabled(
                     !waiting,
                     Button::new(if s.locks_tab {
-                        "Refresh locks"
+                        crate::i18n::tr("Refresh locks")
                     } else {
-                        "Refresh"
+                        crate::i18n::tr("Refresh")
                     }),
                 );
                 control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
@@ -217,21 +224,21 @@ impl Rocket {
                 ui,
                 &[
                     pages::TabItem {
-                        label: "Pointer files",
+                        label: crate::i18n::tr("Pointer files"),
                         count,
                         selected: !s.locks_tab && !s.tracking,
                         enabled: !waiting,
                         key: "dialog-lfs-files",
                     },
                     pages::TabItem {
-                        label: "Tracking rules",
+                        label: crate::i18n::tr("Tracking rules"),
                         count: rules,
                         selected: !s.locks_tab && s.tracking,
                         enabled: !waiting,
                         key: "dialog-lfs-tracking",
                     },
                     pages::TabItem {
-                        label: "Locks",
+                        label: crate::i18n::tr("Locks"),
                         count: locks,
                         selected: s.locks_tab,
                         enabled: !waiting,
@@ -290,28 +297,28 @@ impl Rocket {
         let (image, title, subtitle) = match &action {
             LfsAction::Fetch(_) => (
                 Icon::Fetch,
-                "Download LFS objects",
-                "Downloads the reviewed commit's objects into the cache. Files and staging are preserved.",
+                crate::i18n::tr("Download LFS objects"),
+                crate::i18n::tr("Downloads the reviewed commit's objects into the cache. Files and staging are preserved."),
             ),
             LfsAction::Push(_) => (
                 Icon::Push,
-                "Upload LFS objects",
-                "Uploads the objects in this commit's file tree. Publish the branch separately.",
+                crate::i18n::tr("Upload LFS objects"),
+                crate::i18n::tr("Uploads the objects in this commit's file tree. Publish the branch separately."),
             ),
             LfsAction::Checkout(_) => (
                 Icon::Database,
-                "Check out this LFS file",
-                "Materializes one unchanged pointer. Staging is preserved.",
+                crate::i18n::tr("Check out this LFS file"),
+                crate::i18n::tr("Materializes one unchanged pointer. Staging is preserved."),
             ),
             LfsAction::Track { .. } => (
                 Icon::Database,
-                "Track a path or pattern",
-                "Adds a rule to the root .gitattributes file.",
+                crate::i18n::tr("Track a path or pattern"),
+                crate::i18n::tr("Adds a rule to the root .gitattributes file."),
             ),
             LfsAction::Untrack { .. } => (
                 Icon::Database,
-                "Untrack this rule",
-                "Removes the LFS fields from the selected root .gitattributes line.",
+                crate::i18n::tr("Untrack this rule"),
+                crate::i18n::tr("Removes the LFS fields from the selected root .gitattributes line."),
             ),
         };
         let head = pages::ReviewHeader {
@@ -332,46 +339,45 @@ impl Rocket {
             |ui, part, widgets| match part {
                 pages::Part::Body => {
                     if let Some(p) = &s.preview {
-                        pages::caption(ui, "What will happen");
+                        pages::caption(ui, crate::i18n::tr("What will happen"));
                         match p.head() {
                             Head::Branch { name, target } => {
-                                pages::field(ui, "Branch", &String::from_utf8_lossy(name), false);
-                                pages::field(ui, "Commit", &target.to_string(), true);
+                                pages::field(ui, crate::i18n::tr("Branch"), &String::from_utf8_lossy(name), false);
+                                pages::field(ui, crate::i18n::tr("Commit"), &target.to_string(), true);
                             }
                             Head::Detached { target } => {
-                                pages::field(ui, "Detached", &target.to_string(), true)
+                                pages::field(ui, crate::i18n::tr("Detached"), &target.to_string(), true)
                             }
                             Head::Unborn { .. } => {
-                                pages::field(ui, "Commit", "No commit yet", false)
+                                pages::field(ui, crate::i18n::tr("Commit"), crate::i18n::tr("No commit yet"), false)
                             }
                         }
                         if let Some(source) = p.source() {
                             let label = if matches!(p.action(), LfsAction::Push(_)) {
-                                "Destination"
+                                crate::i18n::tr("Destination")
                             } else {
-                                "Source"
+                                crate::i18n::tr("Source")
                             };
                             pages::field(ui, label, source, true);
                         }
                         if let LfsAction::Push(remote) = p.action() {
-                            pages::field(ui, "Remote", remote, false);
+                            pages::field(ui, crate::i18n::tr("Remote"), remote, false);
                             pages::field(
                                 ui,
-                                "Objects",
-                                &format!(
-                                    "{} unique objects · {} bytes maximum",
-                                    p.object_count(),
-                                    p.total_bytes()
+                                crate::i18n::tr("Objects"),
+                                &crate::i18n::trf!(
+                                    "Unique objects: {count} · maximum bytes: {bytes}",
+                                    count = p.object_count(), bytes = p.total_bytes()
                                 ),
                                 false,
                             );
-                            pages::callout(ui, GREEN(), "Local SHA-256 and sizes verified.");
+                            pages::callout(ui, GREEN(), crate::i18n::tr("Local SHA-256 and sizes verified."));
                         }
                         for e in p.entries() {
                             pages::field(
                                 ui,
-                                "File",
-                                &format!("{} · {} bytes", e.path.display_lossy(), e.object.size),
+                                crate::i18n::tr("File"),
+                                &crate::i18n::trf!("{path} · {bytes} bytes", path = e.path.display_lossy(), bytes = e.object.size),
                                 true,
                             );
                         }
@@ -379,9 +385,9 @@ impl Rocket {
                             pages::note(
                                 ui,
                                 if edit.before().is_some() {
-                                    "Existing .gitattributes · local edits included in recovery"
+                                    crate::i18n::tr("Existing .gitattributes · local edits included in recovery")
                                 } else {
-                                    "Create root .gitattributes"
+                                    crate::i18n::tr("Create root .gitattributes")
                                 },
                             );
                             if !edit.removed().is_empty() {
@@ -412,7 +418,7 @@ impl Rocket {
                     // A running operation has its status and Stop in the footer; only
                     // its measured progress shows here.
                     if waiting && !s.applying {
-                        pages::waiting(ui, "Reading LFS state and validating the preview…");
+                        pages::waiting(ui, crate::i18n::tr("Reading LFS state and validating the preview…"));
                     }
                     if s.applying
                         && let Some(fraction) = fraction
@@ -428,11 +434,11 @@ impl Rocket {
                 }
                 pages::Part::Footer => {
                     let label = match s.action {
-                        Some(LfsAction::Fetch(_)) => "Fetch objects",
-                        Some(LfsAction::Push(_)) => "Upload objects",
-                        Some(LfsAction::Track { .. }) => "Track rule",
-                        Some(LfsAction::Untrack { .. }) => "Untrack rule",
-                        _ => "Check out file",
+                        Some(LfsAction::Fetch(_)) => crate::i18n::tr("Fetch objects"),
+                        Some(LfsAction::Push(_)) => crate::i18n::tr("Upload objects"),
+                        Some(LfsAction::Track { .. }) => crate::i18n::tr("Track rule"),
+                        Some(LfsAction::Untrack { .. }) => crate::i18n::tr("Untrack rule"),
+                        _ => crate::i18n::tr("Check out file"),
                     };
                     let r = pages::primary(
                         ui,
@@ -441,7 +447,7 @@ impl Rocket {
                     );
                     control(widgets, "dialog-submit", &r, ui.clip_rect());
                     f.submit = r.clicked();
-                    let r = ui.add_enabled(!waiting, Button::new("Review again"));
+                    let r = ui.add_enabled(!waiting, Button::new(crate::i18n::tr("Review again")));
                     control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                     f.refresh |= r.clicked();
                 }
@@ -502,7 +508,7 @@ impl Rocket {
                 self.execute(owner, action);
                 if self.write.is_none() {
                     s.applying = false;
-                    d.error = Some("Could not start. Refresh and review again.".into());
+                    d.error = Some(crate::i18n::tr("Could not start. Refresh and review again.").into());
                 }
             }
         }
@@ -554,7 +560,7 @@ fn files_tab(
 ) {
     pages::toolbar(ui, |ui| {
         if let Some(status) = &s.status {
-            ui.label(RichText::new("Remote").color(FAINT()));
+            ui.label(RichText::new(crate::i18n::tr("Remote")).color(FAINT()));
             for (i, name) in status.remotes.iter().enumerate() {
                 let r = pages::choice(ui, !waiting, &s.remote == name, name);
                 control(
@@ -568,19 +574,19 @@ fn files_tab(
                 }
             }
             if status.remotes.is_empty() {
-                ui.label(RichText::new("No remotes").color(FAINT()));
+                ui.label(RichText::new(crate::i18n::tr("No remotes")).color(FAINT()));
             }
         }
         ui.add_space(8.0);
         let enabled = !waiting && writable && s.status.is_some() && !s.remote.is_empty();
-        let r = ui.add_enabled(enabled, Button::new("Review fetch"));
+        let r = ui.add_enabled(enabled, Button::new(crate::i18n::tr("Review fetch")));
         control(widgets, "dialog-lfs-fetch", &r, ui.clip_rect());
         if r.clicked() {
             s.action = Some(LfsAction::Fetch(s.remote.clone()));
             s.notice = None;
             f.refresh = true;
         }
-        let r = ui.add_enabled(enabled, Button::new("Review upload"));
+        let r = ui.add_enabled(enabled, Button::new(crate::i18n::tr("Review upload")));
         control(widgets, "dialog-lfs-push", &r, ui.clip_rect());
         if r.clicked() {
             s.action = Some(LfsAction::Push(s.remote.clone()));
@@ -600,16 +606,16 @@ fn files_tab(
                     ui.spacing_mut().item_spacing.y = 2.0;
                     let Some(status) = &s.status else {
                         if waiting {
-                            pages::loading(ui, "Reading LFS pointers…");
+                            pages::loading(ui, crate::i18n::tr("Reading LFS pointers…"));
                         }
                         return;
                     };
                     if status.entries.is_empty() {
-                        pages::empty(ui, "No LFS pointer files are tracked in this index.");
+                        pages::empty(ui, crate::i18n::tr("No LFS pointer files are tracked in this index."));
                     }
                     for (i, e) in status.entries.iter().enumerate() {
                         let path = e.path.display_lossy().to_string();
-                        let detail = format!("{} bytes", e.object.size);
+                        let detail = crate::i18n::trf!("{bytes} bytes", bytes = e.object.size);
                         let r = pages::row(
                             ui,
                             pages::Row {
@@ -618,7 +624,7 @@ fn files_tab(
                                 detail: &detail,
                                 pills: vec![
                                     (
-                                        e.state.label().to_string(),
+                                        file_state_label(e.state).to_string(),
                                         if e.state == LfsFileState::Pointer {
                                             pages::WARN()
                                         } else {
@@ -627,9 +633,9 @@ fn files_tab(
                                     ),
                                     (
                                         if e.cached {
-                                            "Cached".into()
+                                            crate::i18n::tr("Cached").into()
                                         } else {
-                                            "Not cached".into()
+                                            crate::i18n::tr("Not cached").into()
                                         },
                                         if e.cached {
                                             pages::INFO()
@@ -653,26 +659,26 @@ fn files_tab(
         }
         pages::Side::Details => {
             let Some(e) = s.selected_entry().cloned() else {
-                pages::empty(ui, "Select a file to see its object and check it out.");
+                pages::empty(ui, crate::i18n::tr("Select a file to see its object and check it out."));
                 return;
             };
             ui.add(Label::new(RichText::new(e.path.display_lossy()).font(semibold(15.0))).wrap());
-            pages::field(ui, "Object", &e.object.oid.to_string(), true);
-            pages::field(ui, "Size", &format!("{} bytes", e.object.size), false);
-            pages::field(ui, "State", e.state.label(), false);
+            pages::field(ui, crate::i18n::tr("Object"), &e.object.oid.to_string(), true);
+            pages::field(ui, crate::i18n::tr("Size"), &crate::i18n::trf!("{bytes} bytes", bytes = e.object.size), false);
+            pages::field(ui, crate::i18n::tr("State"), file_state_label(e.state), false);
             pages::field(
                 ui,
-                "Cache",
+                crate::i18n::tr("Cache"),
                 if e.cached {
-                    "Cached locally"
+                    crate::i18n::tr("Cached locally")
                 } else {
-                    "Not cached"
+                    crate::i18n::tr("Not cached")
                 },
                 false,
             );
             ui.add_space(8.0);
             let enabled = !waiting && writable && e.state == LfsFileState::Pointer && e.cached;
-            let r = pages::primary(ui, enabled, "Review checkout…");
+            let r = pages::primary(ui, enabled, crate::i18n::tr("Review checkout…"));
             control(widgets, "dialog-lfs-checkout", &r, ui.clip_rect());
             if r.clicked() {
                 s.action = Some(LfsAction::Checkout(e.path.clone()));
@@ -707,12 +713,12 @@ fn tracking_tab(
             control(widgets, "dialog-lfs-pattern", &r, ui.clip_rect());
             let r = ui.add_enabled(
                 !waiting,
-                checkbox(&mut s.literal, "Treat as a literal file path"),
+                checkbox(&mut s.literal, crate::i18n::tr("Treat as a literal file path")),
             );
             control(widgets, "dialog-lfs-literal", &r, ui.clip_rect());
         }
         let enabled = !waiting && writable && !s.pattern.is_empty() && rules_ok;
-        let r = pages::primary(ui, enabled, "Review track…");
+        let r = pages::primary(ui, enabled, crate::i18n::tr("Review track…"));
         control(widgets, "dialog-lfs-track", &r, ui.clip_rect());
         if r.clicked() {
             s.action = Some(LfsAction::Track {
@@ -730,18 +736,18 @@ fn tracking_tab(
             ui.set_width(ui.available_width());
             let Some(status) = &s.status else {
                 if waiting {
-                    pages::loading(ui, "Reading root .gitattributes…");
+                    pages::loading(ui, crate::i18n::tr("Reading root .gitattributes…"));
                 }
                 return;
             };
             match &status.tracking {
                 Ok(rules) => {
-                    pages::caption(ui, &format!("Root .gitattributes · {} explicit LFS rules", rules.len()));
+                    pages::caption(ui, &crate::i18n::trf!("Root .gitattributes · explicit LFS rules: {count}", count = rules.len()));
                     ui.add_space(4.0);
                     let height = (ui.available_height() - 90.0).max(80.0);
                     ScrollArea::vertical().id_salt("lfs-rules").max_height(height).auto_shrink([false, true]).show(ui, |ui| {
                         if rules.is_empty() {
-                            pages::empty(ui, "No explicit LFS rules yet. Track a path or pattern above.");
+                            pages::empty(ui, crate::i18n::tr("No explicit LFS rules yet. Track a path or pattern above."));
                         }
                         for (i, rule) in rules.iter().enumerate() {
                             Frame::new()
@@ -752,10 +758,10 @@ fn tracking_tab(
                                 .show(ui, |ui| {
                                     ui.set_width(ui.available_width());
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new(format!("Line {}", rule.line)).size(12.0).color(FAINT()));
+                                        ui.label(RichText::new(crate::i18n::trf!("Line {line}", line = rule.line)).size(12.0).color(FAINT()));
                                         ui.add(Label::new(RichText::new(&rule.text).monospace()).truncate());
                                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                            let r = ui.add_enabled(!waiting && writable, Button::new("Review untrack"));
+                                            let r = ui.add_enabled(!waiting && writable, Button::new(crate::i18n::tr("Review untrack")));
                                             control(widgets, format!("dialog-lfs-untrack-{i}"), &r, ui.clip_rect());
                                             if r.clicked() {
                                                 s.action = Some(LfsAction::Untrack { line: rule.line, expected: rule.text.clone() });
@@ -784,7 +790,7 @@ fn locks_tab(
     f: &mut Flags,
 ) {
     pages::toolbar(ui, |ui| {
-        ui.label(RichText::new("Remote").color(FAINT()));
+        ui.label(RichText::new(crate::i18n::tr("Remote")).color(FAINT()));
         ComboBox::from_id_salt("lfs-lock-remote")
             .selected_text(&s.remote)
             .show_ui(ui, |ui| {
@@ -816,7 +822,7 @@ fn locks_tab(
         );
         control(widgets, "dialog-lfs-lock-path", &r, ui.clip_rect());
         let enabled = !waiting && writable && !s.remote.is_empty() && s.locks.list.is_some();
-        let r = pages::primary(ui, enabled && !s.locks.path.is_empty(), "Review lock…");
+        let r = pages::primary(ui, enabled && !s.locks.path.is_empty(), crate::i18n::tr("Review lock…"));
         control(widgets, "dialog-lfs-lock-create", &r, ui.clip_rect());
         if r.clicked() {
             s.locks.action = Some(LfsLockAction::Lock(s.locks.path.clone()));
@@ -829,25 +835,25 @@ fn locks_tab(
         pages::Side::List => {
             let Some(list) = &s.locks.list else {
                 if waiting {
-                    pages::loading(ui, "Reading server locks and verifying ownership…");
+                    pages::loading(ui, crate::i18n::tr("Reading server locks and verifying ownership…"));
                 } else {
                     pages::empty(
                         ui,
-                        "Locks have not been verified. Refresh to read the server.",
+                        crate::i18n::tr("Locks have not been verified. Refresh to read the server."),
                     );
                 }
                 return;
             };
             pages::caption(
                 ui,
-                &format!(
-                    "{} server-verified locks · refresh before acting on older results",
-                    list.entries.len()
+                &crate::i18n::trf!(
+                    "Server-verified locks: {count} · refresh before acting on older results",
+                    count = list.entries.len()
                 ),
             );
             ui.add_space(4.0);
             if list.entries.is_empty() {
-                pages::empty(ui, "No locks on this remote.");
+                pages::empty(ui, crate::i18n::tr("No locks on this remote."));
             }
             let height = (ui.available_height() - 40.0).max(80.0);
             ScrollArea::vertical()
@@ -859,7 +865,7 @@ fn locks_tab(
                     for i in range {
                         let entry = &list.entries[i];
                         let owner = if entry.owner.is_empty() {
-                            "Owner unavailable"
+                            crate::i18n::tr("Owner unavailable")
                         } else {
                             &entry.owner
                         };
@@ -871,7 +877,7 @@ fn locks_tab(
                                 title: &entry.path,
                                 detail: &detail,
                                 pills: vec![if entry.ours {
-                                    ("You".into(), pages::OK())
+                                    (crate::i18n::tr("You").into(), pages::OK())
                                 } else {
                                     (owner.to_string(), pages::WARN())
                                 }],
@@ -894,28 +900,28 @@ fn locks_tab(
         }
         pages::Side::Details => {
             let Some(entry) = s.locks.selected_entry().cloned() else {
-                pages::empty(ui, "Select a lock to unlock it or review a force unlock.");
+                pages::empty(ui, crate::i18n::tr("Select a lock to unlock it or review a force unlock."));
                 return;
             };
             ui.add(Label::new(RichText::new(&entry.path).font(semibold(15.0))).wrap());
             pages::field(
                 ui,
-                "Owner",
+                crate::i18n::tr("Owner"),
                 if entry.ours {
-                    "You"
+                    crate::i18n::tr("You")
                 } else if entry.owner.is_empty() {
-                    "Unavailable"
+                    crate::i18n::tr("Unavailable")
                 } else {
                     &entry.owner
                 },
                 false,
             );
-            pages::field(ui, "Lock ID", &entry.id, true);
-            pages::field(ui, "Locked", &entry.locked_at.to_string(), false);
+            pages::field(ui, crate::i18n::tr("Lock ID"), &entry.id, true);
+            pages::field(ui, crate::i18n::tr("Locked"), &entry.locked_at.to_string(), false);
             ui.add_space(8.0);
             let enabled = !waiting && writable && !s.remote.is_empty() && s.locks.list.is_some();
             ui.horizontal_wrapped(|ui| {
-                let r = pages::primary(ui, enabled && entry.ours, "Review unlock…");
+                let r = pages::primary(ui, enabled && entry.ours, crate::i18n::tr("Review unlock…"));
                 control(widgets, "dialog-lfs-lock-unlock", &r, ui.clip_rect());
                 if r.clicked() {
                     s.locks.action = Some(LfsLockAction::Unlock {
@@ -925,7 +931,7 @@ fn locks_tab(
                     s.notice = None;
                     f.refresh = true;
                 }
-                let r = pages::danger_ghost(ui, enabled && !entry.ours, "Review force unlock…");
+                let r = pages::danger_ghost(ui, enabled && !entry.ours, crate::i18n::tr("Review force unlock…"));
                 control(widgets, "dialog-lfs-lock-force", &r, ui.clip_rect());
                 if r.clicked() {
                     s.locks.action = Some(LfsLockAction::Unlock {
@@ -939,9 +945,9 @@ fn locks_tab(
             pages::note(
                 ui,
                 if entry.ours {
-                    "Unlocking does not change your local files."
+                    crate::i18n::tr("Unlocking does not change your local files.")
                 } else {
-                    "Force unlock removes another account's lock and needs a separate confirmation."
+                    crate::i18n::tr("Force unlock removes another account's lock and needs a separate confirmation.")
                 },
             );
         }

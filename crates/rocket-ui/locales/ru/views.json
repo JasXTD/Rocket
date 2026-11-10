@@ -16,7 +16,11 @@
   "Changes require an available working tree.": "Для изменений нужно доступное рабочее дерево.",
   "Checked out at": "Извлечена в",
   "Cherry-pick commit": "Перенести коммит",
-  "Cherry-pick {n} commits": "Перенести коммиты ({n})",
+  "Cherry-pick {n} commits": {
+    "one": "Перенести {n} коммит",
+    "few": "Перенести {n} коммита",
+    "many": "Перенести {n} коммитов"
+  },
   "Choose what the commit search looks at": "Выберите, где искать коммиты",
   "Clear recent messages": "Очистить недавние сообщения",
   "Clear the path": "Очистить путь",
@@ -27,10 +31,18 @@
   "Collapse merge": "Свернуть слияние",
   "Collapse {group}": "Свернуть «{group}»",
   "Commit & Push": "Коммит и отправка",
-  "Commit & Push {n} staged files": { "one": "Закоммитить и отправить {n} файл", "few": "Закоммитить и отправить {n} файла", "many": "Закоммитить и отправить {n} файлов" },
+  "Commit & Push {n} staged files": {
+    "one": "Закоммитить и отправить {n} файл",
+    "few": "Закоммитить и отправить {n} файла",
+    "many": "Закоммитить и отправить {n} файлов"
+  },
   "Commit date": "По дате коммита",
   "Commit template unavailable": "Шаблон коммита недоступен",
-  "Commit {n} staged files": { "one": "Закоммитить {n} файл", "few": "Закоммитить {n} файла", "many": "Закоммитить {n} файлов" },
+  "Commit {n} staged files": {
+    "one": "Закоммитить {n} файл",
+    "few": "Закоммитить {n} файла",
+    "many": "Закоммитить {n} файлов"
+  },
   "Compare selected commits": "Сравнить выбранные коммиты",
   "Compare with HEAD": "Сравнить с HEAD",
   "Conflict": "Конфликт",
@@ -146,7 +158,11 @@
   "Resume continues with older commits.": "«Возобновить» продолжит поиск по более старым коммитам.",
   "Retry Git discovery": "Повторить поиск Git",
   "Revert commit": "Откатить коммит",
-  "Revert {n} commits": "Откатить коммиты ({n})",
+  "Revert {n} commits": {
+    "one": "Откатить {n} коммит",
+    "few": "Откатить {n} коммита",
+    "many": "Откатить {n} коммитов"
+  },
   "Review an amended latest commit with the staged changes": "Проверить исправленный последний коммит с проиндексированными изменениями",
   "Review stopping tracking while keeping the local file. Unstage selected changes first.": "Проверить прекращение отслеживания с сохранением локального файла. Сначала уберите выбранные изменения из индекса.",
   "Save, switch & restore…": "Спрятать, переключиться и восстановить…",
@@ -206,17 +222,49 @@
   "tracks {upstream}": "отслеживает {upstream}",
   "{ahead} ahead · {behind} behind": "впереди: {ahead} · позади: {behind}",
   "{checked} commits checked": "Проверено коммитов: {checked}",
-  "{found} commits": { "one": "{found} коммит", "few": "{found} коммита", "many": "{found} коммитов" },
-  "{found} commits · {checked} checked": { "one": "{found} коммит · проверено {checked}", "few": "{found} коммита · проверено {checked}", "many": "{found} коммитов · проверено {checked}" },
+  "{found} commits": {
+    "one": "{found} коммит",
+    "few": "{found} коммита",
+    "many": "{found} коммитов"
+  },
+  "{found} commits · {checked} checked": {
+    "one": "{found} коммит · проверено {checked}",
+    "few": "{found} коммита · проверено {checked}",
+    "many": "{found} коммитов · проверено {checked}"
+  },
   "{hidden} commits of this merge are hidden. Click, or press → on the row, to show them.": "Скрытых коммитов этого слияния: {hidden}. Щёлкните или нажмите → на строке, чтобы показать их.",
   "{local} local · {tracking} remote-tracking · on {head}": "локальных: {local} · удалённых: {tracking} · на {head}",
-  "{n} URLs": { "one": "{n} URL", "few": "{n} URL", "many": "{n} URL" },
-  "{n} branches": { "one": "{n} ветка", "few": "{n} ветки", "many": "{n} веток" },
+  "{n} URLs": {
+    "one": "{n} URL",
+    "few": "{n} URL",
+    "many": "{n} URL"
+  },
+  "{n} branches": {
+    "one": "{n} ветка",
+    "few": "{n} ветки",
+    "many": "{n} веток"
+  },
   "{n} configured · editing a remote does not contact its server": "Настроено: {n} · изменение удалённого репозитория не обращается к его серверу",
-  "{n} files": { "one": "{n} файл", "few": "{n} файла", "many": "{n} файлов" },
-  "{n} files · drop to stage": { "one": "{n} файл · отпустите, чтобы добавить в индекс", "few": "{n} файла · отпустите, чтобы добавить в индекс", "many": "{n} файлов · отпустите, чтобы добавить в индекс" },
-  "{n} files · drop to unstage": { "one": "{n} файл · отпустите, чтобы убрать из индекса", "few": "{n} файла · отпустите, чтобы убрать из индекса", "many": "{n} файлов · отпустите, чтобы убрать из индекса" },
-  "{n} remote-tracking branches": { "one": "{n} удалённая ветка", "few": "{n} удалённые ветки", "many": "{n} удалённых веток" },
+  "{n} files": {
+    "one": "{n} файл",
+    "few": "{n} файла",
+    "many": "{n} файлов"
+  },
+  "{n} files · drop to stage": {
+    "one": "{n} файл · отпустите, чтобы добавить в индекс",
+    "few": "{n} файла · отпустите, чтобы добавить в индекс",
+    "many": "{n} файлов · отпустите, чтобы добавить в индекс"
+  },
+  "{n} files · drop to unstage": {
+    "one": "{n} файл · отпустите, чтобы убрать из индекса",
+    "few": "{n} файла · отпустите, чтобы убрать из индекса",
+    "many": "{n} файлов · отпустите, чтобы убрать из индекса"
+  },
+  "{n} remote-tracking branches": {
+    "one": "{n} удалённая ветка",
+    "few": "{n} удалённые ветки",
+    "many": "{n} удалённых веток"
+  },
   "{n} selected · drag to the other group": "Выбрано: {n} · перетащите в другую группу",
   "{order} order: parents follow their children. All branches combines local and remote-tracking branches, plus HEAD.": "{order}: родительские коммиты идут после дочерних. «Все ветки» — это локальные и удалённые ветки, а также HEAD.",
   "{progress} · current phase {percent}%": "{progress} · текущий этап {percent}%",

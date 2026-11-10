@@ -147,8 +147,8 @@ pub(super) fn authors(data: &RepositoryMap, nodes: &[usize]) -> String {
     match names.len() {
         0 => String::new(),
         1 => names[0].clone(),
-        2 => format!("{} and {}", names[0], names[1]),
-        n => format!("{}, {} and {} more", names[0], names[1], n - 2),
+        2 => trf!("{first} and {second}", first = &names[0], second = &names[1]),
+        n => trf!("{first}, {second} and {more} more", first = &names[0], second = &names[1], more = n - 2),
     }
 }
 pub(super) fn date(data: &RepositoryMap, i: usize) -> String {
@@ -192,7 +192,7 @@ pub(super) fn topology(
         .collect();
     if shown.is_empty() {
         let painter = ui.painter().with_clip_rect(rect);
-        painter.text(rect.center(), Align2::CENTER_CENTER, if s.query.is_empty() { "No commits in this scope" } else { "No match in this history" }, FontId::proportional(13.), MUTED());
+        painter.text(rect.center(), Align2::CENTER_CENTER, if s.query.is_empty() { tr("No commits in this scope") } else { tr("No match in this history") }, FontId::proportional(13.), MUTED());
         return;
     }
     // A branch tip picked above the main line keeps the selection without a line.
@@ -231,7 +231,7 @@ pub(super) fn topology(
                     .find_map(|r| r.strip_prefix(b"refs/heads/"))
                     .map(label)
                     .unwrap_or_default();
-                let text = format!("{name} · {} ahead", ahead.len());
+                let text = trf!("{name} · {count} ahead", name = name, count = ahead.len());
                 let at = pos2(x(text_x) + k as f32 * 210., area.top() + 3.);
                 let galley = painter.layout_no_wrap(text.clone(), semibold(11.5), color);
                 let pill = Rect::from_min_size(at, galley.size() + vec2(16., 6.));
@@ -280,7 +280,7 @@ pub(super) fn topology(
                             painter.add(epaint::CubicBezierShape::from_points_stroke([top, pos2(side, cy + 2.), pos2(side, cy + 6.), pos2(side, cy + 14.)], false, Color32::TRANSPARENT, bend));
                             painter.line_segment([pos2(side, cy + 14.), pos2(side, cy + ROW - 14.)], bend);
                             painter.add(epaint::CubicBezierShape::from_points_stroke([pos2(side, cy + ROW - 14.), pos2(side, cy + ROW - 6.), pos2(side, cy + ROW - 2.), bottom], false, Color32::TRANSPARENT, bend));
-                            let chip = format!("{} {} · {}", merged.len(), if merged.len() == 1 { "commit" } else { "commits" }, authors(&data, merged));
+                            let chip = format!("{} · {}", trn!(merged.len(), "{n} commit", "{n} commits"), authors(&data, merged));
                             let room = (title_at - x(SIDE) - 16.).max(40.);
                             let galley = painter.layout_job(line_job(chip, 12., if selected { TEXT() } else { MUTED() }, room - 18.));
                             let r = Rect::from_min_size(pos2(x(SIDE), cy + 2.), galley.size() + vec2(18., 6.));
@@ -315,7 +315,7 @@ pub(super) fn topology(
                         child.spacing_mut().item_spacing.x = 7.;
                         let (mark, _) = child.allocate_exact_size(vec2(14., 14.), Sense::hover());
                         icon(child.painter(), mark, Icon::Commit, FAINT());
-                        let what = if count == 1 { label(&data.nodes[nodes[0]].label) } else { format!("{count} commits") };
+                        let what = if count == 1 { label(&data.nodes[nodes[0]].label) } else { trn!(count, "{n} commit", "{n} commits") };
                         let who = authors(&data, nodes);
                         let date = date(&data, nodes[0]);
                         child.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -344,11 +344,11 @@ fn drawing_message(ui: &mut Ui, rect: Rect, s: &MapPage) {
         rect.center(),
         Align2::CENTER_CENTER,
         if s.running() {
-            "Reading the repository"
+            tr("Reading the repository")
         } else if s.error.is_some() {
-            "No map yet. Check the message above and retry"
+            tr("No map yet. Check the message above and retry")
         } else {
-            "Choose Refresh to read this map"
+            tr("Choose Refresh to read this map")
         },
         FontId::proportional(13.),
         MUTED(),
@@ -369,7 +369,7 @@ pub(super) fn commits(
     };
     if s.visible.is_empty() {
         let painter = ui.painter().with_clip_rect(rect);
-        painter.text(rect.center(), Align2::CENTER_CENTER, if s.query.is_empty() { "No commits in this scope" } else { "No match in this history" }, FontId::proportional(13.), MUTED());
+        painter.text(rect.center(), Align2::CENTER_CENTER, if s.query.is_empty() { tr("No commits in this scope") } else { tr("No match in this history") }, FontId::proportional(13.), MUTED());
         return;
     }
     const RH: f32 = 30.;
@@ -476,7 +476,7 @@ pub(super) fn grid(
     areas.sort_by(|a, b| data.nodes[*b].count.cmp(&data.nodes[*a].count).then_with(|| a.cmp(b)));
     if people.is_empty() || areas.is_empty() {
         let painter = ui.painter().with_clip_rect(rect);
-        painter.text(rect.center(), Align2::CENTER_CENTER, if s.query.is_empty() { "No commits in this period" } else { "No match among these people" }, FontId::proportional(13.), MUTED());
+        painter.text(rect.center(), Align2::CENTER_CENTER, if s.query.is_empty() { tr("No commits in this period") } else { tr("No match among these people") }, FontId::proportional(13.), MUTED());
         return;
     }
     let mut cells: HashMap<(usize, usize), usize> = HashMap::new();
@@ -498,13 +498,13 @@ pub(super) fn grid(
             let (area, _) = ui.allocate_exact_size(vec2(width.max(ui.available_width()), height), Sense::hover());
             let painter = ui.painter().clone();
             let origin = area.left_top() + vec2(20., 16.);
-            painter.text(origin, Align2::LEFT_TOP, "Commits touching each folder", semibold(14.), TEXT());
+            painter.text(origin, Align2::LEFT_TOP, tr("Commits touching each folder"), semibold(14.), TEXT());
             let commits: usize = people.iter().map(|&p| data.nodes[p].count).sum();
             painter.text(
                 origin + vec2(232., 2.),
                 Align2::LEFT_TOP,
                 // A person's total includes merges, which no cell counts.
-                format!("{} people · {} commits", people.len(), pages::number_text(commits)),
+                trf!("People {people} · commits {commits}", people = people.len(), commits = pages::number_text(commits)),
                 FontId::proportional(12.),
                 HINT(),
             );
@@ -513,7 +513,7 @@ pub(super) fn grid(
             for (c, &a) in areas.iter().enumerate() {
                 let n = &data.nodes[a];
                 let full = n.path.as_ref().map(|p| label(p)).unwrap_or_else(|| label(&n.label));
-                let name = if full == "/" { "top folder".to_owned() } else { full.rsplit('/').next().unwrap_or(&full).to_owned() };
+                let name = if full == "/" { tr("top folder").to_owned() } else { full.rsplit('/').next().unwrap_or(&full).to_owned() };
                 let on = selected_area == Some(a);
                 let anchor = grid + vec2(c as f32 * CELL.x + 14., -8.);
                 let galley = painter.layout_no_wrap(name, if on { semibold(12.) } else { FontId::proportional(12.) }, if on { BLUE() } else { MUTED() });
@@ -574,7 +574,7 @@ pub(super) fn grid(
                     painter.text(cell.center(), Align2::CENTER_CENTER, pages::number_text(weight), semibold(12.5), ink);
                     let r = ui.interact(cell, ui.id().with(("map-cell", p, a)), Sense::click());
                     let full = data.nodes[a].path.as_ref().map(|x| label(x)).unwrap_or_default();
-                    let r = r.on_hover_text(format!("{} · {full} · {weight} commits", label(&n.label)));
+                    let r = r.on_hover_text(trf!("{person} · {folder} · commits {count}", person = label(&n.label), folder = full, count = weight));
                     register(ui, widgets, &format!("map-cell-{p}-{a}"), &r);
                     if r.clicked() && !covered {
                         s.cell = Some((p, a));
@@ -589,9 +589,9 @@ pub(super) fn grid(
             for (k, color) in [RAMP_1(), RAMP_2(), RAMP_3(), BLUE()].into_iter().enumerate() {
                 painter.rect_filled(Rect::from_min_size(key + vec2(14. + k as f32 * 26., -5.), vec2(26., 10.)), 0., color);
             }
-            painter.text(key + vec2(126., 0.), Align2::LEFT_CENTER, format!("{} commits", pages::number_text(most)), FontId::proportional(12.), HINT());
+            painter.text(key + vec2(126., 0.), Align2::LEFT_CENTER, trn!(most, "{n} commit", "{n} commits"), FontId::proportional(12.), HINT());
             if areas.iter().any(|&a| data.nodes[a].path.as_ref().is_some_and(|p| p.contains(&b'/'))) {
-                painter.text(key + vec2(230., 0.), Align2::LEFT_CENTER, "A folder holding most changes is split into its subfolders", FontId::proportional(12.), HINT());
+                painter.text(key + vec2(230., 0.), Align2::LEFT_CENTER, tr("A folder holding most changes is split into its subfolders"), FontId::proportional(12.), HINT());
             }
         });
     if !covered {

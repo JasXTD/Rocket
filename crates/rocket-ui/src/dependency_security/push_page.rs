@@ -30,11 +30,11 @@ fn groups(findings: &[Finding]) -> PackageGroups<'_> {
 }
 fn severity(value: &str) -> (u8, &'static str, Color32) {
     match value.to_ascii_lowercase().as_str() {
-        "critical" => (5, "Critical", RED()),
-        "high" => (4, "High", RED()),
-        "medium" | "moderate" => (3, "Moderate", AMBER()),
-        "low" => (2, "Low", MUTED()),
-        _ => (1, "Unknown", MUTED()),
+        "critical" => (5, crate::i18n::tr("Critical"), RED()),
+        "high" => (4, crate::i18n::tr("High"), RED()),
+        "medium" | "moderate" => (3, crate::i18n::tr("Moderate"), AMBER()),
+        "low" => (2, crate::i18n::tr("Low"), MUTED()),
+        _ => (1, crate::i18n::tr("Unknown"), MUTED()),
     }
 }
 fn fix_summary(findings: &[&Finding]) -> String {
@@ -42,13 +42,13 @@ fn fix_summary(findings: &[&Finding]) -> String {
         return String::new();
     };
     if findings.iter().all(|f| f.fixed.is_empty()) {
-        "No fixed version reported".into()
+        crate::i18n::tr("No fixed version reported").into()
     } else if findings.iter().any(|f| f.fixed.is_empty()) {
-        "Some findings have no reported fix · Expand details".into()
+        crate::i18n::tr("Some findings have no reported fix · Expand details").into()
     } else if findings.iter().all(|f| f.fixed == first.fixed) {
-        format!("Reported fix: {}", first.fixed.join(", "))
+        crate::i18n::trf!("Reported fix: {versions}", versions = first.fixed.join(", "))
     } else {
-        "Reported fixes vary by advisory · Expand details".into()
+        crate::i18n::tr("Reported fixes vary by advisory · Expand details").into()
     }
 }
 fn help(ui: &mut Ui, text: impl Into<String>) {
@@ -98,7 +98,12 @@ fn step(ui: &mut Ui, title: &str, state: &str, description: &str, tint: Color32,
             let body = |ui: &mut Ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(title).font(semibold(13.0)));
-                    badge(ui, state, tint);
+                    let shown = match state {
+                        "Passed" => crate::i18n::tr("Passed"),
+                        "Off" => crate::i18n::tr("Off"),
+                        _ => state,
+                    };
+                    badge(ui, shown, tint);
                 });
                 help(ui, description);
                 if active {
@@ -106,9 +111,9 @@ fn step(ui: &mut Ui, title: &str, state: &str, description: &str, tint: Color32,
                     ui.separator();
                     help(
                         ui,
-                        format!(
-                            "OSV-Scanner {} · Local advisory data",
-                            rocket_git::OSV_VERSION
+                        crate::i18n::trf!(
+                            "OSV-Scanner {version} · Local advisory data",
+                            version = rocket_git::OSV_VERSION
                         ),
                     );
                 }
@@ -124,41 +129,41 @@ fn step(ui: &mut Ui, title: &str, state: &str, description: &str, tint: Color32,
 fn scanning(ui: &mut Ui, secrets: bool, ai_keys: bool) {
     step(
         ui,
-        "Secret protection",
+        crate::i18n::tr("Secret protection"),
         if secrets { "Passed" } else { "Off" },
         if secrets {
-            "No secrets detected by the enabled checks."
+            crate::i18n::tr("No secrets detected by the enabled checks.")
         } else {
-            "Secret checks are disabled in Preferences."
+            crate::i18n::tr("Secret checks are disabled in Preferences.")
         },
         if secrets { GREEN() } else { AMBER() },
         false,
     );
     ui.add_space(12.0);
-    step(ui, "Guard AI API keys", if ai_keys { "Passed" } else { "Off" },
-        if ai_keys { "No supported AI API-key formats detected." } else { "AI key format checks are disabled in Preferences." },
+    step(ui, crate::i18n::tr("Guard AI API keys"), if ai_keys { "Passed" } else { "Off" },
+        if ai_keys { crate::i18n::tr("No supported AI API-key formats detected.") } else { crate::i18n::tr("AI key format checks are disabled in Preferences.") },
         if ai_keys { GREEN() } else { AMBER() }, false);
     ui.add_space(12.0);
     step(
         ui,
-        "Dependency scan",
-        "In progress",
-        "Comparing committed package versions with local advisories.",
+        crate::i18n::tr("Dependency scan"),
+        crate::i18n::tr("In progress"),
+        crate::i18n::tr("Comparing committed package versions with local advisories."),
         BLUE(),
         true,
     );
     ui.add_space(12.0);
     step(
         ui,
-        "Push to repository",
-        "Waiting",
-        "The push has not started.",
+        crate::i18n::tr("Push to repository"),
+        crate::i18n::tr("Waiting"),
+        crate::i18n::tr("The push has not started."),
         MUTED(),
         false,
     );
     ui.add_space(16.0);
-    help(ui, "Clear scan · The push continues automatically.");
-    help(ui, "Warnings found · Review them before deciding to push.");
+    help(ui, crate::i18n::tr("Clear scan · The push continues automatically."));
+    help(ui, crate::i18n::tr("Warnings found · Review them before deciding to push."));
 }
 fn findings(ui: &mut Ui, reports: &[TipReport], widgets: &mut HashMap<String, UiControl>) {
     let count: usize = reports.iter().map(|r| r.report.findings.len()).sum();
@@ -169,18 +174,9 @@ fn findings(ui: &mut Ui, reports: &[TipReport], widgets: &mut HashMap<String, Ui
         .collect();
     ui.label(
         RichText::new(if count == 0 {
-            "Dependency coverage needs review".into()
+            crate::i18n::tr("Dependency coverage needs review").into()
         } else {
-            format!(
-                "{count} {} in {} package {}",
-                if count == 1 { "finding" } else { "findings" },
-                packages.len(),
-                if packages.len() == 1 {
-                    "version"
-                } else {
-                    "versions"
-                }
-            )
+            crate::i18n::trf!("Findings: {count} · package versions: {packages}", count, packages = packages.len())
         })
         .font(semibold(14.0)),
     );
@@ -207,7 +203,7 @@ fn findings(ui: &mut Ui, reports: &[TipReport], widgets: &mut HashMap<String, Ui
     for (tip_index, tip) in reports.iter().enumerate() {
         ui.add_space(10.0);
         if reports.len() > 1 {
-            help(ui, format!("Pushed tip {}", &tip.source.as_str()[..12]));
+            help(ui, crate::i18n::trf!("Pushed tip {commit}", commit = &tip.source.as_str()[..12]));
         }
         for note in &tip.report.notes {
             pages::callout(ui, AMBER(), note);
@@ -255,9 +251,9 @@ fn findings(ui: &mut Ui, reports: &[TipReport], widgets: &mut HashMap<String, Ui
                         help(
                             ui,
                             if finding.fixed.is_empty() {
-                                "No fixed version reported".into()
+                                crate::i18n::tr("No fixed version reported").into()
                             } else {
-                                format!("Reported fix: {}", finding.fixed.join(", "))
+                                crate::i18n::trf!("Reported fix: {versions}", versions = finding.fixed.join(", "))
                             },
                         );
                         ui.horizontal_wrapped(|ui| {
@@ -275,25 +271,17 @@ fn findings(ui: &mut Ui, reports: &[TipReport], widgets: &mut HashMap<String, Ui
                 );
                 help(
                     ui,
-                    format!(
-                        "{} {} · {ecosystem}",
-                        entries.len(),
-                        if entries.len() == 1 {
-                            "finding"
-                        } else {
-                            "findings"
-                        }
-                    ),
+                    crate::i18n::trf!("Findings: {count} · {ecosystem}", count = entries.len(), ecosystem),
                 );
                 help(ui, fix_summary(&entries));
             });
             ui.add_space(8.0);
         }
     }
-    let detail = CollapsingHeader::new("Scan details").id_salt("dependency-push-scope").show(ui, |ui| {
-        for tip in reports { help(ui, format!("Tip {} · {} packages · {} files", &tip.source.as_str()[..12], tip.report.packages, tip.report.files)); }
-        help(ui, format!("OSV-Scanner {} · Local advisory data", rocket_git::OSV_VERSION));
-        help(ui, "Working-copy edits are excluded. Advisory matches do not establish whether vulnerable code is reachable; historical dependency versions are not checked.");
+    let detail = CollapsingHeader::new(crate::i18n::tr("Scan details")).id_salt("dependency-push-scope").show(ui, |ui| {
+        for tip in reports { help(ui, crate::i18n::trf!("Tip {commit} · packages: {packages} · files: {files}", commit = &tip.source.as_str()[..12], packages = tip.report.packages, files = tip.report.files)); }
+        help(ui, crate::i18n::trf!("OSV-Scanner {version} · Local advisory data", version = rocket_git::OSV_VERSION));
+        help(ui, crate::i18n::tr("Working-copy edits are excluded. Advisory matches do not establish whether vulnerable code is reachable; historical dependency versions are not checked."));
     });
     pages::control(
         widgets,
@@ -316,26 +304,26 @@ impl Rocket {
         let (phase, title, subtitle, tint) = match &active.phase {
             Phase::Scanning => (
                 "scanning",
-                "Checking dependencies before push",
-                "Rocket is checking the dependencies in your committed files.",
+                crate::i18n::tr("Checking dependencies before push"),
+                crate::i18n::tr("Rocket is checking the dependencies in your committed files."),
                 BLUE(),
             ),
             Phase::Continuing => (
                 "continuing",
-                "Continuing the reviewed push",
-                "Finishing checks for this push attempt.",
+                crate::i18n::tr("Continuing the reviewed push"),
+                crate::i18n::tr("Finishing checks for this push attempt."),
                 BLUE(),
             ),
             Phase::Review { .. } => (
                 "review",
-                "Review before pushing",
-                "Dependency warnings need your attention. Your push is paused.",
+                crate::i18n::tr("Review before pushing"),
+                crate::i18n::tr("Dependency warnings need your attention. Your push is paused."),
                 AMBER(),
             ),
             Phase::Failed(_) => (
                 "failed",
-                "Push stopped",
-                "The dependency scan could not finish.",
+                crate::i18n::tr("Push stopped"),
+                crate::i18n::tr("The dependency scan could not finish."),
                 RED(),
             ),
         };
@@ -347,7 +335,7 @@ impl Rocket {
                 .map(|_| {
                     w.title.strip_prefix("Pushing to ").map_or_else(
                         || crate::operation_names::done(&w.label),
-                        |remote| format!("Push to {remote}"),
+                        |remote| crate::i18n::trf!("Push to {remote}", remote),
                     )
                 })
         });
@@ -369,7 +357,7 @@ impl Rocket {
                     icon(ui.painter(), rect.shrink(9.0), if failed { Icon::Warning } else { Icon::Shield }, tint);
                     let width = (ui.available_width() - 36.0).max(100.0);
                     ui.vertical(|ui| { ui.set_width(width); ui.add(Label::new(RichText::new(title).font(semibold(20.0))).wrap()); help(ui, subtitle); });
-                    let close = ui.add_sized(vec2(26.0, 28.0), Button::new("×").frame(false)).on_hover_text(if failed { "Close" } else { "Cancel push" });
+                    let close = ui.add_sized(vec2(26.0, 28.0), Button::new("×").frame(false)).on_hover_text(if failed { crate::i18n::tr("Close") } else { crate::i18n::tr("Cancel push") });
                     pages::control(widgets, "dependency-push-close", &close, ui.clip_rect()); cancel = close.clicked();
                 });
                 ui.add_space(12.0);
@@ -384,24 +372,24 @@ impl Rocket {
                     ui.set_width(ui.available_width());
                     match &active.phase {
                         Phase::Scanning => scanning(ui, secrets, ai_keys),
-                        Phase::Continuing => { ui.horizontal(|ui| { ui.spinner(); help(ui, "Continuing the reviewed push…"); }); }
-                        Phase::Failed(error) => { pages::callout(ui, RED(), error); ui.add_space(10.0); help(ui, "No push was sent by this attempt. Check scanner setup, then retry Push. Your local commits are retained."); }
+                        Phase::Continuing => { ui.horizontal(|ui| { ui.spinner(); help(ui, crate::i18n::tr("Continuing the reviewed push…")); }); }
+                        Phase::Failed(error) => { pages::callout(ui, RED(), error); ui.add_space(10.0); help(ui, crate::i18n::tr("No push was sent by this attempt. Check scanner setup, then retry Push. Your local commits are retained.")); }
                         Phase::Review { reports, .. } => { ui.push_id(active.id, |ui| findings(ui, reports, widgets)); }
                     }
                 });
                 pages::region(widgets, "dependency-push-scroll", scroll.inner_rect, true);
                 ui.add_space(12.0); ui.separator(); ui.add_space(6.0);
-                help(ui, if reviewing { "Push anyway keeps these warnings and continues this push only." } else if failed { "Fix the setup and retry. This error cannot be bypassed here." } else { "Cancelling stops this attempt and keeps your local commits." });
+                help(ui, if reviewing { crate::i18n::tr("Push anyway keeps these warnings and continues this push only.") } else if failed { crate::i18n::tr("Fix the setup and retry. This error cannot be bypassed here.") } else { crate::i18n::tr("Cancelling stops this attempt and keeps your local commits.") });
                 ui.add_space(5.0);
                 ui.allocate_ui_with_layout(vec2(ui.available_width(), 36.0), Layout::right_to_left(Align::Center), |ui| {
                     ui.spacing_mut().button_padding = vec2(13.0, 8.0);
-                    if failed { let button = pages::primary(ui, editable, "Open scanner setup"); pages::control(widgets, "dependency-push-setup", &button, ui.clip_rect()); setup = button.clicked(); }
-                    let button = if reviewing { pages::primary(ui, true, "Cancel push") } else { ui.button(if failed { "Close" } else { "Cancel push" }) };
+                    if failed { let button = pages::primary(ui, editable, crate::i18n::tr("Open scanner setup")); pages::control(widgets, "dependency-push-setup", &button, ui.clip_rect()); setup = button.clicked(); }
+                    let button = if reviewing { pages::primary(ui, true, crate::i18n::tr("Cancel push")) } else { ui.button(if failed { crate::i18n::tr("Close") } else { crate::i18n::tr("Cancel push") }) };
                     pages::control(widgets, "dependency-push-cancel", &button, ui.clip_rect());
                     let focus = Id::new(("dependency-push-focus", active.id, phase));
                     if !ui.ctx().data(|d| d.get_temp::<bool>(focus).unwrap_or(false)) { button.request_focus(); ui.ctx().data_mut(|d| d.insert_temp(focus, true)); }
                     cancel |= button.clicked();
-                    if reviewing { let button = ui.add_enabled(editable, Button::new(RichText::new("Push anyway").color(AMBER()))); pages::control(widgets, "dependency-push-continue", &button, ui.clip_rect()); approve = button.clicked(); }
+                    if reviewing { let button = ui.add_enabled(editable, Button::new(RichText::new(crate::i18n::tr("Push anyway")).color(AMBER()))); pages::control(widgets, "dependency-push-continue", &button, ui.clip_rect()); approve = button.clicked(); }
                 });
             });
         cancel |= response.should_close();

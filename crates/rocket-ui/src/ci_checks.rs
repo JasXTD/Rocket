@@ -91,12 +91,10 @@ impl State {
     /// A branch row's tooltip: which commit on the host the mark is for.
     pub fn branch_tip(&self, state: ForgeCiState, commit: &str, local_target: Option<&str>) -> String {
         let elsewhere = local_target.is_some_and(|t| t != commit);
-        format!(
-            "{} on {} for {}.{} Click for the checks.",
-            state.label(),
-            host_name(self.host()),
-            &commit[..7],
-            if elsewhere { " The branch is at another commit." } else { "" }
+        crate::i18n::trf!(
+            "{state} on {host} for {commit}.{note} Click for the checks.",
+            state = ci_label(state), host = host_name(self.host()), commit = &commit[..7],
+            note = if elsewhere { crate::i18n::tr(" The branch is at another commit.") } else { "" }
         )
     }
     fn reset(&mut self) {
@@ -256,10 +254,10 @@ pub(crate) fn paint_check(painter: &Painter, center: Pos2, state: ForgeCheckStat
 pub(crate) fn mark_tip(state: ForgeCiState, host: ForgeProvider) -> String {
     let name = host_name(host);
     match state {
-        ForgeCiState::Passed => format!("Checks passed on {name}. Click for the checks."),
-        ForgeCiState::Failed => format!("A check failed on {name}. Click for the checks."),
-        ForgeCiState::Running => format!("Checks are running on {name}. Click for the checks."),
-        ForgeCiState::NotChecked => format!("No checks ran for this commit on {name}."),
+        ForgeCiState::Passed => crate::i18n::trf!("Checks passed on {name}. Click for the checks.", name),
+        ForgeCiState::Failed => crate::i18n::trf!("A check failed on {name}. Click for the checks.", name),
+        ForgeCiState::Running => crate::i18n::trf!("Checks are running on {name}. Click for the checks.", name),
+        ForgeCiState::NotChecked => crate::i18n::trf!("No checks ran for this commit on {name}.", name),
     }
 }
 pub(crate) fn host_name(p: ForgeProvider) -> &'static str {
@@ -278,33 +276,91 @@ fn group_key(c: &ForgeCheck) -> &str {
     if c.run.is_some() { &c.group } else { "" }
 }
 /// Why Re-run waits: the quiet sign-in of a remembered account only reads.
-pub(crate) const NOT_LIVE: &str = "Re-running uses the account connected in Hosting. Connect it there first.";
+pub(crate) const NOT_LIVE: &str = crate::i18n::mark("Re-running uses the account connected in Hosting. Connect it there first.");
+pub(crate) fn not_live() -> &'static str { crate::i18n::tr(NOT_LIVE) }
+/// Display labels live here; Git/provider enum keys and diagnostic summaries stay stable.
+pub(crate) fn ci_label(state: ForgeCiState) -> &'static str {
+    match state {
+        ForgeCiState::Passed => crate::i18n::tr("Passed"),
+        ForgeCiState::Failed => crate::i18n::tr("Failed"),
+        ForgeCiState::Running => crate::i18n::tr("Running"),
+        ForgeCiState::NotChecked => crate::i18n::tr("Not checked"),
+    }
+}
+pub(crate) fn check_label(state: ForgeCheckState) -> &'static str {
+    match state {
+        ForgeCheckState::Passed => crate::i18n::tr("Passed"),
+        ForgeCheckState::Failed => crate::i18n::tr("Failed"),
+        ForgeCheckState::Running => crate::i18n::tr("Running"),
+        ForgeCheckState::Queued => crate::i18n::tr("Queued"),
+        ForgeCheckState::Neutral => crate::i18n::tr("Neutral"),
+        ForgeCheckState::Cancelled => crate::i18n::tr("Cancelled"),
+        ForgeCheckState::Skipped => crate::i18n::tr("Skipped"),
+    }
+}
+pub(crate) fn run_title(run: &ForgeCiRun) -> String {
+    match run.number_text() {
+        Some(number) => crate::i18n::trf!("{name} · run {number}", name = &run.name, number),
+        None => run.name.clone(),
+    }
+}
+pub(crate) fn duration_text(seconds: u64) -> String {
+    match seconds {
+        s if s < 60 => crate::i18n::trf!("{seconds}s", seconds = s),
+        s if s < 3600 => crate::i18n::trf!("{minutes}m {seconds}s", minutes = s / 60, seconds = format!("{:02}", s % 60)),
+        s => crate::i18n::trf!("{hours}h {minutes}m", hours = s / 3600, minutes = format!("{:02}", (s % 3600) / 60)),
+    }
+}
+pub(crate) fn rerun_refusal(block: ForgeRerunBlock) -> &'static str {
+    match block {
+        ForgeRerunBlock::StillRunning => crate::i18n::tr("The run is still running. Re-run its failed jobs when it finishes."),
+        ForgeRerunBlock::TooOld => crate::i18n::tr("The host re-runs a run only within 30 days. Open it in the browser."),
+        ForgeRerunBlock::NoWriteAccess => crate::i18n::tr("This account can read the repository but not write to it. Re-running needs write access."),
+        ForgeRerunBlock::TokenScope => crate::i18n::tr("This token's scopes don't allow re-running. Give it repo (GitHub) or api (GitLab)."),
+        ForgeRerunBlock::Unsupported => crate::i18n::tr("This host's API can't re-run failed jobs. Open the run in the browser."),
+        ForgeRerunBlock::Unverified => crate::i18n::tr("Rocket couldn't confirm this account can write here. Refresh the checks to try again."),
+    }
+}
 /// The host's own word for a re-run.
 pub(crate) fn rerun_label(p: ForgeProvider) -> &'static str {
-    if p == ForgeProvider::GitLab { "Retry failed jobs" } else { "Re-run failed jobs" }
+    if p == ForgeProvider::GitLab { crate::i18n::tr("Retry failed jobs") } else { crate::i18n::tr("Re-run failed jobs") }
 }
 /// The popover's words for MCP state and runners.
 pub fn summary_text(checks: &ForgeCommitChecks) -> String {
-    summary(checks)
+    // This is an automation payload; do not translate its stored words.
+    let mut parts = Vec::new();
+    for (state, word) in [
+        (ForgeCheckState::Failed, crate::i18n::mark("failed")),
+        (ForgeCheckState::Running, crate::i18n::mark("running")),
+        (ForgeCheckState::Queued, crate::i18n::mark("queued")),
+        (ForgeCheckState::Passed, crate::i18n::mark("passed")),
+        (ForgeCheckState::Neutral, crate::i18n::mark("neutral")),
+        (ForgeCheckState::Cancelled, crate::i18n::mark("cancelled")),
+        (ForgeCheckState::Skipped, crate::i18n::mark("skipped")),
+    ] {
+        let n = checks.count(state);
+        if n > 0 { parts.push(format!("{n} {word}")); }
+    }
+    if parts.is_empty() { crate::i18n::mark("No checks ran").into() } else { parts.join(" · ") }
 }
 /// "1 failed · 4 passed · 1 skipped"
 pub(crate) fn summary(checks: &ForgeCommitChecks) -> String {
     let mut parts = Vec::new();
     for (state, word) in [
-        (ForgeCheckState::Failed, "failed"),
-        (ForgeCheckState::Running, "running"),
-        (ForgeCheckState::Queued, "queued"),
-        (ForgeCheckState::Passed, "passed"),
-        (ForgeCheckState::Neutral, "neutral"),
-        (ForgeCheckState::Cancelled, "cancelled"),
-        (ForgeCheckState::Skipped, "skipped"),
+        (ForgeCheckState::Failed, crate::i18n::mark("{count} failed")),
+        (ForgeCheckState::Running, crate::i18n::mark("{count} running")),
+        (ForgeCheckState::Queued, crate::i18n::mark("{count} queued")),
+        (ForgeCheckState::Passed, crate::i18n::mark("{count} passed")),
+        (ForgeCheckState::Neutral, crate::i18n::mark("{count} neutral")),
+        (ForgeCheckState::Cancelled, crate::i18n::mark("{count} cancelled")),
+        (ForgeCheckState::Skipped, crate::i18n::mark("{count} skipped")),
     ] {
         let n = checks.count(state);
         if n > 0 {
-            parts.push(format!("{n} {word}"));
+            parts.push(crate::i18n::fill(crate::i18n::tr(word), &[("count", &n)]));
         }
     }
-    if parts.is_empty() { "No checks ran".into() } else { parts.join(" · ") }
+    if parts.is_empty() { crate::i18n::tr("No checks ran").into() } else { parts.join(" · ") }
 }
 /// Where Open in browser goes: the failed run, a run, or the commit's page.
 pub(crate) fn browser_url(checks: &ForgeCommitChecks) -> String {
@@ -347,7 +403,7 @@ pub(crate) fn list(ui: &mut Ui, checks: &[ForgeCheck], host: ForgeProvider, widg
     }
     for i in order {
         let check = &checks[i];
-        let name = if check.run.is_some() { check.group.as_str() } else { "Other checks" };
+        let name = if check.run.is_some() { check.group.as_str() } else { crate::i18n::tr("Other checks") };
         if grouped && group != Some(name) {
             group = Some(name);
             ui.add_space(2.0);
@@ -357,14 +413,15 @@ pub(crate) fn list(ui: &mut Ui, checks: &[ForgeCheck], host: ForgeProvider, widg
             });
         }
         let height = match style { ListStyle::Wide => 34.0, ListStyle::Jobs => 32.0, ListStyle::Grouped => 30.0 };
-        let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
+        let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::hover());
+        response.on_hover_text(check_label(check.state));
         if wide && i > 0 {
             ui.painter().hline(rect.x_range(), rect.top(), Stroke::new(1.0, CARD_LINE()));
         }
         let painter = ui.painter().with_clip_rect(rect);
         paint_check(&painter, pos2(rect.left() + 14.0, rect.center().y), check.state);
         let failed = check.state == ForgeCheckState::Failed;
-        let link_label = check.link.as_ref().map(|l| l.external.clone().unwrap_or_else(|| "Open".into()));
+        let link_label = check.link.as_ref().map(|l| l.external.clone().unwrap_or_else(|| crate::i18n::tr("Open").into()));
         // The link sits at the right; its width comes off the name and detail.
         let link_width = link_label.as_ref().filter(|_| wide || failed || check.link.as_ref().is_some_and(|l| l.external.is_some())).map_or(0.0, |l| {
             painter.layout_no_wrap(l.clone(), FontId::proportional(12.0), BLUE()).size().x + 26.0
@@ -392,8 +449,8 @@ pub(crate) fn list(ui: &mut Ui, checks: &[ForgeCheck], host: ForgeProvider, widg
             let text = painter.layout_no_wrap(label.clone(), FontId::proportional(12.0), BLUE());
             let link_rect = Rect::from_min_size(pos2(rect.right() - 6.0 - link_width, rect.center().y - 11.0), vec2(link_width - 4.0, 22.0));
             let r = ui.interact(link_rect, ui.id().with((prefix, "open", i)), Sense::click()).on_hover_text(match &link.external {
-                Some(host) => format!("Opens {host} in your browser"),
-                None => "Opens this check on the host in your browser".into(),
+                Some(host) => crate::i18n::trf!("Opens {host} in your browser", host),
+                None => crate::i18n::tr("Opens this check on the host in your browser").into(),
             });
             control(widgets, format!("{prefix}-open-{i}"), &r, ui.clip_rect());
             let color = if r.hovered() { ACCENT_HOVER() } else { BLUE() };
@@ -659,14 +716,14 @@ impl Rocket {
                         Ok(done) => {
                             let tab = r.tab.unwrap_or(u64::MAX);
                             let text = done.started.iter().map(|(run, attempt)| match attempt {
-                                Some(a) => format!("{run}, attempt {a}"),
+                                Some(a) => crate::i18n::trf!("{run}, attempt {attempt}", run, attempt = a),
                                 None => run.clone(),
                             }).collect::<Vec<_>>().join("; ");
                             self.ci.rerun = None;
                             if let Some(p) = &mut self.ci.popover
                                 && p.tab == tab
                             {
-                                p.notice = Some(format!("Re-run started: {text}."));
+                                p.notice = Some(crate::i18n::trf!("Re-run started: {text}.", text));
                             }
                             self.refresh_ci_popover();
                             if let Some(t) = self.tabs.iter_mut().find(|t| t.id == tab) {
@@ -674,7 +731,7 @@ impl Rocket {
                                 t.actions.rerun_started();
                             }
                             self.forge.pull.ci_for = None;
-                            self.notice = Some(format!("Re-run started: {text}. Rocket refreshes the checks shortly."));
+                            self.notice = Some(crate::i18n::trf!("Re-run started: {text}. Rocket refreshes the checks shortly.", text));
                             return;
                         }
                         Err(rocket_git::Error::Forge(ForgeFailure::OutcomeUnknown)) | Err(rocket_git::Error::Cancelled) => {
@@ -682,7 +739,7 @@ impl Rocket {
                             r.preview = None;
                             r.error = None;
                             if orphan {
-                                self.notice = Some("The re-run may have started; its repository was closed. Check the run on the host before trying again.".into());
+                                self.notice = Some(crate::i18n::tr("The re-run may have started; its repository was closed. Check the run on the host before trying again.").into());
                             }
                         }
                         Err(e) => {
@@ -763,12 +820,12 @@ impl Rocket {
                         }
                         ui.vertical(|ui| {
                             ui.set_width(width - 90.0);
-                            let title = details.as_ref().map_or_else(|| if reading { "Reading checks".into() } else { "Checks".into() }, |d| summary(d));
+                            let title = details.as_ref().map_or_else(|| if reading { crate::i18n::tr("Reading checks").into() } else { crate::i18n::tr("Checks").into() }, |d| summary(d));
                             ui.add(Label::new(RichText::new(title).font(semibold(13.0))).truncate());
-                            ui.add(Label::new(RichText::new(format!("{} on {} · {}", &commit[..7], details.as_ref().map_or("", |d| d.repository().path()), host_name(host))).size(12.0).color(HINT())).truncate());
+                            ui.add(Label::new(RichText::new(crate::i18n::trf!("{commit} on {repository} · {host}", commit = &commit[..7], repository = details.as_ref().map_or("", |d| d.repository().path()), host = host_name(host))).size(12.0).color(HINT())).truncate());
                         });
                         ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                            let r = crate::chrome::icon_button(ui, Icon::Refresh, !reading, false, 26.0).on_hover_text("Refresh checks");
+                            let r = crate::chrome::icon_button(ui, Icon::Refresh, !reading, false, 26.0).on_hover_text(crate::i18n::tr("Refresh checks"));
                             control(widgets, "ci-popover-refresh", &r, ui.clip_rect());
                             refresh = r.clicked();
                         });
@@ -788,7 +845,7 @@ impl Rocket {
                             pages::notice_strip(ui, MUTED(), &text, None);
                         }
                         if d.checks.is_empty() {
-                            ui.label(RichText::new(format!("{} has no check runs or statuses for this commit.", host_name(host))).size(12.0).color(HINT()));
+                            ui.label(RichText::new(crate::i18n::trf!("{host} has no check runs or statuses for this commit.", host = host_name(host))).size(12.0).color(HINT()));
                         }
                         ScrollArea::vertical().id_salt("ci-popover-list").max_height(330.0).show(ui, |ui| {
                             ui.spacing_mut().item_spacing.y = 0.0;
@@ -797,10 +854,10 @@ impl Rocket {
                             }
                         });
                         if d.limited {
-                            ui.label(RichText::new(format!("Showing {}: open it in the browser for the rest.", d.checks.len())).size(12.0).color(HINT()));
+                            ui.label(RichText::new(crate::i18n::trf!("Showing {count}: open it in the browser for the rest.", count = d.checks.len())).size(12.0).color(HINT()));
                         }
                     } else if reading {
-                        pages::busy_line(ui, "Marks stay as they were until the answer arrives.");
+                        pages::busy_line(ui, crate::i18n::tr("Marks stay as they were until the answer arrives."));
                     }
                 });
                 if let Some(d) = &details {
@@ -809,25 +866,25 @@ impl Rocket {
                             let failed = d.failed_runs().next().is_some();
                             let offered = d.rerun.is_none() && failed && live;
                             if failed || d.rerun.is_some() {
-                                let why = d.rerun.map(rocket_git::ci_rerun_refusal).or((!live).then_some(NOT_LIVE));
+                                let why = d.rerun.map(rerun_refusal).or((!live).then_some(not_live()));
                                 let r = pages::primary(ui, offered && !reading, rerun_label(host));
                                 let r = match why { Some(why) => r.on_disabled_hover_text(why), None => r };
                                 control(widgets, "ci-popover-rerun", &r, ui.clip_rect());
                                 rerun = r.clicked();
                             }
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                let r = pages::ghost(ui, true, "Open in browser");
+                                let r = pages::ghost(ui, true, crate::i18n::tr("Open in browser"));
                                 control(widgets, "ci-popover-open", &r, ui.clip_rect());
                                 if r.clicked() {
                                     open = Some(browser_url(d));
                                 }
-                                let r = ui.add(Label::new(RichText::new("All runs").size(12.5).color(BLUE())).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Opens Actions on this run's branch");
+                                let r = ui.add(Label::new(RichText::new(crate::i18n::tr("All runs")).size(12.5).color(BLUE())).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand).on_hover_text(crate::i18n::tr("Opens Actions on this run's branch"));
                                 control(widgets, "ci-popover-all-runs", &r, ui.clip_rect());
                                 all_runs = r.clicked();
                             });
                         });
-                        let why = d.rerun.filter(|_| d.failed_runs().next().is_some() || d.rerun == Some(ForgeRerunBlock::StillRunning)).map(rocket_git::ci_rerun_refusal)
-                            .or((!live && d.failed_runs().next().is_some()).then_some(NOT_LIVE));
+                        let why = d.rerun.filter(|_| d.failed_runs().next().is_some() || d.rerun == Some(ForgeRerunBlock::StillRunning)).map(rerun_refusal)
+                            .or((!live && d.failed_runs().next().is_some()).then_some(not_live()));
                         if let Some(why) = why {
                             ui.add_space(6.0);
                             ui.label(RichText::new(why).size(12.0).color(HINT()));
@@ -877,7 +934,7 @@ impl Rocket {
         let Some(r) = &self.ci.rerun else { return };
         let host = r.session.config().provider();
         let label = rerun_label(host);
-        let subtitle = format!("{} · {} · as {}", r.repository().path(), host_name(host), r.session.login());
+        let subtitle = crate::i18n::trf!("{repository} · {host} · as {account}", repository = r.repository().path(), host = host_name(host), account = r.session.login());
         if ctx.cumulative_frame_nr() <= r.opened + 2 {
             pages::raise(ctx, "rocket-ci-rerun");
         }
@@ -899,9 +956,9 @@ impl Rocket {
                 ui.spacing_mut().item_spacing.y = 12.0;
                 for run in &runs {
                     pages::titled_card(ui, |ui| {
-                        ui.label(RichText::new(run.title()).strong());
+                        ui.label(RichText::new(run_title(run)).strong());
                         if let Some(a) = run.attempt {
-                            ui.label(RichText::new(format!("attempt {a}")).size(12.0).color(HINT()));
+                            ui.label(RichText::new(crate::i18n::trf!("attempt {attempt}", attempt = a)).size(12.0).color(HINT()));
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.label(RichText::new(&commit).monospace().size(12.0));
@@ -915,30 +972,30 @@ impl Rocket {
                             });
                         }
                         ui.label(RichText::new(match host {
-                            ForgeProvider::GitLab => "GitLab also retries the pipeline's canceled jobs.",
-                            _ => "The host also runs the jobs that need them again.",
+                            ForgeProvider::GitLab => crate::i18n::tr("GitLab also retries the pipeline's canceled jobs."),
+                            _ => crate::i18n::tr("The host also runs the jobs that need them again."),
                         }).size(12.0).color(HINT()));
                     });
                 }
                 if reviewing {
-                    pages::busy_line(ui, "Checking the run and your access again");
+                    pages::busy_line(ui, crate::i18n::tr("Checking the run and your access again"));
                 }
                 if let Some(error) = &error
-                    && pages::notice_strip(ui, RED(), error, Some("Accounts")).is_some_and(|r| { control(widgets, "ci-rerun-accounts", &r, ui.clip_rect()); r.clicked() })
+                    && pages::notice_strip(ui, RED(), error, Some(crate::i18n::tr("Accounts"))).is_some_and(|r| { control(widgets, "ci-rerun-accounts", &r, ui.clip_rect()); r.clicked() })
                 {
                     accounts = true;
                 }
-                if unknown && pages::notice_strip(ui, AMBER(), &format!("{} may have started the re-run. Refresh checks before trying again.", host_name(host)), Some("Refresh checks")).is_some_and(|r| { control(widgets, "ci-rerun-refresh", &r, ui.clip_rect()); r.clicked() }) {
+                if unknown && pages::notice_strip(ui, AMBER(), &crate::i18n::trf!("{host} may have started the re-run. Refresh checks before trying again.", host = host_name(host)), Some(crate::i18n::tr("Refresh checks"))).is_some_and(|r| { control(widgets, "ci-rerun-refresh", &r, ui.clip_rect()); r.clicked() }) {
                     refresh = true;
                 }
             }
             pages::Part::Footer => {
                 if sending {
-                    let r = pages::ghost(ui, !stopping, if stopping { "Stopping" } else { "Stop" });
+                    let r = pages::ghost(ui, !stopping, if stopping { crate::i18n::tr("Stopping") } else { crate::i18n::tr("Stop") });
                     control(widgets, "ci-rerun-stop", &r, ui.clip_rect());
                     stop = r.clicked();
                     ui.spinner();
-                    ui.label(RichText::new("Sending the request").color(MUTED()));
+                    ui.label(RichText::new(crate::i18n::tr("Sending the request")).color(MUTED()));
                 } else {
                     let r = pages::primary(ui, preview.is_some() && !unknown && error.is_none(), label);
                     control(widgets, "ci-rerun-submit", &r, ui.clip_rect());
@@ -1025,13 +1082,13 @@ impl Rocket {
         let Some(whole) = tab.ci.whole.clone() else { return };
         let host = tab.ci.session.as_ref().map_or(ForgeProvider::GitHub, |s| s.config().provider());
         let (image, text, tip, color) = match &whole {
-            Whole::Hidden(missing) => (Icon::Lock, "Checks hidden".to_string(), match missing {
-                Some(p) => format!("This account's token can't read checks here. Give it {p}."),
-                None => "This account's token can't read checks here. See Token permissions in the guide.".into(),
+            Whole::Hidden(missing) => (Icon::Lock, crate::i18n::tr("Checks hidden").to_string(), match missing {
+                Some(p) => crate::i18n::trf!("This account's token can't read checks here. Give it {permission}.", permission = p),
+                None => crate::i18n::tr("This account's token can't read checks here. See Token permissions in the guide.").into(),
             }, MUTED()),
-            Whole::Paused(at) => (Icon::Clock, format!("Checks paused until {at}"), format!("{}'s rate limit for this account is used up. Checks refresh again at {at}.", host_name(host)), AMBER()),
-            Whole::Stale(at) => (Icon::Warning, format!("Checks from {at}"), format!("Couldn't reach {}. Marks are faded until a refresh works.", host_name(host)), MUTED()),
-            Whole::Rejected => (Icon::Lock, "Checks hidden".to_string(), format!("{} rejected this account's token. Reconnect it in Accounts.", host_name(host)), MUTED()),
+            Whole::Paused(at) => (Icon::Clock, crate::i18n::trf!("Checks paused until {at}", at), crate::i18n::trf!("{host}'s rate limit for this account is used up. Checks refresh again at {at}.", host = host_name(host), at), AMBER()),
+            Whole::Stale(at) => (Icon::Warning, crate::i18n::trf!("Checks from {at}", at), crate::i18n::trf!("Couldn't reach {host}. Marks are faded until a refresh works.", host = host_name(host)), MUTED()),
+            Whole::Rejected => (Icon::Lock, crate::i18n::tr("Checks hidden").to_string(), crate::i18n::trf!("{host} rejected this account's token. Reconnect it in Accounts.", host = host_name(host)), MUTED()),
         };
         // Called inside the status bar's right-to-left row: the words, then the icon to their left.
         let r = ui.scope(|ui| {
@@ -1078,11 +1135,11 @@ pub fn head_dot(tab: &Tab) -> Option<(ForgeCiState, String)> {
 fn hidden_text(d: &ForgeCommitChecks) -> Option<String> {
     match d.error? {
         ForgeFailure::Forbidden => Some(match &d.missing {
-            Some(p) => format!("Some checks are hidden: this token needs {p}."),
-            None => "Some checks are hidden: this token can't read them.".into(),
+            Some(p) => crate::i18n::trf!("Some checks are hidden: this token needs {permission}.", permission = p),
+            None => crate::i18n::tr("Some checks are hidden: this token can't read them.").into(),
         }),
-        ForgeFailure::RateLimited => Some("The rate limit is used up; some checks weren't read.".into()),
-        other => Some(format!("Some checks couldn't be read ({}).", other.code())),
+        ForgeFailure::RateLimited => Some(crate::i18n::tr("The rate limit is used up; some checks weren't read.").into()),
+        other => Some(crate::i18n::trf!("Some checks couldn't be read ({code}).", code = other.code())),
     }
 }
 fn failure_text(e: &rocket_git::Error) -> String {
@@ -1260,10 +1317,10 @@ fn ci_tab(tab: &mut Tab, ctx: &Context, now: Instant, focused: bool, backend: Op
 pub(crate) fn details_line(ui: &mut Ui, tab: &Tab, commit: &str, widgets: &mut HashMap<String, UiControl>, intents: &mut Vec<Intent>) {
     let Some(state) = tab.ci.mark(commit) else { return };
     let words = match state {
-        ForgeCiState::Passed => "Checks passed",
-        ForgeCiState::Failed => "A check failed",
-        ForgeCiState::Running => "Checks are running",
-        ForgeCiState::NotChecked => "No checks ran",
+        ForgeCiState::Passed => crate::i18n::tr("Checks passed"),
+        ForgeCiState::Failed => crate::i18n::tr("A check failed"),
+        ForgeCiState::Running => crate::i18n::tr("Checks are running"),
+        ForgeCiState::NotChecked => crate::i18n::tr("No checks ran"),
     };
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 30.0), Sense::click());
     if response.hovered() {
@@ -1271,8 +1328,8 @@ pub(crate) fn details_line(ui: &mut Ui, tab: &Tab, commit: &str, widgets: &mut H
     }
     paint_mark(ui.painter(), pos2(rect.left() + 12.0, rect.center().y), state, tab.ci.faded);
     let color = if state == ForgeCiState::Failed { RED() } else { TEXT() };
-    ui.painter().text(pos2(rect.left() + 26.0, rect.center().y), Align2::LEFT_CENTER, format!("{words} on {}", host_name(tab.ci.host())), FontId::proportional(12.5), color);
-    ui.painter().text(pos2(rect.right() - 8.0, rect.center().y), Align2::RIGHT_CENTER, "Show checks", FontId::proportional(12.5), BLUE());
+    ui.painter().text(pos2(rect.left() + 26.0, rect.center().y), Align2::LEFT_CENTER, crate::i18n::trf!("{state} on {host}", state = words, host = host_name(tab.ci.host())), FontId::proportional(12.5), color);
+    ui.painter().text(pos2(rect.right() - 8.0, rect.center().y), Align2::RIGHT_CENTER, crate::i18n::tr("Show checks"), FontId::proportional(12.5), BLUE());
     control(widgets, "ci-details-checks", &response, ui.clip_rect());
     if response.on_hover_cursor(CursorIcon::PointingHand).clicked() {
         intents.push(Intent::CiChecks(commit.to_owned(), rect));

@@ -213,17 +213,17 @@ impl Rocket {
         let mut cancel = false;
         let running = pages::Running::of(self.write.as_ref());
         let subtitle = saved.review.as_ref().map_or_else(
-            || "Reading the stash".to_owned(),
+            || crate::i18n::tr("Reading the stash").to_owned(),
             |r| {
                 let part = match r.part() {
-                    StashPart::Tracked => "All tracked",
-                    StashPart::Index => "Saved index",
-                    StashPart::Untracked => "Untracked files",
+                    StashPart::Tracked => crate::i18n::tr("All tracked"),
+                    StashPart::Index => crate::i18n::tr("Saved index"),
+                    StashPart::Untracked => crate::i18n::tr("Untracked files"),
                 };
                 format!("stash@{{{}}} · {} · {part}", r.entry().index, String::from_utf8_lossy(&r.entry().subject))
             },
         );
-        let header = pages::ReviewHeader { image: Icon::Stash, title: "Apply part of a stash", subtitle: &subtitle, danger: false };
+        let header = pages::ReviewHeader { image: Icon::Stash, title: crate::i18n::tr("Apply part of a stash"), subtitle: &subtitle, danger: false };
         let response = pages::split_review(
             ctx,
             "rocket-stash-apply",
@@ -241,12 +241,12 @@ impl Rocket {
                     }
                     let Some(review) = &saved.review else {
                         if saved.task.is_some() {
-                            pages::waiting(ui, "Reading saved files and changes…");
+                            pages::waiting(ui, crate::i18n::tr("Reading saved files and changes…"));
                         }
                         return;
                     };
                     if review.files().is_empty() {
-                        pages::empty(ui, "No saved changes in this part of the stash.");
+                        pages::empty(ui, crate::i18n::tr("No saved changes in this part of the stash."));
                         return;
                     }
                     saved.file = saved.file.min(review.files().len() - 1);
@@ -262,15 +262,15 @@ impl Rocket {
                             ui.set_min_size(vec2(list, height));
                             ui.horizontal(|ui| {
                                 let files = review.files().len();
-                                ui.label(RichText::new(format!("{files} file{}", if files == 1 { "" } else { "s" })).size(12.0).color(HINT()));
+                                ui.label(RichText::new(crate::i18n::trn!(files, "{n} file", "{n} files")).size(12.0).color(HINT()));
                                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                    let r = ui.add_enabled(!busy && !saved.chosen.is_empty(), Button::new("Clear").small().frame(false));
+                                    let r = ui.add_enabled(!busy && !saved.chosen.is_empty(), Button::new(crate::i18n::tr("Clear")).small().frame(false));
                                     control(widgets, "dialog-stash-none", &r, ui.clip_rect());
                                     if r.clicked() {
                                         saved.chosen.clear();
                                         changed = true;
                                     }
-                                    let r = ui.add_enabled(!busy, Button::new("Select all").small().frame(false));
+                                    let r = ui.add_enabled(!busy, Button::new(crate::i18n::tr("Select all")).small().frame(false));
                                     control(widgets, "dialog-stash-all", &r, ui.clip_rect());
                                     if r.clicked() {
                                         for (i, file) in review.files().iter().enumerate() {
@@ -360,10 +360,10 @@ impl Rocket {
                                     let path = file.path().display_lossy();
                                     ui.label(RichText::new(path.as_ref()).monospace().strong());
                                     let picked = all.iter().filter(|id| chosen_line(&saved.chosen, i, **id)).count();
-                                    ui.label(RichText::new(format!("{picked} of {} lines", all.len())).size(12.0).color(HINT()));
+                                    ui.label(RichText::new(crate::i18n::trf!("Selected lines: {picked} / {total}", picked, total = all.len())).size(12.0).color(HINT()));
                                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                         let whole = matches!(saved.chosen.get(&i), Some(None));
-                                        let r = ui.add_enabled(!busy && !file.mode_change() && !whole, Button::new("Use whole file").small());
+                                        let r = ui.add_enabled(!busy && !file.mode_change() && !whole, Button::new(crate::i18n::tr("Use whole file")).small());
                                         control(widgets, "dialog-stash-whole", &r, ui.clip_rect());
                                         if r.clicked() {
                                             saved.chosen.insert(i, None);
@@ -374,17 +374,17 @@ impl Rocket {
                                 ui.add_space(4.0);
                                 ScrollArea::vertical().id_salt(("stash-apply-changes", i)).auto_shrink([false, false]).show(ui, |ui| {
                                     if file.mode_change() {
-                                        pages::note(ui, "Executable-mode changes need the whole stash: use Apply on the Stashes page.");
+                                        pages::note(ui, crate::i18n::tr("Executable-mode changes need the whole stash: use Apply on the Stashes page."));
                                         return;
                                     }
                                     let partial = !file.whole_only();
                                     if !partial {
-                                        pages::note(ui, "New, deleted, renamed and binary files apply whole.");
+                                        pages::note(ui, crate::i18n::tr("New, deleted, renamed and binary files apply whole."));
                                     }
                                     let mut left = SHOWN_ROWS;
                                     for (h, change) in rows.iter().enumerate() {
                                         if left == 0 {
-                                            pages::note(ui, "The rest of this file isn't shown here; choose whole changes or the whole file for it.");
+                                            pages::note(ui, crate::i18n::tr("The rest of this file isn't shown here; choose whole changes or the whole file for it."));
                                             break;
                                         }
                                         let ids: Vec<usize> = change.rows.iter().filter(|r| r.sign != b' ').map(|r| r.id).collect();
@@ -402,10 +402,10 @@ impl Rocket {
                                                         choose_lines(&mut saved.chosen, i, &all, &ids, picked < ids.len());
                                                         changed = true;
                                                     }
-                                                    ui.label(RichText::new(format!("Change {}", h + 1)).font(semibold(12.5)));
-                                                    let lines = if change.first == change.last { format!("line {}", change.first) } else { format!("lines {}–{}", change.first, change.last) };
+                                                    ui.label(RichText::new(crate::i18n::trf!("Change {number}", number = h + 1)).font(semibold(12.5)));
+                                                    let lines = if change.first == change.last { crate::i18n::trf!("Line {number}", number = change.first) } else { crate::i18n::trf!("Lines {first}–{last}", first = change.first, last = change.last) };
                                                     let context = if change.context.is_empty() { lines } else { format!("{lines} · {}", change.context) };
-                                                    let count = format!("{picked} of {} lines", ids.len());
+                                                    let count = crate::i18n::trf!("Selected lines: {picked} / {total}", picked, total = ids.len());
                                                     let room = ui.available_width() - ui.painter().layout_no_wrap(count.clone(), FontId::proportional(12.0), HINT()).size().x - 12.0;
                                                     ui.allocate_ui(vec2(room.max(40.0), 18.0), |ui| {
                                                         // Take all the room, so the count sits at the right edge.
@@ -475,17 +475,17 @@ impl Rocket {
                     let r = pages::primary(
                         ui,
                         writable && s.preview.is_some() && d.error.is_none() && !changed,
-                        "Apply selected changes",
+                        crate::i18n::tr("Apply selected changes"),
                     );
                     control(widgets, "dialog-submit", &r, ui.clip_rect());
                     apply = r.clicked();
                     if busy {
-                        let r = ui.add_enabled(!s.stopping, Button::new(if s.stopping { "Stopping" } else { "Stop" }));
+                        let r = ui.add_enabled(!s.stopping, Button::new(if s.stopping { crate::i18n::tr("Stopping") } else { crate::i18n::tr("Stop") }));
                         control(widgets, "dialog-stash-stop", &r, ui.clip_rect());
                         cancel = r.clicked();
                     } else if selection && s.preview.is_none() {
                         // After a refused or stopped check; changes are checked as they are made.
-                        let r = ui.button("Check again");
+                        let r = ui.button(crate::i18n::tr("Check again"));
                         control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                         again = r.clicked();
                     }
@@ -495,22 +495,22 @@ impl Rocket {
                             let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
                             icon(ui.painter(), rect, Icon::Check, GREEN());
                             let files = p.files().len();
-                            let text = format!("Applies cleanly to {files} file{} · the stash and your staging stay as they are", if files == 1 { "" } else { "s" });
+                            let text = crate::i18n::trf!("Applies cleanly · files: {files} · the stash and your staging stay as they are", files);
                             ui.add(Label::new(RichText::new(text).size(12.5).color(GREEN())).truncate());
                         });
                     } else {
                         let status = if s.stopping {
-                            "Stopping"
+                            crate::i18n::tr("Stopping")
                         } else if saved.task.is_some() {
-                            "Reading the stash"
+                            crate::i18n::tr("Reading the stash")
                         } else if checking {
-                            "Checking the selection"
+                            crate::i18n::tr("Checking the selection")
                         } else if d.error.is_some() {
-                            "This selection can't be applied as it is"
+                            crate::i18n::tr("This selection can't be applied as it is")
                         } else if !selection {
-                            "Choose files, changes or lines"
+                            crate::i18n::tr("Choose files, changes or lines")
                         } else {
-                            "Not checked yet"
+                            crate::i18n::tr("Not checked yet")
                         };
                         pages::footer_status(ui, busy, status);
                     }
@@ -567,7 +567,7 @@ impl Rocket {
             {
                 s.applying = false;
                 d.error = Some(
-                    "Could not start; wait for repository work to finish, then check again."
+                    crate::i18n::tr("Could not start; wait for repository work to finish, then check again.")
                         .into(),
                 );
             }

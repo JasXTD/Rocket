@@ -2777,6 +2777,11 @@ fn commit_editor(
         ui.colored_label(AMBER(), error);
     }
     let branch = tab.branch_label();
+    let target = trf!("to {branch}", branch);
+    let target_width = ui.painter().layout_no_wrap(
+        target.clone(), FontId::proportional(12.0), FAINT(),
+    ).size().x;
+    let mut target_below = false;
     ui.horizontal(|ui| {
         let amend = ui
             .add_enabled(
@@ -2804,10 +2809,26 @@ fn commit_editor(
             writable && staged > 0,
             widgets,
         );
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            ui.add(Label::new(RichText::new(trf!("to {branch}", branch)).size(12.0).color(FAINT())).truncate());
-        });
+        // Translated controls can use the whole row even with a short branch.
+        // Keep the destination visible instead of spending the last few pixels
+        // on an ellipsis; long branch names can wrap on their own row.
+        target_below = ui.available_width() < target_width + 1.0;
+        if !target_below {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add(Label::new(RichText::new(&target).size(12.0).color(FAINT())));
+            });
+        }
     });
+    if target_below {
+        // A horizontal row constrains height to its contents. Applying the RTL
+        // layout directly to the vertical editor would consume its remaining
+        // height and push the commit buttons below the panel's viewport.
+        ui.horizontal(|ui| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add(Label::new(RichText::new(target).size(12.0).color(FAINT())).wrap());
+            });
+        });
+    }
     let recover = state.and_then(|s| crate::chrome::Recover::of(s, tab.snapshot.as_ref().and_then(|t| t.sequence.as_ref())));
     // Push after commit: the reviewed Commit & Push takes the main button and Ctrl+Enter.
     let pushes = idle && !merge && crate::general::options(ui.ctx()).push_after_commit && tab.commit_pushes();

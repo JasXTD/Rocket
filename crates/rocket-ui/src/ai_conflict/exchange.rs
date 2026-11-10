@@ -351,7 +351,7 @@ mod tests {
         json!({"path":"界.rs","draft":"before\n<<<<<<< ours\none\n=======\ntwo\n>>>>>>> theirs\nafter\n"})
     }
     fn proposal() -> String {
-        json!({"resolutions":[{"id":0,"replacement":"one\ntwo\n","explanation":"Both","confidence":"medium"}]}).to_string()
+        json!({"resolutions":[{"id":0,"replacement":"one\ntwo\n","explanation":crate::i18n::tr("Both"),"confidence":"medium"}]}).to_string()
     }
     fn ready(shared: &std::sync::atomic::AtomicBool) {
         let start = std::time::Instant::now();

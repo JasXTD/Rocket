@@ -34,18 +34,18 @@ impl Period {
     /// The period in a sentence: "in the last 30 days", "in the last year".
     pub fn phrase(self) -> &'static str {
         match self {
-            Self::Days30 => "in the last 30 days",
-            Self::Days90 => "in the last 90 days",
-            Self::Year => "in the last year",
-            Self::All => "in all history",
+            Self::Days30 => crate::i18n::tr("in the last 30 days"),
+            Self::Days90 => crate::i18n::tr("in the last 90 days"),
+            Self::Year => crate::i18n::tr("in the last year"),
+            Self::All => crate::i18n::tr("in all history"),
         }
     }
     pub fn label(self) -> &'static str {
         match self {
-            Self::Days30 => "30 days",
-            Self::Days90 => "90 days",
-            Self::Year => "1 year",
-            Self::All => "All",
+            Self::Days30 => crate::i18n::tr("30 days"),
+            Self::Days90 => crate::i18n::tr("90 days"),
+            Self::Year => crate::i18n::tr("1 year"),
+            Self::All => crate::i18n::tr("All"),
         }
     }
     /// The automation key: days, or `all`.
@@ -72,7 +72,7 @@ impl Period {
     }
 }
 
-const STOPPED: &str = "Stopped. Choose Refresh to read again.";
+const STOPPED: &str = crate::i18n::mark("Stopped. Choose Refresh to read again.");
 /// The treemap draws at most this many entries of a folder; smaller ones are combined.
 const CELLS: usize = 400;
 
@@ -201,7 +201,7 @@ impl Rocket {
             return;
         };
         let message = |e: &Error| match e {
-            Error::Cancelled => STOPPED.to_owned(),
+            Error::Cancelled => crate::i18n::tr(STOPPED).to_owned(),
             e => user_error(e),
         };
         if let Some(result) = s.activity_task.as_mut().and_then(ReadTask::try_finish) {
@@ -239,33 +239,33 @@ impl Rocket {
         pages::header(
             ui,
             Icon::Activity,
-            "Statistics",
-            "Who commits, when, and which files change most · read-only",
+            crate::i18n::tr("Statistics"),
+            crate::i18n::tr("Who commits, when, and which files change most · read-only"),
             |ui| {
-                let r = pages::ghost(ui, true, "Close");
+                let r = pages::ghost(ui, true, crate::i18n::tr("Close"));
                 pages::control(widgets, "dialog-cancel", &r, ui.clip_rect());
                 close = r.clicked();
-                let r = pages::ghost(ui, running, "Stop");
+                let r = pages::ghost(ui, running, crate::i18n::tr("Stop"));
                 pages::control(widgets, "stats-cancel", &r, ui.clip_rect());
                 if r.clicked() {
                     s.cancel();
                 }
                 let r = crate::chrome::icon_button(ui, Icon::Refresh, !running, false, 32.0)
-                    .on_hover_text("Read again");
+                    .on_hover_text(crate::i18n::tr("Read again"));
                 pages::control(widgets, "stats-refresh", &r, ui.clip_rect());
                 reload |= r.clicked();
             },
         );
         let tabs = [
             pages::TabItem {
-                label: "Activity",
+                label: crate::i18n::tr("Activity"),
                 count: None,
                 selected: s.section == Section::Activity,
                 enabled: true,
                 key: "stats-section-activity",
             },
             pages::TabItem {
-                label: "Files",
+                label: crate::i18n::tr("Files"),
                 count: None,
                 selected: s.section == Section::Treemap,
                 enabled: true,
@@ -319,7 +319,7 @@ fn periods(
 /// "Show as table" or "Show charts", at the right of the filter row.
 fn table_toggle(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>) {
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-        let r = pages::ghost(ui, true, if s.table { "Show charts" } else { "Show as table" });
+        let r = pages::ghost(ui, true, if s.table { crate::i18n::tr("Show charts") } else { crate::i18n::tr("Show as table") });
         pages::control(widgets, "stats-table", &r, ui.clip_rect());
         if r.clicked() {
             s.table = !s.table;
@@ -342,7 +342,7 @@ fn ink_on(step: usize) -> Color32 {
 }
 
 const MONTHS: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    crate::i18n::mark("Jan"), crate::i18n::mark("Feb"), crate::i18n::mark("Mar"), crate::i18n::mark("Apr"), crate::i18n::mark("May"), crate::i18n::mark("Jun"), crate::i18n::mark("Jul"), crate::i18n::mark("Aug"), crate::i18n::mark("Sep"), crate::i18n::mark("Oct"), crate::i18n::mark("Nov"), crate::i18n::mark("Dec"),
 ];
 
 /// "Aug 24" for a day number (days since 1970-01-01).
@@ -350,7 +350,7 @@ fn month_day(days: i64) -> String {
     let when = date(days * 86_400, 0);
     let month: usize = when[5..7].parse().unwrap_or(1);
     let day: u32 = when[8..10].parse().unwrap_or(1);
-    format!("{} {day}", MONTHS[month.clamp(1, 12) - 1])
+    format!("{} {day}", crate::i18n::tr(MONTHS[month.clamp(1, 12) - 1]))
 }
 
 /// The year of a day number.
@@ -387,7 +387,7 @@ fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, Ui
             reload = true;
         }
         ui.add_space(6.0);
-        let scopes = [("This branch", !s.all_branches), ("All branches", s.all_branches)];
+        let scopes = [(crate::i18n::tr("This branch"), !s.all_branches), (crate::i18n::tr("All branches"), s.all_branches)];
         for (i, r) in pages::segments(ui, &scopes).iter().enumerate() {
             pages::control(widgets, ["stats-scope-head", "stats-scope-all"][i], r, ui.clip_rect());
             if r.clicked() && (i == 1) != s.all_branches {
@@ -402,7 +402,7 @@ fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, Ui
             .inner_margin(Margin::symmetric(24, 14))
             .show(ui, |ui| match &s.activity_error {
                 Some(e) => pages::callout(ui, AMBER(), e),
-                None => pages::loading(ui, "Reading commit history…"),
+                None => pages::loading(ui, crate::i18n::tr("Reading commit history…")),
             });
         return reload;
     };
@@ -423,7 +423,7 @@ fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, Ui
                     // A new read keeps the last result on screen; its one spinner is
                     // here, where the data appears.
                     if s.activity_running() {
-                        pages::busy_line(ui, "Reading commit history…");
+                        pages::busy_line(ui, crate::i18n::tr("Reading commit history…"));
                     }
                     if let Some(e) = &s.activity_error {
                         pages::callout(ui, AMBER(), e);
@@ -433,11 +433,11 @@ fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, Ui
                         pages::callout(
                             ui,
                             AMBER(),
-                            &format!("Only the newest {ACTIVITY_COMMITS} commits are counted."),
+                            &crate::i18n::trf!("Only the newest {count} commits are counted.", count = ACTIVITY_COMMITS),
                         );
                     }
                     if a.commits == 0 {
-                        pages::empty(ui, "No commits in this range.");
+                        pages::empty(ui, crate::i18n::tr("No commits in this range."));
                         return;
                     }
                     let series = series(&a);
@@ -464,12 +464,12 @@ fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, Ui
 
 /// Four figures across: commits, authors, merges and the active span.
 fn tiles(ui: &mut Ui, a: &CommitActivity, s: &State) {
-    let scope = if s.all_branches { "on all branches" } else { "on this branch" };
+    let scope = if s.all_branches { crate::i18n::tr("on all branches") } else { crate::i18n::tr("on this branch") };
     let range = match s.range {
-        Period::Days30 => "last 30 days",
-        Period::Days90 => "last 90 days",
-        Period::Year => "last year",
-        Period::All => "all history",
+        Period::Days30 => crate::i18n::tr("last 30 days"),
+        Period::Days90 => crate::i18n::tr("last 90 days"),
+        Period::Year => crate::i18n::tr("last year"),
+        Period::All => crate::i18n::tr("all history"),
     };
     let (active, span) = match (a.first, a.last) {
         (Some(first), Some(last)) => {
@@ -479,15 +479,15 @@ fn tiles(ui: &mut Ui, a: &CommitActivity, s: &State) {
             } else {
                 format!("{}, {} – {}, {}", month_day(from), year_of(from), month_day(to), year_of(to))
             };
-            (text, format!("{} days, {} with commits", to - from + 1, a.days))
+            (text, crate::i18n::trf!("Days: {total}, with commits: {active}", total = to - from + 1, active = a.days))
         }
-        _ => ("—".into(), "no commits".into()),
+        _ => ("—".into(), crate::i18n::tr("no commits").into()),
     };
     let figures = [
-        ("Commits", a.commits.to_string(), format!("{scope}, {range}")),
-        ("Authors", a.authors.len().to_string(), "grouped by email".into()),
-        ("Merges", a.merges.to_string(), "included in commits".into()),
-        ("Active", active, span),
+        (crate::i18n::tr("Commits"), a.commits.to_string(), format!("{scope}, {range}")),
+        (crate::i18n::tr("Authors"), a.authors.len().to_string(), crate::i18n::tr("grouped by email").into()),
+        (crate::i18n::tr("Merges"), a.merges.to_string(), crate::i18n::tr("included in commits").into()),
+        (crate::i18n::tr("Active"), active, span),
     ];
     ui.columns(4, |columns| {
         for (ui, (label, value, note)) in columns.iter_mut().zip(figures) {
@@ -525,13 +525,13 @@ fn series(a: &CommitActivity) -> Series {
             .map(|i| {
                 let monday = first + i * 7;
                 let label = month_day(monday);
-                (label.clone(), format!("Week of {label}"), counts.get(&monday).copied().unwrap_or(0))
+                (label.clone(), crate::i18n::trf!("Week of {date}", date = label), counts.get(&monday).copied().unwrap_or(0))
             })
             .collect();
-        return Series { title: "Commits per week", unit: "Week of", buckets };
+        return Series { title: crate::i18n::tr("Commits per week"), unit: crate::i18n::tr("Week of"), buckets };
     }
     let (Some(&(y0, m0, _)), Some(&(y1, m1, _))) = (a.months.first(), a.months.last()) else {
-        return Series { title: "Commits per week", unit: "Week of", buckets: Vec::new() };
+        return Series { title: crate::i18n::tr("Commits per week"), unit: crate::i18n::tr("Week of"), buckets: Vec::new() };
     };
     let counts: HashMap<(i32, u32), usize> = a.months.iter().map(|&(y, m, n)| ((y, m), n)).collect();
     let span = (y1 - y0) as usize * 12 + m1 as usize + 1 - m0 as usize;
@@ -540,11 +540,11 @@ fn series(a: &CommitActivity) -> Series {
             .map(|i| {
                 let month = m0 as usize - 1 + i;
                 let (y, m) = (y0 + (month / 12) as i32, (month % 12) as u32 + 1);
-                let label = format!("{} {y}", MONTHS[m as usize - 1]);
+                let label = format!("{} {y}", crate::i18n::tr(MONTHS[m as usize - 1]));
                 (label.clone(), label, counts.get(&(y, m)).copied().unwrap_or(0))
             })
             .collect();
-        return Series { title: "Commits per month", unit: "Month", buckets };
+        return Series { title: crate::i18n::tr("Commits per month"), unit: crate::i18n::tr("Month"), buckets };
     }
     let buckets = (y0..=y1)
         .map(|y| {
@@ -552,7 +552,7 @@ fn series(a: &CommitActivity) -> Series {
             (y.to_string(), y.to_string(), n)
         })
         .collect();
-    Series { title: "Commits per year", unit: "Year", buckets }
+    Series { title: crate::i18n::tr("Commits per year"), unit: crate::i18n::tr("Year"), buckets }
 }
 
 /// A step for gridlines: 1, 2 or 5 times a power of ten, for about three lines.
@@ -572,7 +572,7 @@ fn timeline(ui: &mut Ui, series: &Series, table: bool) {
     card(ui, series.title, "", |ui| {
         if table {
             // The heading names the bucket ("Week of"), so rows show just its start.
-            two_columns(ui, "stats-weeks-table", (series.unit, "Commits"), series.buckets.iter().map(|(axis, _, n)| (axis.clone(), n.to_string())));
+            two_columns(ui, "stats-weeks-table", (series.unit, crate::i18n::tr("Commits")), series.buckets.iter().map(|(axis, _, n)| (axis.clone(), n.to_string())));
             return;
         }
         let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 190.0), Sense::hover());
@@ -615,7 +615,7 @@ fn timeline(ui: &mut Ui, series: &Series, table: bool) {
         }
         if let Some(i) = hovered {
             let (_, label, count) = &series.buckets[i];
-            response.on_hover_text_at_pointer(format!("{label} · {count} commit{}", if *count == 1 { "" } else { "s" }));
+            response.on_hover_text_at_pointer(format!("{label} · {}", crate::i18n::trn!(*count, "{n} commit", "{n} commits")));
         }
     });
 }
@@ -627,12 +627,12 @@ fn authors(ui: &mut Ui, a: &CommitActivity, table: bool) {
     let mut rows: Vec<(String, usize)> = a.authors.iter().take(SHOWN).map(|x| (display(&x.name), x.commits)).collect();
     let others: usize = a.authors.iter().skip(SHOWN).map(|x| x.commits).sum();
     if others > 0 {
-        rows.push((format!("{} other authors", a.authors.len() - SHOWN), others));
+        rows.push((crate::i18n::trf!("Other authors: {count}", count = a.authors.len() - SHOWN), others));
     }
     let share = |n: usize| (n as f32 / total as f32 * 100.0).round() as usize;
-    card(ui, "Authors", "", |ui| {
+    card(ui, crate::i18n::tr("Authors"), "", |ui| {
         if table {
-            two_columns(ui, "stats-authors-table", ("Author", "Commits"), rows.iter().map(|(name, n)| (name.clone(), format!("{n} · {}%", share(*n)))));
+            two_columns(ui, "stats-authors-table", (crate::i18n::tr("Author"), crate::i18n::tr("Commits")), rows.iter().map(|(name, n)| (name.clone(), format!("{n} · {}%", share(*n)))));
             return;
         }
         let max = rows.iter().map(|r| r.1).max().unwrap_or(1).max(1);
@@ -654,22 +654,22 @@ fn authors(ui: &mut Ui, a: &CommitActivity, table: bool) {
             let track = Rect::from_min_max(pos2(rect.left() + names, rect.center().y - 4.0), pos2(rect.right() - value_width, rect.center().y + 4.0));
             let bar = Rect::from_min_size(track.min, vec2((track.width() * *n as f32 / max as f32).max(2.0), track.height()));
             painter.rect_filled(bar, CornerRadius { nw: 0, ne: 4, sw: 0, se: 4 }, BLUE());
-            response.on_hover_text_at_pointer(format!("{name}: {n} commits ({}%)", share(*n)));
+            response.on_hover_text_at_pointer(crate::i18n::trf!("{author}: {commits} ({share}%)", author = name, commits = crate::i18n::trn!(*n, "{n} commit", "{n} commits"), share = share(*n)));
         }
     });
 }
 
 /// When commits happen: weekday by hour, coloured by the ramp, or a table.
 fn heatmap(ui: &mut Ui, a: &CommitActivity, table: bool) {
-    const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    card(ui, "When commits happen", "by weekday and hour, in each author's time zone", |ui| {
+    const DAYS: [&str; 7] = [crate::i18n::mark("Mon"), crate::i18n::mark("Tue"), crate::i18n::mark("Wed"), crate::i18n::mark("Thu"), crate::i18n::mark("Fri"), crate::i18n::mark("Sat"), crate::i18n::mark("Sun")];
+    card(ui, crate::i18n::tr("When commits happen"), crate::i18n::tr("by weekday and hour, in each author's time zone"), |ui| {
         if table {
             let rows = DAYS.iter().enumerate().map(|(d, day)| {
                 let busiest = (0..24).max_by_key(|&h| (a.heat[d][h], std::cmp::Reverse(h))).unwrap_or(0);
-                let note = if a.weekdays[d] == 0 { String::new() } else { format!(" · most at {busiest:02}:00") };
-                ((*day).to_owned(), format!("{}{note}", a.weekdays[d]))
+                let note = if a.weekdays[d] == 0 { String::new() } else { crate::i18n::trf!(" · most at {hour}", hour = format!("{busiest:02}:00")) };
+                (crate::i18n::tr(day).to_owned(), format!("{}{note}", a.weekdays[d]))
             });
-            two_columns(ui, "stats-heat-table", ("Weekday", "Commits"), rows);
+            two_columns(ui, "stats-heat-table", (crate::i18n::tr("Weekday"), crate::i18n::tr("Commits")), rows);
             return;
         }
         let max = a.heat.iter().flatten().copied().max().unwrap_or(0);
@@ -687,7 +687,7 @@ fn heatmap(ui: &mut Ui, a: &CommitActivity, table: bool) {
         let mut hovered = None;
         for (d, day) in DAYS.iter().enumerate() {
             let y = grid.top() + height * d as f32;
-            painter.text(pos2(rect.left(), y + height / 2.0), Align2::LEFT_CENTER, *day, FontId::proportional(11.5), HINT());
+            painter.text(pos2(rect.left(), y + height / 2.0), Align2::LEFT_CENTER, crate::i18n::tr(day), FontId::proportional(11.5), HINT());
             for h in 0..24 {
                 let cell_rect = Rect::from_min_size(pos2(grid.left() + cell * h as f32, y), vec2(cell, height)).shrink(1.0);
                 let n = a.heat[d][h];
@@ -701,14 +701,14 @@ fn heatmap(ui: &mut Ui, a: &CommitActivity, table: bool) {
         // Legend: none to most.
         let y = rect.bottom() - 9.0;
         let mut x = grid.right() - 5.0 * 16.0 - 34.0;
-        painter.text(pos2(x - 6.0, y), Align2::RIGHT_CENTER, "None", FontId::proportional(11.0), FAINT());
+        painter.text(pos2(x - 6.0, y), Align2::RIGHT_CENTER, crate::i18n::tr("None"), FontId::proportional(11.0), FAINT());
         for color in RAMP() {
             painter.rect_filled(Rect::from_min_size(pos2(x, y - 5.0), vec2(14.0, 10.0)), 2.0, color);
             x += 16.0;
         }
-        painter.text(pos2(x + 4.0, y), Align2::LEFT_CENTER, "Most", FontId::proportional(11.0), FAINT());
+        painter.text(pos2(x + 4.0, y), Align2::LEFT_CENTER, crate::i18n::tr("Most"), FontId::proportional(11.0), FAINT());
         if let Some((d, h, n)) = hovered {
-            response.on_hover_text_at_pointer(format!("{} {h:02}:00 · {n} commit{}", DAYS[d], if n == 1 { "" } else { "s" }));
+            response.on_hover_text_at_pointer(format!("{} {h:02}:00 · {}", crate::i18n::tr(DAYS[d]), crate::i18n::trn!(n, "{n} commit", "{n} commits")));
         }
     });
 }
@@ -849,7 +849,7 @@ fn cells(folder: &TreemapNode) -> Vec<Cell<'_>> {
     if !rest.is_empty() {
         cells.push(Cell {
             node: None,
-            name: format!("{} smaller entries", rest.len()),
+            name: crate::i18n::trf!("Smaller entries: {count}", count = rest.len()),
             size: rest.iter().map(|c| c.size).sum(),
             changes: rest.iter().map(|c| c.changes).max().unwrap_or(0),
             files: rest.iter().map(|c| c.files).sum(),
@@ -889,7 +889,7 @@ fn treemap_section(
 ) -> bool {
     let mut reload = false;
     let mut zoom_to = None;
-    let crumbs: Vec<String> = std::iter::once("Repository".to_owned())
+    let crumbs: Vec<String> = std::iter::once(crate::i18n::tr("Repository").to_owned())
         .chain(s.zoom.iter().map(|n| display(n)))
         .collect();
     pages::toolbar(ui, |ui| {
@@ -919,7 +919,7 @@ fn treemap_section(
                 }
             }
         }
-        ui.label(RichText::new("· all files at HEAD").size(12.0).color(FAINT()));
+        ui.label(RichText::new(crate::i18n::tr("· all files at HEAD")).size(12.0).color(FAINT()));
         table_toggle(ui, s, widgets);
     });
     // A clone, so zooming can change `s` while the cells borrow the treemap.
@@ -935,10 +935,10 @@ fn treemap_section(
                         Some(clicked) => retry = clicked,
                         None => pages::callout(ui, AMBER(), e),
                     }
-                } else if let Some(clicked) = crate::preview_tab::downloading(ui, preview, "Downloading the files of this commit", "treemap-download-stop", widgets) {
+                } else if let Some(clicked) = crate::preview_tab::downloading(ui, preview, crate::i18n::tr("Downloading the files of this commit"), "treemap-download-stop", widgets) {
                     stop = clicked;
                 } else {
-                    pages::loading(ui, "Reading files and history…");
+                    pages::loading(ui, crate::i18n::tr("Reading files and history…"));
                 }
             });
         if stop {
@@ -972,7 +972,7 @@ fn treemap_section(
                     ui.spacing_mut().item_spacing.y = 14.0;
                     // A new read keeps the last treemap on screen, with its one spinner.
                     if s.treemap_running() {
-                        pages::busy_line(ui, "Reading files and history…");
+                        pages::busy_line(ui, crate::i18n::tr("Reading files and history…"));
                     }
                     if let Some(e) = &s.treemap_error {
                         pages::callout(ui, AMBER(), e);
@@ -980,18 +980,18 @@ fn treemap_section(
                     let period = s.period.phrase();
                     card(
                         ui,
-                        "Where changes happen",
-                        &format!("area is size, colour is commits {period} that changed it · click a folder to zoom in"),
+                        crate::i18n::tr("Where changes happen"),
+                        &crate::i18n::trf!("Area is size, colour is commits that changed it {period} · click a folder to zoom in", period),
                         |ui| {
                             pages::note(
                                 ui,
-                                &format!(
-                                    "{} files · {} · HEAD {} · {} commits read{}",
-                                    folder.files,
-                                    size(folder.size),
-                                    &map.commit.as_str()[..8],
-                                    map.commits,
-                                    if map.limited { ", the newest only" } else { "" }
+                                &crate::i18n::trf!(
+                                    "{files} · {size} · HEAD {commit} · commits read: {count}{limit}",
+                                    files = crate::i18n::trn!(folder.files, "{n} file", "{n} files"),
+                                    size = size(folder.size),
+                                    commit = &map.commit.as_str()[..8],
+                                    count = map.commits,
+                                    limit = if map.limited { crate::i18n::tr(", the newest only") } else { "" }
                                 ),
                             );
                             if s.table {
@@ -1001,16 +1001,16 @@ fn treemap_section(
                             }
                         },
                     );
-                    card(ui, "Most changed files", &format!("{period}, in this folder"), |ui| {
+                    card(ui, crate::i18n::tr("Most changed files"), &crate::i18n::trf!("{period}, in this folder", period), |ui| {
                         let top = s.top.as_ref().map(|(_, files)| files.as_slice()).unwrap_or_default();
                         if top.is_empty() {
-                            pages::note(ui, "No file here changed in this period.");
+                            pages::note(ui, crate::i18n::tr("No file here changed in this period."));
                             return;
                         }
                         let rows = top.iter().map(|(path, changes, bytes)| {
                             [path.clone(), changes.to_string(), size(*bytes)]
                         });
-                        three_columns(ui, "stats-top-files", ["File", "Commits", "Size"], rows);
+                        three_columns(ui, "stats-top-files", [crate::i18n::tr("File"), crate::i18n::tr("Commits"), crate::i18n::tr("Size")], rows);
                     });
                 });
         });
@@ -1059,7 +1059,7 @@ fn treemap(
         painter.text(
             area.center(),
             Align2::CENTER_CENTER,
-            "No files with content here.",
+            crate::i18n::tr("No files with content here."),
             FontId::proportional(13.0),
             MUTED(),
         );
@@ -1109,7 +1109,7 @@ fn treemap(
             job.wrap = text::TextWrapping::truncate_at_width(rect.width() - 12.0);
             painter.galley(rect.min + vec2(6.0, 5.0), painter.layout_job(job), ink);
             if rect.height() > 38.0 {
-                let commits = format!("{} commit{}", cell.changes, if cell.changes == 1 { "" } else { "s" });
+                let commits = crate::i18n::trn!(cell.changes, "{n} commit", "{n} commits");
                 let mut job = text::LayoutJob::simple_singleline(
                     format!("{commits} · {}", size(cell.size)),
                     FontId::proportional(11.0),
@@ -1138,18 +1138,14 @@ fn treemap(
         let files = if cell.files == 1 {
             String::new()
         } else {
-            format!(" · {} files", cell.files)
+            format!(" · {}", crate::i18n::trn!(cell.files, "{n} file", "{n} files"))
         };
-        let r = r.on_hover_text_at_pointer(format!(
-            "{path}{}\n{}{files} · {} commits {period}{}",
-            if folder_cell { "/" } else { "" },
-            size(cell.size),
-            cell.changes,
-            if folder_cell {
-                "\nClick to open this folder"
-            } else {
-                ""
-            }
+        let r = r.on_hover_text_at_pointer(crate::i18n::trf!(
+            "{path}\n{size}{files} · {commits} {period}{hint}",
+            path = format!("{path}{}", if folder_cell { "/" } else { "" }),
+            size = size(cell.size), files,
+            commits = crate::i18n::trn!(cell.changes, "{n} commit", "{n} commits"), period,
+            hint = if folder_cell { crate::i18n::tr("\nClick to open this folder") } else { "" }
         ));
         if folder_cell && r.clicked() {
             open = cell.node.map(|n| n.name.clone());
@@ -1160,7 +1156,7 @@ fn treemap(
     let painter = ui.painter_at(legend);
     let y = legend.center().y;
     let mut x = legend.left();
-    let galley = painter.layout_no_wrap("0 commits".into(), FontId::proportional(11.0), FAINT());
+    let galley = painter.layout_no_wrap(crate::i18n::trn!(0, "{n} commit", "{n} commits"), FontId::proportional(11.0), FAINT());
     let width = galley.size().x;
     painter.galley(pos2(x, y - galley.size().y / 2.0), galley, FAINT());
     x += width + 8.0;
@@ -1171,7 +1167,7 @@ fn treemap(
     painter.text(
         pos2(x + 6.0, y),
         Align2::LEFT_CENTER,
-        format!("{max} commit{}", if max == 1 { "" } else { "s" }),
+        crate::i18n::trn!(max, "{n} commit", "{n} commits"),
         FontId::proportional(11.0),
         FAINT(),
     );
@@ -1188,7 +1184,7 @@ fn entries_table(ui: &mut Ui, folder: &TreemapNode) {
         };
         [name, c.changes.to_string(), size(c.size)]
     });
-    three_columns(ui, "stats-entries-table", ["Name", "Commits", "Size"], rows);
+    three_columns(ui, "stats-entries-table", [crate::i18n::tr("Name"), crate::i18n::tr("Commits"), crate::i18n::tr("Size")], rows);
 }
 
 /// One table row: the name, cut short, then two right-aligned values.

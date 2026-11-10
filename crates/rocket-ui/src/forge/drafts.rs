@@ -28,7 +28,7 @@ impl Scope {
         number: u64,
     ) -> rocket_git::Result<Self> {
         Ok(Self { provider: repo.config().provider(), server: repo.config().server().into(),
-            api: repo.config().azure_api_version().into(), account: session.account_identity().ok_or_else(||invalid_draft("The provider did not return a stable account identity. Reconnect before saving or submitting PR drafts."))?.into(),
+            api: repo.config().azure_api_version().into(), account: session.account_identity().ok_or_else(||invalid_draft(tr("The provider did not return a stable account identity. Reconnect before saving or submitting PR drafts.")))?.into(),
             repository: repo.path().into(), number })
     }
     fn config(&self, fixture: Option<u16>) -> rocket_git::Result<ForgeConfig> {
@@ -81,13 +81,14 @@ pub struct State {
     uncaptured: bool,
 }
 fn refused() -> Error {
-    Error::InvalidInput(if cfg!(windows) {
-        "hosting_drafts_preserved: saved PR drafts changed externally, are invalid, or could not be protected for this Windows user. Existing data was preserved; no new remote write was started."
+    let message = if cfg!(windows) {
+        tr("Saved PR drafts changed externally, are invalid, or could not be protected for this Windows user. Existing data was preserved; no new remote write was started.")
     } else if cfg!(target_os = "macos") {
-        "hosting_drafts_preserved: saved PR drafts changed externally, are invalid, or Keychain access was denied. Unlock the default macOS Keychain and review Rocket's access, then retry. Existing data was preserved; no new remote write was started."
+        tr("Saved PR drafts changed externally, are invalid, or Keychain access was denied. Unlock the default macOS Keychain and review Rocket's access, then retry. Existing data was preserved; no new remote write was started.")
     } else {
-        "hosting_drafts_preserved: saved PR drafts changed externally, are invalid, or could not be protected with the key in your desktop keyring. Existing data was preserved; no new remote write was started."
-    }.into())
+        tr("Saved PR drafts changed externally, are invalid, or could not be protected with the key in your desktop keyring. Existing data was preserved; no new remote write was started.")
+    };
+    Error::InvalidInput(format!("hosting_drafts_preserved: {message}"))
 }
 fn io(action: &'static str, source: std::io::Error) -> Error {
     Error::Io { action, source }
@@ -357,7 +358,7 @@ pub fn capture(s: &mut super::State) {
             s.drafts.records.push(record);
         } else {
             s.drafts.uncaptured = true;
-            s.drafts.error=Some("Saved PR draft limit reached (32). Remove an unneeded draft before another remote write.".into());
+            s.drafts.error=Some(tr("Saved PR draft limit reached (32). Remove an unneeded draft before another remote write.").into());
         }
     } else if let Some(i) = found {
         s.drafts.records.remove(i);
@@ -488,7 +489,7 @@ impl Rocket {
         }
         let d = &mut self.forge.drafts;
         if !d.loaded || d.active.is_none() || d.error.is_some() {
-            self.forge.error=Some(d.error.clone().unwrap_or_else(||"Wait for protected PR drafts to load and open this PR with the connected account before writing.".into()));
+            self.forge.error=Some(d.error.clone().unwrap_or_else(||tr("Wait for protected PR drafts to load and open this PR with the connected account before writing.").into()));
             return false;
         }
         if self
@@ -498,7 +499,7 @@ impl Rocket {
             .is_none_or(|session| !d.active.as_ref().unwrap().matches(session))
         {
             self.forge.error =
-                Some("Connect the account that owns this draft before submitting.".into());
+                Some(tr("Connect the account that owns this draft before submitting.").into());
             return false;
         }
         if d.ready_action {
@@ -507,7 +508,7 @@ impl Rocket {
         d.write_ahead = Some(action.into());
         d.pending = Some(action.into());
         capture(&mut self.forge);
-        self.forge.notice = Some("Saving recovery record before sending…".into());
+        self.forge.notice = Some(tr("Saving recovery record before sending…").into());
         false
     }
 }
@@ -518,7 +519,7 @@ pub fn activate(
 ) -> rocket_git::Result<()> {
     let session = s.session.as_ref().ok_or_else(refused)?;
     if !s.drafts.loaded {
-        return Err(invalid_draft("Wait for saved PR drafts to load."));
+        return Err(invalid_draft(tr("Wait for saved PR drafts to load.")));
     }
     let scope = Scope::new(session, repo, number)?;
     if s.drafts.active.as_ref() == Some(&scope) {
@@ -562,7 +563,7 @@ pub fn activate(
                 _ => None,
             };
         }
-        s.notice=Some("Saved review restored. Refresh validates its original revision; no previous preview or submit is replayed.".into());
+        s.notice=Some(tr("Saved review restored. Refresh validates its original revision; no previous preview or submit is replayed.").into());
     }
     Ok(())
 }
@@ -659,22 +660,22 @@ pub(super) fn panel(
     busy: bool,
     out: &mut PageOut,
 ) {
-    ui.heading("Saved PR drafts and recovery");
+    ui.heading(tr("Saved PR drafts and recovery"));
     ui.label(if cfg!(windows) {
-        "Protected for your Windows user. Connect the same account to restore a draft; saved requests never run automatically."
+        tr("Protected for your Windows user. Connect the same account to restore a draft; saved requests never run automatically.")
     } else if cfg!(target_os = "macos") {
-        "Encrypted with a key in your macOS Keychain. Connect the same account to restore a draft; saved requests never run automatically."
+        tr("Encrypted with a key in your macOS Keychain. Connect the same account to restore a draft; saved requests never run automatically.")
     } else {
-        "Encrypted with a key in your desktop keyring. Connect the same account to restore a draft; saved requests never run automatically."
+        tr("Encrypted with a key in your desktop keyring. Connect the same account to restore a draft; saved requests never run automatically.")
     });
     if let Some(error) = &s.drafts.error {
         ui.colored_label(RED(), error);
-        ui.label("Fix the storage problem or shorten/remove an unneeded draft, then retry. Rocket will check the original file again before saving.");
+        ui.label(tr("Fix the storage problem or shorten/remove an unneeded draft, then retry. Rocket will check the original file again before saving."));
         if btn(
             ui,
             widgets,
             "hosting-drafts-retry",
-            "Retry draft storage",
+            tr("Retry draft storage"),
             !busy && s.drafts.task.is_none(),
         ) {
             s.drafts.error = None;
@@ -695,7 +696,7 @@ pub(super) fn panel(
             || r.data["merge_unknown"] == true
             || r.data["thread"]["unknown"] == true
         {
-            ui.colored_label(AMBER(),"Outcome needs checking on the server. This recovery record cannot be deleted here.");
+            ui.colored_label(AMBER(),tr("Outcome needs checking on the server. This recovery record cannot be deleted here."));
         }
         let matches = s
             .session
@@ -706,7 +707,7 @@ pub(super) fn panel(
                 ui,
                 widgets,
                 &format!("hosting-draft-restore-{i}"),
-                "Restore and refresh",
+                tr("Restore and refresh"),
                 !busy && matches,
             ) {
                 restore = Some(i);
@@ -715,7 +716,7 @@ pub(super) fn panel(
                 ui,
                 widgets,
                 &format!("hosting-draft-delete-{i}"),
-                "Delete saved draft",
+                tr("Delete saved draft"),
                 !busy
                     && r.data["review_unknown"] != true
                     && r.data["merge_unknown"] != true
@@ -726,19 +727,19 @@ pub(super) fn panel(
         });
     }
     if s.drafts.records.is_empty() {
-        ui.label("No saved PR drafts.");
+        ui.label(tr("No saved PR drafts."));
     }
     if s.drafts.delete_scope.is_some() {
         ui.colored_label(
             AMBER(),
-            "Delete this local review draft? Nothing is deleted on the server.",
+            tr("Delete this local review draft? Nothing is deleted on the server."),
         );
         ui.horizontal_wrapped(|ui| {
             if btn(
                 ui,
                 widgets,
                 "hosting-draft-delete-confirm",
-                "Delete draft",
+                tr("Delete draft"),
                 !busy,
             ) {
                 delete = s.drafts.delete_scope.clone();
@@ -747,7 +748,7 @@ pub(super) fn panel(
                 ui,
                 widgets,
                 "hosting-draft-delete-cancel",
-                "Keep draft",
+                tr("Keep draft"),
                 !busy,
             ) {
                 s.drafts.delete_scope = None;
@@ -763,7 +764,7 @@ pub(super) fn panel(
             {
                 s.drafts.delete_scope = None;
                 s.error = Some(
-                    "Check the uncertain server outcome before deleting its recovery record."
+                    tr("Check the uncertain server outcome before deleting its recovery record.")
                         .into(),
                 );
                 return;
@@ -781,7 +782,7 @@ pub(super) fn panel(
     if let Some(i) = restore {
         if s.pull.has_draft() || s.drafts.has_restored() {
             s.error = Some(
-                "Finish or discard the currently open review draft before restoring another."
+                tr("Finish or discard the currently open review draft before restoring another.")
                     .into(),
             );
             return;

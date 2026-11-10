@@ -3,7 +3,7 @@ use super::*;
 use std::time::Instant;
 
 /// Said when a list stays on screen but writes wait for a new read.
-pub(super) const OUT_OF_DATE: &str = "This list may be out of date.";
+pub(super) const OUT_OF_DATE: &str = crate::i18n::mark("This list may be out of date.");
 
 pub struct RemoteState {
     pub active: bool,
@@ -71,7 +71,7 @@ impl RemoteState {
         self.task = None;
         self.preview = None;
         self.stale = true;
-        self.notice = self.snapshot.is_some().then(|| format!("Read stopped. {OUT_OF_DATE}"));
+        self.notice = self.snapshot.is_some().then(|| crate::i18n::tr("Read stopped. This list may be out of date.").into());
     }
     /// Shows a verified change without another read: the remote now holds what the
     /// review said it would.
@@ -118,12 +118,12 @@ impl Show {
     const EVERY: [Self; 6] = [Self::All, Self::Here, Self::There, Self::Different, Self::Same, Self::Indirect];
     fn label(self, there: &str) -> String {
         match self {
-            Self::All => "All".into(),
-            Self::Here => "Only here".into(),
+            Self::All => crate::i18n::tr("All").into(),
+            Self::Here => crate::i18n::tr("Only here").into(),
             Self::There => there.into(),
-            Self::Different => "Different".into(),
-            Self::Same => "Same".into(),
-            Self::Indirect => "Indirect".into(),
+            Self::Different => crate::i18n::tr("Different").into(),
+            Self::Same => crate::i18n::tr("Same").into(),
+            Self::Indirect => crate::i18n::tr("Indirect").into(),
         }
     }
     fn id(self) -> &'static str {
@@ -151,11 +151,11 @@ impl Show {
 /// Where a tag stands between here and the remote, as its row says it.
 pub(crate) fn relation(entry: &RemoteTagEntry, remote: &str) -> (String, Color32) {
     match entry.relation() {
-        "local_only" => ("Only here".into(), BLUE()),
-        "published" => ("Same on both".into(), GREEN()),
-        "different" => (format!("Different on {remote}"), AMBER()),
-        "remote_only" => (format!("Only on {remote}"), MUTED()),
-        _ => ("Indirect".into(), HINT()),
+        "local_only" => (crate::i18n::tr("Only here").into(), BLUE()),
+        "published" => (crate::i18n::tr("Same on both").into(), GREEN()),
+        "different" => (crate::i18n::trf!("Different on {remote}", remote), AMBER()),
+        "remote_only" => (crate::i18n::trf!("Only on {remote}", remote), MUTED()),
+        _ => (crate::i18n::tr("Indirect").into(), HINT()),
     }
 }
 
@@ -179,7 +179,7 @@ fn remote_row_text(
     if let Some(target) = &entry.symbolic_target {
         let target = display(target);
         let branch = target.strip_prefix("refs/heads/").unwrap_or(&target);
-        return (None, there.map_or("", short).to_owned(), format!("Follows {branch} on {remote}"));
+        return (None, there.map_or("", short).to_owned(), crate::i18n::trf!("Follows {branch} on {remote}", branch, remote));
     }
     match &entry.local {
         Some(local) => {
@@ -193,14 +193,14 @@ fn remote_row_text(
         None => {
             // Only a tag object is advertised with a peeled target.
             let kind = if entry.peeled.is_some() {
-                ("Annotated", pages::INFO())
+                (crate::i18n::tr("Annotated"), pages::INFO())
             } else {
-                ("Lightweight", pages::NEUTRAL())
+                (crate::i18n::tr("Lightweight"), pages::NEUTRAL())
             };
             let subject = entry
                 .remote_commit
                 .as_ref()
-                .map_or_else(|| "Commit not fetched".to_owned(), |c| display(&c.subject));
+                .map_or_else(|| crate::i18n::tr("Commit not fetched").to_owned(), |c| display(&c.subject));
             (Some(kind), there.map_or("", short).to_owned(), subject)
         }
     }
@@ -298,7 +298,7 @@ impl Rocket {
         } else {
             r.stale = true;
             let Some(remote) = d.remotes.get(d.remote).cloned() else {
-                d.error = Some("Add a remote in Repository → Remotes & Hosting → Manage Remotes first.".into());
+                d.error = Some(crate::i18n::tr("Add a remote in Repository → Remotes & Hosting → Manage Remotes first.").into());
                 return;
             };
             match ReadTask::spawn(move |cancel| backend.remote_tags(&path, &remote, &cancel)) {
@@ -366,16 +366,15 @@ impl Rocket {
             r.applied(&p);
             let name = display(&p.entry().name);
             r.done = Some(match p.action() {
-                RemoteTagAction::Publish => format!("Published {name} to {remote} and verified."),
-                RemoteTagAction::Delete => format!("Deleted {name} from {remote} and verified."),
+                RemoteTagAction::Publish => crate::i18n::trf!("Published {name} to {remote} and verified.", name, remote),
+                RemoteTagAction::Delete => crate::i18n::trf!("Deleted {name} from {remote} and verified.", name, remote),
             });
             return;
         }
         r.stale = true;
-        r.notice = Some(format!(
-            "{}\n{}\nRead again before another change.",
-            outcome.summary,
-            outcome.details.join("\n")
+        r.notice = Some(crate::i18n::trf!(
+            "{summary}\n{details}\nRead again before another change.",
+            summary = outcome.summary, details = outcome.details.join("\n")
         ));
         if !outcome.command_succeeded {
             d.error = Some(outcome.summary.clone());
@@ -430,7 +429,7 @@ impl Rocket {
             // Below this the count buttons fill the row, so the read moves up beside the tabs.
             let read_above = ui.available_width() - 48.0 < 980.0;
             let several = d.remotes.len() > 1;
-            let there = format!("Only on {remote}");
+            let there = crate::i18n::trf!("Only on {remote}", remote);
             if several || r.snapshot.is_some() {
                 pages::toolbar(ui, |ui| {
                     if several {
@@ -439,7 +438,7 @@ impl Rocket {
                                 d.remotes
                                     .get(d.remote)
                                     .map(|b| display(b))
-                                    .unwrap_or_else(|| "No remote".into()),
+                                    .unwrap_or_else(|| crate::i18n::tr("No remote").into()),
                             )
                             .width(120.0)
                             .icon(|ui, rect, _, _| icon(ui.painter(), rect.shrink(2.0), Icon::Chevron, HINT()))
@@ -468,7 +467,7 @@ impl Rocket {
                         return;
                     };
                     let width = if narrow { 150.0 } else { 240.0 };
-                    let b = pages::search_box(ui, &mut r.filter, "dialog-remote-tag-filter", "Filter tags", width);
+                    let b = pages::search_box(ui, &mut r.filter, "dialog-remote-tag-filter", crate::i18n::tr("Filter tags"), width);
                     control(widgets, "dialog-remote-tag-filter", &b, ui.clip_rect());
                     let count = |show: Show| snapshot.entries.iter().filter(|e| show.shows(e.relation())).count();
                     // Indirect is rare; its button only shows when there is one.
@@ -514,12 +513,10 @@ impl Rocket {
                         .show(ui, |ui| {
                             ui.spacing_mut().item_spacing.y = 6.0;
                             if read_failed {
-                                let when = r.read_at.map_or_else(|| "an earlier read".to_owned(), read_when);
+                                let when = r.read_at.map_or_else(|| crate::i18n::tr("an earlier read").to_owned(), read_when);
                                 let (_, why) = failure_parts(d.error.as_deref().unwrap_or_default());
-                                let text = format!(
-                                    "Couldn't read {remote}. This list is from {when}, so changes wait for a new read.\n{why}"
-                                );
-                                if let Some(b) = pages::notice_strip(ui, RED(), &text, Some("Try again")) {
+                                let text = crate::i18n::trf!("Couldn't read {remote}. This list is from {when}, so changes wait for a new read.\n{why}", remote, when, why);
+                                if let Some(b) = pages::notice_strip(ui, RED(), &text, Some(crate::i18n::tr("Try again"))) {
                                     control(widgets, "dialog-remote-tag-retry", &b, ui.clip_rect());
                                     refresh |= b.clicked();
                                 }
@@ -532,7 +529,7 @@ impl Rocket {
                                     pages::notice_strip(ui, RED(), error, None);
                                 }
                                 if let Some(notice) = &r.notice {
-                                    let action = r.stale.then_some("Read again");
+                                    let action = r.stale.then_some(crate::i18n::tr("Read again"));
                                     if let Some(b) = pages::notice_strip(ui, AMBER(), notice, action) {
                                         control(widgets, "dialog-remote-tag-retry", &b, ui.clip_rect());
                                         refresh |= b.clicked();
@@ -579,9 +576,9 @@ impl Rocket {
                     None => {}
                 }
             } else if r.running() {
-                pages::loading_with(ui, &format!("Reading tags on {remote}"), 40.0, |ui| {
+                pages::loading_with(ui, &crate::i18n::trf!("Reading tags on {remote}", remote), 40.0, |ui| {
                     ui.add_space(8.0);
-                    let b = ui.add(Button::new("Stop"));
+                    let b = ui.add(Button::new(crate::i18n::tr("Stop")));
                     control(widgets, "dialog-remote-tag-cancel", &b, ui.clip_rect());
                     if b.clicked() {
                         r.cancel();
@@ -640,14 +637,14 @@ impl Rocket {
         let waiting = r.running() || s.applying;
         let name = r.selected.as_deref().map(display).unwrap_or_default();
         let title = if delete {
-            format!("Delete {name} from {remote}?")
+            crate::i18n::trf!("Delete {name} from {remote}?", name, remote)
         } else {
-            format!("Publish {name}")
+            crate::i18n::trf!("Publish {name}", name)
         };
         let subtitle = if delete {
-            format!("Removes the tag from {remote}. There is no undo on the remote.")
+            crate::i18n::trf!("Removes the tag from {remote}. There is no undo on the remote.", remote)
         } else {
-            format!("Sends this tag to {remote} so others can fetch it.")
+            crate::i18n::trf!("Sends this tag to {remote} so others can fetch it.", remote)
         };
         let head = pages::ReviewHeader {
             image: Icon::Tag,
@@ -670,18 +667,18 @@ impl Rocket {
                         pages::titled_card(
                             ui,
                             |ui| {
-                                let verb = if delete { "Deletes" } else { "Publishes" };
-                                ui.label(RichText::new(format!("{verb} {name}")).strong());
+                                let title = if delete { crate::i18n::trf!("Deletes {name}", name) } else { crate::i18n::trf!("Publishes {name}", name) };
+                                ui.label(RichText::new(title).strong());
                             },
                             |ui| {
-                                pages::key_value(ui, if delete { "From" } else { "To" }, 112.0, |ui| {
+                                pages::key_value(ui, if delete { crate::i18n::tr("From") } else { crate::i18n::tr("To") }, 112.0, |ui| {
                                     let mut job = text::LayoutJob::default();
                                     job.append(&display(p.remote()), 0.0, TextFormat::simple(FontId::proportional(13.0), TEXT()));
                                     job.append(&format!(" · {}", p.destination_display()), 0.0, TextFormat::simple(FontId::proportional(13.0), FAINT()));
                                     job.wrap = text::TextWrapping::truncate_at_width(ui.available_width());
                                     ui.label(job).on_hover_text(p.destination_display());
                                 });
-                                pages::key_value(ui, "Points to", 112.0, |ui| {
+                                pages::key_value(ui, crate::i18n::tr("Points to"), 112.0, |ui| {
                                     let (_, sha, subject) = remote_row_text(entry, &remote);
                                     let mut job = text::LayoutJob::default();
                                     job.append(&sha, 0.0, TextFormat::simple(FontId::monospace(12.5), TEXT()));
@@ -691,21 +688,21 @@ impl Rocket {
                                     job.wrap = text::TextWrapping::truncate_at_width(ui.available_width());
                                     ui.label(job);
                                 });
-                                pages::key_value(ui, &format!("On {remote} now"), 112.0, |ui| {
+                                pages::key_value(ui, &crate::i18n::trf!("On {remote} now", remote), 112.0, |ui| {
                                     match (&entry.remote_id, delete) {
-                                        (None, _) => check(ui, true, "Not there yet · nothing will be replaced"),
+                                        (None, _) => check(ui, true, crate::i18n::tr("Not there yet · nothing will be replaced")),
                                         (Some(id), true) => {
-                                            ui.label(RichText::new(format!("Has {name} at {}", short(id))).color(TEXT()));
+                                            ui.label(RichText::new(crate::i18n::trf!("Has {name} at {commit}", name, commit = short(id))).color(TEXT()));
                                         }
                                         (Some(id), false) => {
-                                            ui.label(RichText::new(format!("Has {name} at {}", short(id))).color(AMBER()));
+                                            ui.label(RichText::new(crate::i18n::trf!("Has {name} at {commit}", name, commit = short(id))).color(AMBER()));
                                         }
                                     }
                                 });
-                                pages::key_value(ui, "Result", 112.0, |ui| {
+                                pages::key_value(ui, crate::i18n::tr("Result"), 112.0, |ui| {
                                     ui.label(match p.expected_result() {
-                                        Some(id) => format!("{name} on {remote} at {}", short(id)),
-                                        None => format!("No {name} on {remote}"),
+                                        Some(id) => crate::i18n::trf!("{name} on {remote} at {commit}", name, remote, commit = short(id)),
+                                        None => crate::i18n::trf!("No {name} on {remote}", name, remote),
                                     });
                                 });
                             },
@@ -714,9 +711,9 @@ impl Rocket {
                             pages::callout(
                                 ui,
                                 AMBER(),
-                                "Anyone who already fetched the tag keeps it. There is no remote undo or backup.",
+                                crate::i18n::tr("Anyone who already fetched the tag keeps it. There is no remote undo or backup."),
                             );
-                            ui.label("Type the exact tag name to confirm deletion");
+                            ui.label(crate::i18n::tr("Type the exact tag name to confirm deletion"));
                             let b = ui.add_enabled(
                                 !s.applying,
                                 TextEdit::singleline(&mut r.confirmation)
@@ -729,7 +726,7 @@ impl Rocket {
                     }
                     // Updating the remote shows its status and Stop in the footer.
                     if waiting && !s.applying {
-                        pages::waiting(ui, "Rechecking the remote and the tag…");
+                        pages::waiting(ui, crate::i18n::tr("Rechecking the remote and the tag…"));
                     }
                     if let Some(error) = &d.error {
                         pages::callout(ui, RED(), error);
@@ -750,21 +747,21 @@ impl Rocket {
                             !delete || r.confirmation.as_bytes() == p.entry().name
                         });
                     let b = if delete {
-                        pages::danger(ui, ready, &format!("Delete from {remote}"))
+                        pages::danger(ui, ready, &crate::i18n::trf!("Delete from {remote}", remote))
                     } else {
-                        pages::primary(ui, ready, "Publish tag")
+                        pages::primary(ui, ready, crate::i18n::tr("Publish tag"))
                     };
                     control(widgets, "dialog-submit", &b, ui.clip_rect());
                     submit = b.clicked();
                     if r.running() {
-                        let b = pages::ghost(ui, true, "Stop");
+                        let b = pages::ghost(ui, true, crate::i18n::tr("Stop"));
                         control(widgets, "dialog-remote-tag-cancel", &b, ui.clip_rect());
                         if b.clicked() {
                             r.cancel();
                         }
                     }
                     let status = if delete && r.preview.is_some() && !ready && !waiting && d.error.is_none() {
-                        "Reviewed · type the tag name to delete it"
+                        crate::i18n::tr("Reviewed · type the tag name to delete it")
                     } else {
                         review_status(waiting, d.error.is_some(), r.preview.is_some())
                     };
@@ -785,7 +782,7 @@ impl Rocket {
             r.confirmation.clear();
             d.error = None;
             if r.stale && r.notice.is_none() {
-                r.notice = Some(OUT_OF_DATE.into());
+                r.notice = Some(crate::i18n::tr(OUT_OF_DATE).into());
             }
         }
         if submit && let (Some(owner), Some(p)) = (d.owner, r.preview.clone()) {
@@ -793,7 +790,7 @@ impl Rocket {
             self.execute(owner, Action::RemoteTag(p));
             if self.write.is_none() {
                 s.applying = false;
-                d.error = Some("Could not start; wait for the repository and review again.".into());
+                d.error = Some(crate::i18n::tr("Could not start; wait for the repository and review again.").into());
             }
         }
         self.dialog = Some(d);
@@ -814,18 +811,18 @@ fn read_again(
 ) -> bool {
     let mut clicked = false;
     if r.running() {
-        let b = pages::slot_button(ui, None, "Stop", width, true);
+        let b = pages::slot_button(ui, None, crate::i18n::tr("Stop"), width, true);
         control(widgets, "dialog-remote-tag-cancel", &b, ui.clip_rect());
         if b.clicked() {
             r.cancel();
         }
     } else {
-        let b = pages::slot_button(ui, Some(Icon::Refresh), "Read again", width, enabled);
+        let b = pages::slot_button(ui, Some(Icon::Refresh), crate::i18n::tr("Read again"), width, enabled);
         control(widgets, "dialog-remote-tag-refresh", &b, ui.clip_rect());
         clicked = b.clicked();
     }
     if let Some(at) = r.read_at {
-        ui.label(RichText::new(format!("Read {}", read_when(at))).size(12.0).color(HINT()));
+        ui.label(RichText::new(crate::i18n::trf!("Read {when}", when = read_when(at))).size(12.0).color(HINT()));
     }
     clicked
 }
@@ -849,7 +846,7 @@ fn unread(
             let (mark, _) = ui.allocate_exact_size(vec2(24.0, 24.0), Sense::hover());
             icon(ui.painter(), mark, Icon::Warning, AMBER());
             let limit = code == Some("remote_tag_limit");
-            let title = if limit { "Too many tags to compare".to_owned() } else { format!("Couldn't read tags on {remote}") };
+            let title = if limit { crate::i18n::tr("Too many tags to compare").to_owned() } else { crate::i18n::trf!("Couldn't read tags on {remote}", remote) };
             ui.label(RichText::new(title).font(semibold(15.0)));
             ui.add(Label::new(RichText::new(why).color(HINT())).wrap());
             if let Some(code) = code {
@@ -859,7 +856,7 @@ fn unread(
                 return false;
             }
             ui.add_space(4.0);
-            let r = pages::primary(ui, enabled, "Try again");
+            let r = pages::primary(ui, enabled, crate::i18n::tr("Try again"));
             control(widgets, "dialog-remote-tag-refresh", &r, ui.clip_rect());
             return r.clicked();
         }
@@ -867,17 +864,17 @@ fn unread(
         ui.painter().circle_filled(badge.center(), 22.0, CARD());
         icon(ui.painter(), badge.shrink(12.0), Icon::Fetch, BLUE());
         if !has_remote {
-            ui.label(RichText::new("This repository has no remotes").font(semibold(15.0)));
-            ui.label(RichText::new("Add one in Repository → Remotes & Hosting → Manage Remotes to compare tags.").color(HINT()));
+            ui.label(RichText::new(crate::i18n::tr("This repository has no remotes")).font(semibold(15.0)));
+            ui.label(RichText::new(crate::i18n::tr("Add one in Repository → Remotes & Hosting → Manage Remotes to compare tags.")).color(HINT()));
             return false;
         }
-        ui.label(RichText::new(format!("Tags on {remote} haven't been read yet")).font(semibold(15.0)));
+        ui.label(RichText::new(crate::i18n::trf!("Tags on {remote} haven't been read yet", remote)).font(semibold(15.0)));
         ui.label(
-            RichText::new(format!("Rocket contacts {remote} only when you ask. Reading changes nothing."))
+            RichText::new(crate::i18n::trf!("Rocket contacts {remote} only when you ask. Reading changes nothing.", remote))
                 .color(HINT()),
         );
         ui.add_space(4.0);
-        let r = pages::primary(ui, enabled, &format!("Read tags on {remote}"));
+        let r = pages::primary(ui, enabled, &crate::i18n::trf!("Read tags on {remote}", remote));
         control(widgets, "dialog-remote-tag-refresh", &r, ui.clip_rect());
         r.clicked()
     })
@@ -950,16 +947,16 @@ fn remote_list(
         ui.vertical_centered(|ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
             if snapshot.entries.is_empty() {
-                ui.label(RichText::new("No tags here or on the remote yet.").color(HINT()));
+                ui.label(RichText::new(crate::i18n::tr("No tags here or on the remote yet.")).color(HINT()));
                 return;
             }
-            ui.label(RichText::new("No tags match").font(semibold(14.0)));
+            ui.label(RichText::new(crate::i18n::tr("No tags match")).font(semibold(14.0)));
             let needle = r.filter.trim();
             if !needle.is_empty() {
-                ui.label(RichText::new(format!("Nothing for “{needle}”.")).color(HINT()));
+                ui.label(RichText::new(crate::i18n::trf!("Nothing for “{needle}”.", needle)).color(HINT()));
             }
             ui.add_space(4.0);
-            let b = ui.add(Button::new("Clear filter"));
+            let b = ui.add(Button::new(crate::i18n::tr("Clear filter")));
             control(widgets, "dialog-remote-tag-clear", &b, ui.clip_rect());
             if b.clicked() {
                 r.filter.clear();
@@ -972,13 +969,13 @@ fn remote_list(
         ui.horizontal(|ui| {
             let total = snapshot.entries.len();
             let mut text = if rows.len() == total {
-                format!("{} {}", pages::number_text(total), if total == 1 { "tag" } else { "tags" })
+                crate::i18n::trf!("Tags: {count}", count = pages::number_text(total))
             } else {
-                format!("{} of {} tags", pages::number_text(rows.len()), pages::number_text(total))
+                crate::i18n::trf!("Tags: {shown} of {total}", shown = pages::number_text(rows.len()), total = pages::number_text(total))
             };
             let can = crate::batch::publish_items(r, "").len();
             if can > 0 {
-                text.push_str(&format!(" · {} can be published", pages::number_text(can)));
+                text.push_str(&crate::i18n::trf!(" · can be published: {count}", count = pages::number_text(can)));
             }
             ui.label(RichText::new(text).size(12.0).color(FAINT()));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
@@ -995,7 +992,7 @@ fn publish_several(
     enabled: bool,
 ) {
     let some = !crate::batch::publish_items(r, "").is_empty();
-    let b = ui.add_enabled(enabled && some, Button::new("Publish several"));
+    let b = ui.add_enabled(enabled && some, Button::new(crate::i18n::tr("Publish several")));
     control(widgets, "dialog-remote-tags-batch", &b, ui.clip_rect());
     if b.clicked() {
         r.batch = Some(Default::default());
@@ -1022,7 +1019,7 @@ fn remote_narrow(
         ui.spacing_mut().item_spacing.y = 0.0;
         pages::card_bar(ui, |ui| {
             let count = r.snapshot.as_ref().map(|p| p.entries.len());
-            let items = [("Tags", count, !r.details_tab), ("Details", None, r.details_tab)];
+            let items = [(crate::i18n::tr("Tags"), count, !r.details_tab), (crate::i18n::tr("Details"), None, r.details_tab)];
             for (b, (id, details)) in pages::tab_segments(ui, &items)
                 .into_iter()
                 .zip([("dialog-remote-tags-list", false), ("dialog-remote-tags-details", true)])
@@ -1087,9 +1084,9 @@ fn there_side(entry: &RemoteTagEntry) -> Option<Side> {
     let id = entry.peeled.as_ref().or(entry.remote_id.as_ref())?;
     let commit = entry.remote_commit.as_ref();
     let subject = match (&entry.symbolic_target, commit) {
-        (Some(target), _) => format!("Follows {}", display(target)),
+        (Some(target), _) => crate::i18n::trf!("Follows {target}", target = display(target)),
         (None, Some(commit)) => display(&commit.subject),
-        (None, None) => "Commit not fetched".to_owned(),
+        (None, None) => crate::i18n::tr("Commit not fetched").to_owned(),
     };
     Some(Side {
         sha: short(id).to_owned(),
@@ -1123,14 +1120,14 @@ fn remote_actions(
     let mut asked = None;
     let relation = entry.relation();
     if relation == "local_only" && entry.local.as_ref().is_some_and(|l| !l.symbolic) {
-        let b = pages::primary(ui, ready, &format!("Publish to {remote}"));
+        let b = pages::primary(ui, ready, &crate::i18n::trf!("Publish to {remote}", remote));
         control(widgets, "dialog-remote-tag-publish", &b, ui.clip_rect());
         if b.clicked() {
             asked = Some(Ask::Review(RemoteTagAction::Publish));
         }
     }
     if matches!(relation, "published" | "different" | "remote_only") {
-        let b = pages::danger_ghost(ui, ready, &format!("Delete from {remote}"));
+        let b = pages::danger_ghost(ui, ready, &crate::i18n::trf!("Delete from {remote}", remote));
         control(widgets, "dialog-remote-tag-delete", &b, ui.clip_rect());
         if b.clicked() {
             asked = Some(Ask::Review(RemoteTagAction::Delete));
@@ -1150,7 +1147,7 @@ fn remote_details(
     narrow: bool,
 ) -> Option<Ask> {
     let Some(entry) = r.selected_entry() else {
-        pages::empty(ui, "Select a tag to compare it here and on the remote.");
+        pages::empty(ui, crate::i18n::tr("Select a tag to compare it here and on the remote."));
         return None;
     };
     let mut asked = None;
@@ -1179,10 +1176,10 @@ fn remote_details(
             }
         });
     }
-    let on_remote = format!("On {remote}");
+    let on_remote = crate::i18n::trf!("On {remote}", remote);
     if narrow {
-        let both = [("Both", here.as_ref(), "")];
-        let sides = [("Here", here.as_ref(), "Not here"), (on_remote.as_str(), there.as_ref(), "Not there yet")];
+        let both = [(crate::i18n::tr("Both"), here.as_ref(), "")];
+        let sides = [(crate::i18n::tr("Here"), here.as_ref(), crate::i18n::tr("Not here")), (on_remote.as_str(), there.as_ref(), crate::i18n::tr("Not there yet"))];
         let shown: &[_] = if relation == "published" { &both } else { &sides };
         ui.columns(shown.len(), |columns| {
             for (ui, (title, side, missing)) in columns.iter_mut().zip(shown) {
@@ -1192,26 +1189,26 @@ fn remote_details(
             }
         });
     } else {
-        card(ui, "Where it points", |ui| {
+        card(ui, crate::i18n::tr("Where it points"), |ui| {
             if relation == "published" {
-                pages::key_value(ui, "Both", 76.0, |ui| side_value(ui, here.as_ref(), ""));
+                pages::key_value(ui, crate::i18n::tr("Both"), 76.0, |ui| side_value(ui, here.as_ref(), ""));
             } else {
-                pages::key_value(ui, "Here", 76.0, |ui| side_value(ui, here.as_ref(), "Not here"));
+                pages::key_value(ui, crate::i18n::tr("Here"), 76.0, |ui| side_value(ui, here.as_ref(), crate::i18n::tr("Not here")));
                 pages::divider(ui);
-                pages::key_value(ui, &on_remote, 76.0, |ui| side_value(ui, there.as_ref(), "Not there yet"));
+                pages::key_value(ui, &on_remote, 76.0, |ui| side_value(ui, there.as_ref(), crate::i18n::tr("Not there yet")));
             }
         });
     }
     let note = match relation {
         "different" => Some((
-            format!("Publishing won't replace {remote}'s tag. To replace it, delete it from {remote} first."),
+            crate::i18n::trf!("Publishing won't replace {remote}'s tag. To replace it, delete it from {remote} first.", remote),
             AMBER(),
         )),
-        "remote_only" => Some((format!("Fetch from {remote} to get this tag."), MUTED())),
+        "remote_only" => Some((crate::i18n::trf!("Fetch from {remote} to get this tag.", remote), MUTED())),
         "symbolic" => Some((
-            format!(
-                "This tag on {remote} points at {}, so Rocket will not publish or delete it.",
-                entry.symbolic_target.as_deref().map(display).unwrap_or_default()
+            crate::i18n::trf!(
+                "This tag on {remote} points at {target}, so Rocket will not publish or delete it.",
+                remote, target = entry.symbolic_target.as_deref().map(display).unwrap_or_default()
             ),
             AMBER(),
         )),
@@ -1226,7 +1223,7 @@ fn remote_details(
         .filter(|m| entry.local.is_some() && m.target_type == "commit")
         .and_then(|m| m.target.clone());
     if let Some(id) = commit {
-        let b = ui.add(Button::new(RichText::new("Show in history").size(12.5).color(BLUE())).frame(false));
+        let b = ui.add(Button::new(RichText::new(crate::i18n::tr("Show in history")).size(12.5).color(BLUE())).frame(false));
         control(widgets, "dialog-remote-tag-show-commit", &b, ui.clip_rect());
         if b.clicked() {
             asked = Some(Ask::Show(id));

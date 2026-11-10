@@ -950,9 +950,9 @@ impl State {
             match result {
                 Ok(Done::Validated(validation)) => {
                     self.notice = Some(if validation.syntax_valid {
-                        "Lua syntax is valid. No module initialization, callback, Git read or HTTP request was run. Reload folders to adopt edited files.".into()
+                        crate::i18n::tr("Lua syntax is valid. No module initialization, callback, Git read or HTTP request was run. Reload folders to adopt edited files.").into()
                     } else {
-                        format!("Lua syntax error in main.lua{}. Check this line and its preceding block. Source and drafts are unchanged.", validation.line.map(|n| format!(":{n}")).unwrap_or_default())
+                        crate::i18n::trf!("Lua syntax error in main.lua{line}. Check this line and its preceding block. Source and drafts are unchanged.", line = validation.line.map(|n| format!(":{n}")).unwrap_or_default())
                     });
                     self.validation = Some(validation);
                 }
@@ -1050,7 +1050,7 @@ impl State {
                     self.refreshed = false;
                     self.error = error;
                     if self.error.is_none() {
-                        self.notice=Some("The service confirmed the request. Refresh the panel to inspect the result.".into());
+                        self.notice=Some(crate::i18n::tr("The service confirmed the request. Refresh the panel to inspect the result.").into());
                         self.confirmed = true;
                     }
                 }
@@ -1059,7 +1059,7 @@ impl State {
                     if saving {
                         self.draft_error = Some("integration_draft_cancelled: Draft save stopped. Your unsaved text is still here; retry before closing.".into());
                     }
-                    self.notice = Some("Cancelled. The previous panel is preserved.".into())
+                    self.notice = Some(crate::i18n::tr("Cancelled. The previous panel is preserved.").into())
                 }
                 Err(e) => {
                     self.pending = None;
@@ -1244,7 +1244,7 @@ impl Rocket {
     /// native panel, or the request review that replaces it before a write.
     pub(crate) fn integration_page(&mut self, ui: &mut Ui) {
         let Some(backend) = self.backend.clone() else {
-            ui.label("Waiting for Rocket to start.");
+            ui.label(crate::i18n::tr("Waiting for Rocket to start."));
             return;
         };
         let writable=self.profile_storage_ready();
@@ -1262,14 +1262,14 @@ impl Rocket {
         let mut manage = false;
         let package = s.package().cloned().filter(|p| s.installed(&p.id) && profiles::extension_enabled(&s.store, &p.id));
         let Some(package) = package else {
-            pages::header(ui, Icon::Puzzle, "Extensions", "None open", |ui| {
-                manage = button(ui, widgets, "int-configure", "Manage extensions", true);
+            pages::header(ui, Icon::Puzzle, crate::i18n::tr("Extensions"), crate::i18n::tr("None open"), |ui| {
+                manage = button(ui, widgets, "int-configure", crate::i18n::tr("Manage extensions"), true);
             });
             notices(ui, s, widgets, &backend, true);
             if working(s) {
                 ui.horizontal(|ui| progress(ui, s, widgets));
             }
-            if panel_state(ui, widgets, Icon::Puzzle, "This extension isn't enabled", None) || manage {
+            if panel_state(ui, widgets, Icon::Puzzle, crate::i18n::tr("This extension isn't enabled"), None) || manage {
                 self.show_preferences(preferences::Page::Integrations);
             }
             return;
@@ -1277,9 +1277,9 @@ impl Rocket {
         let name = s.profile()["name"].as_str().unwrap_or("Default").to_owned();
         let origin = s.profile()["origin"].as_str().unwrap_or("").trim_start_matches("https://").to_owned();
         let detail = if !package.network {
-            format!("{} · Offline", package.version)
+            crate::i18n::trf!("{version} · Offline", version = package.version)
         } else if origin.is_empty() {
-            "No connection yet".to_owned()
+            crate::i18n::tr("No connection yet").to_owned()
         } else {
             format!("{origin} · {name}")
         };
@@ -1291,7 +1291,7 @@ impl Rocket {
             },
             &package.name,
             &detail,
-            |ui| configure = button(ui, widgets, "int-configure", "Configure", idle),
+            |ui| configure = button(ui, widgets, "int-configure", crate::i18n::tr("Configure"), idle),
         );
         let review = profiles::needs_review(&s.store, &package);
         let wide = s.preview.is_none() && s.view.as_ref().is_some_and(|view| view.has_split());
@@ -1304,7 +1304,7 @@ impl Rocket {
                 ui,
                 widgets,
                 "int-run",
-                "Refresh panel",
+                crate::i18n::tr("Refresh panel"),
                 idle && s.enabled() && s.preview.is_none() && !s.draft_blocked,
             ) {
                 s.perform(backend.clone(), Action::Run("open".into()));
@@ -1314,11 +1314,11 @@ impl Rocket {
                 progress(ui, s, widgets);
             } else if (s.profile().get("draft").is_some() || s.unsaved()) && !s.draft_blocked {
                 ui.label(RichText::new(if s.unsaved() {
-                    "Draft changes waiting to save"
+                    crate::i18n::tr("Draft changes waiting to save")
                 } else {
-                    "Draft saved on this device"
+                    crate::i18n::tr("Draft saved on this device")
                 }).size(12.0).color(HINT()));
-                if quiet(ui, widgets, "int-clear-draft", "Clear draft", idle && s.preview.is_none()) {
+                if quiet(ui, widgets, "int-clear-draft", crate::i18n::tr("Clear draft"), idle && s.preview.is_none()) {
                     s.clear_confirm = true;
                 }
             }
@@ -1335,27 +1335,27 @@ impl Rocket {
                         ui.spacing_mut().item_spacing.y = 10.0;
                         notices(ui, s, widgets, &backend, true);
                         if review {
-                            attention(ui, &format!("{}’s files changed. Review them before it can run.", package.name), |ui| {
-                                if button(ui, widgets, "int-review", "Review", idle) {
+                            attention(ui, &crate::i18n::trf!("{extension}’s files changed. Review them before it can run.", extension = package.name), |ui| {
+                                if button(ui, widgets, "int-review", crate::i18n::tr("Review"), idle) {
                                     s.perform(backend.clone(), Action::Review(package.id.clone()));
                                 }
                             });
                         }
                         if s.draft_blocked {
-                            attention(ui, "This draft was saved with other files or connection settings.", |ui| {
-                                if button(ui, widgets, "int-clear-draft", "Clear draft", idle && s.preview.is_none()) {
+                            attention(ui, crate::i18n::tr("This draft was saved with other files or connection settings."), |ui| {
+                                if button(ui, widgets, "int-clear-draft", crate::i18n::tr("Clear draft"), idle && s.preview.is_none()) {
                                     s.clear_confirm = true;
                                 }
                             });
                         }
                         if s.clear_confirm {
-                            pages::callout(ui, AMBER(), "Clear only this connection's saved form and script state? Other connections and remote data stay unchanged.");
+                            pages::callout(ui, AMBER(), crate::i18n::tr("Clear only this connection's saved form and script state? Other connections and remote data stay unchanged."));
                             ui.horizontal_wrapped(|ui| {
                                 ui.spacing_mut().item_spacing.x = 8.0;
-                                if button(ui, widgets, "int-clear-back", "Keep draft", idle) {
+                                if button(ui, widgets, "int-clear-back", crate::i18n::tr("Keep draft"), idle) {
                                     s.clear_confirm = false;
                                 }
-                                let r = pages::danger(ui, idle, "Clear this draft");
+                                let r = pages::danger(ui, idle, crate::i18n::tr("Clear this draft"));
                                 pages::control(widgets, "int-clear-confirm", &r, ui.clip_rect());
                                 if r.clicked() {
                                     s.perform(backend.clone(), Action::Clear);
@@ -1366,13 +1366,13 @@ impl Rocket {
                             pages::titled_card(
                                 ui,
                                 |ui| {
-                                    ui.label(RichText::new("Check the previous remote result").font(semibold(13.0)).color(AMBER()));
+                                    ui.label(RichText::new(crate::i18n::tr("Check the previous remote result")).font(semibold(13.0)).color(AMBER()));
                                 },
                                 |ui| {
-                                    pages::note(ui, "A request may have reached the service. Check it there and refresh before sending another write. Restarting Rocket keeps this guard.");
-                                    let r = ui.add(checkbox(&mut s.inspected, "I checked the remote outcome; allow a new reviewed request"));
+                                    pages::note(ui, crate::i18n::tr("A request may have reached the service. Check it there and refresh before sending another write. Restarting Rocket keeps this guard."));
+                                    let r = ui.add(checkbox(&mut s.inspected, crate::i18n::tr("I checked the remote outcome; allow a new reviewed request")));
                                     pages::control(widgets, "int-inspected", &r, ui.clip_rect());
-                                    if button(ui, widgets, "int-acknowledge", "Acknowledge remote outcome", idle && s.inspected) {
+                                    if button(ui, widgets, "int-acknowledge", crate::i18n::tr("Acknowledge remote outcome"), idle && s.inspected) {
                                         s.perform(backend.clone(), Action::Acknowledge);
                                     }
                                 },
@@ -1399,11 +1399,11 @@ impl Rocket {
                                 }
                             }
                         } else if s.needs_connection() {
-                            let text = format!("Connect {} to see its panel", package.name);
-                            add_connection = panel_state(ui, widgets, Icon::Remote, &text, Some(("int-add-connection", "Add connection", idle)));
+                            let text = crate::i18n::trf!("Connect {extension} to see its panel", extension = package.name);
+                            add_connection = panel_state(ui, widgets, Icon::Remote, &text, Some(("int-add-connection", crate::i18n::tr("Add connection"), idle)));
                         } else if !s.running() && !review && !s.draft_blocked {
                             let enabled = idle && s.enabled();
-                            if panel_state(ui, widgets, Icon::Refresh, "Not loaded yet", Some(("int-run-first", "Refresh panel", enabled))) {
+                            if panel_state(ui, widgets, Icon::Refresh, crate::i18n::tr("Not loaded yet"), Some(("int-run-first", crate::i18n::tr("Refresh panel"), enabled))) {
                                 s.perform(backend.clone(), Action::Run("open".into()));
                             }
                         }
@@ -1452,8 +1452,8 @@ fn review_card(
     pages::titled_card(
         ui,
         |ui| {
-            ui.label(RichText::new("Review the request").font(semibold(13.0)));
-            ui.label(RichText::new("Nothing has been sent").size(12.0).color(HINT()));
+            ui.label(RichText::new(crate::i18n::tr("Review the request")).font(semibold(13.0)));
+            ui.label(RichText::new(crate::i18n::tr("Nothing has been sent")).size(12.0).color(HINT()));
         },
         |ui| {
             ui.spacing_mut().item_spacing.y = 8.0;
@@ -1462,18 +1462,18 @@ fn review_card(
                 pages::pill(ui, &request.method, VIOLET());
                 ui.add(Label::new(RichText::new(&address).monospace().size(12.5)).truncate()).on_hover_text(&address);
             });
-            pages::note(ui, "Sent once, with this connection's credentials.");
+            pages::note(ui, crate::i18n::tr("Sent once, with this connection's credentials."));
             if let Some(check) = &request.check {
-                pages::key_value(ui, "Checks first", 96.0, |ui| {
-                    ui.label(RichText::new(format!("GET {} · {} must be {}", check.path, check.pointer, check.expected)).size(12.5));
+                pages::key_value(ui, crate::i18n::tr("Checks first"), 96.0, |ui| {
+                    ui.label(RichText::new(crate::i18n::trf!("GET {path} · {pointer} must be {expected}", path = check.path, pointer = check.pointer, expected = check.expected)).size(12.5));
                 });
-                pages::note(ui, "A changed marker stops the write and keeps your draft.");
+                pages::note(ui, crate::i18n::tr("A changed marker stops the write and keeps your draft."));
             }
             let body = request
                 .body
                 .as_ref()
                 .and_then(|v| serde_json::to_string_pretty(v).ok())
-                .unwrap_or_else(|| "No request body".into());
+                .unwrap_or_else(|| crate::i18n::tr("No request body").into());
             let scroll = Frame::new()
                 .fill(BG())
                 .stroke(Stroke::new(1.0, HAIRLINE()))
@@ -1504,14 +1504,14 @@ fn review_card(
                 scroll.inner_rect.intersect(ui.clip_rect()),
                 true,
             );
-            pages::callout(ui, AMBER(), "The service applies a sent write right away. Rocket can't undo it.");
+            pages::callout(ui, AMBER(), crate::i18n::tr("The service applies a sent write right away. Rocket can't undo it."));
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                if button(ui, widgets, "int-preview-back", "Back", idle) {
+                if button(ui, widgets, "int-preview-back", crate::i18n::tr("Back"), idle) {
                     s.preview = None;
-                    s.notice = Some("Review dismissed. No request was sent.".into());
+                    s.notice = Some(crate::i18n::tr("Review dismissed. No request was sent.").into());
                 }
-                let r = pages::primary(ui, idle && s.enabled() && !s.uncertain(), "Send request");
+                let r = pages::primary(ui, idle && s.enabled() && !s.uncertain(), crate::i18n::tr("Send request"));
                 pages::control(widgets, "int-preview-submit", &r, ui.clip_rect());
                 if r.clicked() {
                     s.perform(backend.clone(), Action::Submit);
@@ -1521,24 +1521,24 @@ fn review_card(
     );
 }
 fn developer_panel(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, backend: &Backend) {
-    let r = pages::disclosure(ui, s.developer_open, "Developer tools");
+    let r = pages::disclosure(ui, s.developer_open, crate::i18n::tr("Developer tools"));
     pages::control(widgets, "int-developer", &r, ui.clip_rect());
     if r.clicked() { s.developer_open = !s.developer_open; }
     if !s.developer_open { return; }
     let idle = !s.running();
     preferences::card_frame(ui, |ui| {
-        preferences::card_header(ui, "Developer", |ui| {
-            if button(ui, widgets, "int-validate", "Validate Lua", idle && s.preview.is_none() && s.installed(&s.selected)) {
+        preferences::card_header(ui, crate::i18n::tr("Developer"), |ui| {
+            if button(ui, widgets, "int-validate", crate::i18n::tr("Validate Lua"), idle && s.preview.is_none() && s.installed(&s.selected)) {
                 s.perform(backend.clone(), Action::Validate);
             }
-            if quiet(ui, widgets, "int-history-clear", "Clear", idle) { s.history.clear(); }
+            if quiet(ui, widgets, "int-history-clear", crate::i18n::tr("Clear"), idle) { s.history.clear(); }
         });
         preferences::card_note(ui, |ui| {
             if let Some(v) = &s.validation {
                 let (color, text) = if v.syntax_valid {
-                    (GREEN(), "Syntax valid. Validation does not run the script.".to_owned())
+                    (GREEN(), crate::i18n::tr("Syntax valid. Validation does not run the script.").to_owned())
                 } else {
-                    (RED(), format!("Syntax error · main.lua{}", v.line.map(|n| format!(":{n}")).unwrap_or_default()))
+                    (RED(), crate::i18n::trf!("Syntax error · main.lua{line}", line = v.line.map(|n| format!(":{n}")).unwrap_or_default()))
                 };
                 preferences::status_line(ui, color, &text);
             }
@@ -1555,7 +1555,7 @@ fn developer_panel(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiC
                     }
                 }
                 if none {
-                    ui.label(RichText::new("No recent actions").size(12.5).color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("No recent actions")).size(12.5).color(HINT()));
                 }
             });
             pages::region(widgets, "int-developer-scroll", scroll.inner_rect.intersect(ui.clip_rect()), true);
@@ -1578,7 +1578,7 @@ fn choose_connection(
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         if labelled {
-            ui.label(RichText::new("Connection").color(MUTED()));
+            ui.label(RichText::new(crate::i18n::tr("Connection")).color(MUTED()));
         }
         ui.add_enabled_ui(enabled, |ui| {
             let response = ComboBox::from_id_salt("integration-connection")
@@ -1617,13 +1617,13 @@ fn progress(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>
     ui.spacing_mut().item_spacing.x = 8.0;
     ui.spinner();
     ui.label(RichText::new(if s.stopping {
-        "Stopping the worker and checking the result"
+        crate::i18n::tr("Stopping the worker and checking the result")
     } else if s.saving_draft {
-        "Saving protected draft"
+        crate::i18n::tr("Saving protected draft")
     } else {
-        s.working.as_deref().unwrap_or("Working")
+        s.working.as_deref().unwrap_or(crate::i18n::tr("Running"))
     }).color(MUTED()));
-    if button(ui, widgets, "int-cancel", "Stop", !s.stopping) {
+    if button(ui, widgets, "int-cancel", crate::i18n::tr("Stop"), !s.stopping) {
         s.cancel();
     }
 }
@@ -1646,12 +1646,12 @@ fn notices(
         pages::note(ui, notice);
     }
     if let Some(error) = s.draft_error.clone() {
-        pages::callout(ui, RED(), &format!("{} Your unsaved draft remains in this window; existing disk data was preserved.", shown(&error)));
+        pages::callout(ui, RED(), &crate::i18n::trf!("{error} Your unsaved draft remains in this window; existing disk data was preserved.", error = shown(&error)));
         if button(
             ui,
             widgets,
             "int-draft-retry",
-            "Retry saving draft",
+            crate::i18n::tr("Retry saving draft"),
             !s.running(),
         ) {
             s.perform(backend.clone(), Action::None);

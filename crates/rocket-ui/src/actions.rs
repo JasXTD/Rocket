@@ -499,17 +499,17 @@ pub(crate) fn view(ui: &mut Ui, tab: &mut Tab, intents: &mut Vec<Intent>, widget
     let ready = reach == Reach::Ready && repository.is_some() && session.is_some();
     // Header: what CI this is, for which repository and account.
     let subtitle = match (&reach, &repository, &session) {
-        (Reach::Ready, Some(r), Some(s)) if !compact => format!("{} · {} · signed in as {}", ci_name(host), r.path(), s.login()),
+        (Reach::Ready, Some(r), Some(s)) if !compact => crate::i18n::trf!("{service} · {repository} · signed in as {account}", service = ci_name(host), repository = r.path(), account = s.login()),
         (Reach::Ready, Some(r), _) => format!("{} · {}", ci_name(host), r.path()),
         (Reach::NoAccount { host, path, .. }, _, _) => format!("{} · {path}", host_name(*host)),
-        _ => "CI runs from the repository's host".to_string(),
+        _ => crate::i18n::tr("CI runs from the repository's host").to_string(),
     };
     let reading = tab.actions.reading();
     let mut refresh = false;
     pages::header_with(
         ui,
         |painter, tile| icon(painter, tile.shrink(10.0), Icon::Actions, BLUE()),
-        "Actions",
+        crate::i18n::tr("Actions"),
         &subtitle,
         |ui| {
             if !ready {
@@ -518,11 +518,11 @@ pub(crate) fn view(ui: &mut Ui, tab: &mut Tab, intents: &mut Vec<Intent>, widget
             // Right to left: Open on the host at the edge, Refresh before it.
             if !compact
                 && let Some(r) = &repository
-                && external_button(ui, &format!("Open on {}", host_name(host)), widgets, "actions-open-host")
+                && external_button(ui, &crate::i18n::trf!("Open on {host}", host = host_name(host)), widgets, "actions-open-host")
             {
                 intents.push(Intent::Actions(ActionsIntent::Open(r.runs_url())));
             }
-            let r = crate::chrome::icon_button(ui, Icon::Refresh, !reading, false, 28.0).on_hover_text("Refresh runs");
+            let r = crate::chrome::icon_button(ui, Icon::Refresh, !reading, false, 28.0).on_hover_text(crate::i18n::tr("Refresh runs"));
             control(widgets, "actions-refresh", &r, ui.clip_rect());
             refresh = r.clicked();
         },
@@ -540,11 +540,11 @@ pub(crate) fn view(ui: &mut Ui, tab: &mut Tab, intents: &mut Vec<Intent>, widget
         empty_state(
             ui,
             Icon::Lock,
-            &format!("{}'s token can't read {what} for {}", session.login(), repository.path()),
-            &format!("{give}, then refresh."),
+            &crate::i18n::trf!("{account}'s token can't read {what} for {repository}", account = session.login(), what, repository = repository.path()),
+            &crate::i18n::trf!("{permission}, then refresh.", permission = give),
             widgets,
             |ui, widgets| {
-                let r = pages::primary(ui, true, "Accounts");
+                let r = pages::primary(ui, true, crate::i18n::tr("Accounts"));
                 control(widgets, "actions-accounts", &r, ui.clip_rect());
                 if r.clicked() {
                     intents.push(Intent::Preferences(crate::preferences::Page::Accounts));
@@ -562,8 +562,8 @@ pub(crate) fn view(ui: &mut Ui, tab: &mut Tab, intents: &mut Vec<Intent>, widget
     let a = &tab.actions;
     if a.runs.is_empty() {
         if a.failure == Some(ForgeFailure::Unauthorized) {
-            empty_state(ui, Icon::Lock, &format!("{} rejected {}'s token", host_name(host), session.login()), "Reconnect the account in Accounts.", widgets, |ui, widgets| {
-                let r = pages::primary(ui, true, "Accounts");
+            empty_state(ui, Icon::Lock, &crate::i18n::trf!("{host} rejected {account}'s token", host = host_name(host), account = session.login()), crate::i18n::tr("Reconnect the account in Accounts."), widgets, |ui, widgets| {
+                let r = pages::primary(ui, true, crate::i18n::tr("Accounts"));
                 control(widgets, "actions-accounts", &r, ui.clip_rect());
                 if r.clicked() {
                     intents.push(Intent::Preferences(crate::preferences::Page::Accounts));
@@ -572,13 +572,13 @@ pub(crate) fn view(ui: &mut Ui, tab: &mut Tab, intents: &mut Vec<Intent>, widget
             return;
         }
         if let Some(error) = a.error.clone().filter(|_| !a.reading()) {
-            let title = if a.failure == Some(ForgeFailure::RateLimited) { format!("{}'s rate limit is used up", host_name(host)) } else { "Couldn't read runs".to_string() };
+            let title = if a.failure == Some(ForgeFailure::RateLimited) { crate::i18n::trf!("{host}'s rate limit is used up", host = host_name(host)) } else { crate::i18n::tr("Couldn't read runs").to_string() };
             let text = match &a.paused_until {
-                Some(at) => format!("Runs refresh at {at}."),
+                Some(at) => crate::i18n::trf!("Runs refresh at {at}.", at),
                 None => error,
             };
             empty_state(ui, Icon::Warning, &title, &text, widgets, |ui, widgets| {
-                let r = pages::ghost(ui, true, "Refresh");
+                let r = pages::ghost(ui, true, crate::i18n::tr("Refresh"));
                 control(widgets, "actions-retry", &r, ui.clip_rect());
                 if r.clicked() {
                     refresh = true;
@@ -626,7 +626,7 @@ pub(crate) fn view(ui: &mut Ui, tab: &mut Tab, intents: &mut Vec<Intent>, widget
     if compact {
         if a.focused && a.selected_run().is_some() {
             let mut child = ui.new_child(UiBuilder::new().max_rect(body).layout(Layout::top_down(Align::Min)));
-            let r = child.add(Button::new(RichText::new("‹ All runs").size(12.5).color(BLUE())).frame(false));
+            let r = child.add(Button::new(RichText::new(crate::i18n::tr("‹ All runs")).size(12.5).color(BLUE())).frame(false));
             control(widgets, "actions-back", &r, child.clip_rect());
             let back = r.clicked();
             let rest = Rect::from_min_max(pos2(body.left(), child.cursor().top() + 4.0), body.max);
@@ -666,23 +666,23 @@ fn external_button(ui: &mut Ui, label: &str, widgets: &mut HashMap<String, UiCon
 /// (what the token can't read, what to give it) on this host.
 fn permission(host: ForgeProvider, missing: Option<&str>) -> (&'static str, String) {
     match host {
-        ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise => ("Actions", format!("Give it {} (fine-grained) or repo (classic)", missing.unwrap_or("Actions: Read"))),
-        ForgeProvider::GitLab => ("pipelines", "Give it the read_api scope".into()),
-        ForgeProvider::Gitea => ("Actions", "Give it read:repository".into()),
-        ForgeProvider::Bitbucket => ("pipelines", "Give it read:pipeline:bitbucket".into()),
-        ForgeProvider::Azure | ForgeProvider::AzureServer => ("builds", "Give it Build (Read)".into()),
-        ForgeProvider::BitbucketServer => ("builds", "Check the account in Accounts".into()),
+        ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise => (crate::i18n::tr("Actions"), crate::i18n::trf!("Give it {permission} (fine-grained) or repo (classic)", permission = missing.unwrap_or("Actions: Read"))),
+        ForgeProvider::GitLab => (crate::i18n::tr("pipelines"), crate::i18n::tr("Give it the read_api scope").into()),
+        ForgeProvider::Gitea => (crate::i18n::tr("Actions"), crate::i18n::tr("Give it read:repository").into()),
+        ForgeProvider::Bitbucket => (crate::i18n::tr("pipelines"), crate::i18n::tr("Give it read:pipeline:bitbucket").into()),
+        ForgeProvider::Azure | ForgeProvider::AzureServer => (crate::i18n::tr("builds"), crate::i18n::tr("Give it Build (Read)").into()),
+        ForgeProvider::BitbucketServer => (crate::i18n::tr("builds"), crate::i18n::tr("Check the account in Accounts").into()),
     }
 }
 
 /// (title, text, button) when the host has no run for the repository at all.
 fn no_runs(host: ForgeProvider, path: &str) -> (String, &'static str, String) {
     match host {
-        ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise => (format!("No workflow has run for {path}"), "Add a workflow under .github/workflows and push. Its runs show here and beside your commits.", "Open Actions on GitHub".into()),
-        ForgeProvider::Gitea => (format!("No workflow has run for {path}"), "Add a workflow under .gitea/workflows and push. Its runs show here and beside your commits.", "Open Actions on Gitea".into()),
-        ForgeProvider::GitLab => (format!("No pipeline has run for {path}"), "Add a .gitlab-ci.yml file and push. Its pipelines show here and beside your commits.", "Open pipelines on GitLab".into()),
-        ForgeProvider::Bitbucket => (format!("No pipeline has run for {path}"), "Add a bitbucket-pipelines.yml file and push. Its pipelines show here and beside your commits.", "Open Pipelines on Bitbucket".into()),
-        _ => (format!("No pipeline has built {path}"), "Create a pipeline for this repository in Azure Pipelines. Its builds show here and beside your commits.", "Open Pipelines on Azure DevOps".into()),
+        ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise => (crate::i18n::trf!("No workflow has run for {path}", path), crate::i18n::tr("Add a workflow under .github/workflows and push. Its runs show here and beside your commits."), crate::i18n::tr("Open Actions on GitHub").into()),
+        ForgeProvider::Gitea => (crate::i18n::trf!("No workflow has run for {path}", path), crate::i18n::tr("Add a workflow under .gitea/workflows and push. Its runs show here and beside your commits."), crate::i18n::tr("Open Actions on Gitea").into()),
+        ForgeProvider::GitLab => (crate::i18n::trf!("No pipeline has run for {path}", path), crate::i18n::tr("Add a .gitlab-ci.yml file and push. Its pipelines show here and beside your commits."), crate::i18n::tr("Open pipelines on GitLab").into()),
+        ForgeProvider::Bitbucket => (crate::i18n::trf!("No pipeline has run for {path}", path), crate::i18n::tr("Add a bitbucket-pipelines.yml file and push. Its pipelines show here and beside your commits."), crate::i18n::tr("Open Pipelines on Bitbucket").into()),
+        _ => (crate::i18n::trf!("No pipeline has built {path}", path), crate::i18n::tr("Create a pipeline for this repository in Azure Pipelines. Its builds show here and beside your commits."), crate::i18n::tr("Open Pipelines on Azure DevOps").into()),
     }
 }
 
@@ -697,11 +697,11 @@ fn reach_state(ui: &mut Ui, reach: &Reach, intents: &mut Vec<Intent>, widgets: &
             empty_state(
                 ui,
                 Icon::Remote,
-                &format!("Connect {name} to see Actions"),
-                &format!("This repository is on {site} as {path}. Rocket reads its runs and checks with a {name} account."),
+                &crate::i18n::trf!("Connect {name} to see Actions", name),
+                &crate::i18n::trf!("This repository is on {site} as {path}. Rocket reads its runs and checks with a {name} account.", site, path, name),
                 widgets,
                 |ui, widgets| {
-                    let r = pages::primary(ui, true, &format!("Connect {name}"));
+                    let r = pages::primary(ui, true, &crate::i18n::trf!("Connect {name}", name));
                     control(widgets, "actions-connect", &r, ui.clip_rect());
                     if r.clicked() {
                         intents.push(Intent::Actions(ActionsIntent::Connect { host: *host, server: server.clone() }));
@@ -712,11 +712,11 @@ fn reach_state(ui: &mut Ui, reach: &Reach, intents: &mut Vec<Intent>, widgets: &
         Reach::Rejected { host, server } => empty_state(
             ui,
             Icon::Lock,
-            &format!("{} didn't accept the remembered account", host_name(*host)),
-            &format!("Rocket couldn't sign in to {server} with it. Check the account in Accounts."),
+            &crate::i18n::trf!("{host} didn't accept the remembered account", host = host_name(*host)),
+            &crate::i18n::trf!("Rocket couldn't sign in to {server} with it. Check the account in Accounts.", server),
             widgets,
             |ui, widgets| {
-                let r = pages::primary(ui, true, "Accounts");
+                let r = pages::primary(ui, true, crate::i18n::tr("Accounts"));
                 control(widgets, "actions-accounts", &r, ui.clip_rect());
                 if r.clicked() {
                     intents.push(Intent::Preferences(crate::preferences::Page::Accounts));
@@ -726,11 +726,11 @@ fn reach_state(ui: &mut Ui, reach: &Reach, intents: &mut Vec<Intent>, widgets: &
         Reach::Unreachable { host, server } => empty_state(
             ui,
             Icon::Warning,
-            &format!("Couldn't reach {server}"),
-            &format!("Rocket signs in to {} again in a few minutes.", host_name(*host)),
+            &crate::i18n::trf!("Couldn't reach {server}", server),
+            &crate::i18n::trf!("Rocket signs in to {host} again in a few minutes.", host = host_name(*host)),
             widgets,
             |ui, widgets| {
-                let r = pages::ghost(ui, true, "Try again");
+                let r = pages::ghost(ui, true, crate::i18n::tr("Try again"));
                 control(widgets, "actions-retry", &r, ui.clip_rect());
                 if r.clicked() {
                     intents.push(Intent::Actions(ActionsIntent::RetrySignIn));
@@ -740,11 +740,11 @@ fn reach_state(ui: &mut Ui, reach: &Reach, intents: &mut Vec<Intent>, widgets: &
         Reach::BitbucketServer { url } => empty_state(
             ui,
             Icon::Info,
-            "Bitbucket Server doesn't report CI to Rocket",
-            "Builds from Jenkins or Bamboo show on the server's pull requests and commits.",
+            crate::i18n::tr("Bitbucket Server doesn't report CI to Rocket"),
+            crate::i18n::tr("Builds from Jenkins or Bamboo show on the server's pull requests and commits."),
             widgets,
             |ui, widgets| {
-                if external_button(ui, "Open on Bitbucket Server", widgets, "actions-open-host") {
+                if external_button(ui, crate::i18n::tr("Open on Bitbucket Server"), widgets, "actions-open-host") {
                     intents.push(Intent::Actions(ActionsIntent::Open(url.clone())));
                 }
             },
@@ -752,11 +752,11 @@ fn reach_state(ui: &mut Ui, reach: &Reach, intents: &mut Vec<Intent>, widgets: &
         Reach::NoRemote => empty_state(
             ui,
             Icon::Branch,
-            "No remote on a host Rocket reads",
-            "Actions shows runs from GitHub, GitHub Enterprise, GitLab, Gitea, Bitbucket Cloud and Azure DevOps.",
+            crate::i18n::tr("No remote on a host Rocket reads"),
+            crate::i18n::tr("Actions shows runs from GitHub, GitHub Enterprise, GitLab, Gitea, Bitbucket Cloud and Azure DevOps."),
             widgets,
             |ui, widgets| {
-                let r = pages::ghost(ui, true, "Remotes");
+                let r = pages::ghost(ui, true, crate::i18n::tr("Remotes"));
                 control(widgets, "actions-remotes", &r, ui.clip_rect());
                 if r.clicked() {
                     intents.push(Intent::View(View::Remotes));
@@ -785,7 +785,7 @@ fn empty_state(ui: &mut Ui, image: Icon, title: &str, text: &str, widgets: &mut 
     child.add(Label::new(RichText::new(text).size(12.5).color(MUTED())).wrap());
     // One button, centred like the lines above it.
     buttons(&mut child, widgets);
-    let r = child.add(Label::new(RichText::new("How CI checks work").size(12.0).color(BLUE())).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand);
+    let r = child.add(Label::new(RichText::new(crate::i18n::tr("How CI checks work")).size(12.0).color(BLUE())).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand);
     control(widgets, "actions-guide", &r, child.clip_rect());
     if r.clicked() {
         crate::guide::request(child.ctx());
@@ -811,7 +811,7 @@ fn skeleton(ui: &mut Ui) {
     let line = pos2(rect.left() + 14.0, rect.bottom() - 20.0);
     let mut child = ui.new_child(UiBuilder::new().max_rect(Rect::from_min_size(line - vec2(0.0, 10.0), vec2(rect.width() - 28.0, 22.0))).layout(Layout::left_to_right(Align::Center)));
     child.spinner();
-    child.label(RichText::new("Reading runs").size(12.0).color(HINT()));
+    child.label(RichText::new(crate::i18n::tr("Reading runs")).size(12.0).color(HINT()));
     ui.ctx().request_repaint_after(Duration::from_millis(120));
     ui.allocate_rect(rect, Sense::hover());
 }
@@ -830,7 +830,7 @@ fn filters(ui: &mut Ui, tab: &mut Tab, current: Option<&str>, compact: bool, wid
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 10.0;
             if !compact && let Some(label) = &label {
-                let r = pages::segments(ui, &[("All branches", !a.on_branch), (label.as_str(), a.on_branch)]);
+                let r = pages::segments(ui, &[(crate::i18n::tr("All branches"), !a.on_branch), (label.as_str(), a.on_branch)]);
                 control(widgets, "actions-branch-all", &r[0], ui.clip_rect());
                 control(widgets, "actions-branch-current", &r[1], ui.clip_rect());
                 if r[0].clicked() && a.on_branch {
@@ -842,7 +842,7 @@ fn filters(ui: &mut Ui, tab: &mut Tab, current: Option<&str>, compact: bool, wid
                     a.on_branch = true;
                 }
             }
-            let r = pages::count_segments(ui, &[("All", counts[0], a.show == Show::All), ("Failed", counts[1], a.show == Show::Failed), ("Running", counts[2], a.show == Show::Running)]);
+            let r = pages::count_segments(ui, &[(crate::i18n::tr("All"), counts[0], a.show == Show::All), (crate::i18n::tr("Failed"), counts[1], a.show == Show::Failed), (crate::i18n::tr("Running"), counts[2], a.show == Show::Running)]);
             for (response, (show, key)) in r.iter().zip([(Show::All, "actions-show-all"), (Show::Failed, "actions-show-failed"), (Show::Running, "actions-show-running")]) {
                 control(widgets, key, response, ui.clip_rect());
                 if response.clicked() {
@@ -850,7 +850,7 @@ fn filters(ui: &mut Ui, tab: &mut Tab, current: Option<&str>, compact: bool, wid
                 }
             }
             if !compact && !a.runs.is_empty() {
-                let words = if a.runs.len() == 1 { "The newest run".to_string() } else { format!("The newest {} runs", a.runs.len()) };
+                let words = crate::i18n::trf!("Newest runs: {count}", count = a.runs.len());
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.label(RichText::new(words).size(12.0).color(HINT()));
                 });
@@ -866,11 +866,11 @@ fn strips(ui: &mut Ui, tab: &mut Tab, host: ForgeProvider, session: &ForgeSessio
         && tab.actions.hidden.is_none()
     {
         let text = match missing {
-            Some(p) => format!("Checks on commits are hidden: this token needs {p}."),
-            None => "Checks on commits are hidden: this token can't read them.".to_string(),
+            Some(p) => crate::i18n::trf!("Checks on commits are hidden: this token needs {permission}.", permission = p),
+            None => crate::i18n::tr("Checks on commits are hidden: this token can't read them.").to_string(),
         };
         Frame::new().inner_margin(Margin { left: 24, right: 24, top: 0, bottom: 10 }).show(ui, |ui| {
-            if let Some(r) = pages::notice_strip(ui, MUTED(), &text, Some("Accounts")) {
+            if let Some(r) = pages::notice_strip(ui, MUTED(), &text, Some(crate::i18n::tr("Accounts"))) {
                 control(widgets, "actions-marks-accounts", &r, ui.clip_rect());
                 if r.clicked() {
                     intents.push(Intent::Preferences(crate::preferences::Page::Accounts));
@@ -882,18 +882,18 @@ fn strips(ui: &mut Ui, tab: &mut Tab, host: ForgeProvider, session: &ForgeSessio
     if a.runs.is_empty() {
         return;
     }
-    let since = a.read_at.clone().map(|t| format!(" This list is from {t}.")).unwrap_or_default();
+    let since = a.read_at.clone().map(|t| crate::i18n::trf!(" This list is from {time}.", time = t)).unwrap_or_default();
     let unreachable = matches!(a.failure, None | Some(ForgeFailure::Network | ForgeFailure::ServerUnavailable | ForgeFailure::TlsVerification));
     let text = match (&a.paused_until, &a.error) {
-        (Some(at), _) => Some((AMBER(), format!("{}'s rate limit for {} is used up. Runs refresh at {at}.{since}", host_name(host), session.login()))),
-        (None, Some(_)) if unreachable => Some((MUTED(), format!("Couldn't reach {}.{since}", ci_checks::server_name(session.config().server())))),
+        (Some(at), _) => Some((AMBER(), crate::i18n::trf!("{host}'s rate limit for {account} is used up. Runs refresh at {at}.{since}", host = host_name(host), account = session.login(), at, since))),
+        (None, Some(_)) if unreachable => Some((MUTED(), crate::i18n::trf!("Couldn't reach {server}.{since}", server = ci_checks::server_name(session.config().server()), since))),
         (None, Some(error)) => Some((MUTED(), format!("{error}{since}"))),
         _ => None,
     };
     let Some((color, text)) = text else { return };
     let mut refresh = false;
     Frame::new().inner_margin(Margin { left: 24, right: 24, top: 0, bottom: 10 }).show(ui, |ui| {
-        if let Some(r) = pages::notice_strip(ui, color, &text, a.paused_until.is_none().then_some("Refresh")) {
+        if let Some(r) = pages::notice_strip(ui, color, &text, a.paused_until.is_none().then_some(crate::i18n::tr("Refresh"))) {
             control(widgets, "actions-strip-refresh", &r, ui.clip_rect());
             refresh = r.clicked();
         }
@@ -921,10 +921,10 @@ fn list_card(ui: &mut Ui, rect: Rect, a: &mut State, compact: bool, subjects: &H
             ui.horizontal(|ui| {
                 ui.add_space(14.0);
                 let words = match a.show {
-                    Show::Failed => format!("No failed run among the newest {}.", a.runs.len()),
-                    Show::Running => "Nothing is running.".into(),
-                    Show::All if a.on_branch => "No run on this branch among the newest the host listed.".into(),
-                    Show::All => "No runs.".into(),
+                    Show::Failed => crate::i18n::trf!("No failures in the newest runs (checked: {count}).", count = a.runs.len()),
+                    Show::Running => crate::i18n::tr("Nothing is running.").into(),
+                    Show::All if a.on_branch => crate::i18n::tr("No run on this branch among the newest the host listed.").into(),
+                    Show::All => crate::i18n::tr("No runs.").into(),
                 };
                 ui.label(RichText::new(words).size(12.5).color(HINT()));
             });
@@ -947,9 +947,8 @@ fn list_card(ui: &mut Ui, rect: Rect, a: &mut State, compact: bool, subjects: &H
     let foot = Rect::from_min_max(pos2(rect.left(), rect.bottom() - footer), rect.max);
     ui.painter().hline(foot.x_range(), foot.top(), Stroke::new(1.0, CARD_LINE()));
     let words = match (shown.len(), a.runs.len()) {
-        (1, 1) => "1 run".to_string(),
-        (s, n) if s == n => format!("{n} runs"),
-        (s, n) => format!("{s} of {n} shown"),
+        (s, n) if s == n => crate::i18n::trf!("Runs: {count}", count = n),
+        (s, n) => crate::i18n::trf!("{shown} of {total} shown", shown = s, total = n),
     };
     ui.painter().text(pos2(foot.left() + 12.0, foot.center().y), Align2::LEFT_CENTER, words, FontId::proportional(12.0), HINT());
     if a.more || a.reading() && a.pages >= 1 {
@@ -958,7 +957,7 @@ fn list_card(ui: &mut Ui, rect: Rect, a: &mut State, compact: bool, subjects: &H
         if loading {
             child.spinner();
         } else if a.more {
-            let r = child.add_enabled(!a.reading(), Button::new(RichText::new("Load more").size(12.5).color(BLUE())).frame(false));
+            let r = child.add_enabled(!a.reading(), Button::new(RichText::new(crate::i18n::tr("Load more")).size(12.5).color(BLUE())).frame(false));
             control(widgets, "actions-load-more", &r, child.clip_rect());
             if r.clicked() {
                 a.want = Some(a.pages + 1);
@@ -970,15 +969,15 @@ fn list_card(ui: &mut Ui, rect: Rect, a: &mut State, compact: bool, subjects: &H
 
 /// "Running for 1m 12s" in amber, "4m 41s" in red for a failure, "Cancelled".
 fn took(run: &ForgeCiRun, now: u64) -> (String, Color32) {
-    let time = run.took.map(ci_duration_text);
+    let time = run.took.map(ci_checks::duration_text);
     match run.state {
-        ForgeCheckState::Running => (run.started().map_or_else(|| "Running".into(), |s| format!("Running for {}", ci_duration_text(now.saturating_sub(s)))), AMBER()),
-        ForgeCheckState::Queued => ("Queued".into(), AMBER()),
-        ForgeCheckState::Failed => (time.unwrap_or_else(|| "Failed".into()), RED()),
-        ForgeCheckState::Cancelled => ("Cancelled".into(), MUTED()),
-        ForgeCheckState::Skipped => ("Skipped".into(), MUTED()),
-        ForgeCheckState::Passed => (time.unwrap_or_else(|| "Passed".into()), MUTED()),
-        ForgeCheckState::Neutral => (time.unwrap_or_else(|| "Completed".into()), MUTED()),
+        ForgeCheckState::Running => (run.started().map_or_else(|| crate::i18n::tr("Running").into(), |s| crate::i18n::trf!("Running for {duration}", duration = ci_checks::duration_text(now.saturating_sub(s)))), AMBER()),
+        ForgeCheckState::Queued => (crate::i18n::tr("Queued").into(), AMBER()),
+        ForgeCheckState::Failed => (time.unwrap_or_else(|| crate::i18n::tr("Failed").into()), RED()),
+        ForgeCheckState::Cancelled => (crate::i18n::tr("Cancelled").into(), MUTED()),
+        ForgeCheckState::Skipped => (crate::i18n::tr("Skipped").into(), MUTED()),
+        ForgeCheckState::Passed => (time.unwrap_or_else(|| crate::i18n::tr("Passed").into()), MUTED()),
+        ForgeCheckState::Neutral => (time.unwrap_or_else(|| crate::i18n::tr("Completed").into()), MUTED()),
     }
 }
 /// "CI #812"
@@ -1062,16 +1061,16 @@ fn run_row(ui: &mut Ui, run: &ForgeCiRun, selected: bool, compact: bool, subject
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 
-/// "failed", "is running", "passed".
-fn state_words(state: ForgeCheckState) -> &'static str {
+/// A full sentence lets each language place the run name and state naturally.
+fn state_words(state: ForgeCheckState, run: &str) -> String {
     match state {
-        ForgeCheckState::Failed => "failed",
-        ForgeCheckState::Running => "is running",
-        ForgeCheckState::Queued => "is queued",
-        ForgeCheckState::Passed => "passed",
-        ForgeCheckState::Cancelled => "was cancelled",
-        ForgeCheckState::Skipped => "was skipped",
-        ForgeCheckState::Neutral => "finished",
+        ForgeCheckState::Failed => crate::i18n::trf!("{run} failed", run),
+        ForgeCheckState::Running => crate::i18n::trf!("{run} is running", run),
+        ForgeCheckState::Queued => crate::i18n::trf!("{run} is queued", run),
+        ForgeCheckState::Passed => crate::i18n::trf!("{run} passed", run),
+        ForgeCheckState::Cancelled => crate::i18n::trf!("{run} was cancelled", run),
+        ForgeCheckState::Skipped => crate::i18n::trf!("{run} was skipped", run),
+        ForgeCheckState::Neutral => crate::i18n::trf!("{run} finished", run),
     }
 }
 
@@ -1080,7 +1079,7 @@ fn state_words(state: ForgeCheckState) -> &'static str {
 fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, subjects: &HashMap<String, String>, loaded: &[String], intents: &mut Vec<Intent>, widgets: &mut HashMap<String, UiControl>) {
     ui.painter().rect(rect, 8.0, VIEW_BG(), Stroke::new(1.0, CARD_STROKE()), StrokeKind::Inside);
     let Some(row) = a.selected_run().cloned() else {
-        ui.painter().text(rect.center(), Align2::CENTER_CENTER, "Choose a run to see its jobs.", FontId::proportional(12.5), HINT());
+        ui.painter().text(rect.center(), Align2::CENTER_CENTER, crate::i18n::tr("Choose a run to see its jobs."), FontId::proportional(12.5), HINT());
         return;
     };
     let details = a.details.clone().filter(|d| d.run.id == row.id);
@@ -1097,10 +1096,10 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
         paint_check(ui.painter(), mark.center(), run.state);
         ui.vertical(|ui| {
             ui.spacing_mut().item_spacing.y = 2.0;
-            ui.add(Label::new(RichText::new(format!("{} {}", run_name(&run), state_words(run.state))).font(semibold(14.0))).truncate());
+            ui.add(Label::new(RichText::new(state_words(run.state, &run_name(&run))).font(semibold(14.0))).truncate());
             let mut parts: Vec<String> = Vec::new();
             if let Some(n) = run.attempt {
-                parts.push(format!("attempt {n}"));
+                parts.push(crate::i18n::trf!("attempt {attempt}", attempt = n));
             }
             if let Some(e) = &run.event {
                 parts.push(e.clone());
@@ -1123,8 +1122,8 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
             ui.label(RichText::new(&commit[..7.min(commit.len())]).monospace().size(12.0).background_color(RAISED()));
             let has = loaded.contains(&commit);
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                let r = ui.add_enabled(has, Button::new(RichText::new("Show in Commits").size(12.5).color(if has { BLUE() } else { FAINT() })).frame(false));
-                let r = r.on_disabled_hover_text("This commit isn't in the loaded history. Fetch, then try again.");
+                let r = ui.add_enabled(has, Button::new(RichText::new(crate::i18n::tr("Show in Commits")).size(12.5).color(if has { BLUE() } else { FAINT() })).frame(false));
+                let r = r.on_disabled_hover_text(crate::i18n::tr("This commit isn't in the loaded history. Fetch, then try again."));
                 control(widgets, "actions-show-commit", &r, ui.clip_rect());
                 if r.clicked() {
                     intents.push(Intent::Actions(ActionsIntent::ShowCommit(commit.clone())));
@@ -1144,7 +1143,7 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
         if failed {
-            let why = block.map(ci_rerun_refusal).or((!live).then_some(ci_checks::NOT_LIVE));
+            let why = block.map(ci_checks::rerun_refusal).or((!live).then_some(ci_checks::not_live()));
             let r = pages::primary(ui, offered, rerun_label(host));
             let r = match why {
                 Some(why) => r.on_disabled_hover_text(why),
@@ -1157,17 +1156,17 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
         }
         let url = run.link.as_ref().filter(|l| l.external.is_none()).map(|l| l.url.clone());
         if let Some(url) = url
-            && external_button(ui, "Open in browser", widgets, "actions-open-run")
+            && external_button(ui, crate::i18n::tr("Open in browser"), widgets, "actions-open-run")
         {
             intents.push(Intent::Actions(ActionsIntent::Open(url)));
         }
     });
     // Why Re-run waits, or what couldn't be read.
     if failed && let Some(why) = block.filter(|b| *b != ForgeRerunBlock::Unsupported || run.state == ForgeCheckState::Failed) {
-        ui.add(Label::new(RichText::new(ci_rerun_refusal(why)).size(12.0).color(HINT())).wrap());
+        ui.add(Label::new(RichText::new(ci_checks::rerun_refusal(why)).size(12.0).color(HINT())).wrap());
     } else if failed
         && !live
-        && pages::notice_strip(ui, MUTED(), ci_checks::NOT_LIVE, Some("Connect in Hosting")).is_some_and(|r| {
+        && pages::notice_strip(ui, MUTED(), ci_checks::not_live(), Some(crate::i18n::tr("Connect in Hosting"))).is_some_and(|r| {
             control(widgets, "actions-connect-hosting", &r, ui.clip_rect());
             r.clicked()
         })
@@ -1180,9 +1179,9 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
         && let Some(e) = d.error
     {
         let text = match (e, &d.missing) {
-            (ForgeFailure::Forbidden, Some(p)) => format!("Some jobs are hidden: this token needs {p}."),
-            (ForgeFailure::Forbidden, None) => "Some jobs are hidden: this token can't read them.".to_string(),
-            (other, _) => format!("Part of the run couldn't be read ({}).", other.code()),
+            (ForgeFailure::Forbidden, Some(p)) => crate::i18n::trf!("Some jobs are hidden: this token needs {permission}.", permission = p),
+            (ForgeFailure::Forbidden, None) => crate::i18n::tr("Some jobs are hidden: this token can't read them.").to_string(),
+            (other, _) => crate::i18n::trf!("Part of the run couldn't be read ({code}).", code = other.code()),
         };
         pages::notice_strip(ui, MUTED(), &text, None);
     }
@@ -1192,7 +1191,7 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
     match &details {
         Some(d) => {
             let note = if offered {
-                Some(if host == ForgeProvider::GitLab { "GitLab also retries the pipeline's canceled jobs." } else { "The host also runs the jobs that need the failed ones again." })
+                Some(if host == ForgeProvider::GitLab { crate::i18n::tr("GitLab also retries the pipeline's canceled jobs.") } else { crate::i18n::tr("The host also runs the jobs that need the failed ones again.") })
             } else {
                 None
             };
@@ -1201,19 +1200,19 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
                 ui.spacing_mut().item_spacing.y = 0.0;
                 if d.jobs.is_empty() {
                     ui.add_space(6.0);
-                    ui.label(RichText::new("The host reported no jobs for this run.").size(12.5).color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("The host reported no jobs for this run.")).size(12.5).color(HINT()));
                 }
                 if let Some(url) = ci_checks::list(ui, &d.jobs, host, widgets, "actions-jobs", ListStyle::Jobs) {
                     intents.push(Intent::Actions(ActionsIntent::Open(url)));
                 }
             });
             if d.limited {
-                ui.label(RichText::new(format!("Showing {}: open the run in the browser for the rest.", d.jobs.len())).size(12.0).color(HINT()));
+                ui.label(RichText::new(crate::i18n::trf!("Showing {count}: open the run in the browser for the rest.", count = d.jobs.len())).size(12.0).color(HINT()));
             } else if let Some(note) = note {
                 ui.label(RichText::new(note).size(12.0).color(HINT()));
             }
         }
-        None if reading => pages::busy_line(ui, "Reading jobs"),
+        None if reading => pages::busy_line(ui, crate::i18n::tr("Reading jobs")),
         None => {}
     }
 }

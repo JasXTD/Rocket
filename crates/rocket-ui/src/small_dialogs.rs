@@ -5,6 +5,7 @@
 use crate::{
     app::*,
     backend::{Action, Backend, user_error},
+    i18n::{tr, trf, trn},
     pages::{self, control},
     style::*,
     tags::{age, card, check, commit_ref},
@@ -185,10 +186,6 @@ fn current(tab: Option<&Tab>) -> String {
     head_name(snapshot(tab).and_then(|s| s.head.as_ref()))
 }
 
-fn plural(n: usize, one: &str, many: &str) -> String {
-    format!("{n} {}", if n == 1 { one } else { many })
-}
-
 /// Why Git would refuse `name` for a local branch, in words; None when it looks
 /// valid. `old` is the branch being renamed. Git checks again when it writes.
 pub(crate) fn branch_name_problem(
@@ -197,31 +194,31 @@ pub(crate) fn branch_name_problem(
     old: Option<&[u8]>,
 ) -> Option<String> {
     if old.is_some_and(|old| old == name.as_bytes()) {
-        return Some("That is its current name.".into());
+        return Some(crate::i18n::tr("That is its current name.").into());
     }
     let problem = if name.starts_with("refs/") {
-        "Leave out refs/heads/: enter just the name."
+        crate::i18n::tr("Leave out refs/heads/: enter just the name.")
     } else if name.chars().any(char::is_whitespace) {
         let joined = name.split_whitespace().collect::<Vec<_>>().join("-");
-        return Some(format!("Branch names can't contain spaces. Try {joined}."));
+        return Some(trf!("Branch names can't contain spaces. Try {joined}.", joined));
     } else if name.starts_with('-') {
-        "A branch name can't start with a dash."
+        crate::i18n::tr("A branch name can't start with a dash.")
     } else if let Some(c) = name.chars().find(|c| c.is_control() || "~^:?*[\\".contains(*c)) {
         return Some(if c.is_control() {
-            "Branch names can't contain control characters.".into()
+            crate::i18n::tr("Branch names can't contain control characters.").into()
         } else {
-            format!("Branch names can't contain {c}")
+            trf!("Branch names can't contain {character}", character = c)
         });
     } else if name.contains("..") {
-        "Branch names can't contain two dots in a row."
+        crate::i18n::tr("Branch names can't contain two dots in a row.")
     } else if name.contains("@{") || name == "@" || name == "HEAD" {
-        "That name is reserved by Git."
+        crate::i18n::tr("That name is reserved by Git.")
     } else if name.starts_with('/') || name.ends_with('/') || name.contains("//") {
-        "Use single slashes between parts, not at the start or end."
+        crate::i18n::tr("Use single slashes between parts, not at the start or end.")
     } else if name.ends_with('.') {
-        "A branch name can't end with a dot."
+        crate::i18n::tr("A branch name can't end with a dot.")
     } else if name.split('/').any(|part| part.starts_with('.') || part.ends_with(".lock")) {
-        "No part of a branch name can start with a dot or end with .lock."
+        crate::i18n::tr("No part of a branch name can start with a dot or end with .lock.")
     } else {
         let others = branches
             .iter()
@@ -230,17 +227,17 @@ pub(crate) fn branch_name_problem(
             .filter(|n| old != Some(*n));
         for existing in others {
             if existing == name.as_bytes() {
-                return Some("A branch with this name already exists.".into());
+                return Some(crate::i18n::tr("A branch with this name already exists.").into());
             }
             let existing = display(existing);
             if existing.eq_ignore_ascii_case(name) {
-                return Some(format!(
-                    "Too close to {existing}: names that differ only in letter case clash on Windows."
+                return Some(trf!(
+                    "Too close to {existing}: names that differ only in letter case clash on Windows.", existing
                 ));
             }
             if existing.starts_with(&format!("{name}/")) || name.starts_with(&format!("{existing}/")) {
-                return Some(format!(
-                    "Clashes with {existing}: a name can't be both a branch and a folder of branches."
+                return Some(trf!(
+                    "Clashes with {existing}: a name can't be both a branch and a folder of branches.", existing
                 ));
             }
         }
@@ -276,7 +273,7 @@ pub(crate) fn branch_name_body(
         DialogKind::Rename(old) => Some(old.clone()),
         _ => None,
     };
-    label(ui, if old.is_some() { "New name" } else { "Name" });
+    label(ui, if old.is_some() { crate::i18n::tr("New name") } else { crate::i18n::tr("Name") });
     let r = line(ui, true, &mut dialog.first, "feature/my-change");
     control(widgets, "dialog-first", &r, ui.clip_rect());
     if r.changed() {
@@ -287,69 +284,69 @@ pub(crate) fn branch_name_body(
     if !name.is_empty() {
         match branch_name_problem(&name, branches(tab), old.as_deref()) {
             Some(problem) => check(ui, false, &problem),
-            None => check(ui, true, "Available"),
+            None => check(ui, true, crate::i18n::tr("Available")),
         }
     }
     ui.add_space(4.0);
     if let DialogKind::TrackBranch { upstream, .. } = &dialog.kind {
-        card(ui, "Starts at", |ui| {
+        card(ui, crate::i18n::tr("Starts at"), |ui| {
             match branches(tab).iter().find(|b| b.reference == *upstream) {
                 Some(b) => {
                     let commit = commit_in(tab, &b.target);
-                    pages::key_value(ui, "Commit", KEY, |ui| commit_ref(ui, &b.target, commit, ""));
+                    pages::key_value(ui, crate::i18n::tr("Commit"), KEY, |ui| commit_ref(ui, &b.target, commit, ""));
                     if let Some(c) = commit {
-                        pages::key_value(ui, "Made by", KEY, |ui| {
+                        pages::key_value(ui, crate::i18n::tr("Made by"), KEY, |ui| {
                             value_tail(ui, &display(&c.author.name), &format!(" · {}", age(c.author.timestamp)));
                         });
                     }
                 }
-                None => pages::note(ui, "This remote branch is gone. Fetch, then try again."),
+                None => pages::note(ui, crate::i18n::tr("This remote branch is gone. Fetch, then try again.")),
             }
-            pages::key_value(ui, "Tracks", KEY, |ui| value(ui, &short_ref(upstream)));
-            pages::key_value(ui, "Then", KEY, |ui| value(ui, "You switch to it"));
+            pages::key_value(ui, crate::i18n::tr("Tracks"), KEY, |ui| value(ui, &short_ref(upstream)));
+            pages::key_value(ui, crate::i18n::tr("Then"), KEY, |ui| value(ui, crate::i18n::tr("You switch to it")));
         });
         return;
     }
     match old {
-        None => card(ui, "Starts at", |ui| match snapshot(tab).and_then(|s| s.head.as_ref()) {
+        None => card(ui, crate::i18n::tr("Starts at"), |ui| match snapshot(tab).and_then(|s| s.head.as_ref()) {
             Some(Head::Branch { name, target }) => {
                 let commit = commit_in(tab, target);
-                pages::key_value(ui, "Commit", KEY, |ui| commit_ref(ui, target, commit, ""));
+                pages::key_value(ui, crate::i18n::tr("Commit"), KEY, |ui| commit_ref(ui, target, commit, ""));
                 if let Some(c) = commit {
-                    pages::key_value(ui, "Made by", KEY, |ui| {
+                    pages::key_value(ui, crate::i18n::tr("Made by"), KEY, |ui| {
                         value_tail(ui, &display(&c.author.name), &format!(" · {}", age(c.author.timestamp)));
                     });
                 }
-                pages::key_value(ui, "You stay on", KEY, |ui| value(ui, &display(name)));
+                pages::key_value(ui, crate::i18n::tr("You stay on"), KEY, |ui| value(ui, &display(name)));
             }
             Some(Head::Detached { target }) => {
-                pages::key_value(ui, "Commit", KEY, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Commit"), KEY, |ui| {
                     commit_ref(ui, target, commit_in(tab, target), "")
                 });
-                pages::key_value(ui, "You stay on", KEY, |ui| value(ui, "Detached HEAD"));
+                pages::key_value(ui, crate::i18n::tr("You stay on"), KEY, |ui| value(ui, crate::i18n::tr("Detached HEAD")));
             }
-            _ => pages::note(ui, "This repository has no commits yet."),
+            _ => pages::note(ui, crate::i18n::tr("This repository has no commits yet.")),
         }),
-        Some(old) => card(ui, "What changes", |ui| {
+        Some(old) => card(ui, crate::i18n::tr("What changes"), |ui| {
             let mut full = b"refs/heads/".to_vec();
             full.extend_from_slice(&old);
             let branch = branches(tab).iter().find(|b| b.reference == full);
             let valid = !name.is_empty()
                 && branch_name_problem(&name, branches(tab), Some(old.as_slice())).is_none();
-            pages::key_value(ui, "Branch", KEY, |ui| {
+            pages::key_value(ui, crate::i18n::tr("Branch"), KEY, |ui| {
                 value_tail(ui, &display(&old), &if valid { format!(" → {name}") } else { String::new() });
             });
             if let Some(b) = branch {
-                pages::key_value(ui, "Points to", KEY, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Points to"), KEY, |ui| {
                     commit_ref(ui, &b.target, commit_in(tab, &b.target), "")
                 });
-                pages::key_value(ui, "On a remote", KEY, |ui| match &b.upstream {
+                pages::key_value(ui, crate::i18n::tr("On a remote"), KEY, |ui| match &b.upstream {
                     Some(upstream) => value_tail(
                         ui,
                         &short_ref(upstream),
-                        " · keeps its name there",
+                        crate::i18n::tr(" · keeps its name there"),
                     ),
-                    None => value_tail(ui, "Not published", " · nothing changes there"),
+                    None => value_tail(ui, crate::i18n::tr("Not published"), crate::i18n::tr(" · nothing changes there")),
                 });
             }
         }),
@@ -372,14 +369,14 @@ pub(crate) fn delete_branches_body(
     let items = crate::batch::branch_items(branches(tab), &dialog.first);
     ui.horizontal(|ui| {
         let width = (ui.available_width() - 190.0).max(120.0);
-        let r = search_field(ui, &mut dialog.first, "Filter branches", width);
+        let r = search_field(ui, &mut dialog.first, crate::i18n::tr("Filter branches"), width);
         control(widgets, "dialog-branches-filter", &r, ui.clip_rect());
         let merged: Vec<Vec<u8>> = items
             .iter()
             .filter(|i| dialog.small.merge_of(&i.name).is_some_and(|s| s.merged))
             .map(|i| i.name.clone())
             .collect();
-        let r = pages::ghost(ui, !merged.is_empty(), "Select merged");
+        let r = pages::ghost(ui, !merged.is_empty(), crate::i18n::tr("Select merged"));
         control(widgets, "dialog-branches-merged", &r, ui.clip_rect());
         if r.clicked() {
             for name in merged {
@@ -390,14 +387,14 @@ pub(crate) fn delete_branches_body(
                 }
             }
         }
-        let r = pages::ghost(ui, !dialog.selected_branches.is_empty(), "Clear");
+        let r = pages::ghost(ui, !dialog.selected_branches.is_empty(), crate::i18n::tr("Clear"));
         control(widgets, "dialog-branches-none", &r, ui.clip_rect());
         if r.clicked() {
             dialog.selected_branches.clear();
         }
     });
     if all.is_empty() {
-        pages::empty(ui, "No other local branches to delete.");
+        pages::empty(ui, crate::i18n::tr("No other local branches to delete."));
     }
     let rows = ScrollArea::vertical()
         .id_salt("dialog-branches-list")
@@ -411,15 +408,15 @@ pub(crate) fn delete_branches_body(
                 let mut on = dialog.selected_branches.contains(&item.name);
                 let can = on || dialog.selected_branches.len() < MAX_BRANCH_BATCH;
                 let pill = match dialog.small.merge_of(&item.name) {
-                    Some(s) if s.merged => Some(("Merged".to_owned(), GREEN())),
+                    Some(s) if s.merged => Some((crate::i18n::tr("Merged").to_owned(), GREEN())),
                     Some(s) => Some((
                         match s.unmerged {
-                            Some(n) => format!("{} not merged", plural(n as usize, "commit", "commits")),
-                            None => "Not merged".into(),
+                            Some(n) => trn!(n, "{n} commit not merged", "{n} commits not merged"),
+                            None => crate::i18n::tr("Not merged").into(),
                         },
                         AMBER(),
                     )),
-                    None if dialog.small.merge_task.is_some() => Some(("Checking".into(), MUTED())),
+                    None if dialog.small.merge_task.is_some() => Some((crate::i18n::tr("Checking").into(), MUTED())),
                     None => None,
                 };
                 // An unmerged branch's tip is rarely in the loaded history; the merge
@@ -461,20 +458,20 @@ pub(crate) fn delete_branches_body(
         .map(|b| {
             let name = display(crate::batch::branch_name(b));
             match (&b.checked_out_at, b.is_head) {
-                (_, true) => format!("{name} (current)"),
-                (Some(path), false) => format!(
-                    "{name} (checked out in {})",
-                    path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
+                (_, true) => trf!("{name} (current)", name),
+                (Some(path), false) => trf!(
+                    "{name} (checked out in {folder})", name,
+                    folder = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
                 ),
                 (None, false) => name,
             }
         })
         .collect();
     if !held.is_empty() {
-        pages::note(ui, &format!("Not listed: {}.", join_and(&held)));
+        pages::note(ui, &trf!("Not listed: {branches}.", branches = join_and(&held)));
     }
     if let Some(error) = &dialog.small.merge_error {
-        pages::callout(ui, AMBER(), &format!("Couldn't check which branches are merged: {error}"));
+        pages::callout(ui, AMBER(), &trf!("Couldn't check which branches are merged: {error}", error));
     }
     if !dialog.selected_branches.is_empty() {
         let (color, text) = delete_outcome(dialog, tab);
@@ -487,7 +484,7 @@ fn join_and(items: &[String]) -> String {
     match items {
         [] => String::new(),
         [one] => one.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+        [rest @ .., last] => trf!("{items} and {last}", items = rest.join(", "), last),
     }
 }
 
@@ -498,49 +495,45 @@ fn delete_outcome(dialog: &Dialog, tab: Option<&Tab>) -> (Color32, String) {
     let states: Vec<Option<&BranchMergeState>> =
         selected.iter().map(|n| dialog.small.merge_of(n)).collect();
     if states.iter().any(Option::is_none) {
-        return (MUTED(), "Checking which of them are merged.".into());
+        return (MUTED(), crate::i18n::tr("Checking which of them are merged.").into());
     }
     let kept: Vec<&BranchMergeState> = states.iter().filter_map(|s| *s).filter(|s| !s.merged).collect();
     if kept.is_empty() {
-        let into = if states.iter().flatten().any(|s| s.upstream) {
-            String::new()
+        let text = if states.iter().flatten().any(|s| s.upstream) {
+            trn!(selected.len(),
+                "The selected branch is merged, so no commits are lost. Branches on remotes stay.",
+                "All {n} selected branches are merged, so no commits are lost. Branches on remotes stay.")
         } else {
-            format!(" into {}", current(tab))
+            trn!(selected.len(),
+                "The selected branch is merged into {branch}, so no commits are lost. Branches on remotes stay.",
+                "All {n} selected branches are merged into {branch}, so no commits are lost. Branches on remotes stay.", branch = current(tab))
         };
-        let subject = match selected.len() {
-            1 => "It is merged".to_owned(),
-            2 => "Both are merged".to_owned(),
-            n => format!("All {n} are merged"),
-        };
-        return (BLUE(), format!("{subject}{into}, so no commits are lost. Branches on remotes stay."));
+        return (BLUE(), text);
     }
     let deleted = selected.len() - kept.len();
     let first = match kept.as_slice() {
-        [one] => format!(
-            "{} has {} not merged into {}, so Git keeps it.",
-            display(&one.name),
-            match one.unmerged {
-                Some(n) => plural(n as usize, "commit", "commits"),
-                None => "commits".into(),
-            },
-            merge_base_name(one, tab)
-        ),
-        many => format!(
-            "{} of them have commits that aren't merged, so Git keeps them.",
-            many.len()
+        [one] => match one.unmerged {
+            Some(n) => trn!(n,
+                "{branch} has {n} commit not merged into {base}, so Git keeps it.",
+                "{branch} has {n} commits not merged into {base}, so Git keeps it.",
+                branch = display(&one.name), base = merge_base_name(one, tab)),
+            None => trf!("{branch} has commits not merged into {base}, so Git keeps it.",
+                branch = display(&one.name), base = merge_base_name(one, tab)),
+        },
+        many => trf!(
+            "{count} of them have commits that aren't merged, so Git keeps them.", count = many.len()
         ),
     };
     let rest = match deleted {
         0 => String::new(),
-        1 => " The other one is deleted.".into(),
-        n => format!(" The other {n} are deleted."),
+        n => trn!(n, " The other branch is deleted.", " The other {n} branches are deleted."),
     };
     (AMBER(), first + &rest)
 }
 
 /// What Git checks a branch against before deleting it.
 fn merge_base_name(state: &BranchMergeState, tab: Option<&Tab>) -> String {
-    if state.upstream { "its upstream".into() } else { current(tab) }
+    if state.upstream { crate::i18n::tr("its upstream").into() } else { current(tab) }
 }
 
 /// Delete branches' primary button and footer line.
@@ -552,13 +545,13 @@ pub(crate) fn delete_footer(dialog: &Dialog) -> (String, String) {
         .filter(|name| dialog.small.merge_of(name).is_some_and(|s| !s.merged))
         .count();
     let label = match n {
-        0 => "Delete branches".to_owned(),
-        n => format!("Delete {}", plural(n, "branch", "branches")),
+        0 => crate::i18n::tr("Delete branches").to_owned(),
+        n => trn!(n, "Delete {n} branch", "Delete {n} branches"),
     };
     let status = match (n, kept) {
-        (0, _) => "Choose branches to delete".to_owned(),
-        (n, 0) => format!("{n} selected"),
-        (n, k) => format!("{n} selected · {k} will be kept"),
+        (0, _) => crate::i18n::tr("Choose branches to delete").to_owned(),
+        (n, 0) => trf!("{count} selected", count = n),
+        (n, k) => trf!("{selected} selected · {kept} will be kept", selected = n, kept = k),
     };
     (label, status)
 }
@@ -639,7 +632,7 @@ fn remote_taken(name: &str, tab: Option<&Tab>) -> Option<String> {
         .remotes
         .iter()
         .find(|r| r.name == name.as_bytes())
-        .map(|_| "A remote with this name already exists.".to_owned())
+        .map(|_| crate::i18n::tr("A remote with this name already exists.").to_owned())
 }
 
 /// Add remote: its name, then the address with Test connection beside it.
@@ -650,22 +643,23 @@ pub(crate) fn add_remote_body(
     backend: Option<&Backend>,
     widgets: &mut HashMap<String, UiControl>,
 ) {
-    label(ui, "Name");
+    label(ui, crate::i18n::tr("Name"));
     let r = line(ui, true, &mut dialog.first, "upstream");
     control(widgets, "dialog-remote-name", &r, ui.clip_rect());
     if let Some(problem) = remote_taken(&dialog.first, tab) {
         check(ui, false, &problem);
     }
     ui.add_space(2.0);
-    label(ui, "URL or folder path");
+    label(ui, crate::i18n::tr("URL or folder path"));
     address_row(ui, dialog, tab, backend, widgets, "https://example.com/owner/repository.git");
     let name = dialog.first.trim();
     pages::note(
         ui,
-        &format!(
-            "Adding changes only this repository's settings. Fetch from {} afterwards to see its branches.",
-            if name.is_empty() { "it" } else { name }
-        ),
+        &if name.is_empty() {
+            tr("Adding changes only this repository's settings. Fetch afterwards to see its branches.").to_owned()
+        } else {
+            trf!("Adding changes only this repository's settings. Fetch from {remote} afterwards to see its branches.", remote = name)
+        },
     );
 }
 
@@ -713,8 +707,8 @@ pub(crate) fn edit_remote_body(
     };
     let (remote, direction) = (remote.clone(), *direction);
     let push = direction == RemoteUrlKind::Push;
-    label(ui, "Which address");
-    let items = [("Fetch URL", !push), ("Push URL", push)];
+    label(ui, crate::i18n::tr("Which address"));
+    let items = [(crate::i18n::tr("Fetch URL"), !push), (crate::i18n::tr("Push URL"), push)];
     let mut switch = None;
     ui.horizontal(|ui| {
         for (r, (kind, id)) in pages::segments(ui, &items)
@@ -737,15 +731,15 @@ pub(crate) fn edit_remote_body(
         return;
     }
     let now = if push {
-        remote.push_urls.first().map_or_else(|| "Same as the fetch URL".into(), |u| display(u))
+        remote.push_urls.first().map_or_else(|| crate::i18n::tr("Same as the fetch URL").into(), |u| display(u))
     } else {
-        remote.urls.first().map_or_else(|| "Not set".into(), |u| display(u))
+        remote.urls.first().map_or_else(|| crate::i18n::tr("Not set").into(), |u| display(u))
     };
-    pages::key_value(ui, "Now", KEY, |ui| {
+    pages::key_value(ui, crate::i18n::tr("Now"), KEY, |ui| {
         ui.add(Label::new(RichText::new(now).monospace().size(12.5).color(MUTED())).truncate());
     });
     if push {
-        let r = ui.add(checkbox(&mut dialog.flag, "Push to the fetch URL"));
+        let r = ui.add(checkbox(&mut dialog.flag, crate::i18n::tr("Push to the fetch URL")));
         control(widgets, "dialog-remote-fallback", &r, ui.clip_rect());
         if r.changed() {
             dialog.connection = None;
@@ -753,12 +747,12 @@ pub(crate) fn edit_remote_body(
     }
     if !(push && dialog.flag) {
         ui.add_space(2.0);
-        label(ui, if push { "New push URL" } else { "New fetch URL" });
+        label(ui, if push { crate::i18n::tr("New push URL") } else { crate::i18n::tr("New fetch URL") });
         address_row(ui, dialog, tab, backend, widgets, "https://example.com/owner/repository.git");
     } else {
         crate::remote_check::inline_status(ui, &dialog.connection);
     }
-    pages::note(ui, "Saving changes only this repository's settings. Nothing is sent to the server.");
+    pages::note(ui, crate::i18n::tr("Saving changes only this repository's settings. Nothing is sent to the server."));
 }
 
 /// Edit remote URL: the form still says what the remote has, so saving changes nothing.
@@ -796,7 +790,7 @@ fn remote_picker(ui: &mut Ui, id: &str, dialog: &mut Dialog, tab: Option<&Tab>, 
             dialog
                 .remotes
                 .get(dialog.remote)
-                .map_or_else(|| "No remotes".into(), |r| remote_label(r, tab)),
+                .map_or_else(|| crate::i18n::tr("No remotes").into(), |r| remote_label(r, tab)),
         )
         .show_ui(ui, |ui| {
             // Modal and popup share a layer order; keep the list above the dialog.
@@ -816,18 +810,18 @@ pub(crate) fn fetch_body(
     widgets: &mut HashMap<String, UiControl>,
 ) {
     if dialog.remotes.is_empty() {
-        no_remotes(ui, dialog, widgets, "Fetch needs a remote to download from.");
+        no_remotes(ui, dialog, widgets, crate::i18n::tr("Fetch needs a remote to download from."));
         return;
     }
-    label(ui, "From");
+    label(ui, crate::i18n::tr("From"));
     let width = ui.available_width();
     remote_picker(ui, "remote-picker", dialog, tab, width);
     ui.add_space(4.0);
-    label(ui, "Tags");
+    label(ui, crate::i18n::tr("Tags"));
     let choices = [
-        ("none", FetchTags::None, "No tags", "Commits only"),
-        ("default", FetchTags::RemoteDefault, "Usual tags", "Tags on fetched commits"),
-        ("all", FetchTags::All, "All tags", "Never replaces yours"),
+        ("none", FetchTags::None, crate::i18n::tr("No tags"), crate::i18n::tr("Commits only")),
+        ("default", FetchTags::RemoteDefault, crate::i18n::tr("Usual tags"), crate::i18n::tr("Tags on fetched commits")),
+        ("all", FetchTags::All, crate::i18n::tr("All tags"), crate::i18n::tr("Never replaces yours")),
     ];
     let cards: Vec<_> = choices
         .iter()
@@ -843,8 +837,8 @@ pub(crate) fn fetch_body(
     pages::callout(
         ui,
         BLUE(),
-        &format!(
-            "Downloads new commits from {remote} and updates the {remote}/… branches. Your branches and files don't change."
+        &trf!(
+            "Downloads new commits from {remote} and updates the {remote}/… branches. Your branches and files don't change.", remote
         ),
     );
 }
@@ -853,10 +847,10 @@ pub(crate) fn fetch_body(
 fn no_remotes(ui: &mut Ui, dialog: &mut Dialog, widgets: &mut HashMap<String, UiControl>, why: &str) {
     ui.add_space(6.0);
     ui.vertical_centered(|ui| {
-        ui.label(RichText::new("No remotes yet").font(semibold(14.0)));
+        ui.label(RichText::new(crate::i18n::tr("No remotes yet")).font(semibold(14.0)));
         ui.label(RichText::new(why).color(MUTED()));
         ui.add_space(4.0);
-        let r = ui.button("Add remote");
+        let r = ui.button(crate::i18n::tr("Add remote"));
         control(widgets, "dialog-add-remote", &r, ui.clip_rect());
         if r.clicked() {
             dialog.small.open = Some(DialogKind::AddRemote);
@@ -874,7 +868,7 @@ pub(crate) fn push_body(
     widgets: &mut HashMap<String, UiControl>,
 ) {
     if dialog.remotes.is_empty() {
-        no_remotes(ui, dialog, widgets, "Push needs a remote to send your commits to.");
+        no_remotes(ui, dialog, widgets, crate::i18n::tr("Push needs a remote to send your commits to."));
         return;
     }
     let remote = dialog.remotes.get(dialog.remote).cloned().unwrap_or_default();
@@ -886,7 +880,7 @@ pub(crate) fn push_body(
         ui.spacing_mut().item_spacing.x = 0.0;
         ui.vertical(|ui| {
             ui.set_width(half);
-            label(ui, "From");
+            label(ui, crate::i18n::tr("From"));
             let (rect, _) = ui.allocate_exact_size(vec2(half, 30.0), Sense::hover());
             ui.painter().rect(rect, 6.0, PANEL(), Stroke::new(1.0, CARD_STROKE()), StrokeKind::Inside);
             icon(
@@ -912,7 +906,7 @@ pub(crate) fn push_body(
         );
         ui.vertical(|ui| {
             ui.set_width(half);
-            label(ui, &format!("To branch on {remote_name}"));
+            label(ui, &trf!("To branch on {remote}", remote = remote_name));
             let r = ui.add_sized(
                 vec2(half, 30.0),
                 TextEdit::singleline(&mut dialog.second)
@@ -937,7 +931,7 @@ pub(crate) fn push_body(
     let mut upstream_note = None;
     ui.horizontal(|ui| {
         if dialog.remotes.len() > 1 {
-            label(ui, "Remote");
+            label(ui, crate::i18n::tr("Remote"));
             if remote_picker(ui, "remote-picker", dialog, tab, 140.0) {
                 dialog.small.outlook = None;
             }
@@ -946,7 +940,7 @@ pub(crate) fn push_body(
             ui,
             widgets,
             "push-destination-choice",
-            &format!("Branches on {remote_name}"),
+            &trf!("Branches on {remote}", remote = remote_name),
             &names,
             !names.is_empty(),
         ) {
@@ -961,9 +955,9 @@ pub(crate) fn push_body(
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             if tracks {
                 dialog.flag = false;
-                upstream_note = Some(format!("Already tracks {remote_name}/{}", dialog.second.trim()));
+                upstream_note = Some(trf!("Already tracks {remote}/{branch}", remote = remote_name, branch = dialog.second.trim()));
             } else {
-                let r = ui.add(checkbox(&mut dialog.flag, "Track it here (set upstream)"));
+                let r = ui.add(checkbox(&mut dialog.flag, crate::i18n::tr("Track it here (set upstream)")));
                 control(widgets, "push-upstream", &r, ui.clip_rect());
             }
             if let Some(note) = &upstream_note {
@@ -978,10 +972,10 @@ pub(crate) fn push_body(
     let destination = dialog.second.trim().to_owned();
     let mut lease = false;
     let mut pull = false;
-    card(ui, "What will be pushed", |ui| match dialog.small.outlook_for(&target) {
-        None if destination.is_empty() => pages::note(ui, "Enter the branch to push to."),
-        None => pages::busy_line(ui, &format!("Checking what {remote_name} has")),
-        Some(Err(error)) => pages::callout(ui, AMBER(), &format!("Couldn't compare with {remote_name}: {error}")),
+    card(ui, crate::i18n::tr("What will be pushed"), |ui| match dialog.small.outlook_for(&target) {
+        None if destination.is_empty() => pages::note(ui, crate::i18n::tr("Enter the branch to push to.")),
+        None => pages::busy_line(ui, &trf!("Checking what {remote} has", remote = remote_name)),
+        Some(Err(error)) => pages::callout(ui, AMBER(), &trf!("Couldn't compare with {remote}: {error}", remote = remote_name, error)),
         Some(Ok(outlook)) => {
             for c in outlook.commits.iter().take(LISTED) {
                 ui.horizontal(|ui| {
@@ -995,16 +989,16 @@ pub(crate) fn push_body(
             }
             let more = outlook.ahead as usize - outlook.commits.len().min(LISTED);
             if more > 0 {
-                pages::note(ui, &format!("and {} more", plural(more, "commit", "commits")));
+                pages::note(ui, &trn!(more, "and {n} more commit", "and {n} more commits"));
             }
             let (color, text) = push_outcome(outlook, &remote_name, &destination);
             pages::callout(ui, color, &text);
             if outlook.behind > 0 {
                 ui.horizontal(|ui| {
-                    let r = ui.button("Pull first");
+                    let r = ui.button(crate::i18n::tr("Pull first"));
                     control(widgets, "push-pull-first", &r, ui.clip_rect());
                     pull = r.clicked();
-                    let r = pages::ghost(ui, true, "Review force push with lease");
+                    let r = pages::ghost(ui, true, crate::i18n::tr("Review force push with lease"));
                     control(widgets, "push-lease-open", &r, ui.clip_rect());
                     lease = r.clicked();
                 });
@@ -1019,7 +1013,7 @@ pub(crate) fn push_body(
         let r = pages::ghost(
             ui,
             !dialog.branch.is_empty() && !destination.is_empty(),
-            "Force push with lease",
+            crate::i18n::tr("Force push with lease"),
         );
         control(widgets, "push-lease-open", &r, ui.clip_rect());
         lease |= r.clicked();
@@ -1035,22 +1029,25 @@ pub(crate) fn push_body(
 
 /// What the push will do, from the outlook.
 fn push_outcome(outlook: &PushOutlook, remote: &str, destination: &str) -> (Color32, String) {
-    let commits = plural(outlook.ahead as usize, "commit", "commits");
     if outlook.behind > 0 {
         return (
             AMBER(),
-            format!(
-                "As of your last fetch, {remote} has {} you don't have. This push will be refused until you pull them.",
-                plural(outlook.behind as usize, "commit", "commits")
+            trn!(outlook.behind,
+                "As of your last fetch, {remote} has {n} commit you don't have. This push will be refused until you pull it.",
+                "As of your last fetch, {remote} has {n} commits you don't have. This push will be refused until you pull them.", remote
             ),
         );
     }
     match (&outlook.tracked, outlook.ahead) {
-        (None, _) => (BLUE(), format!("Creates {destination} on {remote} with {commits}.")),
-        (Some(_), 0) => (BLUE(), format!("{remote}/{destination} already has everything. Nothing to push.")),
+        (None, _) => (BLUE(), trn!(outlook.ahead,
+            "Creates {destination} on {remote} with {n} commit.",
+            "Creates {destination} on {remote} with {n} commits.", destination, remote)),
+        (Some(_), 0) => (BLUE(), trf!("{remote}/{destination} already has everything. Nothing to push.", remote, destination)),
         (Some(_), _) => (
             BLUE(),
-            format!("{remote}/{destination} moves forward {commits}. Nothing else changes on {remote}."),
+            trn!(outlook.ahead,
+                "{remote}/{destination} moves forward {n} commit. Nothing else changes on {remote}.",
+                "{remote}/{destination} moves forward {n} commits. Nothing else changes on {remote}.", remote, destination),
         ),
     }
 }
@@ -1064,11 +1061,11 @@ fn push_status(dialog: &Dialog) -> String {
         dialog.second.trim().to_owned(),
     );
     match dialog.small.outlook_for(&target) {
-        Some(Ok(o)) if o.behind > 0 => "Likely to be refused · pull first".into(),
-        Some(Ok(o)) if o.ahead == 0 && o.tracked.is_some() => "Nothing to push".into(),
-        Some(Ok(o)) => format!("{} to {remote}", plural(o.ahead as usize, "commit", "commits")),
-        _ if dialog.second.trim().is_empty() => "Enter the branch to push to".into(),
-        _ => format!("To {remote}"),
+        Some(Ok(o)) if o.behind > 0 => crate::i18n::tr("Likely to be refused · pull first").into(),
+        Some(Ok(o)) if o.ahead == 0 && o.tracked.is_some() => crate::i18n::tr("Nothing to push").into(),
+        Some(Ok(o)) => trn!(o.ahead, "{n} commit to {remote}", "{n} commits to {remote}", remote),
+        _ if dialog.second.trim().is_empty() => crate::i18n::tr("Enter the branch to push to").into(),
+        _ => trf!("To {remote}", remote),
     }
 }
 
@@ -1106,21 +1103,21 @@ pub(crate) fn stash_body(
     tab: Option<&Tab>,
     widgets: &mut HashMap<String, UiControl>,
 ) {
-    label(ui, "Message · optional");
-    let r = line(ui, true, &mut dialog.first, "What you were working on");
+    label(ui, crate::i18n::tr("Message · optional"));
+    let r = line(ui, true, &mut dialog.first, crate::i18n::tr("What you were working on"));
     control(widgets, "dialog-stash-message", &r, ui.clip_rect());
     let Some(status) = snapshot(tab).and_then(|s| s.status.as_ref()) else {
-        pages::waiting(ui, "Reading changes");
+        pages::waiting(ui, crate::i18n::tr("Reading changes"));
         return;
     };
     let (tracked, new) = stash_counts(&status.entries);
     if tracked + new == 0 {
-        pages::callout(ui, MUTED(), "Nothing to save: the working folder has no changes.");
+        pages::callout(ui, MUTED(), crate::i18n::tr("Nothing to save: the working folder has no changes."));
         return;
     }
     ui.horizontal(|ui| {
         let selected = dialog.stash_paths.is_some();
-        let items = [("All changes", !selected), ("Selected files", selected)];
+        let items = [(crate::i18n::tr("All changes"), !selected), (crate::i18n::tr("Selected files"), selected)];
         for (r, (only, id)) in pages::segments(ui, &items)
             .iter()
             .zip([(false, "dialog-stash-all-changes"), (true, "dialog-stash-selected")])
@@ -1131,7 +1128,7 @@ pub(crate) fn stash_body(
             }
         }
         ui.add_space(8.0);
-        let r = ui.add_enabled(new > 0, checkbox(&mut dialog.flag, format!("Include new files ({new})")));
+        let r = ui.add_enabled(new > 0, checkbox(&mut dialog.flag, trf!("Include new files ({count})", count = new)));
         control(widgets, "dialog-stash-untracked", &r, ui.clip_rect());
     });
     if let Some(selected) = dialog.stash_paths.as_mut() {
@@ -1139,7 +1136,7 @@ pub(crate) fn stash_body(
         return;
     }
     let saved = tracked + if dialog.flag { new } else { 0 };
-    card(ui, &format!("What will be saved · {}", plural(saved, "file", "files")), |ui| {
+    card(ui, &trn!(saved, "What will be saved · {n} file", "What will be saved · {n} files"), |ui| {
         let files: Vec<&StatusEntry> = status
             .entries
             .iter()
@@ -1159,11 +1156,11 @@ pub(crate) fn stash_body(
                     None => (String::new(), path.into_owned()),
                 };
                 let note = if stays {
-                    "stays in the folder"
+                    crate::i18n::tr("stays in the folder")
                 } else if entry.kind == EntryKind::Untracked {
-                    "new file"
+                    crate::i18n::tr("new file")
                 } else if entry.staged() {
-                    "staged"
+                    crate::i18n::tr("staged")
                 } else {
                     ""
                 };
@@ -1182,10 +1179,10 @@ pub(crate) fn stash_body(
             });
         }
         if files.len() > shown {
-            pages::note(ui, &format!("and {} more", plural(files.len() - shown, "file", "files")));
+            pages::note(ui, &trn!(files.len() - shown, "and {n} more file", "and {n} more files"));
         }
     });
-    pages::note(ui, "Your working folder becomes clean. Apply the stash later from Stashes.");
+    pages::note(ui, crate::i18n::tr("Your working folder becomes clean. Apply the stash later from Stashes."));
 }
 
 /// Save stash's footer line.
@@ -1195,14 +1192,13 @@ fn stash_status(dialog: &Dialog, tab: Option<&Tab>) -> String {
     };
     let (tracked, new) = stash_counts(&status.entries);
     if tracked + new == 0 {
-        return "Nothing to save".into();
+        return crate::i18n::tr("Nothing to save").into();
     }
     match &dialog.stash_paths {
-        Some(paths) => format!("{} selected · staged files always go", plural(paths.len(), "file", "files")),
-        None => format!(
-            "{} · working folder becomes clean",
-            plural(tracked + if dialog.flag { new } else { 0 }, "file", "files")
-        ),
+        Some(paths) => trn!(paths.len(),
+            "{n} file selected · staged files always go", "{n} files selected · staged files always go"),
+        None => trn!(tracked + if dialog.flag { new } else { 0 },
+            "{n} file · working folder becomes clean", "{n} files · working folder becomes clean"),
     }
 }
 
@@ -1224,10 +1220,10 @@ fn identity_problem(value: &str, email: bool) -> Option<&'static str> {
         return None;
     }
     if value.trim() != value {
-        return Some("Remove spaces at the start or end.");
+        return Some(crate::i18n::tr("Remove spaces at the start or end."));
     }
     if value.chars().any(|c| c.is_control() || "<>".contains(c)) {
-        return Some("Leave out < and > and control characters.");
+        return Some(crate::i18n::tr("Leave out < and > and control characters."));
     }
     if email
         && (value.chars().any(char::is_whitespace)
@@ -1235,7 +1231,7 @@ fn identity_problem(value: &str, email: bool) -> Option<&'static str> {
                 .split_once('@')
                 .is_some_and(|(a, b)| !a.is_empty() && !b.is_empty() && !b.contains('@')))
     {
-        return Some("Enter an email such as name@example.com.");
+        return Some(crate::i18n::tr("Enter an email such as name@example.com."));
     }
     None
 }
@@ -1251,7 +1247,7 @@ pub(crate) fn identity_body(
         return;
     };
     for (email, key) in [(false, "dialog-identity-name"), (true, "dialog-identity-email")] {
-        label(ui, if email { "Email" } else { "Name" });
+        label(ui, if email { crate::i18n::tr("Email") } else { crate::i18n::tr("Name") });
         let inherited = if email { &identity.inherited.email } else { &identity.inherited.name };
         let text = if email { &mut dialog.second } else { &mut dialog.first };
         let r = line(ui, true, text, inherited.as_deref().unwrap_or(""));
@@ -1264,9 +1260,9 @@ pub(crate) fn identity_body(
             Some(problem) => check(ui, false, problem),
             None => pages::note(
                 ui,
-                &format!(
-                    "Everywhere else: {} · leave empty to use that",
-                    inherited.as_deref().unwrap_or("not set")
+                &trf!(
+                    "Everywhere else: {inherited} · leave empty to use that",
+                    inherited = inherited.as_deref().unwrap_or(tr("not set"))
                 ),
             ),
         }
@@ -1274,7 +1270,7 @@ pub(crate) fn identity_body(
     }
     let name = Some(dialog.first.trim()).filter(|n| !n.is_empty()).or(identity.inherited.name.as_deref());
     let email = Some(dialog.second.trim()).filter(|e| !e.is_empty()).or(identity.inherited.email.as_deref());
-    card(ui, "Your commits here will show", |ui| match (name, email) {
+    card(ui, crate::i18n::tr("Your commits here will show"), |ui| match (name, email) {
         (Some(name), Some(email)) => {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 10.0;
@@ -1294,7 +1290,7 @@ pub(crate) fn identity_body(
                 ui.label(job);
             });
         }
-        _ => pages::callout(ui, AMBER(), "Git needs a name and an email before you can commit here."),
+        _ => pages::callout(ui, AMBER(), crate::i18n::tr("Git needs a name and an email before you can commit here.")),
     });
     if (identity.local.name.is_some() && identity.local.name != identity.effective.name)
         || (identity.local.email.is_some() && identity.local.email != identity.effective.email)
@@ -1302,7 +1298,7 @@ pub(crate) fn identity_body(
         pages::callout(
             ui,
             AMBER(),
-            "Another configuration overrides a local value. Review worktree/include settings with Git.",
+            crate::i18n::tr("Another configuration overrides a local value. Review worktree/include settings with Git."),
         );
     }
 }
@@ -1332,48 +1328,44 @@ pub(crate) fn confirm_body(
             full.extend_from_slice(&name);
             let branch = branches(tab).iter().find(|b| b.reference == full);
             let state = dialog.small.merge_of(&name);
-            card(ui, "Branch", |ui| {
+            card(ui, crate::i18n::tr("Branch"), |ui| {
                 if let Some(b) = branch {
                     let tip = commit_in(tab, &b.target)
                         .or_else(|| state.map(|s| &s.tip).filter(|c| c.id == b.target));
-                    pages::key_value(ui, "Points to", KEY, |ui| commit_ref(ui, &b.target, tip, ""));
+                    pages::key_value(ui, crate::i18n::tr("Points to"), KEY, |ui| commit_ref(ui, &b.target, tip, ""));
                 }
-                pages::key_value(ui, "Merged", KEY, |ui| match state {
+                pages::key_value(ui, crate::i18n::tr("Merged"), KEY, |ui| match state {
                     Some(s) if s.merged => value_tail(
                         ui,
-                        "Yes",
-                        &if s.upstream { " · into its upstream".into() } else { format!(" · into {}", current(tab)) },
+                        crate::i18n::tr("Yes"),
+                        &if s.upstream { tr(" · into its upstream").into() } else { trf!(" · into {branch}", branch = current(tab)) },
                     ),
                     Some(s) => value_tail(
                         ui,
-                        "No",
+                        crate::i18n::tr("No"),
                         &match s.unmerged {
-                            Some(n) => format!(
-                                " · {} not in {}",
-                                plural(n as usize, "commit", "commits"),
-                                merge_base_name(s, tab)
-                            ),
+                            Some(n) => trn!(n, " · {n} commit not in {branch}", " · {n} commits not in {branch}", branch = merge_base_name(s, tab)),
                             None => String::new(),
                         },
                     ),
-                    None => value_tail(ui, "Checking", ""),
+                    None => value_tail(ui, crate::i18n::tr("Checking"), ""),
                 });
                 if let Some(b) = branch {
-                    pages::key_value(ui, "On a remote", KEY, |ui| match &b.upstream {
-                        Some(upstream) => value_tail(ui, &short_ref(upstream), " · stays there"),
-                        None => value(ui, "Not published"),
+                    pages::key_value(ui, crate::i18n::tr("On a remote"), KEY, |ui| match &b.upstream {
+                        Some(upstream) => value_tail(ui, &short_ref(upstream), crate::i18n::tr(" · stays there")),
+                        None => value(ui, crate::i18n::tr("Not published")),
                     });
                 }
             });
             let (color, text) = match state {
                 Some(s) if s.merged => {
-                    (BLUE(), format!("No commits are lost: they are all in {}.", merge_base_name(s, tab)))
+                    (BLUE(), trf!("No commits are lost: they are all in {branch}.", branch = merge_base_name(s, tab)))
                 }
                 Some(s) => (
                     AMBER(),
-                    format!("It has commits that aren't in {}, so Git keeps it.", merge_base_name(s, tab)),
+                    trf!("It has commits that aren't in {branch}, so Git keeps it.", branch = merge_base_name(s, tab)),
                 ),
-                None => (MUTED(), "Checking whether it is merged.".to_owned()),
+                None => (MUTED(), crate::i18n::tr("Checking whether it is merged.").to_owned()),
             };
             pages::callout(ui, color, &text);
         }
@@ -1390,11 +1382,11 @@ pub(crate) fn confirm_body(
                 .filter(|b| b.upstream.as_ref().is_some_and(|u| u.starts_with(&prefix)))
                 .map(|b| display(crate::batch::branch_name(b)))
                 .collect();
-            card(ui, "What goes with it", |ui| {
-                pages::key_value(ui, "Address", KEY, |ui| {
-                    value(ui, &remote.urls.first().map_or_else(|| "Not set".into(), |u| display(u)));
+            card(ui, crate::i18n::tr("What goes with it"), |ui| {
+                pages::key_value(ui, crate::i18n::tr("Address"), KEY, |ui| {
+                    value(ui, &remote.urls.first().map_or_else(|| crate::i18n::tr("Not set").into(), |u| display(u)));
                 });
-                pages::key_value(ui, "Remote branches", KEY, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Remote branches"), KEY, |ui| {
                     let names = tracking.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
                     let more = tracking.len().saturating_sub(3);
                     value_tail(
@@ -1403,42 +1395,42 @@ pub(crate) fn confirm_body(
                         &if names.is_empty() {
                             String::new()
                         } else if more > 0 {
-                            format!(" · {names} and {more} more")
+                            trf!(" · {names} and {more} more", names, more)
                         } else {
                             format!(" · {names}")
                         },
                     );
                 });
-                pages::key_value(ui, "Tracked by", KEY, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Tracked by"), KEY, |ui| {
                     if tracked_by.is_empty() {
-                        value(ui, "No local branches");
+                        value(ui, crate::i18n::tr("No local branches"));
                     } else {
-                        value_tail(ui, &join_and(&tracked_by), " · they stop tracking it");
+                        value_tail(ui, &join_and(&tracked_by), crate::i18n::tr(" · they stop tracking it"));
                     }
                 });
             });
-            pages::callout(ui, BLUE(), "Only this repository's settings change. Nothing is deleted on the server.");
+            pages::callout(ui, BLUE(), crate::i18n::tr("Only this repository's settings change. Nothing is deleted on the server."));
         }
         Action::DropStash(entry) | Action::ApplyStash { entry, .. } => {
             let drop = matches!(action, Action::DropStash(_));
             let files = stash_files(tab, &entry);
             let title = match &files {
-                Some(files) => format!("What it holds · {}", plural(files.len(), "file", "files")),
-                None => "What it holds".into(),
+                Some(files) => trn!(files.len(), "What it holds · {n} file", "What it holds · {n} files"),
+                None => crate::i18n::tr("What it holds").into(),
             };
             card(ui, &title, |ui| {
-                pages::key_value(ui, "Message", KEY, |ui| value(ui, &display(&entry.subject)));
+                pages::key_value(ui, crate::i18n::tr("Message"), KEY, |ui| value(ui, &display(&entry.subject)));
                 if let Some(files) = &files {
                     for (i, (name, added, removed)) in files.iter().take(6).enumerate() {
-                        pages::key_value(ui, if i == 0 { "Files" } else { "" }, KEY, |ui| {
+                        pages::key_value(ui, if i == 0 { crate::i18n::tr("Files") } else { "" }, KEY, |ui| {
                             value_tail(ui, name, &format!(" · +{added} −{removed}"));
                         });
                     }
                     if files.len() > 6 {
-                        pages::key_value(ui, "", KEY, |ui| value_tail(ui, "", &format!("and {} more", files.len() - 6)));
+                        pages::key_value(ui, "", KEY, |ui| value_tail(ui, "", &trf!("and {count} more", count = files.len() - 6)));
                     }
                 }
-                pages::key_value(ui, "Stash commit", KEY, |ui| {
+                pages::key_value(ui, crate::i18n::tr("Stash commit"), KEY, |ui| {
                     ui.label(RichText::new(&entry.id.as_str()[..7]).monospace().size(12.5));
                 });
             });
@@ -1446,10 +1438,10 @@ pub(crate) fn confirm_body(
                 pages::callout(
                     ui,
                     AMBER(),
-                    "It leaves the Stashes list. Until Git cleans up, you can still find it under Reflog & recovery › Lost commits.",
+                    crate::i18n::tr("It leaves the Stashes list. Until Git cleans up, you can still find it under Reflog & recovery › Lost commits."),
                 );
             } else {
-                let r = ui.add(checkbox(&mut dialog.flag, "Restore the saved index (staging split)"));
+                let r = ui.add(checkbox(&mut dialog.flag, crate::i18n::tr("Restore the saved index (staging split)")));
                 control(widgets, "dialog-stash-index", &r, ui.clip_rect());
             }
         }
@@ -1476,22 +1468,22 @@ pub(crate) fn close_body(ui: &mut Ui, tab: Option<&Tab>) {
     let changed = snapshot(Some(tab))
         .and_then(|s| s.status.as_ref())
         .map_or(0, |s| s.entries.iter().filter(|e| e.kind != EntryKind::Ignored).count());
-    card(ui, "Kept for next time", |ui| {
+    card(ui, crate::i18n::tr("Kept for next time"), |ui| {
         if !draft.is_empty() {
-            pages::key_value(ui, "Message draft", KEY, |ui| value(ui, draft));
+            pages::key_value(ui, crate::i18n::tr("Message draft"), KEY, |ui| value(ui, draft));
         }
-        pages::key_value(ui, "Changed files", KEY, |ui| {
+        pages::key_value(ui, crate::i18n::tr("Changed files"), KEY, |ui| {
             if changed == 0 {
-                value(ui, "None");
+                value(ui, crate::i18n::tr("None"));
             } else {
-                value_tail(ui, &changed.to_string(), " · they stay in the folder");
+                value_tail(ui, &changed.to_string(), crate::i18n::tr(" · they stay in the folder"));
             }
         });
     });
     if tab.conflict.dirty {
-        pages::callout(ui, AMBER(), "Unsaved conflict-editor text will be discarded.");
+        pages::callout(ui, AMBER(), crate::i18n::tr("Unsaved conflict-editor text will be discarded."));
     }
-    pages::callout(ui, BLUE(), "Reopen it from File › Open recent.");
+    pages::callout(ui, BLUE(), crate::i18n::tr("Reopen it from File › Open recent."));
 }
 
 /// Exit: what is running and what is kept, one row each.
@@ -1518,25 +1510,25 @@ impl Rocket {
     pub(crate) fn quit_rows(&self) -> Vec<(Color32, Icon, String)> {
         let mut rows = Vec::new();
         if let Some(write) = &self.write {
-            rows.push((AMBER(), Icon::Stop, format!("{} is still running. Exiting stops it first.", write.title)));
+            rows.push((AMBER(), Icon::Stop, trf!("{operation} is still running. Exiting stops it first.", operation = write.title)));
         }
         if let Some(batch) = &self.manager.status.batch {
-            rows.push((AMBER(), Icon::Stop, format!("{} is still running. Exiting stops it first.", batch.kind.title())));
+            rows.push((AMBER(), Icon::Stop, trf!("{operation} is still running. Exiting stops it first.", operation = tr(batch.kind.title()))));
         }
         if self.external.running() {
-            rows.push((AMBER(), Icon::External, "The running external tool will be stopped.".into()));
+            rows.push((AMBER(), Icon::External, crate::i18n::tr("The running external tool will be stopped.").into()));
         }
         if self.tabs.iter().any(|t| t.conflict.dirty) {
-            rows.push((AMBER(), Icon::Warning, "Unsaved conflict-editor text will be discarded.".into()));
+            rows.push((AMBER(), Icon::Warning, crate::i18n::tr("Unsaved conflict-editor text will be discarded.").into()));
         }
         if self.forge.pull.has_draft() {
-            rows.push((AMBER(), Icon::Warning, "Unsent pull request review text and inline comments will be saved locally before closing. They are not submitted; save failures keep this window open.".into()));
+            rows.push((AMBER(), Icon::Warning, crate::i18n::tr("Unsent pull request review text and inline comments will be saved locally before closing. They are not submitted; save failures keep this window open.").into()));
         }
         match &self.state_error {
             Some(error) => rows.push((
                 RED(),
                 Icon::Warning,
-                format!("{error} Exiting now loses unsaved drafts."),
+                trf!("{error} Exiting now loses unsaved drafts.", error),
             )),
             None => {
                 let drafts = self.tabs.iter().filter(|t| !t.draft.trim().is_empty()).count();
@@ -1544,9 +1536,10 @@ impl Rocket {
                     BLUE(),
                     Icon::Check,
                     match drafts {
-                        0 => "Your open repositories are remembered for next time.".into(),
-                        1 => "The message draft in 1 repository and your open repositories are saved.".into(),
-                        n => format!("Message drafts in {n} repositories and your open repositories are saved."),
+                        0 => crate::i18n::tr("Your open repositories are remembered for next time.").into(),
+                        n => trn!(n,
+                            "The message draft in {n} repository and your open repositories are saved.",
+                            "Message drafts in {n} repositories and your open repositories are saved."),
                     },
                 ));
             }
@@ -1561,7 +1554,7 @@ pub(crate) fn status(dialog: &Dialog, tab: Option<&Tab>) -> String {
         DialogKind::NewBranch => {
             let name = dialog.first.trim();
             if name.is_empty() {
-                "Name the branch".into()
+                crate::i18n::tr("Name the branch").into()
             } else if branch_name_ready(dialog, tab) {
                 let at = snapshot(tab)
                     .and_then(|s| s.head.as_ref())
@@ -1569,71 +1562,72 @@ pub(crate) fn status(dialog: &Dialog, tab: Option<&Tab>) -> String {
                         Head::Branch { target, .. } | Head::Detached { target } => Some(target.as_str()[..7].to_owned()),
                         Head::Unborn { .. } => None,
                     })
-                    .map(|sha| format!(" at {sha}"))
-                    .unwrap_or_default();
-                format!("Creates {name}{at}")
+                    ;
+                match at {
+                    Some(sha) => trf!("Creates {name} at {sha}", name, sha),
+                    None => trf!("Creates {name}", name),
+                }
             } else {
-                "Choose another name".into()
+                crate::i18n::tr("Choose another name").into()
             }
         }
         DialogKind::TrackBranch { upstream, .. } if !branches(tab).iter().any(|b| b.reference == *upstream) => {
             // As the card says; the name may be fine.
-            "The remote branch is gone".into()
+            crate::i18n::tr("The remote branch is gone").into()
         }
         DialogKind::TrackBranch { .. } => {
             let name = dialog.first.trim();
             if name.is_empty() {
-                "Name the branch".into()
+                crate::i18n::tr("Name the branch").into()
             } else if branch_name_ready(dialog, tab) {
                 // The card above names the upstream; with it, a long name cut this line.
-                format!("Creates {name} and switches to it")
+                trf!("Creates {name} and switches to it", name)
             } else {
-                "Choose another name".into()
+                crate::i18n::tr("Choose another name").into()
             }
         }
         DialogKind::Rename(_) => {
             if branch_name_ready(dialog, tab) {
-                "Renames the local branch only".into()
+                crate::i18n::tr("Renames the local branch only").into()
             } else {
-                "Choose another name".into()
+                crate::i18n::tr("Choose another name").into()
             }
         }
         DialogKind::DeleteBranches => delete_footer(dialog).1,
         DialogKind::AddRemote => {
             let name = dialog.first.trim();
             if name.is_empty() {
-                "Name the remote".into()
+                crate::i18n::tr("Name the remote").into()
             } else if dialog.connection.as_ref().is_some_and(|t| matches!(t.result, Some(Err(_)))) {
-                "You can still add it; fetching fails until the address works".into()
+                crate::i18n::tr("You can still add it; fetching fails until the address works").into()
             } else {
-                format!("Adds {name}")
+                trf!("Adds {name}", name)
             }
         }
-        DialogKind::EditRemote(..) if edit_remote_unchanged(dialog) => "No changes yet".into(),
+        DialogKind::EditRemote(..) if edit_remote_unchanged(dialog) => crate::i18n::tr("No changes yet").into(),
         DialogKind::EditRemote(remote, kind) => {
             if dialog.connection.as_ref().is_some_and(|t| matches!(t.result, Some(Err(_)))) {
-                "You can still save it; fetching fails until the address works".into()
+                crate::i18n::tr("You can still save it; fetching fails until the address works").into()
             } else {
-                format!(
-                    "Changes {}'s {} URL",
-                    display(&remote.name),
-                    if *kind == RemoteUrlKind::Push { "push" } else { "fetch" }
-                )
+                if *kind == RemoteUrlKind::Push {
+                    trf!("Changes {remote}'s push URL", remote = display(&remote.name))
+                } else {
+                    trf!("Changes {remote}'s fetch URL", remote = display(&remote.name))
+                }
             }
         }
-        DialogKind::Fetch if dialog.remotes.is_empty() => "Add a remote first".into(),
-        DialogKind::Fetch => format!(
-            "From {}",
-            dialog.remotes.get(dialog.remote).map(|r| display(r)).unwrap_or_default()
+        DialogKind::Fetch if dialog.remotes.is_empty() => crate::i18n::tr("Add a remote first").into(),
+        DialogKind::Fetch => trf!(
+            "From {remote}", remote = dialog.remotes.get(dialog.remote).map(|r| display(r)).unwrap_or_default()
         ),
-        DialogKind::Push if dialog.remotes.is_empty() => "Add a remote first".into(),
+        DialogKind::Push if dialog.remotes.is_empty() => crate::i18n::tr("Add a remote first").into(),
         DialogKind::Push => push_status(dialog),
         DialogKind::Stash => stash_status(dialog, tab),
-        DialogKind::RepositorySettings => "Saved to .git/config".into(),
-        DialogKind::Confirm(Action::DropStash(_), _) => "Can't be undone from Stashes".into(),
-        DialogKind::Confirm(Action::DeleteBranch(_), _) => "Deletes 1 local branch".into(),
-        DialogKind::Confirm(Action::RemoveRemote(remote), _) => format!("Removes {}", display(&remote.name)),
-        DialogKind::CloseTab(_) => "Nothing is lost".into(),
+        DialogKind::RepositorySettings => crate::i18n::tr("Saved to .git/config").into(),
+        DialogKind::Confirm(Action::DropStash(_), _) => crate::i18n::tr("Can't be undone from Stashes").into(),
+        DialogKind::Confirm(Action::DeleteBranch(_), _) => crate::i18n::tr("Deletes 1 local branch").into(),
+        DialogKind::Confirm(Action::RemoveRemote(remote), _) => trf!("Removes {remote}", remote = display(&remote.name)),
+        DialogKind::CloseTab(_) => crate::i18n::tr("Nothing is lost").into(),
         _ => String::new(),
     }
 }

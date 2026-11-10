@@ -9,6 +9,7 @@ use crate::{
     style::*,
 };
 use eframe::egui::*;
+use crate::i18n::{tr, trf, trn};
 use rocket_git::*;
 use std::{
     collections::{HashMap, HashSet},
@@ -150,7 +151,7 @@ pub struct FileGroup {
     /// None for the files at the top of the repository.
     pub folder: Option<usize>,
     pub files: usize,
-    /// The line under the count: the files' names when there are a few.
+    /// Raw file names when there are a few; the counted folder caption is drawn live.
     pub about: String,
     /// Where the card sits at 100% zoom.
     pub at: Pos2,
@@ -184,7 +185,7 @@ impl MapPage {
     fn finish(&mut self, result: Result<RepositoryMap>) {
         self.task = None;
         if self.cancelling || matches!(result, Err(Error::Cancelled)) {
-            self.notice = Some("Map read stopped. Previous results retained.".into());
+            self.notice = Some(tr("Map read stopped. Previous results retained.").into());
         } else {
             match result {
                 Ok(data) => {
@@ -256,7 +257,7 @@ impl MapPage {
         if let Some(t) = &self.task {
             t.cancel();
             self.cancelling = true;
-            self.notice = Some("Stopping map read…".into());
+            self.notice = Some(tr("Stopping map read…").into());
         }
     }
     fn load(
@@ -379,7 +380,7 @@ fn label(bytes: &[u8]) -> String {
     crate::tree::path_label(bytes)
 }
 fn map_error(e: &Error) -> String {
-    match e {Error::Git{..}=>"Could not read the map's local Git objects. Check the revision and object availability, then refresh. Previous results retained.".into(),_=>user_error(e)}
+    match e {Error::Git{..}=>tr("Could not read the map's local Git objects. Check the revision and object availability, then refresh. Previous results retained.").into(),_=>user_error(e)}
 }
 impl Rocket {
     pub(crate) fn map_intent(&mut self, intent: MapIntent) {
@@ -636,26 +637,26 @@ fn short(id: &ObjectId) -> &str {
 /// What the header says about the snapshot on screen.
 fn snapshot_line(s: &MapPage, kind: MapKind) -> String {
     let what = if s.all_branches && kind != MapKind::Code {
-        "all branches".to_owned()
+        crate::i18n::tr("all branches").to_owned()
     } else {
         s.revision.clone()
     };
     if s.running() {
         return if s.cancelling {
-            "Stopping".into()
+            crate::i18n::tr("Stopping").into()
         } else {
-            format!("Reading {what}")
+            trf!("Reading {what}", what = what)
         };
     }
     let Some(d) = &s.data else {
-        return "How the code, history and people in this repository connect".into();
+        return tr("How the code, history and people in this repository connect").into();
     };
-    let mut line = format!("Snapshot of {what}");
+    let mut line = trf!("Snapshot of {what}", what = what);
     if let Some(tip) = &d.tip {
         line.push_str(&format!(" · {}", short(tip)));
     }
     if kind != MapKind::Code {
-        line.push_str(&format!(" · {} commits", pages::number_text(d.scanned)));
+        line.push_str(&format!(" · {}", trn!(d.scanned, "{n} commit", "{n} commits")));
     }
     line
 }
@@ -688,7 +689,7 @@ pub(crate) fn view(
         pages::header_with(
             ui,
             |painter, tile| icon(painter, tile.shrink(11.), Icon::Map, BLUE()),
-            "Repository map",
+            crate::i18n::tr("Repository map"),
             &line,
             |ui| header_actions(ui, s, kind, compact, intents, widgets),
         );
@@ -714,7 +715,7 @@ fn header_actions(
     ui.spacing_mut().item_spacing.x = 8.0;
     let ready = s.data.is_some() && !s.visible.is_empty() && !s.running();
     let r = crate::chrome::icon_button(ui, Icon::External, ready, false, 28.)
-        .on_hover_text("Export as Mermaid");
+        .on_hover_text(tr("Export as Mermaid"));
     register(ui, widgets, "map-export", &r);
     if r.clicked() {
         emit(intents, MapIntent::Export);
@@ -724,18 +725,18 @@ fn header_actions(
             ui,
             widgets,
             "map-cancel",
-            if s.cancelling { "Stopping" } else { "Stop" },
+            if s.cancelling { crate::i18n::tr("Stopping") } else { crate::i18n::tr("Stop") },
             !s.cancelling,
         ) {
             emit(intents, MapIntent::Cancel);
         }
-    } else if button(ui, widgets, "map-load", "Refresh", !s.revision.trim().is_empty()) {
+    } else if button(ui, widgets, "map-load", crate::i18n::tr("Refresh"), !s.revision.trim().is_empty()) {
         emit(intents, MapIntent::Load);
     }
     let items = [
-        ("Code", kind == MapKind::Code, "map-view-code"),
-        ("History", kind == MapKind::History, "map-view-history"),
-        ("People", kind == MapKind::People, "map-view-people"),
+        (crate::i18n::tr("Code"), kind == MapKind::Code, "map-view-code"),
+        (crate::i18n::tr("History"), kind == MapKind::History, "map-view-history"),
+        (tr("People"), kind == MapKind::People, "map-view-people"),
     ];
     if let Some(i) = segments(ui, widgets, &items) {
         let next = [MapKind::Code, MapKind::History, MapKind::People][i];
@@ -794,7 +795,7 @@ fn toolbar(
                             ui,
                             widgets,
                             "map-collapse-all",
-                            if s.collapsed.is_empty() { "Collapse all" } else { "Expand all" },
+                            if s.collapsed.is_empty() { tr("Collapse all") } else { tr("Expand all") },
                             s.data.is_some(),
                         )
                     {
@@ -853,14 +854,14 @@ fn revision_picker(
     let r = ui
         .scope_builder(UiBuilder::new().id(control_id), |ui| ui.add_sized([width, CONTROL], Button::new("")))
         .inner
-        .on_hover_text("The commit, branch or tag to map");
+        .on_hover_text(tr("The commit, branch or tag to map"));
     let rect = r.rect;
     let painter = ui.painter();
     icon(painter, Rect::from_center_size(pos2(rect.left() + 16., rect.center().y), vec2(14., 14.)), Icon::Branch, MUTED());
     icon(painter, Rect::from_center_size(pos2(rect.right() - 14., rect.center().y), vec2(12., 12.)), Icon::Chevron, FAINT());
     let empty = s.revision.trim().is_empty();
     let text = painter.layout_no_wrap(
-        if empty { "Revision".to_owned() } else { s.revision.trim().to_owned() },
+        if empty { tr("Revision").to_owned() } else { s.revision.trim().to_owned() },
         FontId::proportional(12.5),
         if empty { FAINT() } else { TEXT() },
     );
@@ -880,7 +881,7 @@ fn revision_picker(
                 TextEdit::singleline(&mut s.revision)
                     .id_salt("map-revision")
                     .char_limit(4096)
-                    .hint_text("Commit, branch or tag")
+                    .hint_text(crate::i18n::tr("Commit, branch or tag"))
                     .desired_width(f32::INFINITY),
             );
             register(ui, widgets, "map-revision", &field);
@@ -888,7 +889,7 @@ fn revision_picker(
                 emit(intents, MapIntent::Load);
                 ui.close();
             }
-            let checked_out = branches.iter().find(|(_, head)| *head).map_or("detached", |(name, _)| name.as_str());
+            let checked_out = branches.iter().find(|(_, head)| *head).map_or(crate::i18n::tr("detached"), |(name, _)| name.as_str());
             let mut chosen = None;
             let row = |ui: &mut Ui, name: &str, detail: &str, on: bool| {
                 let r = ui.add(Button::selectable(on, "").min_size(vec2(ui.available_width(), 28.)));
@@ -902,10 +903,10 @@ fn revision_picker(
                 chosen = Some("HEAD".to_owned());
             }
             if !branches.is_empty() {
-                ui.label(RichText::new("BRANCHES").size(11.).color(FAINT()));
+                ui.label(RichText::new(crate::i18n::tr("BRANCHES")).size(11.).color(FAINT()));
                 ScrollArea::vertical().id_salt("map-revision-branches").max_height(260.).show(ui, |ui| {
                     for (i, (name, head)) in branches.iter().take(200).enumerate() {
-                        let r = row(ui, name, if *head { "checked out" } else { "" }, s.revision.trim() == name);
+                        let r = row(ui, name, if *head { crate::i18n::tr("checked out") } else { "" }, s.revision.trim() == name);
                         register(ui, widgets, &format!("map-revision-branch-{i}"), &r);
                         if r.clicked() {
                             chosen = Some(name.clone());
@@ -913,7 +914,7 @@ fn revision_picker(
                     }
                 });
             }
-            ui.label(RichText::new("Enter maps what you type.").size(12.).color(FAINT()));
+            ui.label(RichText::new(tr("Enter maps what you type.")).size(12.).color(FAINT()));
             if let Some(name) = chosen {
                 s.revision = name;
                 emit(intents, MapIntent::Load);
@@ -932,9 +933,9 @@ fn controls(
     widgets: &mut HashMap<String, UiControl>,
 ) {
     let hint = match kind {
-        MapKind::Code => "Find a package, folder or file",
-        MapKind::History => "Find a commit, author or branch",
-        MapKind::People => "Find a person or folder",
+        MapKind::Code => tr("Find a package, folder or file"),
+        MapKind::History => tr("Find a commit, author or branch"),
+        MapKind::People => tr("Find a person or folder"),
     };
     let search = if compact { 190. } else { 260. };
     room(ui, search);
@@ -942,7 +943,7 @@ fn controls(
     register(ui, widgets, "map-search", &r);
     if !s.query.is_empty() {
         room(ui, 26.);
-        let r = crate::chrome::icon_button(ui, Icon::Close, true, false, 26.).on_hover_text("Clear search");
+        let r = crate::chrome::icon_button(ui, Icon::Close, true, false, 26.).on_hover_text(crate::i18n::tr("Clear search"));
         register(ui, widgets, "map-clear", &r);
         if r.clicked() {
             s.query.clear();
@@ -961,8 +962,8 @@ fn controls(
                     .count()
             });
             if crates > 0 {
-                let a = format!("Packages {crates}");
-                let b = format!("Folders {folders}");
+                let a = trf!("Packages {count}", count = crates);
+                let b = trf!("Folders {count}", count = folders);
                 if let Some(i) = segments(ui, widgets, &[(&a, s.alternate, "map-mode-packages"), (&b, !s.alternate, "map-mode-folders")]) {
                     let alternate = i == 0;
                     if alternate != s.alternate {
@@ -977,7 +978,7 @@ fn controls(
             if let Some(i) = segments(
                 ui,
                 widgets,
-                &[("Branches & merges", s.condensed, "map-mode-topology"), ("Every commit", !s.condensed, "map-mode-commits")],
+                &[(tr("Branches & merges"), s.condensed, "map-mode-topology"), (tr("Every commit"), !s.condensed, "map-mode-commits")],
             ) {
                 s.condensed = i == 0;
                 s.alternate = false;
@@ -989,7 +990,7 @@ fn controls(
             if let Some(i) = segments(
                 ui,
                 widgets,
-                &[("Who works where", !s.alternate, "map-mode-grid"), ("Shared files", s.alternate, "map-mode-shared")],
+                &[(tr("Who works where"), !s.alternate, "map-mode-grid"), (tr("Shared files"), s.alternate, "map-mode-shared")],
             ) {
                 let alternate = i == 1;
                 if alternate != s.alternate {
@@ -999,9 +1000,9 @@ fn controls(
                 }
             }
             let periods = [
-                ("All time", Period::All, "map-period-all"),
-                ("90 days", Period::Days90, "map-period-90"),
-                ("30 days", Period::Days30, "map-period-30"),
+                (tr("All time"), Period::All, "map-period-all"),
+                (crate::i18n::tr("90 days"), Period::Days90, "map-period-90"),
+                (crate::i18n::tr("30 days"), Period::Days30, "map-period-30"),
             ];
             let items: Vec<_> = periods.iter().map(|(t, p, id)| (*t, s.period == *p, *id)).collect();
             if let Some(i) = segments(ui, widgets, &items)
@@ -1018,15 +1019,15 @@ fn controls(
         (MapKind::Code, _, _) | (MapKind::People, true, _) | (MapKind::History, _, false)
     );
     if graph {
-        room(ui, text_width(ui, "Connected only") + 22.);
+        room(ui, text_width(ui, tr("Connected only")) + 22.);
         let on = s.neighbor_anchor.is_some();
         let enabled = s.selected.is_some();
         let r = ui
             .add_enabled_ui(enabled || on, |ui| {
-                crate::activity_history::chip(ui, "Connected only", None, on, CONTROL)
+                crate::activity_history::chip(ui, tr("Connected only"), None, on, CONTROL)
             })
             .inner
-            .on_hover_text("Show the selection and what it connects to");
+            .on_hover_text(tr("Show the selection and what it connects to"));
         register(ui, widgets, "map-neighbors", &r);
         if r.clicked() {
             s.neighbors();
@@ -1043,15 +1044,15 @@ fn scope_chips(
     intents: &mut Vec<Intent>,
     widgets: &mut HashMap<String, UiControl>,
 ) {
-    if chip(ui, widgets, "map-all-branches", "All branches", s.all_branches) {
+    if chip(ui, widgets, "map-all-branches", crate::i18n::tr("All branches"), s.all_branches) {
         s.all_branches = !s.all_branches;
         emit(intents, MapIntent::Load);
     }
     // The chips name the last part of a path and the start of a commit ID; the
     // scope row shows them whole.
     let path = match s.path_scope.rsplit(['/', '\\']).find(|p| !p.is_empty()) {
-        Some(name) => format!("Path: {name}"),
-        None => "Path: any".to_owned(),
+        Some(name) => trf!("Path: {name}", name = name),
+        None => tr("Path: any").to_owned(),
     };
     if chip(ui, widgets, "map-scope", &path, !s.path_scope.is_empty()) {
         s.show_scope = !s.show_scope;
@@ -1060,9 +1061,9 @@ fn scope_chips(
         return;
     }
     let base = match s.base.trim() {
-        "" => "Leave out: none".to_owned(),
-        b if b.len() > 16 && b.bytes().all(|c| c.is_ascii_hexdigit()) => format!("Leave out: {}", &b[..12]),
-        b => format!("Leave out: {b}"),
+        "" => tr("Leave out: none").to_owned(),
+        b if b.len() > 16 && b.bytes().all(|c| c.is_ascii_hexdigit()) => trf!("Leave out: {reference}", reference = &b[..12]),
+        b => trf!("Leave out: {reference}", reference = b),
     };
     if chip(ui, widgets, "map-scope-base", &base, !s.base.is_empty()) {
         s.show_scope = !s.show_scope;
@@ -1091,33 +1092,33 @@ fn strips(
             ui.spacing_mut().item_spacing.y = 8.;
             if s.show_scope && kind != MapKind::Code {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("Path").color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("Path")).color(HINT()));
                     let r = ui.add(
                         TextEdit::singleline(&mut s.path_scope)
                             .id_salt("map-path-scope")
                             .char_limit(4096)
                             .desired_width(220.)
-                            .hint_text("Literal file or folder path"),
+                            .hint_text(tr("Literal file or folder path")),
                     );
                     register(ui, widgets, "map-path-scope", &r);
-                    ui.label(RichText::new("Leave out").color(HINT()));
+                    ui.label(RichText::new(tr("Leave out")).color(HINT()));
                     let r = ui.add(
                         TextEdit::singleline(&mut s.base)
                             .id_salt("map-base")
                             .char_limit(4096)
                             .desired_width(170.)
-                            .hint_text("Commit or branch"),
+                            .hint_text(tr("Commit or branch")),
                     );
-                    let r = r.on_hover_text("Leave out commits this commit or branch already has");
+                    let r = r.on_hover_text(tr("Leave out commits this commit or branch already has"));
                     register(ui, widgets, "map-base", &r);
-                    if button(ui, widgets, "map-apply-scope", "Apply", !s.revision.is_empty()) {
+                    if button(ui, widgets, "map-apply-scope", crate::i18n::tr("Apply"), !s.revision.is_empty()) {
                         emit(intents, MapIntent::Load);
                     }
                 });
                 ui.add_space(2.);
             }
             if let Some(error) = s.error.clone() {
-                if let Some(r) = pages::notice_strip(ui, RED(), &error, Some("Retry")) {
+                if let Some(r) = pages::notice_strip(ui, RED(), &error, Some(crate::i18n::tr("Retry"))) {
                     register(ui, widgets, "map-retry", &r);
                     if r.clicked() {
                         emit(intents, MapIntent::Load);
@@ -1127,7 +1128,7 @@ fn strips(
                 pages::notice_strip(ui, HINT(), &notice, None);
             } else if s.stale
                 && !s.running()
-                && let Some(r) = pages::notice_strip(ui, BLUE(), "The repository changed since this map was read", Some("Refresh"))
+                && let Some(r) = pages::notice_strip(ui, BLUE(), tr("The repository changed since this map was read"), Some(crate::i18n::tr("Refresh")))
             {
                 register(ui, widgets, "map-refresh-stale", &r);
                 if r.clicked() {
@@ -1138,8 +1139,8 @@ fn strips(
                 && kind != MapKind::Code
                 && d.has_more
             {
-                let text = format!("Showing the newest {} commits", pages::number_text(d.scanned));
-                let r = pages::notice_strip(ui, AMBER(), &text, Some("Load older"));
+                let text = trn!(d.scanned, "Showing the newest {n} commit", "Showing the newest {n} commits");
+                let r = pages::notice_strip(ui, AMBER(), &text, Some(crate::i18n::tr("Load older")));
                 if let Some(r) = r {
                     let enabled = s.can_more();
                     register(ui, widgets, "map-more", &r);
@@ -1148,21 +1149,21 @@ fn strips(
                     }
                 }
             } else if s.data.as_ref().is_some_and(|d| d.limited) {
-                pages::notice_strip(ui, AMBER(), "This map is partial. Narrow the scope to see the rest.", None);
+                pages::notice_strip(ui, AMBER(), tr("This map is partial. Narrow the scope to see the rest."), None);
             }
             // Branches & merges folds runs of commits and lists them all.
             if s.view_total > DISPLAY_NODES && !(kind == MapKind::History && s.condensed) {
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new(format!(
-                            "Nodes {}–{} of {}",
-                            s.display_offset + 1,
-                            (s.display_offset + DISPLAY_NODES).min(s.view_total),
-                            s.view_total
+                        RichText::new(trf!(
+                            "Nodes {start}–{end} of {total}",
+                            start = s.display_offset + 1,
+                            end = (s.display_offset + DISPLAY_NODES).min(s.view_total),
+                            total = s.view_total
                         ))
                         .color(HINT()),
                     );
-                    if button(ui, widgets, "map-previous-nodes", "Previous", s.display_offset > 0) {
+                    if button(ui, widgets, "map-previous-nodes", crate::i18n::tr("Previous"), s.display_offset > 0) {
                         s.display_offset = s.display_offset.saturating_sub(DISPLAY_NODES);
                         s.filter_key = None;
                     }
@@ -1170,7 +1171,7 @@ fn strips(
                         ui,
                         widgets,
                         "map-next-nodes",
-                        "Next",
+                        crate::i18n::tr("Next"),
                         s.display_offset + DISPLAY_NODES < s.view_total,
                     ) {
                         s.display_offset += DISPLAY_NODES;
@@ -1224,7 +1225,7 @@ fn body(
         let mut card = ui.new_child(UiBuilder::new().max_rect(content).layout(Layout::top_down(Align::Center)));
         if downloading {
             let revision = s.revision.trim();
-            let title = format!("Downloading the files of {}", revision.strip_prefix("refs/heads/").unwrap_or(revision));
+            let title = trf!("Downloading the files of {revision}", revision = revision.strip_prefix("refs/heads/").unwrap_or(revision));
             if let Some(true) = crate::preview_tab::downloading(&mut card, preview, &title, "map-download-stop", widgets) {
                 emit(intents, MapIntent::Cancel);
             }

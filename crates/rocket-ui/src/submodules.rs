@@ -113,18 +113,18 @@ impl Rocket {
                     .selected
                     .clone()
                     .map(SubmoduleAction::Remove)
-                    .ok_or_else(|| Error::InvalidInput("Select a submodule to remove".into())),
-                ManagementMode::Deinitialize=>s.selected.clone().map(SubmoduleAction::Deinitialize).ok_or_else(||Error::InvalidInput("Select a submodule to deinitialize".into())),
+                    .ok_or_else(|| Error::InvalidInput(crate::i18n::tr("Select a submodule to remove").into())),
+                ManagementMode::Deinitialize=>s.selected.clone().map(SubmoduleAction::Deinitialize).ok_or_else(||Error::InvalidInput(crate::i18n::tr("Select a submodule to deinitialize").into())),
                 ManagementMode::Sync => s
                     .selected
                     .clone()
                     .map(SubmoduleAction::Sync)
-                    .ok_or_else(|| Error::InvalidInput("Select a submodule to sync".into())),
+                    .ok_or_else(|| Error::InvalidInput(crate::i18n::tr("Select a submodule to sync").into())),
                 ManagementMode::SetUrl => s.selected.clone()
                     .map(|path| SubmoduleAction::SetUrl { path, source: s.source.clone() })
-                    .ok_or_else(|| Error::InvalidInput("Select a submodule to edit".into())),
+                    .ok_or_else(|| Error::InvalidInput(crate::i18n::tr("Select a submodule to edit").into())),
                 ManagementMode::Move => s.selected.clone()
-                    .ok_or_else(|| Error::InvalidInput("Select a submodule to move".into()))
+                    .ok_or_else(|| Error::InvalidInput(crate::i18n::tr("Select a submodule to move").into()))
                     .and_then(|path| Ok(SubmoduleAction::Move { path, destination: RepoPath::new(s.new_path.as_bytes().to_vec())? })),
                 _ => unreachable!(),
             };
@@ -255,20 +255,20 @@ impl Rocket {
             pages::header(
                 ui,
                 Icon::Modules,
-                "Submodules",
-                &format!(
-                    "{} recorded checkouts · parent staging is never changed by browsing",
-                    s.entries.len()
+                crate::i18n::tr("Submodules"),
+                &crate::i18n::trf!(
+                    "Recorded checkouts: {count} · parent staging is never changed by browsing",
+                    count = s.entries.len()
                 ),
                 |ui| {
                     let r = pages::ghost(
                         ui,
                         !s.applying,
-                        if s.running() { "Cancel read" } else { "Close" },
+                        if s.running() { crate::i18n::tr("Cancel read") } else { crate::i18n::tr("Close") },
                     );
                     control(widgets, "dialog-cancel", &r, ui.clip_rect());
                     f.dismiss = r.clicked();
-                    let r = pages::primary(ui, !waiting && writable, "Add submodule");
+                    let r = pages::primary(ui, !waiting && writable, crate::i18n::tr("Add submodule"));
                     control(widgets, "dialog-submodule-add", &r, ui.clip_rect());
                     if r.clicked() {
                         s.mode = ManagementMode::Add;
@@ -278,12 +278,12 @@ impl Rocket {
                         s.notice = None;
                         d.error = None;
                     }
-                    let r = ui.add_enabled(!waiting, Button::new("Refresh"));
+                    let r = ui.add_enabled(!waiting, Button::new(crate::i18n::tr("Refresh")));
                     control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                     f.refresh |= r.clicked();
                 },
             );
-            pages::toolbar(ui,|ui|{let r=ui.checkbox(post_switch,"Review submodules after branch switching (this session)");control(widgets,"dialog-submodule-after-switch",&r,ui.clip_rect());});
+            pages::toolbar(ui,|ui|{let r=ui.checkbox(post_switch,crate::i18n::tr("Review submodules after branch switching (this session)"));control(widgets,"dialog-submodule-after-switch",&r,ui.clip_rect());});
             let line = ui
                 .allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover())
                 .0;
@@ -314,16 +314,16 @@ impl Rocket {
                             if s.entries.is_empty() && !waiting && d.error.is_none() {
                                 pages::empty(
                                     ui,
-                                    "No submodules recorded in this repository index.",
+                                    crate::i18n::tr("No submodules recorded in this repository index."),
                                 );
                             }
                             if s.entries.is_empty() && waiting {
-                                pages::loading(ui, "Reading submodules…");
+                                pages::loading(ui, crate::i18n::tr("Reading submodules…"));
                             }
                             for (i, e) in s.entries.iter().enumerate() {
                                 let title = e.path.display_lossy().to_string();
-                                let detail = format!("recorded {}", &e.target.as_str()[..8]);
-                                let state = e.state().to_string();
+                                let detail = crate::i18n::trf!("recorded {commit}", commit = &e.target.as_str()[..8]);
+                                let state = state_label(e).to_string();
                                 let color = if e.blocked.is_some() || e.dirty {
                                     pages::WARN()
                                 } else if e.initialized {
@@ -374,7 +374,7 @@ impl Rocket {
                     let Some(e) = s.selected_entry().cloned() else {
                         pages::empty(
                             ui,
-                            "Select a submodule to see its source, recorded commit and checkout.",
+                            crate::i18n::tr("Select a submodule to see its source, recorded commit and checkout."),
                         );
                         return;
                     };
@@ -385,9 +385,9 @@ impl Rocket {
                             ui,
                             !waiting && writable,
                             if e.initialized {
-                                "Review update"
+                                crate::i18n::tr("Review update")
                             } else {
-                                "Review initialization"
+                                crate::i18n::tr("Review initialization")
                             },
                         );
                         control(widgets, "dialog-submodule-review", &r, ui.clip_rect());
@@ -397,29 +397,29 @@ impl Rocket {
                             f.refresh = true;
                         }
                         let r = ui
-                            .add_enabled(!waiting && e.initialized, Button::new("Open repository"));
+                            .add_enabled(!waiting && e.initialized, Button::new(crate::i18n::tr("Open repository")));
                         control(widgets, "dialog-submodule-open", &r, ui.clip_rect());
                         f.opening = r.clicked();
                     });
                     ui.horizontal_wrapped(|ui| {
-                        let r = ui.add_enabled(!waiting && writable, Button::new("Edit URL"));
+                        let r = ui.add_enabled(!waiting && writable, Button::new(crate::i18n::tr("Edit URL")));
                         control(widgets, "dialog-submodule-edit-url", &r, ui.clip_rect());
                         if r.clicked() { f.mode = Some(ManagementMode::SetUrl); }
-                        let r = ui.add_enabled(!waiting && writable, Button::new("Sync URL"));
+                        let r = ui.add_enabled(!waiting && writable, Button::new(crate::i18n::tr("Sync URL")));
                         control(widgets, "dialog-submodule-sync", &r, ui.clip_rect());
                         if r.clicked() {
                             f.mode = Some(ManagementMode::Sync);
                         }
-                        let r = pages::danger_ghost(ui, !waiting && writable, "Remove");
+                        let r = pages::danger_ghost(ui, !waiting && writable, crate::i18n::tr("Remove"));
                         // Deinitialization is a separate reviewed operation; it retains the gitlink.
                         control(widgets, "dialog-submodule-remove", &r, ui.clip_rect());
                         if r.clicked() {
                             f.mode = Some(ManagementMode::Remove);
                         }
-                        let r=ui.add_enabled(!waiting&&writable&&e.initialized,Button::new("Deinitialize"));
+                        let r=ui.add_enabled(!waiting&&writable&&e.initialized,Button::new(crate::i18n::tr("Deinitialize")));
                         control(widgets,"dialog-submodule-deinitialize",&r,ui.clip_rect());
                         if r.clicked(){f.mode=Some(ManagementMode::Deinitialize);}
-                        let r = ui.add_enabled(!waiting && writable, Button::new("Move / rename…"));
+                        let r = ui.add_enabled(!waiting && writable, Button::new(crate::i18n::tr("Move / rename…")));
                         control(widgets, "dialog-submodule-move", &r, ui.clip_rect());
                         if r.clicked() { f.mode = Some(ManagementMode::Move); }
                     });
@@ -503,7 +503,7 @@ impl Rocket {
                         module_card(ui, e);
                     }
                     if mode == ManagementMode::SetUrl
-                        && source_input(ui, s, widgets, "New URL or local repository", &mut browse)
+                        && source_input(ui, s, widgets, crate::i18n::tr("New URL or local repository"), &mut browse)
                     {
                         s.action_task = None;
                         s.action_preview = None;
@@ -513,17 +513,17 @@ impl Rocket {
                         checkout_review(ui, p);
                     }
                     if mode == ManagementMode::Move {
-                        field_name(ui, "New path in the parent repository");
+                        field_name(ui, crate::i18n::tr("New path in the parent repository"));
                         let r = ui.add_enabled(!waiting, TextEdit::singleline(&mut s.new_path).desired_width(ui.available_width()).hint_text("components/library"));
                         control(widgets, "dialog-submodule-path", &r, ui.clip_rect());
                         if r.changed() { s.action_preview = None; d.error = None; }
-                        pages::note(ui, "Choose an unused path with an existing parent folder. The checkout and nested submodules must be clean. Module names, URLs and history are kept.");
+                        pages::note(ui, crate::i18n::tr("Choose an unused path with an existing parent folder. The checkout and nested submodules must be clean. Module names, URLs and history are kept."));
                     }
                     if let Some(p) = &s.action_preview {
                         action_review(ui, p, entry.as_ref());
                     }
                     if remove_open {
-                        banner(ui, AMBER(), "Close this submodule's repository tabs before moving or removing it.", None);
+                        banner(ui, AMBER(), crate::i18n::tr("Close this submodule's repository tabs before moving or removing it."), None);
                     }
                     if let Some(error) = &d.error {
                         let (code, message) = split_error(error);
@@ -536,17 +536,17 @@ impl Rocket {
                 pages::Part::Footer => {
                     let reviewed = s.preview.is_some() || s.action_preview.is_some();
                     let label = match mode {
-                        ManagementMode::Add => "Add submodule",
-                        ManagementMode::Remove => "Remove submodule",
-                        ManagementMode::Deinitialize => "Deinitialize",
-                        ManagementMode::Sync => "Sync URL",
-                        ManagementMode::SetUrl => "Update URL and sync",
-                        ManagementMode::Move => "Move submodule",
-                        _ => s.preview.as_ref().map_or("Apply checkout", |p| {
+                        ManagementMode::Add => crate::i18n::tr("Add submodule"),
+                        ManagementMode::Remove => crate::i18n::tr("Remove submodule"),
+                        ManagementMode::Deinitialize => crate::i18n::tr("Deinitialize"),
+                        ManagementMode::Sync => crate::i18n::tr("Sync URL"),
+                        ManagementMode::SetUrl => crate::i18n::tr("Update URL and sync"),
+                        ManagementMode::Move => crate::i18n::tr("Move submodule"),
+                        _ => s.preview.as_ref().map_or(crate::i18n::tr("Apply checkout"), |p| {
                             if p.entry.initialized {
-                                "Update submodule"
+                                crate::i18n::tr("Update submodule")
                             } else {
-                                "Initialize submodule"
+                                crate::i18n::tr("Initialize submodule")
                             }
                         }),
                     };
@@ -562,20 +562,20 @@ impl Rocket {
                         f.submit = r.clicked();
                     }
                     let r = if reviewed || d.error.is_some() {
-                        ui.add_enabled(!waiting, Button::new("Review again"))
+                        ui.add_enabled(!waiting, Button::new(crate::i18n::tr("Review again")))
                     } else {
-                        pages::primary(ui, !waiting, "Review")
+                        pages::primary(ui, !waiting, crate::i18n::tr("Review"))
                     };
                     control(widgets, "dialog-preview-refresh", &r, ui.clip_rect());
                     f.refresh |= r.clicked();
                     let status = if s.running() {
-                        "Checking the submodule"
+                        crate::i18n::tr("Checking the submodule")
                     } else if d.error.is_some() {
-                        "Fix the problem above, then review again"
+                        crate::i18n::tr("Fix the problem above, then review again")
                     } else if reviewed {
-                        "Reviewed · nothing has changed yet"
+                        crate::i18n::tr("Reviewed · nothing has changed yet")
                     } else {
-                        "Nothing changes until you review and apply."
+                        crate::i18n::tr("Nothing changes until you review and apply.")
                     };
                     pages::footer_status(ui, waiting, status);
                 }
@@ -648,7 +648,7 @@ impl Rocket {
             if self.write.is_none() {
                 s.applying = false;
                 d.error = Some(
-                    "Could not start. Wait for the current refresh, then review again.".into(),
+                    crate::i18n::tr("Could not start. Wait for the current refresh, then review again.").into(),
                 );
             }
         }
@@ -672,26 +672,37 @@ struct Flags {
     mode: Option<ManagementMode>,
 }
 
+fn state_label(entry: &SubmoduleEntry) -> &'static str {
+    match entry.state() {
+        "Needs attention" => crate::i18n::tr("Needs attention"),
+        "Local changes" => crate::i18n::tr("Local changes"),
+        "Not initialized" => crate::i18n::tr("Not initialized"),
+        "Update available" => crate::i18n::tr("Update available"),
+        "Up to date" => crate::i18n::tr("Up to date"),
+        other => other,
+    }
+}
+
 fn entry_details(ui: &mut Ui, e: &SubmoduleEntry) {
     ui.with_layout(Layout::top_down(Align::Min), |ui| {
         ui.label(RichText::new(e.path.display_lossy()).font(semibold(15.0)));
-        pages::field(ui, "Source", &e.url.to_string(), true);
-        pages::field(ui, "Recorded", &e.target.to_string(), true);
+        pages::field(ui, crate::i18n::tr("Source"), &e.url.to_string(), true);
+        pages::field(ui, crate::i18n::tr("Recorded"), &e.target.to_string(), true);
         pages::field(
             ui,
-            "Checked out",
+            crate::i18n::tr("Checked out"),
             &format!(
                 "{}{}",
                 e.head
                     .as_ref()
-                    .map_or("Not initialized".into(), ToString::to_string),
+                    .map_or(crate::i18n::tr("Not initialized").into(), ToString::to_string),
                 e.branch
                     .as_ref()
                     .map_or("".into(), |b| format!(" · {}", String::from_utf8_lossy(b)))
             ),
             true,
         );
-        pages::field(ui, "State", e.state(), false);
+        pages::field(ui, crate::i18n::tr("State"), state_label(e), false);
         if let Some(f) = e.blocked {
             pages::callout(ui, AMBER(), f.guidance());
         }
@@ -704,51 +715,51 @@ fn review_heading(
     e: Option<&SubmoduleEntry>,
     repository: &str,
 ) -> (String, String, bool) {
-    let path = e.map_or_else(|| "the submodule".to_owned(), |e| e.path.display_lossy().to_string());
+    let path = e.map_or_else(|| crate::i18n::tr("the submodule").to_owned(), |e| e.path.display_lossy().to_string());
     match mode {
         ManagementMode::Move => (
-            "Move / rename submodule".into(),
-            format!("Move {path} and stage its new path. Recovery metadata is kept."),
+            crate::i18n::tr("Move / rename submodule").into(),
+            crate::i18n::trf!("Move {path} and stage its new path. Recovery metadata is kept.", path),
             false,
         ),
         ManagementMode::SetUrl => (
-            "Edit submodule URL".into(),
-            format!("Change where {path} is fetched from. Its files and commits are kept."),
+            crate::i18n::tr("Edit submodule URL").into(),
+            crate::i18n::trf!("Change where {path} is fetched from. Its files and commits are kept.", path),
             false,
         ),
         ManagementMode::Sync => (
-            "Sync submodule URL".into(),
-            "Copy the URL in .gitmodules to this repository's settings.".into(),
+            crate::i18n::tr("Sync submodule URL").into(),
+            crate::i18n::tr("Copy the URL in .gitmodules to this repository's settings.").into(),
             false,
         ),
         ManagementMode::Add => (
-            "Add submodule".into(),
+            crate::i18n::tr("Add submodule").into(),
             match repository {
-                "" => "Add a repository as a submodule.".into(),
-                name => format!("Add a repository as a submodule of {name}."),
+                "" => crate::i18n::tr("Add a repository as a submodule.").into(),
+                name => crate::i18n::trf!("Add a repository as a submodule of {name}.", name),
             },
             false,
         ),
         ManagementMode::Remove => (
-            "Remove this submodule?".into(),
-            format!("Remove {path} from this repository. Its checkout is kept for recovery."),
+            crate::i18n::tr("Remove this submodule?").into(),
+            crate::i18n::trf!("Remove {path} from this repository. Its checkout is kept for recovery.", path),
             true,
         ),
         ManagementMode::Deinitialize => (
-            format!("Deinitialize {path}?"),
-            "Takes the submodule's files out of this working copy. You can initialize it again any time."
+            crate::i18n::trf!("Deinitialize {path}?", path),
+            crate::i18n::tr("Takes the submodule's files out of this working copy. You can initialize it again any time.")
                 .into(),
             true,
         ),
         ManagementMode::Browse => match e {
             Some(e) if !e.initialized => (
-                "Initialize submodule".into(),
-                format!("Check out {path} at the commit this repository records."),
+                crate::i18n::tr("Initialize submodule").into(),
+                crate::i18n::trf!("Check out {path} at the commit this repository records.", path),
                 false,
             ),
             _ => (
-                "Update submodule".into(),
-                format!("Check out the commit this repository records for {path}."),
+                crate::i18n::tr("Update submodule").into(),
+                crate::i18n::trf!("Check out the commit this repository records for {path}.", path),
                 false,
             ),
         },
@@ -853,7 +864,7 @@ fn module_card(ui: &mut Ui, e: &SubmoduleEntry) {
             let (rect, _) = ui.allocate_exact_size(vec2(15.0, 15.0), Sense::hover());
             icon(ui.painter(), rect, Icon::Modules, BLUE());
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                pages::pill(ui, e.state(), color);
+                pages::pill(ui, state_label(e), color);
                 ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                     ui.add(
                         Label::new(RichText::new(e.path.display_lossy().to_string()).font(semibold(13.0)))
@@ -863,32 +874,32 @@ fn module_card(ui: &mut Ui, e: &SubmoduleEntry) {
             });
         },
         |ui| {
-            key_value(ui, "Fetches from", 112.0, |ui| source_label(ui, &e.url));
-            key_value(ui, "Recorded", 112.0, |ui| {
+            key_value(ui, crate::i18n::tr("Fetches from"), 112.0, |ui| source_label(ui, &e.url));
+            key_value(ui, crate::i18n::tr("Recorded"), 112.0, |ui| {
                 let mut job = text::LayoutJob::default();
                 job.append(&short(&e.target), 0.0, mono(TEXT()));
-                job.append(" · pinned by this repository", 0.0, plain(FAINT()));
+                job.append(crate::i18n::tr(" · pinned by this repository"), 0.0, plain(FAINT()));
                 line(ui, job, e.target.as_str());
             });
-            key_value(ui, "Checked out", 112.0, |ui| match &e.head {
+            key_value(ui, crate::i18n::tr("Checked out"), 112.0, |ui| match &e.head {
                 Some(head) => {
                     let mut job = text::LayoutJob::default();
                     job.append(&short(head), 0.0, mono(TEXT()));
                     match &e.branch {
                         Some(branch) => {
-                            job.append(" on ", 0.0, plain(FAINT()));
+                            job.append(crate::i18n::tr(" on "), 0.0, plain(FAINT()));
                             let tag = TextFormat {
                                 background: CHIP(),
                                 ..mono(TEXT_SOFT())
                             };
                             job.append(&format!(" {} ", String::from_utf8_lossy(branch)), 0.0, tag);
                         }
-                        None => job.append(" · detached", 0.0, plain(FAINT())),
+                        None => job.append(crate::i18n::tr(" · detached"), 0.0, plain(FAINT())),
                     }
                     line(ui, job, head.as_str());
                 }
                 None => {
-                    ui.label(RichText::new("Not initialized").color(HINT()));
+                    ui.label(RichText::new(crate::i18n::tr("Not initialized")).color(HINT()));
                 }
             });
         },
@@ -958,7 +969,7 @@ fn source_input(
             control(widgets, "dialog-submodule-source", &r, ui.clip_rect());
             edited = r.changed();
             let b = ui
-                .add_enabled_ui(!s.applying, |ui| ui.add_sized([76.0, CONTROL], Button::new("Browse")))
+                .add_enabled_ui(!s.applying, |ui| ui.add_sized([76.0, CONTROL], Button::new(crate::i18n::tr("Browse"))))
                 .inner;
             control(widgets, "dialog-submodule-source-browse", &b, ui.clip_rect());
             *browse |= b.clicked();
@@ -972,7 +983,7 @@ fn source_input(
                     status_line(ui, None, HINT(), &what);
                 }
             }
-            None => status_line(ui, None, HINT(), "Checked when you review"),
+            None => status_line(ui, None, HINT(), crate::i18n::tr("Checked when you review")),
         }
     });
     edited
@@ -984,9 +995,9 @@ fn source_input(
 /// a sign that the source was read.
 fn source_found(p: &SubmoduleActionPreview) -> (bool, String) {
     if matches!(p.action(), SubmoduleAction::Add { .. }) {
-        (true, format!("Repository found · {}", brief(p.source())))
+        (true, crate::i18n::trf!("Repository found · {source}", source = brief(p.source())))
     } else {
-        (false, format!("Used from the next fetch · {}", brief(p.source())))
+        (false, crate::i18n::trf!("Used from the next fetch · {source}", source = brief(p.source())))
     }
 }
 
@@ -1006,7 +1017,7 @@ fn add_inputs(
         .map(|e| (e.path.display_lossy().to_string(), e.directory.clone()));
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
-        field_name(ui, "Add to");
+        field_name(ui, crate::i18n::tr("Add to"));
         Frame::new()
             .fill(RAISED())
             .stroke(Stroke::new(1.0, HAIRLINE()))
@@ -1015,7 +1026,7 @@ fn add_inputs(
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 2.0;
-                    let r = segment(ui, "This repository", s.add_parent.is_none(), !waiting);
+                    let r = segment(ui, crate::i18n::tr("This repository"), s.add_parent.is_none(), !waiting);
                     control(widgets, "dialog-submodule-parent-current", &r, ui.clip_rect());
                     if r.clicked() {
                         s.add_parent = None;
@@ -1023,7 +1034,7 @@ fn add_inputs(
                     }
                     let label = child
                         .as_ref()
-                        .map_or_else(|| "Inside a submodule".to_owned(), |(path, _)| format!("Inside {path}"));
+                        .map_or_else(|| crate::i18n::tr("Inside a submodule").to_owned(), |(path, _)| crate::i18n::trf!("Inside {path}", path));
                     let r = segment(ui, &label, s.add_parent.is_some(), !waiting && child.is_some());
                     control(widgets, "dialog-submodule-parent-selected", &r, ui.clip_rect());
                     if r.clicked() {
@@ -1033,10 +1044,10 @@ fn add_inputs(
                 });
             });
     });
-    edited |= source_input(ui, s, widgets, "Source URL or local repository", browse);
+    edited |= source_input(ui, s, widgets, crate::i18n::tr("Source URL or local repository"), browse);
     ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 6.0;
-        field_name(ui, "Folder in this repository");
+        field_name(ui, crate::i18n::tr("Folder in this repository"));
         let width = ui.available_width().min(360.0);
         let path = &mut s.new_path;
         let r = ui
@@ -1053,9 +1064,9 @@ fn add_inputs(
         control(widgets, "dialog-submodule-path", &r, ui.clip_rect());
         edited |= r.changed();
         if s.action_preview.is_some() && !edited {
-            status_line(ui, Some(Icon::Check), GREEN(), "New folder");
+            status_line(ui, Some(Icon::Check), GREEN(), crate::i18n::tr("New folder"));
         } else {
-            status_line(ui, None, HINT(), "A folder that does not exist yet");
+            status_line(ui, None, HINT(), crate::i18n::tr("A folder that does not exist yet"));
         }
     });
     if edited {
@@ -1147,9 +1158,9 @@ fn review_card(ui: &mut Ui, title: &str, meta: &str, danger: bool, changes: &[Ch
 fn url_changes(changes: &mut Vec<Change>, previous: &[String], new: &str) {
     for (i, old) in previous.iter().enumerate() {
         let what = if i == 0 {
-            "This repository's config"
+            crate::i18n::tr("This repository's config")
         } else {
-            "Fetch URL in the child"
+            crate::i18n::tr("Fetch URL in the child")
         };
         changes.push(Change::new(what, Some(old.clone()), new));
     }
@@ -1158,64 +1169,63 @@ fn url_changes(changes: &mut Vec<Change>, previous: &[String], new: &str) {
 fn descendants_note(n: usize) -> String {
     match n {
         0 => String::new(),
-        1 => "1 initialized nested submodule moves with the checkout.".into(),
-        n => format!("{n} initialized nested submodules move with the checkout."),
+        n => crate::i18n::trf!("Initialized nested submodules moving with the checkout: {count}.", count = n),
     }
 }
 
 /// What an add, removal, deinitialization or URL change will do.
 fn action_review(ui: &mut Ui, p: &SubmoduleActionPreview, entry: Option<&SubmoduleEntry>) {
     let path = p.path().display_lossy().to_string();
-    let recorded = entry.map_or_else(String::new, |e| format!("recorded {}", short(&e.target)));
+    let recorded = entry.map_or_else(String::new, |e| crate::i18n::trf!("recorded {commit}", commit = short(&e.target)));
     let mut changes = Vec::new();
     let (title, meta, note, danger) = match p.action() {
         SubmoduleAction::Move { destination, .. } => {
-            changes.push(Change::new("Checkout path", Some(path.clone()), destination.display_lossy()));
-            changes.push(Change::new("Gitlink and .gitmodules", None, "New path staged"));
-            changes.push(Change::new("Nested checkouts", None, format!("{} initialized descendants move with the checkout", p.descendants())));
-            (format!("Moves {path}"), recorded, "Recovery metadata is saved first. Stop cancels preparation; once the folder moves, Rocket finishes the prepared link updates. Commit to record the new path.".into(), false)
+            changes.push(Change::new(crate::i18n::tr("Checkout path"), Some(path.clone()), destination.display_lossy()));
+            changes.push(Change::new(crate::i18n::tr("Gitlink and .gitmodules"), None, crate::i18n::tr("New path staged")));
+            changes.push(Change::new(crate::i18n::tr("Nested checkouts"), None, crate::i18n::trf!("Initialized descendants moving with the checkout: {count}", count = p.descendants())));
+            (crate::i18n::trf!("Moves {path}", path), recorded, crate::i18n::tr("Recovery metadata is saved first. Stop cancels preparation; once the folder moves, Rocket finishes the prepared link updates. Commit to record the new path.").into(), false)
         }
         SubmoduleAction::SetUrl { .. } => {
-            changes.push(Change::new(".gitmodules (staged)", None, p.source()));
+            changes.push(Change::new(crate::i18n::tr(".gitmodules (staged)"), None, p.source()));
             url_changes(&mut changes, p.previous_urls(), p.source());
             (
-                format!("Sets the URL of {path}"),
+                crate::i18n::trf!("Sets the URL of {path}", path),
                 String::new(),
-                "Commit .gitmodules to share the new URL.".to_owned(),
+                crate::i18n::tr("Commit .gitmodules to share the new URL.").to_owned(),
                 false,
             )
         }
         SubmoduleAction::Sync(_) => {
             url_changes(&mut changes, p.previous_urls(), p.source());
             let title = if changes.iter().all(|c| c.old.as_deref() == Some(c.new.as_str())) {
-                "Local settings already match .gitmodules"
+                crate::i18n::tr("Local settings already match .gitmodules")
             } else {
-                "Local settings will match .gitmodules"
+                crate::i18n::tr("Local settings will match .gitmodules")
             };
             (
                 title.to_owned(),
                 path.clone(),
-                "Nothing is staged; only local settings change.".to_owned(),
+                crate::i18n::tr("Nothing is staged; only local settings change.").to_owned(),
                 false,
             )
         }
         SubmoduleAction::Add { .. } => {
-            changes.push(Change::new("Parent repository", None, folder_of(&p.parent().display().to_string())));
+            changes.push(Change::new(crate::i18n::tr("Parent repository"), None, folder_of(&p.parent().display().to_string())));
             if let Some(id) = p.target() {
-                changes.push(Change::new("Pinned commit", None, format!("{} · detached checkout", short(id))));
+                changes.push(Change::new(crate::i18n::tr("Pinned commit"), None, crate::i18n::trf!("{commit} · detached checkout", commit = short(id))));
             }
-            changes.push(Change::new("Gitlink and .gitmodules", None, "New entry, staged"));
+            changes.push(Change::new(crate::i18n::tr("Gitlink and .gitmodules"), None, crate::i18n::tr("New entry, staged")));
             (
-                format!("Adds {path}"),
-                format!("from {}", brief(p.source())),
-                "Commit to record the submodule.".to_owned(),
+                crate::i18n::trf!("Adds {path}", path),
+                crate::i18n::trf!("from {source}", source = brief(p.source())),
+                crate::i18n::tr("Commit to record the submodule.").to_owned(),
                 false,
             )
         }
         SubmoduleAction::Remove(_) => {
-            changes.push(Change::new("Gitlink and .gitmodules", None, "Removal staged"));
-            changes.push(Change::new("Checkout", None, "Moved to recovery storage"));
-            (format!("Removes {path}"), recorded, descendants_note(p.descendants()), true)
+            changes.push(Change::new(crate::i18n::tr("Gitlink and .gitmodules"), None, crate::i18n::tr("Removal staged")));
+            changes.push(Change::new(crate::i18n::tr("Checkout"), None, crate::i18n::tr("Moved to recovery storage")));
+            (crate::i18n::trf!("Removes {path}", path), recorded, descendants_note(p.descendants()), true)
         }
         SubmoduleAction::Deinitialize(_) => {
             let mut note = descendants_note(p.descendants());
@@ -1226,9 +1236,9 @@ fn action_review(ui: &mut Ui, p: &SubmoduleActionPreview, entry: Option<&Submodu
             effects_card(
                 ui,
                 &[
-                    (AMBER(), Icon::External, "Files moved aside", "kept in recovery storage, not deleted"),
-                    (RED(), Icon::Close, "Local registration removed", "from this repository's config"),
-                    (GREEN(), Icon::Check, "Recorded commit and .gitmodules unchanged", "still tracked by this repository"),
+                    (AMBER(), Icon::External, crate::i18n::tr("Files moved aside"), crate::i18n::tr("kept in recovery storage, not deleted")),
+                    (RED(), Icon::Close, crate::i18n::tr("Local registration removed"), crate::i18n::tr("from this repository's config")),
+                    (GREEN(), Icon::Check, crate::i18n::tr("Recorded commit and .gitmodules unchanged"), crate::i18n::tr("still tracked by this repository")),
                 ],
                 &note,
             );
@@ -1243,7 +1253,7 @@ fn effects_card(ui: &mut Ui, effects: &[(Color32, Icon, &str, &str)], note: &str
     pages::titled_card(
         ui,
         |ui| {
-            ui.label(RichText::new("What changes").size(12.0).color(MUTED()).strong());
+            ui.label(RichText::new(crate::i18n::tr("What changes")).size(12.0).color(MUTED()).strong());
         },
         |ui| {
             for (i, &(color, image, what, detail)) in effects.iter().enumerate() {
@@ -1277,26 +1287,26 @@ fn effects_card(ui: &mut Ui, effects: &[(Color32, Icon, &str, &str)], note: &str
 fn checkout_changes(p: &SubmodulePreview) -> (String, [Change; 2]) {
     let e = &p.entry;
     let target = short(&e.target);
-    let new = format!("{target} (detached)");
+    let new = crate::i18n::trf!("{target} (detached)", target);
     let (title, old) = if !e.initialized {
-        (format!("Initializes at {target}"), None)
+        (crate::i18n::trf!("Initializes at {target}", target), None)
     } else if e.head.as_ref() == Some(&e.target) {
         // Shown as unchanged rather than as itself struck through.
-        (format!("Already at {target}"), Some(new.clone()))
+        (crate::i18n::trf!("Already at {target}", target), Some(new.clone()))
     } else {
-        let head = e.head.as_ref().map_or_else(|| "none".to_owned(), short);
-        (format!("Checks out {target}"), Some(head))
+        let head = e.head.as_ref().map_or_else(|| crate::i18n::tr("None").to_owned(), short);
+        (crate::i18n::trf!("Checks out {target}", target), Some(head))
     };
     let changes = [
-        Change::new("Checkout", old, new),
-        Change::new("Source", None, p.source.as_str()),
+        Change::new(crate::i18n::tr("Checkout"), old, new),
+        Change::new(crate::i18n::tr("Source"), None, p.source.as_str()),
     ];
     (title, changes)
 }
 
 fn checkout_review(ui: &mut Ui, p: &SubmodulePreview) {
     let (title, changes) = checkout_changes(p);
-    review_card(ui, &title, "detached", false, &changes, "");
+    review_card(ui, &title, crate::i18n::tr("detached"), false, &changes, "");
 }
 
 /// A problem or warning in plain words, with Rocket's code as small print.

@@ -122,8 +122,8 @@ pub(crate) fn reset(ctx: &Context) {
 pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) -> pages::ReviewResponse {
     let head = pages::ReviewHeader {
         image: Icon::File,
-        title: "Legal",
-        subtitle: "Licenses for Rocket and the open-source software it includes.",
+        title: crate::i18n::tr("Legal"),
+        subtitle: crate::i18n::tr("Licenses for Rocket and the open-source software it includes."),
         danger: false,
     };
     let height = (ctx.content_rect().height() - 300.0).clamp(240.0, 520.0);
@@ -143,12 +143,12 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
                 ui.spacing_mut().item_spacing.y = 2.0;
                 let rows = [
                     (Section::Rocket, "Rocket".to_owned(), license(), "dialog-legal-rocket"),
-                    (Section::Crates, "Rust crates".to_owned(), format!("{} packages", count("crate")), "dialog-legal-crates"),
-                    (Section::Fonts, "Fonts".to_owned(), format!("{} fonts", count("font")), "dialog-legal-fonts"),
+                    (Section::Crates, crate::i18n::tr("Rust crates").to_owned(), crate::i18n::trf!("Packages: {count}", count = count("crate")), "dialog-legal-crates"),
+                    (Section::Fonts, crate::i18n::tr("Fonts").to_owned(), crate::i18n::trf!("Fonts: {count}", count = count("font")), "dialog-legal-fonts"),
                     (
                         Section::Runtime,
                         runtime.map_or_else(String::new, |n| n.name.clone()),
-                        runtime.map_or_else(String::new, |n| format!("Terminal runtime · {}", n.license)),
+                        runtime.map_or_else(String::new, |n| crate::i18n::trf!("Terminal runtime · {license}", license = n.license)),
                         "dialog-legal-runtime",
                     ),
                 ];
@@ -159,7 +159,7 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
                     }
                     if i == 1 {
                         ui.add_space(10.0);
-                        ui.label(RichText::new("INCLUDED IN ROCKET").font(semibold(11.0)).color(HINT()));
+                        ui.label(RichText::new(crate::i18n::tr("INCLUDED IN ROCKET")).font(semibold(11.0)).color(HINT()));
                         ui.add_space(2.0);
                     }
                     let r = nav_row(ui, &title, &sub, s.section == section);
@@ -178,10 +178,10 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
                 match s.section {
                     Section::Rocket => {
                         heading(ui, "Rocket");
-                        ui.add(Label::new("Rocket is free and open-source software. You may use, copy, change and share it under either license below, at your option.").wrap());
+                        ui.add(Label::new(crate::i18n::tr("Rocket is free and open-source software. You may use, copy, change and share it under either license below, at your option.")).wrap());
                         ui.label(RichText::new(format!("Copyright © {}", copyright())).color(MUTED()));
                         ui.add_space(2.0);
-                        let items = [("MIT License", !s.apache), ("Apache License 2.0", s.apache)];
+                        let items = [(crate::i18n::tr("MIT License"), !s.apache), (crate::i18n::tr("Apache License 2.0"), s.apache)];
                         ui.horizontal(|ui| {
                             for (i, r) in pages::segments(ui, &items).iter().enumerate() {
                                 control(widgets, ["dialog-legal-mit", "dialog-legal-apache"][i], r, ui.clip_rect());
@@ -196,8 +196,8 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
                     }
                     Section::Crates => crates(ui, widgets, &mut s, height, top),
                     Section::Fonts => {
-                        heading(ui, "Fonts");
-                        ui.add(Label::new("Rocket includes these fonts for text, code and symbols.").wrap());
+                        heading(ui, crate::i18n::tr("Fonts"));
+                        ui.add(Label::new(crate::i18n::tr("Rocket includes these fonts for text, code and symbols.")).wrap());
                         let fonts: Vec<&Notice> = all.iter().filter(|n| n.kind == "font").collect();
                         s.font = s.font.min(fonts.len().saturating_sub(1));
                         list_card(ui, |ui| {
@@ -219,7 +219,7 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
                     Section::Runtime => {
                         if let Some(n) = runtime {
                             heading(ui, &format!("{} {}", n.name, n.version));
-                            ui.add(Label::new("conpty.dll and OpenConsole.exe run Rocket's terminal. They are unmodified from Microsoft's NuGet package.").wrap());
+                            ui.add(Label::new(crate::i18n::tr("conpty.dll and OpenConsole.exe run Rocket's terminal. They are unmodified from Microsoft's NuGet package.")).wrap());
                             text_box(ui, widgets, ("runtime", 0), &n.text, left(ui));
                         }
                     }
@@ -234,10 +234,10 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
 fn crates(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, s: &mut State, height: f32, top: f32) {
     let all: Vec<&Notice> = notices().iter().filter(|n| n.kind == "crate").collect();
     ui.horizontal(|ui| {
-        heading(ui, "Rust crates");
-        ui.label(RichText::new(format!("{} packages", all.len())).color(HINT()));
+        heading(ui, crate::i18n::tr("Rust crates"));
+        ui.label(RichText::new(crate::i18n::trf!("Packages: {count}", count = all.len())).color(HINT()));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            let r = search_field(ui, &mut s.filter, "Find a crate or license", 240.0);
+            let r = search_field(ui, &mut s.filter, crate::i18n::tr("Find a crate or license"), 240.0);
             control(widgets, "dialog-legal-filter", &r, ui.clip_rect());
         });
     });
@@ -247,7 +247,7 @@ fn crates(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, s: &mut State, 
         .filter(|n| needle.is_empty() || n.name.to_lowercase().contains(&needle) || n.license.to_lowercase().contains(&needle))
         .collect();
     if shown.is_empty() {
-        ui.label(RichText::new("No crate matches.").color(HINT()));
+        ui.label(RichText::new(crate::i18n::tr("No crate matches.")).color(HINT()));
         return;
     }
     let chosen = shown

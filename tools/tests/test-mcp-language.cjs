@@ -1,6 +1,6 @@
 // Language Preferences acceptance through authenticated localhost MCP. Only an
 // owned repository/profile is used; no hosting, credentials or Git writes via UI.
-// node tools/tests/test-mcp-language.cjs [rocket-mcp.exe] [result-directory]
+// node tools/tests/test-mcp-language.cjs [rocket-mcp.exe] [result-directory] [--advanced|--maps-only]
 'use strict';
 const fs = require('node:fs'), path = require('node:path'), cp = require('node:child_process');
 const crypto = require('node:crypto'), net = require('node:net'), assert = require('node:assert/strict');
@@ -9,6 +9,8 @@ const root = path.resolve('work/mcp-fixtures/language-' + crypto.randomUUID());
 const repo = path.join(root, 'repository 文'), profile = path.join(root, 'http-profile');
 const results = path.resolve(process.argv[3] || path.join(root, 'results'));
 const exe = path.resolve(process.argv[2] || 'target/release/rocket-mcp.exe');
+const mapsOnly = process.argv.includes('--maps-only');
+const advancedOnly = process.argv.includes('--advanced') || mapsOnly;
 const branch = 'rocket-ui-test/language';
 const tags = ['en', 'de', 'de-CH', 'fr', 'sv', 'ru', 'uk', 'ar', 'zh-Hans', 'ja', 'ko'];
 fs.mkdirSync(repo, { recursive: true }); fs.mkdirSync(results, { recursive: true });
@@ -95,6 +97,55 @@ async function translatedSettings() {
   await click('pref-page-general'); await select('en'); await resize(1440, 960);
   pass('Git, Terminal and AI draft settings render in all ten Preview languages at desktop/compact sizes without changing identities, shells, AI language or consent');
 }
+async function advancedScreens() {
+  const active = () => state.tabs.find(t => t.id === state.active_tab);
+  const map = () => active()?.repository_map;
+  const raw = () => (map()?.data?.nodes || []).map(n => ({ kind: n.kind, label: n.label, path: n.path, commit: n.commit }));
+  const reference = {};
+  const drafting = structuredClone(state.drafting), terminal = structuredClone(state.terminal_settings);
+  for (const tag of tags) {
+    await resize(1440, 960); await click('pref-page-general'); await select(tag);
+    if (!mapsOnly) {
+      await click('pref-page-tools');
+      await capture('advanced-' + tag + '-tools');
+      await click('pref-page-security');
+      await resize(780, 620); await capture('advanced-' + tag + '-security-compact');
+    }
+    await click('dialog-submit'); await until(s => !s.dialog, 'closed Preferences');
+    await resize(1440, 960); await click('view-map');
+    await until(() => map() && !map().running, 'map loaded');
+    for (const kind of ['code', 'history', 'people']) {
+      await click('map-view-' + kind); await until(() => !map().running, 'map kind');
+      // Refresh the projection too: no cached English snapshot should hide a failure.
+      await click('map-load'); await until(() => !map().running && !state.busy, 'map refreshed');
+      assert.equal(map().error, null, 'Map loads in ' + tag);
+      if (tag === 'en') reference[kind] = raw();
+      else assert.deepEqual(raw(), reference[kind], 'Repository names and paths stay original: ' + tag + '/' + kind);
+      await resize(780, 620); await capture('advanced-' + tag + '-' + kind + '-compact');
+      for (const id of ['map-view-code', 'map-view-history', 'map-view-people', 'map-load']) {
+        const c = control(id); assert(c?.enabled, 'Map control ' + id);
+        const [l, t, r, b] = c.rect;
+        assert(l >= 0 && t >= 0 && r <= state.viewport[0] + 1 && b <= state.viewport[1] + 1 && b - t >= 15, 'Clipped ' + tag + '/' + id);
+      }
+      if (kind === 'code') {
+        const canvas = control('map-canvas').rect;
+        for (const id of ['map-zoom-out', 'map-zoom-in', 'map-fit', 'map-focus']) {
+          const c = control(id); assert(c, 'Map footer control ' + id);
+          const [l, t, r, b] = c.rect;
+          assert(l >= canvas[0] && t >= canvas[1] && r <= canvas[2] - 5 && b <= canvas[3] && b - t >= 20, 'Clipped footer ' + tag + '/' + id);
+        }
+      }
+      await resize(1440, 960);
+    }
+    assert.deepEqual(state.drafting, drafting, 'Language does not change AI provider or consent');
+    assert.deepEqual(state.terminal_settings, terminal, 'Language does not change shell settings');
+    assert.deepEqual(fingerprint(), before, 'Read-only advanced pages preserve repository');
+    await preferences(); pass((mapsOnly ? 'All three maps' : 'Advanced tools/security and all three maps') + ': ' + tag + ', compact controls and original Unicode data');
+  }
+  await select('zh-Hans'); await restart('zh-Hans');
+  pass('Advanced-screen language choice survives restart and is present on the first frame');
+  await select('en');
+}
 async function theme(choice, mode) {
   await click('pref-page-appearance'); await click('theme-' + choice);
   if (mode) await click('theme-clay-' + mode);
@@ -146,6 +197,9 @@ async function main() {
     await start(); await preferences();
     assert(control('pref-language')?.enabled, 'Language selector must be visible without ROCKET_LANG');
     assert.deepEqual(state.language.offered, tags); assert.equal(state.language.choice, null); assert.equal(state.language.shown, 'en');
+    if (advancedOnly) {
+      await advancedScreens(); await stop(); report.passed = true; return;
+    }
     await capture('01-general-english'); await click('pref-language');
     await until(() => tags.every(tag => control('pref-language-' + tag.toLowerCase())?.enabled), 'all language popup options');
     for (const tag of tags) assert(control('pref-language-' + tag.toLowerCase())?.enabled, 'Offered ' + tag);
@@ -181,6 +235,10 @@ async function main() {
     if (client) try { await stop(); } catch (error) { report.cleanup_error = error.message; process.exitCode = 1; }
     if (service?.exitCode === null) { service.kill(); await delay(300); }
     if (client) await client.finish();
+    const access = path.join(profile, 'access-token');
+    if (fs.existsSync(access)) fs.unlinkSync(access);
+    report.access_token_removed = !fs.existsSync(access);
+    if (report.cleanup_error) report.passed = false;
     report.final_language = state?.language; report.starts = starts;
     report.repository_unchanged = JSON.stringify(fingerprint()) === JSON.stringify(before);
     assert(report.repository_unchanged, 'Fixture was modified');
