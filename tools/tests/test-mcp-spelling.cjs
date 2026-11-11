@@ -36,7 +36,7 @@ async function enabled(on){await menu('preferences');await until(()=>control('pr
 async function capture(name){const r=await client.request('tools/call',{name:'rocket_capture',arguments:{}});assert(!r.isError);fs.writeFileSync(path.join(root,name+'.png'),Buffer.from(r.content.find(c=>c.type==='image').data,'base64'))}
 async function check(text,expected,iteration){
  const offset=nativeCalls().length;
- if(startup==='before-enable'){await type(text);await enabled(true)}else{await enabled(true);await type(text)}
+ if(startup==='before-enable'){await menu('shortcut-changes');await type(text);await enabled(true)}else{await enabled(true);await type(text)}
  await until(s=>s.spelling.ready&&!s.spelling.waiting&&s.spelling.checked_texts>0&&(expected?s.spelling.misspellings>0:s.spelling.misspellings===0)&&nativeCalls().slice(offset).some(c=>c.text_units===text.length&&c.start===0),'spell result',12000);
  assert(!state.spelling.failed);
  const calls=nativeCalls().slice(offset).filter(c=>c.text_units===text.length);

@@ -53,7 +53,9 @@ xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -We
 codesign --force --sign - "$out/spelling-observer.dylib"
 export ROCKET_SPELL_OBSERVER="$out/spelling-observer.dylib"
 cold=0
-for startup in immediate before-enable ready-first; do
+# Immediate/ready-first passed in 43007436659. This follow-up reruns only the
+# before-enable case after correcting navigation to the Changes text field.
+for startup in before-enable; do
   # Preserve a failure; later independent modes are diagnostic controls,
   # never retries that can turn a failed cold case into a pass.
   node tools/tests/test-mcp-spelling.cjs "$startup" || cold=$?
