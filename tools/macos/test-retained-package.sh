@@ -53,7 +53,11 @@ xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -We
 codesign --force --sign - "$out/spelling-observer.dylib"
 export ROCKET_SPELL_OBSERVER="$out/spelling-observer.dylib"
 cold=0
-node tools/tests/test-mcp-spelling.cjs || cold=$?
+for startup in immediate before-enable ready-first; do
+  # Preserve a failure; later independent modes are diagnostic controls,
+  # never retries that can turn a failed cold case into a pass.
+  node tools/tests/test-mcp-spelling.cjs "$startup" || cold=$?
+done
 unset ROCKET_SPELL_OBSERVER
 xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-spelling-diagnostic.m crates/rocket-spell/src/macos.m -o "$out/spelling-probe"
 "$out/spelling-probe" > "$out/spelling-native.json"

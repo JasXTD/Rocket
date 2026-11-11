@@ -13,6 +13,7 @@ static NSRange observed(id self, SEL selector, NSString *text, NSInteger start,
     @autoreleasepool {
         NSDictionary *event = @{
             @"event":@"spell_native_return", @"text_units":@(text.length),
+            @"at_ms":@([[NSDate date] timeIntervalSince1970] * 1000.0),
             @"start":@(start), @"language":language ?: @"",
             @"not_found":@(result.location == NSNotFound), @"length":@(result.length),
             @"location":@(result.location), @"wrap":@(wrap),
