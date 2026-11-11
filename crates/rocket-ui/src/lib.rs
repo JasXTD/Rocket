@@ -66,6 +66,7 @@ mod hosting_accounts;
 pub mod image_view;
 pub mod issue_links;
 pub mod lfs;
+mod long_list;
 pub mod mcp;
 mod menus;
 pub mod merge;

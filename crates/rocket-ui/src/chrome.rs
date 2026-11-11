@@ -1590,7 +1590,7 @@ impl Rocket {
                             ),
                             (
                                 Icon::Activity,
-                                tr("Statistics"),
+                                tr("Insights"),
                                 "view-statistics",
                                 page == Some(Page::Statistics),
                                 Target::Page(Page::Statistics),
@@ -1666,9 +1666,14 @@ impl Rocket {
                         if header.open.clicked() { intents.push(Intent::View(View::Branches)); }
                         if header.add.as_ref().is_some_and(|a| a.clicked()) && writable { intents.push(Intent::Dialog(DialogKind::NewBranch)); }
                         if header.expanded {
-                            for branch in local {
+                            // Only a typed filter needs every branch's name; the rows
+                            // built are those in or next to the visible area.
+                            if !filter.is_empty() {
+                                local.retain(|b| short_ref(&b.reference).to_lowercase().contains(&filter));
+                            }
+                            crate::long_list::rows(ui, Id::new(("sidebar-branch-rows", tab.id)), local.len(), SIDEBAR_ROW, |ui, index| {
+                                let branch = local[index];
                                 let label = short_ref(&branch.reference);
-                                if !label.to_lowercase().contains(&filter) { continue; }
                                 let meta = if branch.is_head { ahead_behind.map(|(a, b)| format!("↑{a} ↓{b}")) } else { None };
                                 let ci = tab.ci.branch_mark(&branch.reference).map(|(s, c)| (s, c.to_owned()));
                                 let (response, mark) = branch_row(ui, &label, branch.is_head, meta.as_deref(), ci.as_ref().map(|(s, _)| (*s, tab.ci.faded)));
@@ -1726,8 +1731,10 @@ impl Rocket {
                                         ui.close();
                                     }
                                 });
+                                let stay = response.has_focus() || response.context_menu_opened() || response.dragged();
                                 response.on_hover_text(format!("{label}\n{}", tr("Click to show its history · right-click for actions")));
-                            }
+                                stay
+                            });
                         }
                         ui.add_space(4.0);
                         let header = section_header(ui, tr("Remotes"), Some(snapshot.remotes.len()), "view-remotes", current == Some(View::Remotes), Some(tr("Add remote")), Some(&mut tab.worktree_view.sections[1]));
@@ -1741,10 +1748,20 @@ impl Rocket {
                                 if leaf_row(ui, &name, Icon::Remote, 0, None, false).clicked() {
                                     intents.push(Intent::View(View::Remotes));
                                 }
-                                for branch in snapshot.branches.iter().filter(|b| b.kind == BranchKind::Remote && b.symbolic_target.is_none()) {
+                                let prefix = format!("{name}/");
+                                // Every remote branch is tested each frame, so read the
+                                // name in place where that is the same text.
+                                let listed = |label: &str| label.starts_with(&prefix) && (filter.is_empty() || label.to_lowercase().contains(&filter));
+                                let tracking: Vec<&Branch> = snapshot.branches.iter().filter(|b| {
+                                    b.kind == BranchKind::Remote && b.symbolic_target.is_none() && match short_ref_borrowed(&b.reference) {
+                                        Some(label) => listed(label),
+                                        None => listed(&short_ref(&b.reference)),
+                                    }
+                                }).collect();
+                                crate::long_list::rows(ui, Id::new(("sidebar-remote-rows", tab.id, &remote.name)), tracking.len(), SIDEBAR_ROW, |ui, index| {
+                                    let branch = tracking[index];
                                     let label = short_ref(&branch.reference);
-                                    let Some(short) = label.strip_prefix(&format!("{name}/")) else { continue };
-                                    if !label.to_lowercase().contains(&filter) { continue; }
+                                    let short = label.strip_prefix(&prefix).unwrap_or(&label);
                                     let ci = tab.ci.mark(branch.target.as_str()).filter(|_| tab.ci.tips.contains_key(&branch.reference));
                                     let row = leaf_row_reserved(ui, short, Icon::Branch, 1, None, false, if ci.is_some() { 22.0 } else { 0.0 });
                                     if let Some(state) = ci {
@@ -1757,13 +1774,15 @@ impl Rocket {
                                             intents.push(Intent::CiChecks(branch.target.as_str().to_owned(), rect));
                                         }
                                     }
-                                    if crate::drag::branch(ui, row, tab.id, branch, intents, &mut self.frame_widgets).clicked()
+                                    let row = crate::drag::branch(ui, row, tab.id, branch, intents, &mut self.frame_widgets);
+                                    if row.clicked()
                                         && let Ok(reference) = String::from_utf8(branch.reference.clone())
                                     {
                                         intents.push(Intent::History(Some(reference)));
                                         intents.push(Intent::View(View::Commits));
                                     }
-                                }
+                                    row.has_focus() || row.dragged()
+                                });
                             }
                         }
                         ui.add_space(4.0);
@@ -1794,7 +1813,7 @@ impl Rocket {
                                 (Icon::Modules, tr("Submodules"), "view-submodules", page == Some(Page::Submodules), Target::Page(Page::Submodules)),
                                 (Icon::Database, tr("Git LFS"), "view-lfs", page == Some(Page::Lfs), Target::Page(Page::Lfs)),
                                 (Icon::File, tr("Path history"), "view-filehistory", current == Some(View::FileHistory), Target::View(View::FileHistory)),
-                                (Icon::Activity, tr("Statistics"), "view-statistics", page == Some(Page::Statistics), Target::Page(Page::Statistics)),
+                                (Icon::Activity, tr("Insights"), "view-statistics", page == Some(Page::Statistics), Target::Page(Page::Statistics)),
                             ] {
                                 if key == "view-tags" && tab.worktree_view.hide_tags { continue; }
                                 if preview && preview_hides(key) { continue; }
@@ -2848,13 +2867,29 @@ fn section_header(
     }
 }
 
+/// The height of a sidebar row: [`branch_row`] and [`leaf_row`].
+const SIDEBAR_ROW: f32 = 28.0;
+
+/// [`short_ref`] without the copy, for a name that is valid UTF-8 and short enough to be
+/// shown whole. Lists that test every branch each frame use it; `None` means the name
+/// needs [`short_ref`] itself.
+fn short_ref_borrowed(reference: &[u8]) -> Option<&str> {
+    // `display` cuts longer names and adds a note.
+    const SHOWN_WHOLE: usize = 16 * 1024;
+    if reference.len() > SHOWN_WHOLE {
+        return None;
+    }
+    let name = std::str::from_utf8(reference).ok()?;
+    Some(name.trim_start_matches("refs/heads/").trim_start_matches("refs/remotes/"))
+}
+
 /// A local branch row; with a CI mark, the mark sits left of the counts and its
 /// rect comes back so the caller can make it clickable.
 fn branch_row(ui: &mut Ui, label: &str, current: bool, meta: Option<&str>, mark: Option<(rocket_git::ForgeCiState, bool)>) -> (Response, Option<Rect>) {
     let response = ui.add(
         Button::new("")
             .frame(false)
-            .min_size(vec2(ui.available_width(), 28.0)),
+            .min_size(vec2(ui.available_width(), SIDEBAR_ROW)),
     );
     let rect = response.rect;
     style::row_background(
@@ -2945,7 +2980,7 @@ fn leaf_row_reserved(
     let response = ui.add(
         Button::new("")
             .frame(false)
-            .min_size(vec2(ui.available_width(), 28.0)),
+            .min_size(vec2(ui.available_width(), SIDEBAR_ROW)),
     );
     let rect = response.rect;
     let enabled = response.enabled();

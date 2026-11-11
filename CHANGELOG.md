@@ -12,6 +12,15 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Keep long lists responsive. The Changes file list, the Branches page, the
+  sidebar's local and remote branches and a commit's changed-files list build only
+  the rows in or next to the visible area instead of every row on every frame, and
+  History finds the branches of its visible rows in one pass. Scrolling, selection,
+  keyboard focus, context menus, drags and automation names are unchanged. In a debug
+  build a window frame with 20,000 changed files fell from about 650 ms to 14 ms, and
+  with 5,000 to 10,000 branches from 240–1,080 ms to 8–11 ms. In an optimized build a
+  frame with a selected commit that changes 8,000 files fell from 52 ms to 1 ms, and
+  History with 10,000 branches from 7.6 ms to 1.8 ms.
 - Add exact-conversation resume, provider lifecycle activity and deduplicated
   attention badges to Agents. Revalidate reviewed executable/arguments before
   resuming; keep provider permissions and existing logins. Track finished turns

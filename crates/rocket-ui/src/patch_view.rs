@@ -1085,6 +1085,91 @@ mod performance_tests {
         times.sort_unstable();
         println!("large_diff_frame_median_us={}", times[times.len()/2]);
     }
+
+    /// The patch of one Rust file with `lines` rows of about `width` characters:
+    /// three context rows, then one row changed.
+    fn one_file_diff(lines: usize, width: usize) -> String {
+        let mut text = format!(
+            "diff --git a/src/big.rs b/src/big.rs\n--- a/src/big.rs\n+++ b/src/big.rs\n@@ -1,{0} +1,{0} @@\n",
+            lines / 5 * 4
+        );
+        for n in 0..lines {
+            let (mark, name) = match n % 5 {
+                3 => ('-', "old"),
+                4 => ('+', "new"),
+                _ => (' ', "kept"),
+            };
+            let mut row = format!("{mark}    let {name}_{n} = compute(\"value {n}\", {n} + 1); // row {n}");
+            while row.len() < width {
+                row.push_str(&format!(" call({n}, \"text\");"));
+            }
+            text.push_str(&row);
+            text.push('\n');
+        }
+        text
+    }
+
+    /// One frame of the diff view: the interface pass and turning its shapes into
+    /// triangles.
+    fn timed_frame(ctx: &Context, tab: &mut Tab, events: Vec<Event>) -> u128 {
+        let started = std::time::Instant::now();
+        let mut widgets = HashMap::new();
+        let mut output = ctx.run_ui(RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1480.0, 920.0))),
+            events,
+            ..Default::default()
+        }, |ui| { patch_view(ui, tab, true, false, &mut widgets); });
+        output.textures_delta.clear();
+        std::hint::black_box(ctx.tessellate(output.shapes, output.pixels_per_point));
+        started.elapsed().as_micros()
+    }
+
+    #[test]
+    #[ignore = "manual before/after timing probe"]
+    fn measure_one_file_diff_frames() {
+        for (label, lines, width, split) in [
+            ("diff_2000_lines", 2_000, 60, false),
+            ("diff_49990_lines", 49_990, 60, false),
+            ("diff_49990_lines_split", 49_990, 60, true),
+            ("diff_2000_lines_of_8000_characters", 2_000, 8_000, false),
+        ] {
+            let text = one_file_diff(lines, width);
+            let started = std::time::Instant::now();
+            let patch = crate::diff::Patch::parse(text.as_bytes());
+            let parse = started.elapsed().as_millis();
+            let (limited, syntax) = (patch.limited, patch.files[0].syntax_language);
+            let ctx = Context::default();
+            let mut tab = Tab::new("render-fixture".into(), None);
+            tab.diff_tools.words = false;
+            tab.split_diff = split;
+            tab.patch = Some(patch);
+            let median = |times: &mut Vec<u128>| {
+                times.sort_unstable();
+                times[times.len() / 2]
+            };
+            let mut idle: Vec<u128> = (0..9).map(|_| timed_frame(&ctx, &mut tab, vec![])).skip(2).collect();
+            // A wheel notch of about three rows a frame, then a whole window a frame.
+            let scroll = |tab: &mut Tab, step: f32| -> (u128, u128) {
+                let mut times: Vec<u128> = (0..40)
+                    .map(|_| {
+                        timed_frame(&ctx, tab, vec![
+                            Event::PointerMoved(pos2(900.0, 450.0)),
+                            Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, -step), modifiers: Modifiers::NONE, phase: TouchPhase::Move },
+                        ])
+                    })
+                    .collect();
+                let slowest = *times.iter().max().unwrap();
+                (median(&mut times), slowest)
+            };
+            let (notch, notch_slowest) = scroll(&mut tab, 60.0);
+            let (page, page_slowest) = scroll(&mut tab, 900.0);
+            println!(
+                "{label} megabytes={:.1} parse_ms={parse} idle_frame_us={} notch_scroll_median_us={notch} notch_scroll_max_us={notch_slowest} page_scroll_median_us={page} page_scroll_max_us={page_slowest} limited={limited} syntax={syntax:?}",
+                text.len() as f64 / 1_048_576.0,
+                median(&mut idle),
+            );
+        }
+    }
 }
 
 #[cfg(test)]

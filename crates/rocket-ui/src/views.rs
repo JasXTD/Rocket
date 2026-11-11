@@ -1544,6 +1544,23 @@ fn compact_name(branch: &Branch, remotes: &[Remote]) -> String {
     }
 }
 
+/// The branches on each of `commits`, in the order the repository lists them, found in
+/// one pass over `branches`. Symbolic refs such as origin/HEAD are left out: they get
+/// no chip.
+pub(crate) fn branch_tips<'a>(
+    commits: &'a [Commit],
+    branches: &'a [Branch],
+) -> std::collections::HashMap<&'a ObjectId, Vec<&'a Branch>> {
+    let mut tips: std::collections::HashMap<&ObjectId, Vec<&Branch>> =
+        commits.iter().map(|commit| (&commit.id, Vec::new())).collect();
+    for branch in branches.iter().filter(|b| b.symbolic_target.is_none()) {
+        if let Some(here) = tips.get_mut(&branch.target) {
+            here.push(branch);
+        }
+    }
+    tips
+}
+
 /// The chips for the branches on one commit. Compact folds a branch and the remote branch
 /// it tracks into one chip and shortens the names.
 pub(crate) fn branch_chips(branches: &[&Branch], remotes: &[Remote], compact: bool) -> Vec<Chip> {
@@ -1710,6 +1727,12 @@ fn history_table(
         .show_rows(ui, row_height, count, |ui, range| {
             ui.spacing_mut().item_spacing.y = 0.0;
             commit_list_keys(ui, tab, range.clone(), row_height, intents);
+            // One pass over the branches for the rows shown, not one for each row: a
+            // repository can have thousands of branches.
+            let tips = tab
+                .snapshot
+                .as_ref()
+                .map(|snapshot| branch_tips(&tab.commits()[range.clone()], &snapshot.branches));
             for i in range {
                 let index = i;
                 let commit = &tab.commits()[index];
@@ -1806,12 +1829,11 @@ fn history_table(
                 );
                 let message = painter.with_clip_rect(message_clip);
                 if let Some(snapshot) = &tab.snapshot {
-                    let here: Vec<&Branch> = snapshot
-                        .branches
-                        .iter()
-                        .filter(|b| b.target == commit.id && b.symbolic_target.is_none())
-                        .collect();
-                    let chips = branch_chips(&here, &snapshot.remotes, compact);
+                    let here = tips
+                        .as_ref()
+                        .and_then(|tips| tips.get(&commit.id))
+                        .map_or(&[][..], Vec::as_slice);
+                    let chips = branch_chips(here, &snapshot.remotes, compact);
                     let lane = LANES()[tab.graph.get(index).map_or(1, |r| r.color) % LANES().len()];
                     let limit = message_clip.right() - 70.0;
                     let chip_id = |i: usize| Id::new(("commit-chip", tab.id, commit.id.as_str(), i));
@@ -2447,12 +2469,14 @@ fn change_groups(
                 && (e.worktree != Change::Unchanged || e.kind == EntryKind::Untracked)
         })
         .collect();
+    // A group can hold every file of a large working tree, so each one builds only the
+    // rows in or next to the visible area.
     if !conflicts.is_empty() {
         let (expanded, _) = group_header(ui, tab.id, tr("Conflicts"), conflicts.len(), None);
         if expanded {
-            for entry in conflicts {
-                change_row(ui, tab, ChangeRow { entry, staged: false }, writable, intents, widgets, commands);
-            }
+            crate::long_list::rows(ui, Id::new(("change-rows", tab.id, "conflicts")), conflicts.len(), CHANGE_ROW, |ui, index| {
+                change_row(ui, tab, ChangeRow { entry: conflicts[index], staged: false }, writable, intents, widgets, commands)
+            });
         }
         ui.add_space(6.0);
     }
@@ -2474,9 +2498,9 @@ fn change_groups(
             if staged.is_empty() {
                 empty_hint(ui, tr("No files staged"));
             }
-            for entry in &staged {
-                change_row(ui, tab, ChangeRow { entry, staged: true }, writable, intents, widgets, commands);
-            }
+            crate::long_list::rows(ui, Id::new(("change-rows", tab.id, "staged")), staged.len(), CHANGE_ROW, |ui, index| {
+                change_row(ui, tab, ChangeRow { entry: staged[index], staged: true }, writable, intents, widgets, commands)
+            });
         }
     }).response.rect;
     if let Some(intent) = crate::change_drag::target(ui, staged_group, tab, status, true, writable, widgets) {
@@ -2504,9 +2528,9 @@ fn change_groups(
             if unstaged.is_empty() {
                 empty_hint(ui, tr("Working tree clean"));
             }
-            for entry in unstaged {
-                change_row(ui, tab, ChangeRow { entry, staged: false }, writable, intents, widgets, commands);
-            }
+            crate::long_list::rows(ui, Id::new(("change-rows", tab.id, "unstaged")), unstaged.len(), CHANGE_ROW, |ui, index| {
+                change_row(ui, tab, ChangeRow { entry: unstaged[index], staged: false }, writable, intents, widgets, commands)
+            });
         }
     }).response.rect;
     if let Some(intent) = crate::change_drag::target(ui, unstaged_group, tab, status, false, writable, widgets) {
@@ -2949,6 +2973,11 @@ struct ChangeRow<'a> {
     staged: bool,
 }
 
+/// The height of one file row in the Changes list.
+const CHANGE_ROW: f32 = 30.0;
+
+/// Shows one file row. Returns whether the row must stay built once it is out of view:
+/// it holds keyboard focus, an open menu or a drag.
 fn change_row(
     ui: &mut Ui,
     tab: &mut Tab,
@@ -2957,25 +2986,26 @@ fn change_row(
     intents: &mut Vec<Intent>,
     widgets: &mut std::collections::HashMap<String, crate::app::UiControl>,
     commands: &[rocket_git::CustomCommand],
-) {
+) -> bool {
     let ChangeRow { entry, staged } = row;
     let response = ui.add(
         Button::new("")
             .frame(false)
-            .min_size(vec2(ui.available_width(), 30.0)),
+            .min_size(vec2(ui.available_width(), CHANGE_ROW)),
     ).interact(Sense::drag());
     let response = if writable && crate::change_drag::belongs(entry, staged) {
         response.on_hover_cursor(CursorIcon::Grab)
     } else { response };
     crate::change_drag::source(ui, &response, tab, entry, staged, writable);
-    // Keep every row's widget identity, focus and drag participation. Off-screen
-    // idle rows need no path formatting, text layout, actions or paint commands.
+    // The list also builds the first and last row and the neighbours of a focused one
+    // while they are out of view, for keyboard focus to move to. Those idle rows need
+    // no path formatting, text layout, actions or paint commands.
     if !ui.is_rect_visible(response.rect)
         && !response.has_focus()
         && !response.context_menu_opened()
         && !response.dragged()
     {
-        return;
+        return false;
     }
     let selected = if entry.kind != EntryKind::Unmerged && tab.change_selection.staged.is_some() {
         tab.change_selection.contains(&entry.path, staged)
@@ -3185,10 +3215,12 @@ fn change_row(
             ui.close();
         }
     });
+    let stay = response.has_focus() || response.context_menu_opened() || response.dragged();
     response.on_hover_text(format!(
         "{}\n{}: {:?} · {}: {:?}",
         label, tr("Index"), entry.index, tr("Working tree"), entry.worktree
     ));
+    stay
 }
 /// Branches page: local and remote-tracking branches beside the selection's details.
 /// The selection is view state only and falls back to HEAD when its branch is gone.
@@ -3254,13 +3286,16 @@ pub(crate) fn branches(
                     if snapshot.branches.is_empty() {
                         pages::empty(ui, tr("No branches yet. Create the first commit to start one."));
                     }
-                    for (title, group) in [(tr("Local"), &local), (tr("Remote-tracking"), &tracking)] {
+                    for (key, title, group) in [("local", tr("Local"), &local), ("tracking", tr("Remote-tracking"), &tracking)] {
                         if group.is_empty() {
                             continue;
                         }
                         ui.add_space(4.0);
                         pages::caption(ui, &format!("{title} · {}", group.len()));
-                        for (index, branch) in group.iter() {
+                        // A repository can have thousands of branches: build only the
+                        // rows in or next to the visible area.
+                        crate::long_list::rows(ui, Id::new(("branch-rows", tab.id, key)), group.len(), BRANCH_ROW, |ui, row| {
+                            let (index, branch) = group[row];
                             let current = selected.is_some_and(|s| s.reference == branch.reference);
                             let r = branch_row(ui, branch, current, ahead_behind);
                             pages::control(
@@ -3273,7 +3308,8 @@ pub(crate) fn branches(
                                 select = Some(branch.reference.clone());
                             }
                             branch_menu(&r, tab, branch, writable, intents, commands, widgets);
-                        }
+                            r.has_focus() || r.context_menu_opened()
+                        });
                         ui.add_space(10.0);
                     }
                 });
@@ -3323,6 +3359,9 @@ fn show_history(branch: &Branch, intents: &mut Vec<Intent>) {
         intents.push(Intent::View(View::Commits));
     }
 }
+/// The height of one row of the Branches page, as [`pages::row`] builds it.
+const BRANCH_ROW: f32 = 46.0;
+
 fn branch_row(
     ui: &mut Ui,
     branch: &Branch,

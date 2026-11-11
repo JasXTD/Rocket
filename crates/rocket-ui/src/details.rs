@@ -321,6 +321,9 @@ pub(crate) fn commit_header(
     output.inner
 }
 
+/// The height of one row of a commit's changed files.
+const FILE_ROW: f32 = 30.0;
+
 /// Changed files of the selected commit. Returns true when a file was chosen.
 fn file_list(ui: &mut Ui, tab: &mut Tab, widgets: &mut HashMap<String, UiControl>, intents:&mut Vec<Intent>, commands:&[rocket_git::CustomCommand]) -> bool {
     let mut chosen = false;
@@ -394,12 +397,15 @@ fn file_list(ui: &mut Ui, tab: &mut Tab, widgets: &mut HashMap<String, UiControl
         })
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 1.0;
-            for (i, file) in patch.files.iter().enumerate() {
+            // A commit can change thousands of files: build only the rows in or next
+            // to the visible area.
+            crate::long_list::rows(ui, Id::new(("detail-file-rows", tab.id)), patch.files.len(), FILE_ROW, |ui, i| {
+                let file = &patch.files[i];
                 let response = ui
                     .add(
                         Button::new("")
                             .frame(false)
-                            .min_size(vec2(ui.available_width(), 30.0)),
+                            .min_size(vec2(ui.available_width(), FILE_ROW)),
                     )
                     .on_hover_text(&file.label);
                 let r = response.rect;
@@ -474,7 +480,9 @@ fn file_list(ui: &mut Ui, tab: &mut Tab, widgets: &mut HashMap<String, UiControl
                     let context=crate::custom_commands::historical_context(&context,commit,path.as_bytes());
                     response.context_menu(|ui| crate::custom_commands::context_menu(ui,commands,rocket_git::CommandScope::File,&context,intents,widgets));
                 }
-            }
+                // Out of view, a row stays built while it holds focus or an open menu.
+                response.has_focus() || response.context_menu_opened()
+            });
         });
     chosen
 }
