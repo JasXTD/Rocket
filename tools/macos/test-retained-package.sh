@@ -47,17 +47,17 @@ for(const f of fs.readdirSync(dir))if(f==='result.json'||f==='failure-state.json
 JS
 }
 trap collect EXIT
-# First run is deliberately cold: a diagnostic must not warm the service and
-# accidentally hide the original failure. Its status determines the final result.
-# Reproduce the original release job's order, including the preceding desktop
-# test. Agents and CLI acceptance already passed for these exact archive bytes.
-node tools/tests/test-mcp-desktop.cjs
+# Observe the unchanged packaged checker without warming it or altering results.
+# Compile only first-party diagnostic code with the runner's existing Apple SDK.
+xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -dynamiclib -framework AppKit tools/tests/macos-spelling-observer.m -o "$out/spelling-observer.dylib"
+codesign --force --sign - "$out/spelling-observer.dylib"
+export ROCKET_SPELL_OBSERVER="$out/spelling-observer.dylib"
 cold=0
-node tools/tests/test-mcp-macos-package.cjs || cold=$?
+node tools/tests/test-mcp-spelling.cjs || cold=$?
+unset ROCKET_SPELL_OBSERVER
 xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-spelling-diagnostic.m crates/rocket-spell/src/macos.m -o "$out/spelling-probe"
 "$out/spelling-probe" > "$out/spelling-native.json"
 warm=0
-if [ "$cold" != 0 ]; then node tools/tests/test-mcp-macos-package.cjs || warm=$?; fi
 node tools/macos/bundle.cjs verify "$out/extracted/package"
 node - "$out" "$cold" "$warm" <<'JS'
 const fs=require('node:fs');fs.writeFileSync(process.argv[2]+'/retained-result.json',JSON.stringify({source_run:42900875578,source_commit:'57e688e3c3372dcf7fac5e1a93e93f88f90aeb93',package_sha256:'077f91675937575be287913f7e81aa64191ff4acb71b8a950fa841de92876a6f',cold_exit:Number(process.argv[3]),warm_exit:Number(process.argv[4]),passed:process.argv[3]==='0'},null,2));
