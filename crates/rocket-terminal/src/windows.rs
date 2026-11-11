@@ -259,6 +259,7 @@ fn spawn(
     history: Option<&Path>,
     openssh: Option<&(String, Vec<String>)>,
     shell: &Shell,
+    additions: &[(String, String)],
 ) -> io::Result<(Process, Owned, u32)> {
     crate::process_privilege::check()?;
     let executable = if let Some((tool, _)) = openssh {
@@ -283,6 +284,7 @@ fn spawn(
     } else {
         environment::for_shell()?
     };
+    let environment = environment::with_additions(&environment, additions);
     let mut command = wide(OsStr::new(&shell_command(shell, &executable, history)?))?;
     if let Some((_, arguments)) = openssh {
         let mut parts = vec![quote_argument(&executable.to_string_lossy())];
@@ -426,6 +428,7 @@ pub(super) fn run(
     history: Option<&Path>,
     openssh: Option<&(String, Vec<String>)>,
     shell: &Shell,
+    additions: &[(String, String)],
     input: Receiver<Vec<u8>>,
     shared: &Arc<Shared>,
 ) -> io::Result<()> {
@@ -480,7 +483,7 @@ pub(super) fn run(
         )
     })?;
     let console = Console(console, runtime);
-    let (process, job, pid) = spawn(&console, directory, history, openssh, shell)?;
+    let (process, job, pid) = spawn(&console, directory, history, openssh, shell, additions)?;
     drop(input_read);
     drop(output_write);
     {

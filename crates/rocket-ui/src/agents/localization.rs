@@ -3,6 +3,15 @@
 use crate::i18n::mark;
 
 const _: &[&str] = &[
+    mark("Activity not connected"), mark("Ready for input"), mark("Working"),
+    mark("Needs your attention"), mark("Turn finished"), mark("Turn interrupted"),
+    mark("Activity connection unavailable"), mark("Resume conversation"),
+    mark("Resuming conversation"), mark("Track conversation activity"),
+    mark("Needs attention"), mark("Mark as seen"), mark("Review and integrate"),
+    mark("Conversation activity"), mark("Conversation ID"), mark("Open worktree changes"),
+    mark("Check integration"), mark("Original checkout"), mark("Merge into"),
+    mark("Agent branch"), mark("incoming commits"), mark("changed files"),
+    mark("Compare committed changes"), mark("Review merge"),
     mark("Saved session. No process was restarted. Review the worktree and executable before running again."),
     mark("Saving session before starting any command."),
     mark("New session"),

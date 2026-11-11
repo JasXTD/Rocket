@@ -62,6 +62,20 @@ fn without_module_path(block: &[u16]) -> Vec<u16> {
     result
 }
 
+pub(super) fn with_additions(block: &[u16], additions: &[(String, String)]) -> Vec<u16> {
+    if additions.is_empty() { return block.to_vec(); }
+    let mut entries: Vec<Vec<u16>> = block.split(|c| *c == 0).filter(|s| !s.is_empty())
+        .filter(|s| !additions.iter().any(|(key,_)| {
+            String::from_utf16_lossy(s).get(..key.len()+1).is_some_and(|prefix| prefix.eq_ignore_ascii_case(&format!("{key}=")))
+        })).map(<[u16]>::to_vec).collect();
+    entries.extend(additions.iter().map(|(k,v)| format!("{k}={v}").encode_utf16().collect()));
+    entries.sort_by_cached_key(|v| String::from_utf16_lossy(v).to_uppercase());
+    let mut result = Vec::new();
+    for entry in entries { result.extend(entry); result.push(0); }
+    result.push(0);
+    result
+}
+
 /// Bash writes its history only when it exits by itself, while End session, closing a
 /// tab and quitting all stop the session. Saving after each command keeps what was typed.
 pub(super) fn for_git_bash() -> io::Result<Vec<u16>> {
@@ -119,6 +133,17 @@ mod tests {
     use super::*;
     fn wide(s: &str) -> Vec<u16> {
         s.encode_utf16().collect()
+    }
+    #[test]
+    fn child_additions_replace_case_insensitively_without_changing_parent_or_other_values() {
+        let original=wide("=C:=C:\\資料\0Path=keep\0rocket_agent_events=old\0HOME=unchanged\0\0");
+        let copy=original.clone();
+        let result=with_additions(&original,&[("ROCKET_AGENT_EVENTS".into(),"new".into())]);
+        assert_eq!(original,copy);
+        let text=String::from_utf16(&result).unwrap();
+        assert_eq!(text.matches("ROCKET_AGENT_EVENTS=").count(),1);
+        for s in ["=C:=C:\\資料\0","Path=keep\0","HOME=unchanged\0","ROCKET_AGENT_EVENTS=new\0"]{assert!(text.contains(s));}
+        assert!(text.ends_with("\0\0"));assert!(!text.contains("=old"));
     }
     #[test]
     fn removes_only_module_path_preserving_unicode_policy_and_drive_entries() {

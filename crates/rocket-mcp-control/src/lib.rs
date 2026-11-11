@@ -410,6 +410,11 @@ fn request(config: &Config, token: &str, method: &str, route: &str) -> io::Resul
     }
     Ok(body.into())
 }
+/// Fresh OS-random capability for a short-lived, loopback-only connection.
+/// Callers must keep this out of logs and persistent session metadata.
+pub fn ephemeral_token() -> io::Result<String> {
+    secret()
+}
 fn secret() -> io::Result<String> {
     #[cfg(windows)]
     {

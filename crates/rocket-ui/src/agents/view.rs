@@ -18,6 +18,12 @@ enum Action {
     Cancel,
     Stop(u64),
     Restart,
+    Resume,
+    Acknowledge,
+    CheckIntegration,
+    StopIntegration,
+    CompareIntegration,
+    MergeIntegration,
     Remove,
     TerminalSettings,
     Open(PathBuf),
@@ -144,6 +150,22 @@ impl Rocket {
                 self.agents.existing_form(Mode::Restart);
                 Ok(())
             }
+            Some(Action::Resume) => self.backend.as_ref().map_or(Ok(()),|b|self.agents.resume(b,&self.context)),
+            Some(Action::Acknowledge) => {
+                if let Some(s)=self.agents.sessions.iter_mut().find(|s|Some(s.record.id)==self.agents.selected){s.attention=false;s.record.attention=false;}
+                Ok(())
+            }
+            Some(Action::CheckIntegration) => {
+                if let (Some(b),Some(s))=(self.backend.clone(),self.agents.selected()) {
+                    if s.active(){Err(model::invalid("Stop the agent before checking integration."))}
+                    else {self.agents.integration.start(b,s.record.clone(),&self.context)}
+                }else{Ok(())}
+            }
+            Some(Action::StopIntegration) => {self.agents.integration.stop();Ok(())}
+            Some(Action::CompareIntegration) | Some(Action::MergeIntegration) => {
+                let merge=matches!(action,Some(Action::MergeIntegration));
+                self.agent_integration_handoff(merge)
+            }
             Some(Action::Remove) => {
                 self.agents.existing_form(Mode::Remove);
                 Ok(())
@@ -192,6 +214,28 @@ impl Rocket {
             }
         }
     }
+    fn agent_integration_handoff(&mut self, merge:bool)->Result<()> {
+        let s=self.agents.selected().ok_or_else(||model::invalid("Select a session."))?;
+        let r=self.agents.integration.review.as_ref().ok_or_else(||model::invalid("Check integration first."))?;
+        if s.active() || s.record!=r.owner {return Err(model::invalid("The session changed. Stop it and check integration again."));}
+        let record=s.record.clone();let preview=r.merge.clone();let comparison=r.comparison.clone();
+        self.open(record.source);
+        let tab=self.tabs.get_mut(self.active).ok_or_else(||model::invalid("Open the original checkout."))?;
+        if tab.snapshot.is_none() {return Err(model::invalid("The original checkout is loading. Return to Agents and check integration when it is ready."));}
+        if merge {
+            self.show_dialog(crate::app::DialogKind::Merge);
+            if let Some(d)=&mut self.dialog {
+                d.first=preview.revision().into();d.mode=preview.mode();
+                d.merge=Some(crate::merge::DialogState{preview:Some(preview),..Default::default()});
+            }
+            self.terminal_log.push("agent_integration_reviewed",false);
+        }else{
+            tab.compare.base=comparison.base.to_string();tab.compare.target=comparison.target.to_string();tab.compare.local_staged=None;
+            self.compare_intent(crate::compare::CompareIntent::Open);
+            self.compare_intent(crate::compare::CompareIntent::Load);
+        }
+        Ok(())
+    }
 }
 fn sessions(ui: &mut Ui, state: &mut State, w: &mut Widgets) {
     let r = ui.add(
@@ -205,6 +249,7 @@ fn sessions(ui: &mut Ui, state: &mut State, w: &mut Widgets) {
             (Filter::All, "all", "All"),
             (Filter::Active, "active", "Active sessions"),
             (Filter::Finished, "finished", "Inactive sessions"),
+            (Filter::Attention, "attention", "Needs attention"),
         ] {
             let r = ui.selectable_label(state.filter == filter, tr(label));
             pages::control(w, format!("agents-filter-{id}"), &r, ui.clip_rect());
@@ -225,6 +270,7 @@ fn sessions(ui: &mut Ui, state: &mut State, w: &mut Widgets) {
             for s in &state.sessions {
                 if state.filter == Filter::Active && !s.active()
                     || state.filter == Filter::Finished && s.active()
+                    || state.filter == Filter::Attention && !s.attention
                 {
                     continue;
                 }
@@ -283,12 +329,12 @@ fn sessions(ui: &mut Ui, state: &mut State, w: &mut Widgets) {
                     &format!(
                         "{} · {}",
                         tr(s.record.provider.label()),
-                        tr(s.phase.label())
+                        tr(if s.active(){s.activity_state.label()}else{s.phase.label()})
                     ),
                     FontId::proportional(11.0),
                     if s.phase == Phase::Failed {
                         RED()
-                    } else {
+                    } else if s.attention { AMBER() } else {
                         HINT()
                     },
                 );
@@ -299,6 +345,7 @@ fn sessions(ui: &mut Ui, state: &mut State, w: &mut Widgets) {
                     ui.clip_rect(),
                 );
                 if r.clicked() {
+                    state.integration.clear();
                     state.selected = Some(s.record.id);
                     state.changes.suspend();
                 }
@@ -344,8 +391,10 @@ fn workspace(
                 ) {
                     *action = Some(Action::Stop(s.record.id));
                 }
-            } else if button(ui, w, "agents-restart", "Review and restart", ready) {
-                *action = Some(Action::Restart);
+            } else {
+                if s.resumable() {
+                    if button(ui,w,"agents-resume","Resume conversation",ready){*action=Some(Action::Resume);}
+                } else if button(ui,w,"agents-restart","Review and restart",ready){*action=Some(Action::Restart);}
             }
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                 ui.add(Label::new(RichText::new(&s.record.name).font(semibold(16.0))).truncate());
@@ -370,9 +419,14 @@ fn workspace(
         .truncate(),
     );
     ui.horizontal_wrapped(|ui| {
+        if s.active() {ui.label(RichText::new(tr(s.activity_state.label())).color(if s.attention{AMBER()}else{HINT()}));}
+        if s.attention && button(ui,w,"agents-acknowledge","Mark as seen",true){*action=Some(Action::Acknowledge);}
+    });
+    ui.horizontal_wrapped(|ui| {
         for (pane, id, label) in [
             (Pane::Terminal, "terminal", "Terminal"),
             (Pane::Changes, "changes", "Changes"),
+            (Pane::Integrate, "integrate", "Review and integrate"),
             (Pane::Details, "details", "Details"),
         ] {
             let r = ui.selectable_label(state.pane == pane, tr(label));
@@ -430,12 +484,15 @@ fn workspace(
             );
         }
         Pane::Details => details(&mut body, s, w, ready, action),
+        Pane::Integrate => integrate(&mut body,s,&state.integration,w,ready,action),
     }
 }
 fn details(ui: &mut Ui, s: &Session, w: &mut Widgets, ready: bool, action: &mut Option<Action>) {
     let out=ScrollArea::vertical().id_salt(("agent-details",s.record.id)).auto_shrink([false,false]).min_scrolled_height(0.0).show(ui,|ui|{
         pages::field(ui,&tr("Worktree folder"),&s.record.destination.to_string_lossy(),true);
         pages::field(ui,&tr("Base"),&s.record.base,true);
+        pages::field(ui,&tr("Conversation activity"),tr(s.activity_state.label()),false);
+        if let Some(id)=&s.record.conversation{pages::field(ui,&tr("Conversation ID"),id,true);}
         if let Some(d)=s.elapsed(){pages::field(ui,&tr("Elapsed"),&duration(d),false);}
         if let Some(c)=s.exit_code{pages::field(ui,&tr("Exit code"),&c.to_string(),false);}
         if let Some(e)=&s.error{ui.colored_label(RED(),e);}
@@ -446,6 +503,7 @@ fn details(ui: &mut Ui, s: &Session, w: &mut Widgets, ready: bool, action: &mut 
         if let Some(setup)=&s.record.setup{ui.strong(tr("Setup command"));command(ui,setup);}
         ui.separator();
         ui.horizontal_wrapped(|ui|{
+            if button(ui,w,"agents-restart","Review and restart",ready&&!s.active()){*action=Some(Action::Restart);}
             if button(ui,w,"agents-open","Review changes",ready){*action=Some(Action::Open(s.record.destination.clone()));}
             if button(ui,w,"agents-remove","Remove worktree",ready&&!s.active()){*action=Some(Action::Remove);}
             if button(ui,w,"agents-forget","Forget session, keep files",ready&&!s.active()){*action=Some(Action::Forget);}
@@ -455,4 +513,32 @@ fn details(ui: &mut Ui, s: &Session, w: &mut Widgets, ready: bool, action: &mut 
         pages::note(ui,&tr("Credentials and terminal output are not saved in session metadata or diagnostic logs. Do not put secrets in arguments."));
     });
     pages::region(w, "agents-details-scroll", out.inner_rect, ui.is_enabled());
+}
+
+fn integrate(ui:&mut Ui, s:&Session, state:&integration::State,w:&mut Widgets,ready:bool,action:&mut Option<Action>) {
+    let out=ScrollArea::vertical().id_salt("agents-integration").auto_shrink([false,false]).show(ui,|ui|{
+        ui.heading(tr("Review and integrate"));
+        ui.label(tr("1. Review the worktree changes and commit the work you want to keep."));
+        if button(ui,w,"agents-open","Open worktree changes",ready){*action=Some(Action::Open(s.record.destination.clone()));}
+        ui.add_space(10.0);
+        ui.label(tr("2. Stop the agent, then compare its committed branch with the original checkout."));
+        ui.label(tr("Local changes must be committed or stashed in both checkouts. Nothing is saved or discarded automatically."));
+        if s.active(){ui.colored_label(AMBER(),tr("Stop this session before integration."));}
+        ui.horizontal_wrapped(|ui|{
+            if button(ui,w,"agents-integration-check","Check integration",ready&&!s.active()&&state.task.is_none()){*action=Some(Action::CheckIntegration);}
+            if state.task.is_some(){ui.spinner();if button(ui,w,"agents-integration-stop",if state.stopping{"Stopping"}else{"Stop"},!state.stopping){*action=Some(Action::StopIntegration);}}
+        });
+        if let Some(e)=&state.error{ui.colored_label(RED(),e);}
+        if let Some(r)=&state.review {
+            let into=match r.merge.head(){rocket_git::Head::Branch{name,..}=>String::from_utf8_lossy(name),_=>std::borrow::Cow::Borrowed("Detached")};
+            pages::field(ui,&tr("Original checkout"),&r.owner.source.to_string_lossy(),true);
+            pages::field(ui,&tr("Merge into"),&into,true);
+            pages::field(ui,&tr("Agent branch"),&r.owner.branch,true);
+            ui.label(format!("{} {} · {} {}",r.merge.incoming(),tr("incoming commits"),r.comparison.files.len(),tr("changed files")));
+            if button(ui,w,"agents-integration-compare","Compare committed changes",ready&&!s.active()){*action=Some(Action::CompareIntegration);}
+            ui.add_space(10.0);ui.label(tr("3. Review the merge and explicitly apply it. Conflicts use the existing conflict editor and Continue / Abort recovery."));
+            if button(ui,w,"agents-integration-merge","Review merge",ready&&!s.active()&&r.merge.incoming()>0){*action=Some(Action::MergeIntegration);}
+            pages::note(ui,&tr("The merge checks both branch tips and the original checkout again. The agent branch and worktree stay available afterward. Nothing is pushed."));
+        }
+    });pages::region(w,"agents-integration-scroll",out.inner_rect,ui.is_enabled());
 }

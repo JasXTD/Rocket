@@ -206,8 +206,12 @@ impl TerminalPane {
             let send = ui.add_enabled(running, Button::new("Send").min_size(vec2(SEND, CONTROL)));
             widgets.insert("terminal-send".into(), (&send).into());
             if enter || send.clicked() {
-                let command = format!("{}\r", self.command);
-                self.send(command.as_bytes(), "terminal_input_queued");
+                // Interactive agents can treat a rapid block plus Enter as one
+                // paste. Honor their requested delimiters so Enter submits it.
+                let mut command = if agent { self.screen.paste_input(&self.command) }
+                    else { self.command.as_bytes().to_vec() };
+                command.push(b'\r');
+                self.send(&command, "terminal_input_queued");
                 if self.error.is_none() {
                     self.command.clear();
                 }

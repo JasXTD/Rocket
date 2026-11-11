@@ -300,6 +300,7 @@ pub(super) fn run(
     history: Option<&Path>,
     openssh: Option<&(String, Vec<String>)>,
     shell: &Shell,
+    additions: &[(String, String)],
     held_path: Option<&Path>,
     input: Receiver<Vec<u8>>,
     shared: &Arc<Shared>,
@@ -341,6 +342,7 @@ pub(super) fn run(
             None => command.env_remove(name),
         };
     }
+    command.envs(additions.iter().map(|(key,value)| (key,value)));
     // SAFETY: child_setup makes only async-signal-safe calls (see there).
     unsafe { command.pre_exec(child_setup) };
     let mut child = command.spawn()?;

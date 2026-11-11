@@ -11,6 +11,35 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
+#[test]
+fn held_launch_environment_is_private_to_each_child() {
+    let root = folder("child-environment");
+    let key = "ROCKET_AGENT_TEST_CHILD";
+    let original = std::env::var_os(key);
+    let shell = Shell::Custom {
+        program: "/bin/sh".into(),
+        arguments: vec!["-c".into(), "printf 'ENV=%s\\n' \"$ROCKET_AGENT_TEST_CHILD\"; IFS= read -r line".into()],
+    };
+    let launch = |value: &str| Session::start_shell_held_with_environment(
+        &root, 80, 12, Arc::new(|| {}), &shell, std::path::Path::new("/bin/sh"),
+        Arc::new(()), vec![(key.into(), value.into())],
+    ).unwrap();
+    let one = launch("first-session");
+    let two = launch("second-session");
+    let first = wait(&one, "first child environment", |s| s.text().contains("ENV=first-session"));
+    let second = wait(&two, "second child environment", |s| s.text().contains("ENV=second-session"));
+    assert!(!first.text().contains("second-session"));
+    assert!(!second.text().contains("first-session"));
+    assert_eq!(std::env::var_os(key), original);
+    one.stop(); two.stop();
+    closed(&one, "first child stop"); closed(&two, "second child stop");
+    assert!(Session::start_shell_held_with_environment(
+        &root, 80, 12, Arc::new(|| {}), &shell, std::path::Path::new("/bin/sh"),
+        Arc::new(()), vec![("invalid=name".into(), "value".into())],
+    ).is_err());
+    fs::remove_dir(root).unwrap();
+}
+
 fn folder(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!(
         "rocket-unix-terminal-中文-{name}-{}-{}",

@@ -994,7 +994,13 @@ mod scan_budget_tests {
         use crate::agents::model::{Record,Provider,Command};
         let mut saved=SavedState::default();
         let root=std::env::temp_dir();
-        saved.agents.push(Record{id:7,name:"資料 session".into(),source:root.join("source"),destination:root.join("agent"),branch:"agents/task".into(),base:"HEAD".into(),provider:Provider::Custom,command:Command{program:std::env::current_exe().unwrap().to_string_lossy().into_owned(),arguments:"--version".into()},setup:None});
+        saved.agents.push(Record{id:7,name:"資料 session".into(),source:root.join("source"),destination:root.join("agent"),branch:"agents/task".into(),base:"HEAD".into(),provider:Provider::Custom,command:Command{program:std::env::current_exe().unwrap().to_string_lossy().into_owned(),arguments:"--version".into()},setup:None,..Default::default()});
+        saved.agents[0].provider=Provider::Codex;
+        saved.agents[0].tracking=true;
+        saved.agents[0].conversation=Some("11111111-2222-3333-4444-555555555555".into());
+        saved.agents[0].approval=Some("a".repeat(64));
+        saved.agents[0].attention=true;
+        saved.agents[0].last_activity=crate::agents::events::Activity::Complete;
         let encoded=encode(&saved).unwrap();
         assert_eq!(&encoded[..MAGIC.len()],AGENTS_MAGIC);
         assert_eq!(decode(&encoded).unwrap(),saved);

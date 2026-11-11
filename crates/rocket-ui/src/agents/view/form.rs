@@ -10,6 +10,8 @@ pub(super) fn show(
     let removing = f.mode == Mode::Remove;
     let title = if removing {
         "Remove worktree"
+    } else if f.mode == Mode::Resume {
+        "Resuming conversation"
     } else if f.mode == Mode::Restart {
         "Review and restart"
     } else {
@@ -34,6 +36,7 @@ pub(super) fn show(
         true,
         |ui, part, w| {
             if part == pages::Part::Footer {
+                if f.mode==Mode::Resume {if f.task.is_some(){ui.spinner();ui.label(tr("Checking worktree and executables"));}return;}
                 if f.plan.is_some() {
                     if button(
                         ui,
@@ -107,12 +110,14 @@ pub(super) fn show(
             }
             ui.add_enabled_ui(f.task.is_none(),|ui| {
             if !removing {
+                let r=ui.checkbox(&mut f.record.tracking,tr("Track conversation activity"));pages::control(w,"agents-tracking",&r,ui.clip_rect());
+                pages::note(ui,&tr("Provider events enable attention and exact conversation resume. Existing logins and configuration files stay unchanged. Codex may ask you to review the hooks in /hooks."));
                 field(ui,w,"agents-name","Task name",&mut f.record.name,false);
                 ui.label(tr("Provider"));
                 ui.horizontal_wrapped(|ui|{for p in Provider::ALL{
                     let r=ui.selectable_label(f.record.provider==p,tr(p.label()));
                     pages::control(w,format!("agents-provider-{}",p.key()),&r,ui.clip_rect());
-                    if r.clicked(){f.record.provider=p;f.record.command.program=p.installed();f.record.command.arguments.clear();}
+                    if r.clicked(){f.record.provider=p;f.record.command=p.command();}
                 }});
             }
             if f.mode==Mode::Create {

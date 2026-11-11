@@ -542,13 +542,18 @@ impl Ui {
         state["ci"] = ci_state(&self.app);
         state["actions"] = actions_state(&self.app);
         state["agents"] = json!({"selected":self.app.agents.selected,"busy":self.app.agents.working(),"notice":self.app.agents.notice,
+            "attention_count":self.app.agents.sessions.iter().filter(|s|s.attention).count(),
+            "integration":{"reading":self.app.agents.integration.task.is_some(),"stopping":self.app.agents.integration.stopping,"error":self.app.agents.integration.error,"review":self.app.agents.integration.review.as_ref().map(|r|json!({"owner":r.owner.id,"incoming":r.merge.incoming(),"files":r.comparison.files.len(),"base":r.comparison.base.as_str(),"target":r.comparison.target.as_str()}))},
             "pane":format!("{:?}",self.app.agents.pane),"filter":format!("{:?}",self.app.agents.filter),
             "changes":{"owner":self.app.agents.changes.owner.as_ref().map(|r|r.id),"busy":self.app.agents.changes.busy(),"loading":self.app.agents.changes.loading(),"stopping":self.app.agents.changes.stopping,
                 "selected":self.app.agents.changes.selected,"loaded":self.app.agents.changes.loaded.is_some(),"error":self.app.agents.changes.error,"notice":self.app.agents.changes.notice,
                 "files":self.app.agents.changes.loaded.as_ref().map(|s|s.files.iter().enumerate().map(|(i,f)|json!({"index":i,"area":f.area.label(),"path":self.policy.private_state_allowed().then(||String::from_utf8_lossy(f.path.as_bytes()))})).collect::<Vec<_>>()),
                 "patch":if self.policy.private_state_allowed(){self.app.agents.changes.patch.as_ref().map(|p|bounded_agent_tail(p.files.iter().flat_map(|f|f.lines.iter()).take(200).map(|l|l.text.clone()).collect::<Vec<_>>().join("\n")))}else{None}},
-            "form":self.app.agents.form.as_ref().map(|f|json!({"mode":format!("{:?}",f.mode),"reading":f.task.is_some(),"reviewed":f.plan.is_some(),"error":f.error})),
-            "sessions":self.app.agents.sessions.iter().map(|s|json!({"id":s.record.id,"phase":s.phase.label(),"active":s.active(),"exit_code":s.exit_code,"error":s.error,
+            "form":self.app.agents.form.as_ref().map(|f|json!({"mode":format!("{:?}",f.mode),"reading":f.task.is_some(),"reviewed":f.plan.is_some(),"error":f.error,
+                "provider":f.record.provider.key(),"program":self.policy.private_state_allowed().then_some(&f.record.command.program),"arguments":self.policy.private_state_allowed().then_some(&f.record.command.arguments)})),
+            "sessions":self.app.agents.sessions.iter().map(|s|json!({"id":s.record.id,"provider":s.record.provider.key(),"phase":s.phase.label(),"active":s.active(),"exit_code":s.exit_code,"error":s.error,
+                "activity_state":s.activity_state.label(),"attention":s.attention,"notifications":s.notifications,"resumable":s.resumable(),"tracking":s.record.tracking,"conversation":self.policy.private_state_allowed().then_some(&s.record.conversation),
+                "bracketed_paste":s.terminal.as_ref().map(|t|t.screen.bracketed_paste()),
                 "activity":s.activity.iter().map(|e|e.phase.label()).collect::<Vec<_>>(),
                 "pid":s.terminal.as_ref().and_then(|t|t.status.pid),"closed":s.terminal.as_ref().map(|t|t.status.closed),
                 "tail":if self.policy.private_state_allowed(){s.terminal.as_ref().and_then(|t|t.session.snapshot(0)).map(|screen|bounded_agent_tail(screen.text()))}else{None}})).collect::<Vec<_>>()});
@@ -689,7 +694,9 @@ impl Ui {
             let s=self.app.agents.selected().ok_or("Select an agent fixture")?;
             self.agent_record_allowed(&s.record)?;
             if self.policy.real_codex_probe(&s.record.command) {return Err("The real Codex probe accepts only its reviewed startup prompt".into());}
-            return if ["status","finish"].contains(&text){Ok(())}else{Err("Agent fixture input is limited to status and finish".into())};
+            if self.policy.real_copilot_probe(&s.record.command) {return if ["/help","Reply exactly ROCKET_LOCAL_ACTIVITY_OK. Do not use tools."].contains(&text){Ok(())}else{Err("The isolated Copilot probe accepts only /help and its fixed local activity prompt".into())};}
+            let lifecycle=s.record.command.arguments=="-c\nrocket_agent_fixture=lifecycle";
+            return if ["status","finish"].contains(&text)||lifecycle&&["working","attention","complete","interrupt"].contains(&text){Ok(())}else{Err("Agent fixture input is limited to fixed lifecycle probes".into())};
         }
         let tab = self.app.tab().ok_or("Open a fixture first")?;
         let (root, _) = self.policy.repository(&tab.path)?;
@@ -699,8 +706,8 @@ impl Ui {
         self.policy.repository(&r.source)?;
         self.policy.worktree_destination(&r.destination,&r.branch,&r.source)?;
         let executable=std::env::current_exe().map_err(|_|"Cannot locate fixture executable")?.canonicalize().map_err(|_|"Cannot resolve fixture executable")?;
-        let check=|c:&rocket_ui::agents::model::Command| self.policy.real_codex_probe(c) || Path::new(&c.program).canonicalize().is_ok_and(|p|p==executable)
-            && ["--agent-session-fixture\nhold","--agent-session-fixture\nsetup","--agent-session-fixture\nfail"].contains(&c.arguments.as_str());
+        let check=|c:&rocket_ui::agents::model::Command| self.policy.real_codex_probe(c) || self.policy.real_copilot_probe(c) || Path::new(&c.program).canonicalize().is_ok_and(|p|p==executable)
+            && ["--agent-session-fixture\nhold","--agent-session-fixture\nsetup","--agent-session-fixture\nfail","-c\nrocket_agent_fixture=lifecycle"].contains(&c.arguments.as_str());
         if !check(&r.command)||r.setup.as_ref().is_some_and(|c|!check(c)){return Err("MCP runs only the fixed synthetic agent executable and arguments".into());}
         Ok(())
     }
@@ -860,7 +867,7 @@ impl Ui {
             self.agent_record_allowed(&f.proposed())?;
             if let Some(p)=&f.plan {self.agent_record_allowed(&p.record)?;}
         }
-        if matches!(target,"agents-open"|"agents-remove"|"agents-restart"|"agents-stop"|"agents-forget"|"agents-tab-changes"|"agents-refresh"|"agents-read-stop") || target.starts_with("agents-change-") {
+        if matches!(target,"agents-open"|"agents-remove"|"agents-restart"|"agents-resume"|"agents-stop"|"agents-forget"|"agents-tab-changes"|"agents-refresh"|"agents-read-stop") || target.starts_with("agents-change-") || target.starts_with("agents-integration-") {
             self.agent_record_allowed(&self.app.agents.selected().ok_or("Select an agent fixture")?.record)?;
         }
         if target.starts_with("agents-") {
@@ -2121,7 +2128,7 @@ impl Ui {
                         | "page-details-scroll"
                         | "hosting-scroll"
                         | "agents-scroll"
-                        | "agents-list-scroll" | "agents-changes-scroll" | "agents-diff-scroll" | "agents-details-scroll"
+                        | "agents-list-scroll" | "agents-changes-scroll" | "agents-diff-scroll" | "agents-details-scroll" | "agents-integration-scroll"
                         | "int-panel-scroll"
                         | "int-play-code-scroll" | "int-play-preview-scroll" | "conflict-ai-scroll"
                         | "int-review-scroll" | "int-package-scroll" | "int-package-code-scroll"

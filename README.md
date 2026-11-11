@@ -124,6 +124,10 @@ See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
   sessions in separate worktrees, with reviewed setup, interactive terminals,
   Stop/restart and safe cleanup. Uses your installed tools and existing logins;
   worktrees separate files, not permissions. [Session guide](docs/Agents.md).
+- **Pending next release:** a GitHub Copilot CLI preset for Agents, using your
+  separately installed native CLI and its own login; exact-conversation resume,
+  provider-reported attention/turn status, and guided review and local integration.
+  Integration preserves worktrees and uses the existing merge/recovery checks.
 - **AI drafts** for commit messages, **AI review** of a branch diff and **AI resolve** for
   conflicts.
 - Runs Claude Code or Codex on your computer, or a connected MCP agent. No AI API key is

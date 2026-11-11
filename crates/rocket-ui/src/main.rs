@@ -6,6 +6,7 @@ use rocket_ui::app::Rocket;
 use std::path::PathBuf;
 
 fn main() -> eframe::Result {
+    if rocket_ui::agents::events::callback(&std::env::args_os().skip(1).collect::<Vec<_>>()) { return Ok(()); }
     if let Err(error) = rocket_git::ensure_unprivileged_process() {
         // No profile, repository, updater plan or link handler is initialized.
         let message = error.to_string();

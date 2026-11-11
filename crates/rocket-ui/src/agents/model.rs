@@ -10,14 +10,16 @@ pub enum Provider {
     #[default]
     Claude,
     Codex,
+    Copilot,
     Custom,
 }
 impl Provider {
-    pub const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::Custom];
+    pub const ALL: [Self; 4] = [Self::Claude, Self::Codex, Self::Copilot, Self::Custom];
     pub fn key(self) -> &'static str {
         match self {
             Self::Claude => "claude",
             Self::Codex => "codex",
+            Self::Copilot => "copilot",
             Self::Custom => "custom",
         }
     }
@@ -25,6 +27,7 @@ impl Provider {
         match self {
             Self::Claude => "Claude Code",
             Self::Codex => "Codex",
+            Self::Copilot => "GitHub Copilot",
             Self::Custom => "Custom command",
         }
     }
@@ -32,9 +35,23 @@ impl Provider {
         let path = match self {
             Self::Claude => rocket_git::DraftProvider::Claude.default_program(),
             Self::Codex => rocket_git::DraftProvider::Codex.default_program(),
+            Self::Copilot => super::discovery::copilot(),
             Self::Custom => None,
         };
         path.map_or_else(String::new, |p| p.to_string_lossy().into_owned())
+    }
+    pub fn command(self) -> Command {
+        Command {
+            program: self.installed(),
+            // The reviewed binary is held while the session runs. Updates are
+            // an explicit action outside Rocket, not a side effect of launch.
+            arguments: if self == Self::Copilot {
+                "--no-auto-update"
+            } else {
+                ""
+            }
+            .into(),
+        }
     }
 }
 
@@ -64,6 +81,11 @@ impl Command {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Record {
+    pub attention: bool,
+    pub last_activity: super::events::Activity,
+    pub tracking: bool,
+    pub conversation: Option<String>,
+    pub approval: Option<String>,
     pub id: u64,
     pub name: String,
     pub source: PathBuf,
@@ -76,6 +98,10 @@ pub struct Record {
 }
 impl Record {
     pub fn validate(&self) -> Result<()> {
+        if self.conversation.as_deref().is_some_and(|s|!super::events::valid_id(s))
+            || self.approval.as_deref().is_some_and(|s|s.len()!=64 || !s.bytes().all(|b|b.is_ascii_hexdigit())) {
+            return Err(invalid("Invalid saved conversation identity or executable review."));
+        }
         if self.name.trim().is_empty()
             || self.name.len() > 160
             || !visible(&self.name)
@@ -120,7 +146,7 @@ pub(crate) fn encode(records: &[Record]) -> std::io::Result<Vec<u8>> {
         {
             return Err(std::io::Error::other("Invalid agent session identity"));
         }
-        rows.push(json!({"id":r.id,"name":r.name,"source":r.source,"destination":r.destination,"branch":r.branch,"base":r.base,"provider":r.provider.key(),"command":command(&r.command),"setup":r.setup.as_ref().map(command)}));
+        rows.push(json!({"id":r.id,"name":r.name,"source":r.source,"destination":r.destination,"branch":r.branch,"base":r.base,"provider":r.provider.key(),"command":command(&r.command),"setup":r.setup.as_ref().map(command),"tracking":r.tracking,"conversation":r.conversation,"approval":r.approval,"attention":r.attention,"last_activity":r.last_activity.label()}));
     }
     serde_json::to_vec(&rows).map_err(std::io::Error::other)
 }
@@ -141,6 +167,11 @@ pub(crate) fn decode(bytes: &[u8]) -> std::io::Result<Vec<Record>> {
     let mut records = Vec::new();
     for v in rows {
         records.push(Record {
+            attention: if v["attention"].is_null(){false}else{v["attention"].as_bool().ok_or_else(bad)?},
+            last_activity: if v["last_activity"].is_null(){Default::default()}else{super::events::Activity::ALL.into_iter().find(|a|Some(a.label())==v["last_activity"].as_str()).ok_or_else(bad)?},
+            tracking: if v["tracking"].is_null(){false}else{v["tracking"].as_bool().ok_or_else(bad)?},
+            conversation: if v["conversation"].is_null(){None}else{Some(text(v,"conversation")?)},
+            approval: if v["approval"].is_null(){None}else{Some(text(v,"approval")?)},
             id: v["id"].as_u64().ok_or_else(bad)?,
             name: text(v, "name")?,
             source: PathBuf::from(text(v, "source")?),

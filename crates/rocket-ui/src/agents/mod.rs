@@ -1,6 +1,9 @@
 //! Managed local processes in separate Git worktrees. No agent installation,
 //! permission bypass, automatic merge or background relaunch.
 pub mod changes;
+pub mod events;
+mod discovery;
+pub mod integration;
 mod localization;
 pub mod model;
 pub mod runtime;
@@ -27,6 +30,7 @@ pub enum Pane {
     #[default]
     Terminal,
     Changes,
+    Integrate,
     Details,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -35,6 +39,7 @@ pub enum Filter {
     All,
     Active,
     Finished,
+    Attention,
 }
 pub struct Activity {
     pub phase: Phase,
@@ -69,6 +74,12 @@ impl Phase {
     }
 }
 pub struct Session {
+    pub activity_state: events::Activity,
+    pub attention: bool,
+    pub notifications: u64,
+    bridge: Option<events::Bridge>,
+    event_at: u64,
+    event_turn: Option<String>,
     pub record: Record,
     pub phase: Phase,
     pub terminal: Option<TerminalPane>,
@@ -87,6 +98,12 @@ pub struct Session {
 impl Session {
     fn restored(record: Record) -> Self {
         Self {
+            activity_state: record.last_activity,
+            attention: record.attention,
+            notifications: 0,
+            bridge: None,
+            event_at: 0,
+            event_turn: None,
             record,
             phase: Phase::Restored,
             terminal: None,
@@ -126,10 +143,30 @@ impl Session {
             t.stop();
         }
         self.phase = Phase::Stopping;
+        self.bridge = None;
         self.observe_phase();
     }
     pub fn terminal_id(&self) -> u64 {
         self.record.id | (1 << 63)
+    }
+    pub fn resumable(&self)->bool {
+        !self.active() && self.record.tracking && events::can_resume(&self.record) && self.record.conversation.is_some() && self.record.approval.is_some()
+    }
+    fn observe_event(&mut self, e:events::Event)->bool {
+        if self.phase==Phase::Stopping || e.at<=self.event_at {return false;}
+        if let Some(id)=&self.record.conversation {if id!=&e.id{return false;}}
+        if e.kind!=events::Activity::Ready && !e.new_turn
+            && let (Some(current),Some(incoming))=(&self.event_turn,&e.turn) && current!=incoming {return false;}
+        self.record.conversation=Some(e.id);
+        self.event_at=e.at;
+        if e.turn.is_some(){self.event_turn=e.turn;}
+        let changed=self.activity_state!=e.kind;
+        self.activity_state=e.kind;
+        let alert=changed&&matches!(e.kind,events::Activity::Waiting|events::Activity::Complete|events::Activity::Interrupted);
+        if alert {self.attention=true;self.notifications=self.notifications.saturating_add(1);}
+        else if e.kind==events::Activity::Working {self.attention=false;}
+        self.record.attention=self.attention;self.record.last_activity=self.activity_state;
+        alert
     }
     pub fn elapsed(&self) -> Option<Duration> {
         self.elapsed.or_else(|| self.started.map(|at| at.elapsed()))
@@ -165,7 +202,9 @@ impl Form {
     pub fn proposed(&self) -> Record {
         let mut r = self.record.clone();
         r.destination = self.destination.clone().into();
-        r.setup = self.setup_enabled.then(|| self.setup.clone());
+        if self.mode != Mode::Resume {
+            r.setup = self.setup_enabled.then(|| self.setup.clone());
+        }
         r
     }
 }
@@ -180,9 +219,11 @@ pub struct State {
     pub filter: Filter,
     pub search: String,
     pub changes: changes::State,
+    pub integration: integration::State,
 }
 impl State {
     pub fn load(&mut self, records: Vec<Record>) {
+        self.integration.clear();
         self.changes = changes::State::default();
         self.pane = Pane::Terminal;
         self.form = None;
@@ -201,11 +242,12 @@ impl State {
         self.sessions.iter().any(Session::active)
     }
     pub fn working(&self) -> bool {
-        self.form.as_ref().is_some_and(|f| f.task.is_some())
+        self.integration.task.is_some() || self.form.as_ref().is_some_and(|f| f.task.is_some())
             || self.sessions.iter().any(|s| s.job.is_some() || s.pending)
             || self.changes.busy()
     }
     pub fn stop_all(&mut self) {
+        self.integration.stop();
         self.changes.suspend();
         if let Some(f) = &self.form
             && let Some(t) = &f.task
@@ -238,10 +280,8 @@ impl State {
             base: "HEAD".into(),
             branch: format!("agents/task-{id}"),
             provider,
-            command: Command {
-                program: provider.installed(),
-                arguments: String::new(),
-            },
+            command: provider.command(),
+            tracking: true,
             ..Default::default()
         };
         self.form = Some(Form {
@@ -296,6 +336,11 @@ impl State {
         )?);
         Ok(())
     }
+    pub fn resume(&mut self, backend:&Backend, ctx:&Context)->Result<()> {
+        if self.selected().is_none_or(|s|!s.resumable()){return Err(model::invalid("No saved conversation is available to resume."));}
+        self.existing_form(Mode::Resume);
+        self.preview(backend,ctx)
+    }
     pub fn confirm(&mut self) -> Result<()> {
         let f = self
             .form
@@ -334,6 +379,12 @@ impl State {
             .find(|s| s.record.id == plan.record.id)
             .ok_or_else(|| model::invalid("Session no longer exists."))?;
         s.record = plan.record.clone();
+        if plan.mode!=Mode::Remove {
+            s.record.approval=Some(runtime::approval(&s.record,&plan.program.as_ref().unwrap().digest,&rocket_git::CancellationToken::new())?);
+            if plan.mode!=Mode::Resume {s.record.conversation=None;}
+        }
+        s.activity_state=events::Activity::Unknown;s.attention=false;s.event_at=0;s.event_turn=None;s.bridge=None;
+        s.record.attention=false;s.record.last_activity=events::Activity::Unknown;
         s.plan = Some(plan);
         s.pending = true;
         s.after_setup = false;
@@ -371,7 +422,13 @@ impl State {
                 Err(e) => f.error = Some(user_error(&e)),
             }
         }
+        if self.form.as_ref().is_some_and(|f|f.mode==Mode::Resume&&f.plan.is_some()) {
+            if let Err(e)=self.confirm(){self.notice=Some(user_error(&e));}
+        }
         let mut removed = Vec::new();
+        if self.pane!=Pane::Integrate || !visible || self.integration.review.as_ref().is_some_and(|r|Some(r.owner.id)!=self.selected) {
+            self.integration.clear();
+        } else {self.integration.poll();}
         for s in &mut self.sessions {
             if let Some(result) = s.job.as_mut().and_then(WriteTask::try_finish) {
                 s.job = None;
@@ -384,6 +441,7 @@ impl State {
                         );
                     }
                     Ok(started) => {
+                        s.bridge=started.bridge;
                         s.exit_code = None;
                         s.observing = true;
                         s.setup_process = started.setup;
@@ -415,6 +473,28 @@ impl State {
                         log.push("agent_start_failed", true);
                     }
                 }
+            }
+            let incoming=s.bridge.as_ref().map_or_else(Vec::new,events::Bridge::drain);
+            for event in incoming {
+                let previous=s.activity_state;
+                if s.observe_event(event) {
+                    ctx.send_viewport_cmd(eframe::egui::ViewportCommand::RequestUserAttention(eframe::egui::UserAttentionType::Informational));
+                    log.push("agent_attention",false);
+                }
+                if previous!=s.activity_state {
+                    log.push(match s.activity_state {
+                        events::Activity::Ready=>"agent_conversation_ready",
+                        events::Activity::Working=>"agent_turn_working",
+                        events::Activity::Waiting=>"agent_waiting_input",
+                        events::Activity::Complete=>"agent_turn_finished",
+                        _=>"agent_activity_changed",
+                    },false);
+                }
+            }
+            if s.bridge.as_ref().is_some_and(events::Bridge::lost) {
+                s.activity_state=events::Activity::Unavailable;s.attention=true;
+                s.record.attention=true;s.record.last_activity=s.activity_state;
+                log.push("agent_activity_unavailable",false);
             }
             if let Some(t) = &mut s.terminal {
                 t.poll(
@@ -465,6 +545,8 @@ impl State {
                             s.error=Some(t.status.error.clone().unwrap_or_else(||format!("Process exited with code {}. Changes are kept in the worktree.",t.status.exit_code.unwrap_or(1))));
                         }
                         s.plan = None;
+                        s.bridge = None;
+                        if !stopped && failed {s.attention=true;s.notifications=s.notifications.saturating_add(1);ctx.send_viewport_cmd(eframe::egui::ViewportCommand::RequestUserAttention(eframe::egui::UserAttentionType::Informational));}
                         log.push(
                             if stopped {
                                 "agent_stopped"
@@ -508,6 +590,7 @@ impl State {
             }
         }
         for s in &mut self.sessions {
+            s.record.attention=s.attention;s.record.last_activity=s.activity_state;
             s.observe_phase();
         }
         self.sessions.retain(|s| !removed.contains(&s.record.id));

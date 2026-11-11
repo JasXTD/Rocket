@@ -14,6 +14,7 @@ fn io(action: &'static str, source: std::io::Error) -> Error {
 pub enum Mode {
     Create,
     Restart,
+    Resume,
     Remove,
 }
 pub struct Plan {
@@ -75,7 +76,7 @@ pub fn preview(
             Mode::Remove => {
                 Some(repo.preview_remove_worktree(&entry(&repo, &record, cancel)?, cancel)?)
             }
-            Mode::Restart => None,
+            Mode::Restart | Mode::Resume => None,
         };
         let target = if let Some(p) = &worktree {
             record.destination = p.path().to_owned();
@@ -90,13 +91,31 @@ pub fn preview(
         } else {
             (
                 Some(Arc::new(Program::inspect(&record.command, cancel)?)),
-                record
-                    .setup
-                    .as_ref()
-                    .map(|c| Program::inspect(c, cancel).map(Arc::new))
-                    .transpose()?,
+                if mode == Mode::Resume {
+                    None
+                } else {
+                    record.setup.as_ref()
+                        .map(|c| Program::inspect(c, cancel).map(Arc::new))
+                        .transpose()?
+                },
             )
         };
+        if mode == Mode::Resume {
+            if !record.tracking || !super::events::can_resume(&record) || record.conversation.is_none() {
+                return Err(invalid("This session needs a reviewed restart. One-click resume requires an exact saved conversation and recognized interactive arguments, without an initial prompt or exec/print command."));
+            }
+            let expected = approval(&record, &program.as_ref().unwrap().digest, cancel)?;
+            if record.approval.as_deref()!=Some(&expected) {
+                return Err(invalid("The executable or launch settings changed. Close this check and review a restart before running it."));
+            }
+        }
+        if record.tracking && record.provider != super::model::Provider::Custom {
+            let bad = record.command.args().iter().any(|a| {
+                let flag=a.split('=').next().unwrap_or("");
+                matches!(flag,"resume"|"--resume"|"-r"|"--continue"|"--session-id") || flag=="-c"&&record.provider!=super::model::Provider::Codex
+            });
+            if bad {return Err(invalid("Let Rocket manage resume arguments when conversation tracking is enabled."));}
+        }
         Ok(Plan {
             record,
             mode,
@@ -108,6 +127,7 @@ pub fn preview(
     })
 }
 pub struct Started {
+    pub bridge: Option<super::events::Bridge>,
     pub session: Option<rocket_terminal::Session>,
     pub setup: bool,
     pub removed: bool,
@@ -141,7 +161,7 @@ fn start_observed(
         if let Some(program) = &plan.program {
             program.recheck(cancel)?;
         }
-        if !after_setup && let Some(program) = &plan.setup {
+        if plan.mode != Mode::Resume && !after_setup && let Some(program) = &plan.setup {
             program.recheck(cancel)?;
         }
         let repo = git.open(&plan.record.source, cancel)?;
@@ -154,13 +174,13 @@ fn start_observed(
             report.observed?;
         }
         if plan.mode == Mode::Remove {
-            return Ok(Started { session: None, setup: false, removed: true });
+            return Ok(Started { session: None, setup: false, removed: true, bridge:None });
         }
         let e = entry(&repo, &plan.record, cancel)?;
         if !after_setup && e.head.as_ref() != Some(&plan.target) {
             return Err(invalid("The worktree commit changed after review. Review again."));
         }
-        let setup = !after_setup && plan.setup.is_some();
+        let setup = plan.mode != Mode::Resume && !after_setup && plan.setup.is_some();
         let (program, command) = if setup {
             (plan.setup.as_ref().unwrap(), plan.record.setup.as_ref().unwrap())
         } else {
@@ -169,14 +189,23 @@ fn start_observed(
         cancel.check()?;
         before_launch();
         cancel.check()?;
-        let session = rocket_terminal::Session::start_shell_held(
+        let mut bridge = if !setup && plan.record.tracking {Some(super::events::Bridge::new(wake.clone()).map_err(|e|io("connect agent activity",e))?)}else{None};
+        let arguments = if let Some(b)=&mut bridge {b.arguments(&plan.record,plan.mode==Mode::Resume).map_err(|e|io("prepare agent activity",e))?}else{command.args()};
+        let environment=bridge.as_ref().map_or_else(Vec::new,|b|b.environment.clone());
+        let session = rocket_terminal::Session::start_shell_held_with_environment(
             &plan.record.destination, 100, 18, wake,
-            &rocket_terminal::Shell::Custom { program: program.path.clone(), arguments: command.args() },
-            program.launch_path(), program.clone(),
+            &rocket_terminal::Shell::Custom { program: program.path.clone(), arguments },
+            program.launch_path(), program.clone(), environment,
         ).map_err(|e| io("start agent terminal", e))?;
         if cancel.is_cancelled() { session.stop(); }
-        Ok(Started { session: Some(session), setup, removed: false })
+        Ok(Started { session: Some(session), setup, removed: false, bridge })
     })
+}
+
+/// Binds resume to executable bytes and the reviewed launch context. Resume never runs setup.
+pub(super) fn approval(r:&Record, digest:&str, cancel:&CancellationToken)->Result<String> {
+    let bytes=serde_json::to_vec(&serde_json::json!([r.source,r.destination,r.branch,r.provider.key(),r.command.program,r.command.arguments,r.tracking,digest])).map_err(|e|invalid(&e.to_string()))?;
+    sha256_reader(&mut std::io::Cursor::new(bytes),64*1024,cancel)
 }
 
 #[cfg(test)]
@@ -222,6 +251,7 @@ mod tests {
                 }
                 let backend = Backend::discover(&fixture.root.join("logs")).unwrap();
                 let record = Record {
+                    tracking:false, conversation:None, approval:None,attention:false,last_activity:Default::default(),
                     id: 1,
                     name: "swap fixture".into(),
                     source: fixture.repository.clone(),
@@ -312,6 +342,7 @@ mod tests {
                 let plan = preview(
                     &backend,
                     Record {
+                        tracking:false, conversation:None, approval:None,attention:false,last_activity:Default::default(),
                         id: 1,
                         name: "setup fixture".into(),
                         source: fixture.repository.clone(),

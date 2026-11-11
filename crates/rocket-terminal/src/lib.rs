@@ -110,6 +110,7 @@ pub struct Session {
     input: SyncSender<Vec<u8>>,
 }
 struct HeldLaunch {
+    environment: Vec<(String, String)>,
     #[cfg(unix)]
     path: PathBuf,
     // A file lock or private executable snapshot must outlive asynchronous
@@ -163,6 +164,18 @@ impl Session {
         launch_path: &Path,
         lifetime: Arc<dyn Send + Sync>,
     ) -> io::Result<Self> {
+        Self::start_shell_held_with_environment(directory, columns, rows, wake, shell, launch_path, lifetime, Vec::new())
+    }
+    /// Per-child environment additions; never changes Rocket's or another shell's environment.
+    #[allow(clippy::too_many_arguments)]
+    pub fn start_shell_held_with_environment(
+        directory: &Path, columns: u16, rows: u16,
+        wake: Arc<dyn Fn() + Send + Sync>, shell: &Shell, launch_path: &Path,
+        lifetime: Arc<dyn Send + Sync>, environment: Vec<(String, String)>,
+    ) -> io::Result<Self> {
+        if environment.len() > 8 || environment.iter().any(|(k,v)| k.is_empty() || k.len()>80 || !k.bytes().all(|c|c.is_ascii_alphanumeric() || c==b'_') || v.len()>4096 || v.contains('\0')) {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Invalid child environment"));
+        }
         Self::validate_shell(shell)?;
         if !matches!(shell, Shell::Custom { .. }) || !launch_path.is_absolute() {
             return Err(io::Error::new(
@@ -186,6 +199,7 @@ impl Session {
             None,
             shell.clone(),
             Some(HeldLaunch {
+                environment,
                 #[cfg(unix)]
                 path: launch_path.into(),
                 _lifetime: lifetime,
@@ -333,6 +347,7 @@ impl Session {
                         history.as_deref(),
                         openssh.as_ref(),
                         &shell,
+                        held.as_ref().map_or(&[][..], |h| h.environment.as_slice()),
                         #[cfg(any(target_os = "linux", target_os = "macos"))]
                         held.as_ref().map(|h| h.path.as_path()),
                         receive,

@@ -2,6 +2,7 @@ use std::{
     io::Read,
     path::{Path, PathBuf},
 };
+mod copilot;
 
 /// Explicitly selected disposable repository; no wildcard host or owner match.
 pub const GITHUB_TEST_SOURCES: [&str; 3] = [

@@ -1427,6 +1427,7 @@ impl Rocket {
             .map_or(0, |s| s.entries.len());
         // The current branch's newest run, on the Actions entry: red failed, amber running.
         let dot = crate::ci_checks::head_dot(tab);
+        let agent_attention = self.agents.sessions.iter().filter(|s|s.attention).count();
         let mut nav = |ui: &mut Ui, widgets: &mut std::collections::HashMap<String, UiControl>| {
             Frame::new()
                 .inner_margin(Margin::symmetric(8, 8))
@@ -1453,7 +1454,7 @@ impl Rocket {
                             image,
                             current == Some(view),
                             true,
-                            (view == View::Changes && count > 0).then_some(count),
+                            if view==View::Agents {(agent_attention>0).then_some(agent_attention)}else{(view == View::Changes && count > 0).then_some(count)},
                             marked.map(|(state, _)| if *state == rocket_git::ForgeCiState::Failed { RED() } else { AMBER() }),
                             rail,
                         );

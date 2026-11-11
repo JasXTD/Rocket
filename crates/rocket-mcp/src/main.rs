@@ -16,7 +16,9 @@ use std::{
 };
 
 fn run() -> Result<(), String> {
+    if rocket_ui::agents::events::callback(&std::env::args_os().skip(1).collect::<Vec<_>>()) {return Ok(());}
     rocket_git::ensure_unprivileged_process().map_err(|error| error.to_string())?;
+    if let Some(result)=rocket_mcp::agent_fixture::lifecycle_launch(&std::env::args_os().skip(1).collect::<Vec<_>>()) {return result;}
     let mut args = std::env::args_os().skip(1);
     let mode = args
         .next()

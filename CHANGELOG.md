@@ -10,6 +10,21 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased
+
+- Add exact-conversation resume, provider lifecycle activity and deduplicated
+  attention badges to Agents. Revalidate reviewed executable/arguments before
+  resuming; keep provider permissions and existing logins. Track finished turns
+  separately from process exit and retain unseen attention across app restarts.
+  Add a guided committed-work comparison and reviewed local merge with existing
+  stale-state, local-change and conflict recovery protections.
+  Honor an agent terminal's requested bracketed-paste mode so long command-bar
+  prompts submit with one Enter instead of remaining in its input buffer.
+- Add a GitHub Copilot CLI preset to Agents, with native executable discovery,
+  reviewed arguments and automatic CLI updates disabled by default. Reuse the
+  worktree, interactive terminal and Stop lifecycle; saved sessions do not
+  auto-start. Rocket does not install Copilot or change its account configuration.
+
 ## 0.92.3 — Agents, Intel Mac preview and security hardening
 
 Parallel local agent workspaces, expanded translations and hosting discussions,

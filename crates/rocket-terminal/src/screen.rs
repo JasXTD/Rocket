@@ -79,6 +79,7 @@ pub struct Screen {
     pub scrollback: VecDeque<Row>,
     pub cursor: (usize, usize),
     pub cursor_visible: bool,
+    bracketed_paste: bool,
     pub revision: u64,
     saved: (usize, usize),
     region: (usize, usize),
@@ -107,6 +108,7 @@ impl Screen {
             scrollback: VecDeque::new(),
             cursor: (0, 0),
             cursor_visible: true,
+            bracketed_paste: false,
             revision: 1,
             saved: (0, 0),
             region: (0, rows - 1),
@@ -131,6 +133,16 @@ impl Screen {
         self.previous = None;
         self.revision += 1;
     }
+    /// DECSET 2004 distinguishes a pasted block from keyboard input. The caller
+    /// can append a separate Enter after this block to submit an agent prompt.
+    pub fn paste_input(&self, text: &str) -> Vec<u8> {
+        if self.bracketed_paste && !text.is_empty() {
+            [b"\x1b[200~".as_slice(), text.as_bytes(), b"\x1b[201~"].concat()
+        } else {
+            text.as_bytes().to_vec()
+        }
+    }
+    pub fn bracketed_paste(&self) -> bool { self.bracketed_paste }
     #[cfg(any(windows, any(target_os = "linux", target_os = "macos"), test))]
     pub(crate) fn take_replies(&mut self) -> Vec<u8> {
         std::mem::take(&mut self.replies)
@@ -368,6 +380,7 @@ impl Screen {
         }
         if private {
             if command == 'h' || command == 'l' {
+                if values.contains(&2004) { self.bracketed_paste = command == 'h'; }
                 if first == 25 {
                     self.cursor_visible = command == 'h';
                 } else if first == 1049 {
@@ -595,6 +608,25 @@ fn repair_row(row: &mut [Cell]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bracketed_paste_follows_requested_mode_and_preserves_unicode() {
+        let mut screen = Screen::new(80, 20);
+        let text = "資料 and a long agent prompt 👋";
+        assert_eq!(screen.paste_input(text), text.as_bytes());
+        screen.feed(b"\x1b[?25;20");
+        screen.feed(b"04h");
+        assert!(screen.bracketed_paste());
+        let expected = format!("\x1b[200~{text}\x1b[201~").into_bytes();
+        assert_eq!(screen.paste_input(text), expected);
+        assert!(screen.paste_input("").is_empty());
+        screen.resize(60, 15);
+        assert_eq!(screen.paste_input(text), expected);
+        screen.feed(b"\x1b[?2004l");
+        assert_eq!(screen.paste_input(text), text.as_bytes());
+        screen.feed(b"\x1b[?2004h\x1bc");
+        assert_eq!(screen.paste_input(text), text.as_bytes());
+    }
     #[test]
     fn snapshots_share_unchanged_rows_and_keep_text_after_edits_resize_and_clear() {
         let mut live = Screen::new(40, 4);
