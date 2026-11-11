@@ -57,6 +57,8 @@ node tools/tests/test-mcp-spelling.cjs || cold=$?
 unset ROCKET_SPELL_OBSERVER
 xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-spelling-diagnostic.m crates/rocket-spell/src/macos.m -o "$out/spelling-probe"
 "$out/spelling-probe" > "$out/spelling-native.json"
+xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -framework AppKit tools/tests/macos-spelling-service.m crates/rocket-spell/src/macos.m -o "$out/spelling-service-probe"
+"$out/spelling-service-probe" > "$out/spelling-service.json"
 warm=0
 node tools/macos/bundle.cjs verify "$out/extracted/package"
 node - "$out" "$cold" "$warm" <<'JS'
