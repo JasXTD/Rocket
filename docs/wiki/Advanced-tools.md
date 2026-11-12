@@ -15,6 +15,7 @@ rules while you are in a dialog.
 | Clean up a local series of commits | [Interactive rebase](../../crates/rocket-ui/src/guide.md#interactive-rebase) | Rewrites commit IDs; review drops, squash and fixup carefully |
 | Replay or undo an existing commit | [Cherry-pick and revert](../../crates/rocket-ui/src/guide.md#commits) | A conflict can pause the sequence for recovery |
 | Find the commit that introduced a bug | [Bisect](../../crates/rocket-ui/src/guide.md#bisect) | Manual or automated; test commands execute locally |
+| Make History quicker in a very large repository | [Faster history](../../crates/rocket-ui/src/guide.md#faster-history) | Writes Git's commit index under `.git`; changes no commit, branch or file and can be removed |
 | Find a previous branch tip or lost commit | [Reflog and recovery](../../crates/rocket-ui/src/guide.md#reflog-and-recovery) | Recover onto a new branch before changing current history |
 | Keep two branches checked out at once | [Worktrees](../../crates/rocket-ui/src/guide.md#worktrees) | Separate working folders share repository history |
 | Save unfinished work or apply only part of it | [Stashes](../../crates/rocket-ui/src/guide.md#stashes) | Apply keeps the stash; dropping it is a separate decision |

@@ -73,7 +73,9 @@ See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
 - Reflog recovery, **Undo Last Commit**, and manual or automatic **bisect**.
 - **Git Flow** feature, release and hotfix branches.
 - Tags, commit signing and signature checks, and **issue links** to Jira, Redmine or any tracker.
-- [**Repository map**](docs/wiki/Repository-map.md) and **Statistics**.
+- [**Repository map**](docs/wiki/Repository-map.md) and activity statistics.
+  The next build adds [**Insights**](docs/Insights.md), with bounded PR metrics,
+  author filters, PR drilldowns and reviewed CSV/JSON export.
 
 <p align="center">
   <picture>

@@ -167,14 +167,22 @@ impl TerminalPane {
             let width = (ui.available_width() - SEND - ui.spacing().item_spacing.x).max(120.0);
             // Rocket's field: a raised box with a prompt mark, outlined brighter while it
             // holds the keyboard. Its text fills the box, so a click anywhere in it types.
+            // An agent session's field sits in its card's foot, which is its box: no fill,
+            // outline or inset, so what is typed lines up with the output above it. Its
+            // caret shows that it holds the keyboard.
+            let (fill, edge, inset) = if agent {
+                (Color32::TRANSPARENT, Color32::TRANSPARENT, 0)
+            } else {
+                (RAISED(), if command_focused { EDGE_HOT() } else { BORDER() }, 8)
+            };
             let r = Frame::new()
-                .fill(RAISED())
-                .stroke(Stroke::new(1.0, if command_focused { EDGE_HOT() } else { BORDER() }))
+                .fill(fill)
+                .stroke(Stroke::new(1.0, edge))
                 .corner_radius(6)
-                .inner_margin(Margin::symmetric(8, 0))
+                .inner_margin(Margin::symmetric(inset, 0))
                 .show(ui, |ui| {
                     // Less the margins and the outline: the box ends right before Send.
-                    ui.set_width(width - 18.0);
+                    ui.set_width(width - 2.0 - 2.0 * f32::from(inset));
                     // A row is at least interact_size tall; this one is the box less its
                     // outline, so the box is exactly as tall as Send.
                     ui.spacing_mut().interact_size.y = CONTROL - 2.0;

@@ -1189,6 +1189,8 @@ pub enum PickTarget {
     DraftProgram,
     /// One CLI's program, from a page that names the CLI itself.
     AiProgram(rocket_git::DraftProvider),
+    /// Agents: the session dialog's program.
+    AgentProgram,
     /// An external tool profile's program.
     ToolProgram(ExternalToolKind, usize),
     /// Preferences → Terminal: a custom shell.
@@ -1206,6 +1208,7 @@ pub enum PickTarget {
     CrashReportFolder,
     /// Map export: the folder the Mermaid file goes into.
     MapExportFolder,
+    InsightsExportFolder,
     /// Clone: the folder the new folder goes into.
     CloneParent,
     /// New repository: the project folder.
@@ -1326,6 +1329,7 @@ impl Rocket {
             | PickTarget::LibraryScanFolder
             | PickTarget::CrashReportFolder
             | PickTarget::MapExportFolder
+            | PickTarget::InsightsExportFolder
             | PickTarget::SourceFolder
             | PickTarget::CloneParent
             | PickTarget::InitFolder
@@ -1338,6 +1342,7 @@ impl Rocket {
             | PickTarget::DependencyScanner
             | PickTarget::DraftProgram
             | PickTarget::AiProgram(_)
+            | PickTarget::AgentProgram
             | PickTarget::ToolProgram(..)
             | PickTarget::ShellProgram
             | PickTarget::CommandProgram(_) => Mode::Program,
@@ -1351,6 +1356,7 @@ impl Rocket {
                 | PickTarget::DependencyScanner
                 | PickTarget::DraftProgram
                 | PickTarget::AiProgram(_)
+                | PickTarget::AgentProgram
                 | PickTarget::CommandInput(_)
                 | PickTarget::CommandProgram(_)
                 | PickTarget::CommandImport
@@ -1372,7 +1378,7 @@ impl Rocket {
                     current.parent().map_or_else(|| current.to_path_buf(), Path::to_path_buf),
                     None,
                 ),
-                PickTarget::McpRoot | PickTarget::LibraryScanFolder | PickTarget::CrashReportFolder | PickTarget::MapExportFolder | PickTarget::SourceFolder | PickTarget::CloneParent => (current.to_path_buf(), None),
+                PickTarget::McpRoot | PickTarget::LibraryScanFolder | PickTarget::CrashReportFolder | PickTarget::MapExportFolder | PickTarget::InsightsExportFolder | PickTarget::SourceFolder | PickTarget::CloneParent => (current.to_path_buf(), None),
             }
         } else if mode == Mode::Program {
             (
@@ -1535,12 +1541,14 @@ impl Rocket {
             }
             PickTarget::DraftProgram => *self.drafting.program_setting_mut() = text,
             PickTarget::AiProgram(provider) => *self.drafting.program_setting_of_mut(provider) = text,
+            PickTarget::AgentProgram => self.agent_program_picked(text),
             PickTarget::McpRoot => self.mcp.root = text,
             PickTarget::SourceFolder => self.source_folder_picked(path),
             PickTarget::LibraryRepository => self.library_repository_picked(path),
             PickTarget::LibraryScanFolder => self.manager_scan_picked(path),
             PickTarget::CrashReportFolder => self.crash_reports.picked_folder(path),
             PickTarget::MapExportFolder => self.map_export_folder_picked(path),
+            PickTarget::InsightsExportFolder => self.insights_export_folder_picked(path),
             PickTarget::ToolProgram(kind, index) => {
                 if let Some(profile) = self.external.editing.0[kind.index()].entries.get_mut(index) {
                     profile.config.executable = text;

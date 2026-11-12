@@ -120,6 +120,7 @@ impl Rocket {
             || self.integrations.prompt_open()
             || self.external.open
             || self.map_export_open()
+            || self.insights_export_open()
     }
 
     /// Leave a browsing page, e.g. when the user navigates to another view.
@@ -981,6 +982,19 @@ pub(crate) fn ghost(ui: &mut Ui, enabled: bool, label: &str) -> Response {
     ui.add_enabled(enabled, quiet(Button::new(command_label(label))))
 }
 
+/// How wide a button showing `label` is, and never under `least`. A row measures its
+/// button with this before the field beside it: a label a translation made longer then
+/// narrows the field, instead of pushing the row past its column and widening
+/// everything laid out after it.
+pub(crate) fn button_width(ui: &Ui, label: &str, least: f32) -> f32 {
+    let text = ui.painter().layout_no_wrap(
+        label.to_owned(),
+        TextStyle::Button.resolve(ui.style()),
+        Color32::PLACEHOLDER,
+    );
+    (text.size().x + 2.0 * ui.spacing().button_padding.x).ceil().max(least)
+}
+
 /// A quiet action with an icon: framed only while hovered or focused, and the same
 /// size in every state so neighbouring buttons never move.
 pub(crate) fn tool(ui: &mut Ui, image: Icon, label: &str, enabled: bool) -> Response {
@@ -1754,6 +1768,15 @@ pub(crate) fn segments(ui: &mut Ui, items: &[(&str, bool)]) -> Vec<Response> {
 
 /// [`segments`] at the height of a field, each option with an optional dimmer count.
 pub(crate) fn tab_segments(ui: &mut Ui, items: &[(&str, Option<usize>, bool)]) -> Vec<Response> {
+    let items: Vec<_> = items.iter().map(|(label, n, on)| (*label, *n, *on, true)).collect();
+    tab_segments_enabled(ui, &items)
+}
+
+/// [`tab_segments`] where an option can keep its place while it can't be chosen.
+pub(crate) fn tab_segments_enabled(
+    ui: &mut Ui,
+    items: &[(&str, Option<usize>, bool, bool)],
+) -> Vec<Response> {
     let reversed = ui.layout().prefer_right_to_left();
     Frame::new()
         .fill(RAISED())
@@ -1765,7 +1788,7 @@ pub(crate) fn tab_segments(ui: &mut Ui, items: &[(&str, Option<usize>, bool)]) -
                 ui.spacing_mut().item_spacing.x = 2.0;
                 ui.spacing_mut().interact_size.y = CONTROL - 6.0;
                 ui.spacing_mut().button_padding = vec2(10.0, 2.0);
-                let mut add = |(label, count, selected): &(&str, Option<usize>, bool)| {
+                let mut add = |(label, count, selected, enabled): &(&str, Option<usize>, bool, bool)| {
                     let font = FontId::proportional(12.5);
                     let ink = if *selected { TEXT() } else { MUTED() };
                     let mut job = text::LayoutJob::default();
@@ -1780,9 +1803,9 @@ pub(crate) fn tab_segments(ui: &mut Ui, items: &[(&str, Option<usize>, bool)]) -
                         .corner_radius(5)
                         .min_size(vec2(0.0, CONTROL - 6.0));
                     if *selected {
-                        ui.add(button)
+                        ui.add_enabled(*enabled, button)
                     } else {
-                        ui.add(quiet(button))
+                        ui.add_enabled(*enabled, quiet(button))
                     }
                 };
                 if reversed {

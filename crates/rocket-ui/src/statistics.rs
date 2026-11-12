@@ -13,12 +13,20 @@ use std::{
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
+pub mod pulls;
+pub mod export;
+mod pull_detail;
+mod trends;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Section {
     #[default]
     Activity,
+    Pulls,
     Treemap,
+}
+impl Section {
+    pub const ALL: [Self; 3] = [Self::Activity, Self::Pulls, Self::Treemap];
 }
 
 /// How far back the counted commits go, from now.
@@ -46,6 +54,40 @@ impl Period {
             Self::Days90 => crate::i18n::tr("90 days"),
             Self::Year => crate::i18n::tr("1 year"),
             Self::All => crate::i18n::tr("All"),
+        }
+    }
+    /// The period before this one, as a heading: "Previous 30 days".
+    pub fn previous_label(self) -> &'static str {
+        match self {
+            Self::Days30 => crate::i18n::tr("Previous 30 days"),
+            Self::Days90 => crate::i18n::tr("Previous 90 days"),
+            Self::Year | Self::All => crate::i18n::tr("Previous year"),
+        }
+    }
+    /// This period as a heading: "Last 30 days".
+    pub fn last_label(self) -> &'static str {
+        match self {
+            Self::Days30 => crate::i18n::tr("Last 30 days"),
+            Self::Days90 => crate::i18n::tr("Last 90 days"),
+            Self::Year => crate::i18n::tr("Last year"),
+            Self::All => crate::i18n::tr("All history"),
+        }
+    }
+    /// The comparison card's title.
+    pub fn compared_title(self) -> &'static str {
+        match self {
+            Self::Days30 => crate::i18n::tr("Compared with the previous 30 days"),
+            Self::Days90 => crate::i18n::tr("Compared with the previous 90 days"),
+            Self::Year | Self::All => crate::i18n::tr("Compared with the previous year"),
+        }
+    }
+    /// The period in a few words: "last 30 days", "all history".
+    pub fn words(self) -> &'static str {
+        match self {
+            Self::Days30 => crate::i18n::tr("last 30 days"),
+            Self::Days90 => crate::i18n::tr("last 90 days"),
+            Self::Year => crate::i18n::tr("last year"),
+            Self::All => crate::i18n::tr("all history"),
         }
     }
     /// The automation key: days, or `all`.
@@ -91,35 +133,187 @@ pub struct State {
     pub treemap_error: Option<String>,
     /// Tables instead of charts.
     pub table: bool,
+    pub pulls: pulls::State,
+    /// When the activity and the treemap shown were read (Unix seconds).
+    pub activity_at: u64,
+    pub treemap_at: u64,
+    /// The reviewed export, of pull requests or of commit activity.
+    pub export: Option<export::State>,
     activity_task: Option<ReadTask<CommitActivity>>,
     treemap_task: Option<ReadTask<ActivityTreemap>>,
+    /// The choices the activity and the treemap shown were read for, and the ones a
+    /// running read is for, so a read stopped by leaving the page is never shown under
+    /// choices it wasn't read for.
+    activity_for: Option<(Period, ActivityScope)>,
+    activity_asked: (Period, ActivityScope),
+    treemap_for: Option<Period>,
+    treemap_asked: Period,
+    /// The repository's [`History`] each was read at, so numbers read before HEAD or a
+    /// branch moved are read again rather than shown as current.
+    activity_history: Option<u64>,
+    activity_history_asked: Option<u64>,
+    treemap_history: Option<u64>,
+    treemap_history_asked: Option<u64>,
     /// The shown folder's most changed files, for the treemap and zoom they were
     /// worked out for.
     top: Option<TopFiles>,
 }
 type TopFiles = ((usize, Vec<Vec<u8>>), Vec<(String, usize, u64)>);
+
+/// What the numbers depend on besides the choices: HEAD's commit (this branch, and the
+/// files at HEAD), and every branch tip with it (all branches). Fingerprints from the
+/// tab's last status read; `None` before the first one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct History {
+    head: u64,
+    all: u64,
+}
+impl History {
+    pub(crate) fn of(snapshot: Option<&crate::backend::Snapshot>) -> Option<Self> {
+        use std::hash::{DefaultHasher, Hash, Hasher};
+        let snapshot = snapshot?;
+        let mut head = DefaultHasher::new();
+        match &snapshot.head {
+            Some(Head::Branch { target, .. } | Head::Detached { target }) => target.hash(&mut head),
+            Some(Head::Unborn { branch }) => branch.hash(&mut head),
+            None => return None,
+        }
+        let head = head.finish();
+        let mut all = DefaultHasher::new();
+        head.hash(&mut all);
+        for branch in &snapshot.branches {
+            (&branch.reference, &branch.target).hash(&mut all);
+        }
+        Some(Self { head, all: all.finish() })
+    }
+    fn activity(self, all_branches: bool) -> u64 {
+        if all_branches { self.all } else { self.head }
+    }
+}
 impl Default for State {
+    fn default() -> Self {
+        Self::from_view(&View::default())
+    }
+}
+
+/// The page's choices for one repository, kept between sessions: the tab, and each
+/// tab's filters.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct View {
+    pub section: Section,
+    /// Activity: how far back, every branch, tables.
+    pub range: Period,
+    pub all_branches: bool,
+    pub table: bool,
+    /// Files: the period that colours the files.
+    pub period: Period,
+    /// Pull requests: the period, the author, the state shown and Trends.
+    pub pull_period: Period,
+    pub author: Option<String>,
+    pub show: u8,
+    pub trends: bool,
+}
+impl Default for View {
     fn default() -> Self {
         Self {
             section: Section::Activity,
             range: Period::All,
             all_branches: false,
+            table: false,
             period: Period::Year,
+            pull_period: Period::Days30,
+            author: None,
+            show: 0,
+            trends: false,
+        }
+    }
+}
+/// The longest author name a saved view keeps, in bytes.
+pub const VIEW_AUTHOR: usize = 1024;
+impl View {
+    pub fn capture(s: &State) -> Self {
+        Self {
+            section: s.section,
+            range: s.range,
+            all_branches: s.all_branches,
+            table: s.table,
+            period: s.period,
+            pull_period: s.pulls.period.unwrap_or(Period::Days30),
+            author: s.pulls.author.clone(),
+            show: s.pulls.show,
+            trends: s.pulls.trends,
+        }
+    }
+    pub fn valid(&self) -> bool {
+        // 0 all, 1 open, 2 merged, 3 waiting for review.
+        self.show <= 3 && self.author.as_ref().is_none_or(|a| a.len() <= VIEW_AUTHOR)
+    }
+}
+
+/// "4 min ago" for a read at `read_at` (Unix seconds), and "Read at 13:28" for its
+/// tooltip; keeps the page drawing so the first stays current.
+pub(crate) fn refreshed(read_at: u64, ctx: &Context) -> (String, String) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    ctx.request_repaint_after(std::time::Duration::from_secs(30));
+    let when = ago(now.saturating_sub(read_at), read_at as i64);
+    let at = match rocket_git::local_time(read_at.saturating_mul(1000)) {
+        Some(t) if now.saturating_sub(read_at) < 86_400 => format!("{:02}:{:02}", t.hour, t.minute),
+        Some(t) => format!("{}-{:02}-{:02} {:02}:{:02}", t.year, t.month, t.day, t.hour, t.minute),
+        None => pulls::read_stamp(read_at),
+    };
+    (when, crate::i18n::trf!("Read at {time}", time = at))
+}
+
+impl State {
+    pub fn from_view(v: &View) -> Self {
+        Self {
+            section: v.section,
+            range: v.range,
+            all_branches: v.all_branches,
+            period: v.period,
             activity: None,
             treemap: None,
             zoom: Vec::new(),
             activity_error: None,
             treemap_error: None,
-            table: false,
+            table: v.table,
+            pulls: pulls::State::with_filters(v.pull_period, v.author.clone(), v.show, v.trends),
+            activity_at: 0,
+            treemap_at: 0,
+            export: None,
             activity_task: None,
             treemap_task: None,
+            activity_for: None,
+            activity_asked: (v.range, ActivityScope::default()),
+            treemap_for: None,
+            treemap_asked: v.period,
+            activity_history: None,
+            activity_history_asked: None,
+            treemap_history: None,
+            treemap_history_asked: None,
             top: None,
         }
     }
-}
-impl State {
+    /// Drop numbers read before HEAD or, for all branches, a branch tip moved, so they are
+    /// read again instead of shown as this branch's or as the files at HEAD.
+    pub(crate) fn forget_moved(&mut self, history: Option<History>) {
+        let Some(history) = history else { return };
+        if self.activity_for.as_ref().is_some_and(|(_, scope)| {
+            self.activity_history != Some(history.activity(scope.all_branches))
+        }) {
+            (self.activity, self.activity_for, self.activity_history) = (None, None, None);
+        }
+        if self.treemap_for.is_some() && self.treemap_history != Some(history.head) {
+            (self.treemap, self.treemap_for, self.treemap_history, self.top) = (None, None, None, None);
+        }
+    }
     pub fn running(&self) -> bool {
-        self.activity_task.is_some() || self.treemap_task.is_some()
+        self.activity_task.is_some()
+            || self.treemap_task.is_some()
+            || self.pulls.running()
+            || self.export.as_ref().is_some_and(|e| e.running())
     }
     pub fn activity_running(&self) -> bool {
         self.activity_task.is_some()
@@ -127,12 +321,44 @@ impl State {
     pub fn treemap_running(&self) -> bool {
         self.treemap_task.is_some()
     }
-    pub fn cancel(&self) {
+    pub fn cancel(&mut self) {
+        self.pulls.cancel();
+        if let Some(e) = &mut self.export {
+            e.cancel();
+        }
         if let Some(t) = &self.activity_task {
             t.cancel();
         }
         if let Some(t) = &self.treemap_task {
             t.cancel();
+        }
+    }
+    /// The page is no longer shown: stop its reads and its export review (dropping a
+    /// task cancels it) and keep the numbers, their filters and when they were read.
+    pub(crate) fn park(&mut self) {
+        if self.activity_task.is_some()
+            || self.treemap_task.is_some()
+            || self.export.is_some()
+            || self.pulls.running()
+            || self.pulls.detail.number.is_some()
+        {
+            self.activity_task = None;
+            self.treemap_task = None;
+            self.export = None;
+            self.pulls.park();
+        }
+    }
+    /// Whether a section has no numbers for its choices, so showing it reads them.
+    fn needs_read(&self, section: Section) -> bool {
+        match section {
+            Section::Activity => {
+                !self.activity_running()
+                    && self.activity_for.as_ref().is_none_or(|(range, scope)| {
+                        *range != self.range || scope.all_branches != self.all_branches
+                    })
+            }
+            Section::Pulls => !self.pulls.loaded && !self.pulls.list_running(),
+            Section::Treemap => !self.treemap_running() && self.treemap_for != Some(self.period),
         }
     }
     /// The treemap folder shown, if the zoom path exists in the loaded treemap.
@@ -151,22 +377,55 @@ fn folder_at<'a>(map: &'a ActivityTreemap, zoom: &[Vec<u8>]) -> Option<&'a Treem
 }
 
 impl Rocket {
-    /// Read the shown section of Repository Statistics, replacing an older read of it.
-    pub(crate) fn start_statistics_read(&mut self) {
-        let Some(d) = &mut self.dialog else { return };
-        if !matches!(d.kind, DialogKind::Statistics) {
-            return;
+    /// The tab whose Insights page is shown, while it is.
+    fn insights_owner(&self) -> Option<u64> {
+        self.dialog
+            .as_ref()
+            .filter(|d| matches!(d.kind, DialogKind::Statistics))
+            .and_then(|d| d.owner)
+    }
+    /// The shown Insights page's state. Each repository tab keeps its own, so leaving
+    /// the page and coming back shows the same numbers and filters.
+    pub fn statistics(&self) -> Option<&State> {
+        self.insights.get(&self.insights_owner()?)
+    }
+    pub(crate) fn statistics_mut(&mut self) -> Option<&mut State> {
+        let owner = self.insights_owner()?;
+        self.insights.get_mut(&owner)
+    }
+    /// Insights was opened: the tab's state, or one from its saved choices, and a read
+    /// only of a section that has no numbers for its choices yet.
+    pub(crate) fn open_statistics(&mut self) {
+        let Some(owner) = self.insights_owner() else { return };
+        if !self.insights.contains_key(&owner) {
+            let Some(path) = self.tabs.iter().find(|t| t.id == owner).map(|t| t.path.clone()) else {
+                return;
+            };
+            let view = self.saved_insights_view(&path);
+            self.insights.insert(owner, State::from_view(&view));
         }
-        let s = d.statistics.get_or_insert_with(Default::default);
-        let path = self
-            .tabs
-            .iter()
-            .find(|t| Some(t.id) == d.owner)
-            .map(|t| t.path.clone());
-        let (Some(backend), Some(path)) = (self.backend.clone(), path) else {
+        let history = History::of(self.tabs.iter().find(|t| t.id == owner).and_then(|t| t.snapshot.as_ref()));
+        let Some(s) = self.insights.get_mut(&owner) else { return };
+        s.forget_moved(history);
+        if s.needs_read(s.section) {
+            self.start_statistics_read();
+        }
+    }
+    /// Read the shown section of Insights, replacing an older read of it.
+    pub(crate) fn start_statistics_read(&mut self) {
+        let Some(owner) = self.insights_owner() else { return };
+        let Some(tab) = self.tabs.iter().find(|t| t.id == owner) else { return };
+        let path = tab.path.clone();
+        let history = History::of(tab.snapshot.as_ref());
+        let context = Some(tab)
+            .and_then(|t| Some((t.ci.repository.clone()?, t.ci.session()?.clone())));
+        let (Some(backend), Some(s)) = (self.backend.clone(), self.insights.get_mut(&owner)) else {
             return;
         };
         match s.section {
+            Section::Pulls => {
+                s.pulls.start(context, backend, self.context.clone());
+            }
             Section::Activity => {
                 if let Some(t) = s.activity_task.take() {
                     t.cancel();
@@ -176,6 +435,8 @@ impl Rocket {
                     all_branches: s.all_branches,
                     since: s.range.since(),
                 };
+                s.activity_asked = (s.range, scope.clone());
+                s.activity_history_asked = history.map(|h| h.activity(s.all_branches));
                 match ReadTask::spawn(move |cancel| backend.commit_activity(&path, &scope, &cancel))
                 {
                     Ok(task) => s.activity_task = Some(task),
@@ -187,6 +448,8 @@ impl Rocket {
                     t.cancel();
                 }
                 s.treemap_error = None;
+                s.treemap_asked = s.period;
+                s.treemap_history_asked = history.map(|h| h.head);
                 let since = s.period.since();
                 match ReadTask::spawn(move |cancel| backend.activity_treemap(&path, since, &cancel))
                 {
@@ -197,17 +460,45 @@ impl Rocket {
         }
     }
     pub(crate) fn poll_statistics(&mut self) {
-        let Some(s) = self.dialog.as_mut().and_then(|d| d.statistics.as_mut()) else {
+        let owner = self.insights_owner();
+        // A page that isn't shown keeps its numbers but no reads; a closed tab takes its
+        // page along.
+        let tabs = &self.tabs;
+        self.insights.retain(|id, _| tabs.iter().any(|t| t.id == *id));
+        for (id, s) in &mut self.insights {
+            if Some(*id) != owner {
+                s.park();
+            }
+        }
+        let Some(owner) = owner else { return };
+        let context = self
+            .tabs
+            .iter()
+            .find(|t| t.id == owner)
+            .and_then(|t| Some((t.ci.repository.clone()?, t.ci.session()?.clone())));
+        let Some(s) = self.insights.get_mut(&owner) else {
             return;
         };
+        s.pulls.poll(context.as_ref());
+        if let Some(e) = &mut s.export {
+            e.poll();
+        }
         let message = |e: &Error| match e {
             Error::Cancelled => crate::i18n::tr(STOPPED).to_owned(),
             e => user_error(e),
         };
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
         if let Some(result) = s.activity_task.as_mut().and_then(ReadTask::try_finish) {
             s.activity_task = None;
             match result {
-                Ok(a) => s.activity = Some(Arc::new(a)),
+                Ok(a) => {
+                    s.activity = Some(Arc::new(a));
+                    s.activity_at = now;
+                    s.activity_for = Some(s.activity_asked.clone());
+                    s.activity_history = s.activity_history_asked;
+                }
                 Err(e) => s.activity_error = Some(message(&e)),
             }
         }
@@ -216,6 +507,9 @@ impl Rocket {
             match result {
                 Ok(map) => {
                     s.treemap = Some(Arc::new(map));
+                    s.treemap_at = now;
+                    s.treemap_for = Some(s.treemap_asked);
+                    s.treemap_history = s.treemap_history_asked;
                     if s.shown().is_none() {
                         s.zoom.clear();
                     }
@@ -225,22 +519,49 @@ impl Rocket {
         }
     }
     pub(crate) fn statistics_page(&mut self, ui: &mut Ui) {
+        let backend = self.backend.clone();
+        let scope = self.submodule_fixture_root.clone();
         let downloads = self.tab().and_then(crate::preview_tab::downloads);
-        let Some(mut d) = self.dialog.take() else {
+        let owner = self.insights_owner();
+        // Shown without passing through opening (its state went with an earlier tab of
+        // the same id, say): start it as opening would.
+        if owner.is_some_and(|owner| !self.insights.contains_key(&owner)) {
+            self.open_statistics();
+        }
+        let Some(mut s) = owner.and_then(|owner| self.insights.remove(&owner)) else {
+            // No repository behind the page: say so, with the way out.
+            let widgets = &mut self.frame_widgets;
+            let mut close = false;
+            pages::header(ui, Icon::Activity, crate::i18n::tr("Insights"), "", |ui| {
+                let r = pages::ghost(ui, true, crate::i18n::tr("Close"));
+                pages::control(widgets, "dialog-cancel", &r, ui.clip_rect());
+                close = r.clicked();
+            });
+            pages::empty(ui, crate::i18n::tr("Open a repository to see its Insights."));
+            if close {
+                self.dialog = None;
+            }
             return;
         };
-        let s = d.statistics.get_or_insert_with(Default::default);
+        // The repository's folder name, for an activity export.
+        let tab = owner.and_then(|owner| self.tabs.iter().find(|t| t.id == owner));
+        let history = History::of(tab.and_then(|t| t.snapshot.as_ref()));
+        let repository = tab
+            .and_then(|t| t.path.file_name().map(|n| n.to_string_lossy().into_owned()))
+            .unwrap_or_default();
         let widgets = &mut self.frame_widgets;
         let (mut reload, mut close) = (false, false);
+        let (mut hosting, mut export) = (false, None);
         let running = match s.section {
             Section::Activity => s.activity_running(),
+            Section::Pulls => s.pulls.running(),
             Section::Treemap => s.treemap_running(),
         };
         pages::header(
             ui,
             Icon::Activity,
-            crate::i18n::tr("Statistics"),
-            crate::i18n::tr("Who commits, when, and which files change most · read-only"),
+            crate::i18n::tr("Insights"),
+            crate::i18n::tr("Repository activity and pull requests · read-only"),
             |ui| {
                 let r = pages::ghost(ui, true, crate::i18n::tr("Close"));
                 pages::control(widgets, "dialog-cancel", &r, ui.clip_rect());
@@ -254,6 +575,7 @@ impl Rocket {
                     .on_hover_text(crate::i18n::tr("Read again"));
                 pages::control(widgets, "stats-refresh", &r, ui.clip_rect());
                 reload |= r.clicked();
+                if r.clicked() { s.pulls.want_more = false; }
             },
         );
         let tabs = [
@@ -265,6 +587,13 @@ impl Rocket {
                 key: "stats-section-activity",
             },
             pages::TabItem {
+                label: crate::i18n::tr("Pull requests"),
+                count: None,
+                selected: s.section == Section::Pulls,
+                enabled: true,
+                key: "stats-section-pulls",
+            },
+            pages::TabItem {
                 label: crate::i18n::tr("Files"),
                 count: None,
                 selected: s.section == Section::Treemap,
@@ -273,24 +602,83 @@ impl Rocket {
             },
         ];
         if let Some(i) = pages::tabs(ui, &tabs, widgets) {
-            s.section = [Section::Activity, Section::Treemap][i];
-            // The first visit of a section reads it.
-            reload |= match s.section {
-                Section::Activity => s.activity.is_none() && !s.activity_running(),
-                Section::Treemap => s.treemap.is_none() && !s.treemap_running(),
-            };
+            s.section = Section::ALL[i];
+            // A section without numbers for its choices, or with numbers from before
+            // HEAD or a branch moved, reads them when it shows.
+            s.forget_moved(history);
+            reload |= s.needs_read(s.section)
+                && !(s.section == Section::Pulls && s.pulls.attempted);
         }
         reload |= match s.section {
-            Section::Activity => activity_section(ui, s, widgets),
-            Section::Treemap => treemap_section(ui, s, widgets, downloads.as_ref()),
-        };
-        if close {
-            s.cancel();
-        } else {
-            self.dialog = Some(d);
-            if reload {
-                self.start_statistics_read();
+            Section::Activity => {
+                let (read, asked) = activity_section(ui, &mut s, widgets);
+                if asked {
+                    export = Some(Section::Activity);
+                }
+                read
             }
+            Section::Pulls => {
+                let out = pulls::show(ui, &mut s.pulls, widgets, backend.as_ref());
+                hosting = out.hosting;
+                if out.export {
+                    export = Some(Section::Pulls);
+                }
+                out.reload
+            },
+            Section::Treemap => treemap_section(ui, &mut s, widgets, downloads.as_ref()),
+        };
+        // The folder is looked up only when an export starts: it can mean disk reads.
+        let folder = || crate::folder_browser::save_folder(scope.as_deref());
+        match export {
+            Some(Section::Pulls) => s.export = Some(export::State::new(&s.pulls, folder())),
+            Some(Section::Activity) => {
+                s.export = s.activity.clone().map(|activity| {
+                    export::State::activity(
+                        export::ActivitySnapshot {
+                            activity,
+                            repository,
+                            scope: s.activity_for.clone().unwrap_or((s.range, ActivityScope::default())),
+                            read_at: s.activity_at,
+                        },
+                        folder(),
+                    )
+                })
+            }
+            _ => {}
+        }
+        let browse = export::dialog(ui.ctx(), &mut s.export, widgets, backend.as_ref(), scope);
+        let leave = close || hosting;
+        if leave {
+            s.park();
+        }
+        if let Some(owner) = owner {
+            self.insights.insert(owner, s);
+        }
+        if leave {
+            self.dialog = None;
+            if hosting {
+                self.dispatch(crate::app::Intent::Dialog(DialogKind::Hosting));
+            }
+            return;
+        }
+        if reload {
+            self.start_statistics_read();
+        }
+        if let Some(folder) = browse {
+            self.browse(crate::folder_browser::PickTarget::InsightsExportFolder, &folder);
+        }
+    }
+
+    pub fn insights_export_open(&self) -> bool {
+        self.statistics().is_some_and(|s| s.export.is_some())
+    }
+    pub(crate) fn insights_export_folder_picked(&mut self, path: &std::path::Path) {
+        if let Some(e) = self
+            .statistics_mut()
+            .and_then(|s| s.export.as_mut())
+            .filter(|e| !e.running())
+        {
+            e.dir = path.display().to_string();
         }
     }
 }
@@ -316,15 +704,40 @@ fn periods(
     chosen
 }
 
-/// "Show as table" or "Show charts", at the right of the filter row.
-fn table_toggle(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>) {
+/// The right end of a filter row: Export when `export` says whether it can be used,
+/// "Show as table" or "Show charts", and when the numbers shown were read where the
+/// row leaves room for it. Returns whether Export was clicked.
+fn row_end(
+    ui: &mut Ui,
+    s: &mut State,
+    widgets: &mut HashMap<String, UiControl>,
+    read_at: Option<u64>,
+    export: Option<bool>,
+) -> bool {
+    let mut clicked = false;
     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+        if let Some(enabled) = export {
+            let r = ui.add_enabled(enabled, Button::new(crate::i18n::tr("Export")));
+            pages::control(widgets, "stats-export", &r, ui.clip_rect());
+            clicked = r.clicked();
+        }
         let r = pages::ghost(ui, true, if s.table { crate::i18n::tr("Show charts") } else { crate::i18n::tr("Show as table") });
         pages::control(widgets, "stats-table", &r, ui.clip_rect());
         if r.clicked() {
             s.table = !s.table;
         }
+        if let Some(read_at) = read_at.filter(|t| *t > 0) {
+            let (when, at) = refreshed(read_at, ui.ctx());
+            let text = crate::i18n::trf!("Refreshed {when}", when);
+            let width = ui.painter().layout_no_wrap(text.clone(), FontId::proportional(12.0), FAINT()).size().x;
+            if width + 8.0 <= ui.available_width() {
+                let r = ui.label(RichText::new(text).size(12.0).color(FAINT()));
+                pages::control(widgets, "stats-refreshed", &r, ui.clip_rect());
+                r.on_hover_text(at);
+            }
+        }
     });
+    clicked
 }
 
 /// A count's step on the ramp: 0 for none, then 1–4 in quarters of `max`.
@@ -378,9 +791,10 @@ fn card(ui: &mut Ui, title: &str, note: &str, content: impl FnOnce(&mut Ui)) {
         });
 }
 
-/// Range and branch choices, tiles, charts and the heatmap. Returns true to read again.
-fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>) -> bool {
-    let mut reload = false;
+/// Range and branch choices, tiles, charts and the heatmap. Returns whether to read
+/// again and whether Export was clicked.
+fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>) -> (bool, bool) {
+    let (mut reload, mut export) = (false, false);
     pages::toolbar(ui, |ui| {
         if let Some(p) = periods(ui, s.range, "stats-range", widgets) {
             s.range = p;
@@ -395,8 +809,12 @@ fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, Ui
                 reload = true;
             }
         }
-        table_toggle(ui, s, widgets);
+        let read_at = s.activity.as_ref().map(|_| s.activity_at);
+        let ready = s.activity.as_ref().is_some_and(|a| a.commits > 0) && !s.running();
+        export = row_end(ui, s, widgets, read_at, Some(ready));
     });
+    // The numbers shown stay, said for the choices they were read for, until the new
+    // ones replace them.
     let Some(a) = s.activity.clone() else {
         Frame::new()
             .inner_margin(Margin::symmetric(24, 14))
@@ -404,7 +822,7 @@ fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, Ui
                 Some(e) => pages::callout(ui, AMBER(), e),
                 None => pages::loading(ui, crate::i18n::tr("Reading commit history…")),
             });
-        return reload;
+        return (reload, false);
     };
     let scroll = ScrollArea::vertical()
         .id_salt("stats-activity-scroll")
@@ -459,18 +877,18 @@ fn activity_section(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, Ui
         scroll.inner_rect.intersect(ui.clip_rect()),
         true,
     );
-    reload
+    (reload, export)
 }
 
-/// Four figures across: commits, authors, merges and the active span.
+/// Four figures across: commits, authors, merges and the active span, said for the
+/// choices they were read for.
 fn tiles(ui: &mut Ui, a: &CommitActivity, s: &State) {
-    let scope = if s.all_branches { crate::i18n::tr("on all branches") } else { crate::i18n::tr("on this branch") };
-    let range = match s.range {
-        Period::Days30 => crate::i18n::tr("last 30 days"),
-        Period::Days90 => crate::i18n::tr("last 90 days"),
-        Period::Year => crate::i18n::tr("last year"),
-        Period::All => crate::i18n::tr("all history"),
-    };
+    let (range, all_branches) = s
+        .activity_for
+        .as_ref()
+        .map_or((s.range, s.all_branches), |(range, scope)| (*range, scope.all_branches));
+    let scope = if all_branches { crate::i18n::tr("on all branches") } else { crate::i18n::tr("on this branch") };
+    let range = range.words();
     let (active, span) = match (a.first, a.last) {
         (Some(first), Some(last)) => {
             let (from, to) = (first.div_euclid(86_400), last.div_euclid(86_400));
@@ -484,25 +902,78 @@ fn tiles(ui: &mut Ui, a: &CommitActivity, s: &State) {
         _ => ("—".into(), crate::i18n::tr("no commits").into()),
     };
     let figures = [
-        (crate::i18n::tr("Commits"), a.commits.to_string(), format!("{scope}, {range}")),
-        (crate::i18n::tr("Authors"), a.authors.len().to_string(), crate::i18n::tr("grouped by email").into()),
-        (crate::i18n::tr("Merges"), a.merges.to_string(), crate::i18n::tr("included in commits").into()),
-        (crate::i18n::tr("Active"), active, span),
+        (crate::i18n::tr("Commits"), a.commits.to_string(), format!("{scope}, {range}"), None),
+        (crate::i18n::tr("Authors"), a.authors.len().to_string(), crate::i18n::tr("grouped by email").into(), None),
+        (crate::i18n::tr("Merges"), a.merges.to_string(), crate::i18n::tr("included in commits").into(), None),
+        (crate::i18n::tr("Active"), active, span, None),
     ];
-    ui.columns(4, |columns| {
-        for (ui, (label, value, note)) in columns.iter_mut().zip(figures) {
-            Frame::new()
-                .fill(PANEL())
-                .stroke(Stroke::new(1.0, HAIRLINE()))
-                .corner_radius(10)
-                .inner_margin(Margin::symmetric(14, 12))
-                .show(ui, |ui| {
-                    ui.set_width(ui.available_width());
-                    ui.spacing_mut().item_spacing.y = 3.0;
-                    ui.label(RichText::new(label).size(12.0).color(HINT()));
-                    ui.add(Label::new(RichText::new(value).font(semibold(21.0))).truncate());
-                    ui.add(Label::new(RichText::new(note).size(12.0).color(FAINT())).truncate());
-                });
+    figure_tiles(ui, &figures, 4);
+}
+
+/// A figure's change since the period before, and its tooltip.
+type Change = Option<(String, String)>;
+
+/// A figure's change ("+9"), as a small chip after its number.
+fn change_chip(ui: &mut Ui, text: &str) -> Response {
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), semibold(11.0), TEXT_SOFT());
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(galley.size().x + 12.0, 18.0), Sense::hover());
+    ui.painter().rect_filled(rect, 9.0, CHIP());
+    ui.painter().galley(
+        pos2(rect.left() + 6.0, rect.center().y - galley.size().y / 2.0),
+        galley,
+        TEXT_SOFT(),
+    );
+    response
+}
+
+/// Figures as tiles sharing the width, `across` to a row: what each counts, the
+/// number with how it changed when known, and a line about it.
+fn figure_tiles(ui: &mut Ui, figures: &[(&str, String, String, Change)], across: usize) {
+    ui.scope(|ui| {
+        ui.spacing_mut().item_spacing.y = 8.0;
+        for row in figures.chunks(across.max(1)) {
+            ui.columns(row.len(), |columns| {
+                for (ui, (label, value, note, change)) in columns.iter_mut().zip(row) {
+                    Frame::new()
+                        .fill(PANEL())
+                        .stroke(Stroke::new(1.0, HAIRLINE()))
+                        .corner_radius(10)
+                        .inner_margin(Margin::symmetric(14, 12))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ui.spacing_mut().item_spacing.y = 3.0;
+                            ui.add(Label::new(RichText::new(*label).size(12.0).color(HINT())).truncate());
+                            // The change follows the number where both fit the tile;
+                            // otherwise the number says it in its tooltip.
+                            let fits = change.as_ref().is_some_and(|(text, _)| {
+                                let width = |text: &str, font| ui.painter().layout_no_wrap(text.to_owned(), font, TEXT()).size().x;
+                                width(value, semibold(21.0)) + 8.0 + width(text, semibold(11.0)) + 12.0
+                                    <= ui.available_width()
+                            });
+                            match change {
+                                Some((text, before)) if fits => {
+                                    // As tall as the number alone, so tiles in a row
+                                    // keep one height.
+                                    ui.spacing_mut().interact_size.y = 0.0;
+                                    ui.horizontal(|ui| {
+                                        ui.spacing_mut().item_spacing.x = 8.0;
+                                        ui.label(RichText::new(value).font(semibold(21.0)));
+                                        change_chip(ui, text).on_hover_text(before);
+                                    });
+                                }
+                                Some((text, before)) => {
+                                    ui.add(Label::new(RichText::new(value).font(semibold(21.0))).truncate())
+                                        .on_hover_text(format!("{text} · {before}"));
+                                }
+                                None => {
+                                    ui.add(Label::new(RichText::new(value).font(semibold(21.0))).truncate());
+                                }
+                            }
+                            ui.add(Label::new(RichText::new(note).size(12.0).color(FAINT())).truncate());
+                        });
+                }
+            });
         }
     });
 }
@@ -920,7 +1391,8 @@ fn treemap_section(
             }
         }
         ui.label(RichText::new(crate::i18n::tr("· all files at HEAD")).size(12.0).color(FAINT()));
-        table_toggle(ui, s, widgets);
+        let read_at = s.treemap.as_ref().map(|_| s.treemap_at);
+        row_end(ui, s, widgets, read_at, None);
     });
     // A clone, so zooming can change `s` while the cells borrow the treemap.
     let map = s.treemap.clone();
@@ -977,7 +1449,9 @@ fn treemap_section(
                     if let Some(e) = &s.treemap_error {
                         pages::callout(ui, AMBER(), e);
                     }
-                    let period = s.period.phrase();
+                    // Said for the period the treemap shown was read for: a new read
+                    // keeps it on screen until it is replaced.
+                    let period = s.treemap_for.unwrap_or(s.period).phrase();
                     card(
                         ui,
                         crate::i18n::tr("Where changes happen"),
@@ -1306,12 +1780,7 @@ mod tests {
                 // Statistics reads are not `busy()`; wait for the page itself.
                 let settle = |app: &mut Rocket| {
                     let deadline = Instant::now() + Duration::from_secs(60);
-                    while app
-                        .dialog
-                        .as_ref()
-                        .and_then(|d| d.statistics.as_ref())
-                        .is_some_and(State::running)
-                    {
+                    while app.statistics().is_some_and(State::running) {
                         app.poll(&ctx);
                         assert!(Instant::now() < deadline, "statistics did not finish");
                         std::thread::sleep(Duration::from_millis(10));
@@ -1320,7 +1789,7 @@ mod tests {
                     frame(&ctx, app, vec![]);
                 };
                 fn s(app: &Rocket) -> &State {
-                    app.dialog.as_ref().unwrap().statistics.as_ref().unwrap()
+                    app.statistics().unwrap()
                 }
                 app.dispatch(Intent::Dialog(DialogKind::Statistics));
                 settle(&mut app);
@@ -1355,6 +1824,119 @@ mod tests {
                 assert!(app.dialog.is_none());
             },
         );
+    }
+    /// Leaving the page keeps a tab's numbers and choices: coming back shows them without
+    /// a read, and a read that leaving stopped is done again for the choice it was for.
+    #[test]
+    fn the_page_keeps_its_numbers_and_choices_while_the_tab_is_open() {
+        use crate::{
+            app::Intent,
+            batch::flow_tests::{click, frame, open, wait},
+            test_common as common,
+        };
+        use std::time::{Duration, Instant};
+        common::isolated(
+            "ROCKET_STATISTICS_UI_CASE",
+            "statistics::tests::the_page_keeps_its_numbers_and_choices_while_the_tab_is_open",
+            || {
+                let f = common::Fixture::new();
+                f.write("a.txt", "a");
+                f.commit("one");
+                let ctx = Context::default();
+                let mut app = open(&ctx, &f);
+                let settle = |app: &mut Rocket| {
+                    let deadline = Instant::now() + Duration::from_secs(60);
+                    while app.statistics().is_some_and(State::running) {
+                        app.poll(&ctx);
+                        assert!(Instant::now() < deadline, "statistics did not finish");
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    frame(&ctx, app, vec![]);
+                    frame(&ctx, app, vec![]);
+                };
+                app.dispatch(Intent::Dialog(DialogKind::Statistics));
+                settle(&mut app);
+                click(&ctx, &mut app, "stats-scope-all");
+                settle(&mut app);
+                let s = app.statistics().unwrap();
+                let (read, at) = (s.activity.clone().unwrap(), s.activity_at);
+                assert!(s.all_branches && at > 0);
+                // The row says when the numbers were read.
+                assert!(app.frame_widgets.contains_key("stats-refreshed"));
+                assert!(app.frame_widgets["stats-export"].enabled);
+                click(&ctx, &mut app, "dialog-cancel");
+                assert!(app.dialog.is_none());
+                app.poll(&ctx);
+                assert_eq!(app.insights.len(), 1);
+                // Back: the same numbers at once, from the tab, with no read.
+                app.dispatch(Intent::Dialog(DialogKind::Statistics));
+                let s = app.statistics().unwrap();
+                assert!(!s.running() && s.all_branches && s.activity_at == at);
+                assert!(Arc::ptr_eq(s.activity.as_ref().unwrap(), &read));
+                // A choice that needs a read, then another page before it ends: the read
+                // stops, and the numbers kept are still said for the choice they were for.
+                click(&ctx, &mut app, "stats-range-30");
+                assert!(app.statistics().unwrap().activity_running());
+                app.dispatch(Intent::Dialog(DialogKind::Tags));
+                app.poll(&ctx);
+                let parked = app.insights.values().next().unwrap();
+                assert!(!parked.running());
+                assert_eq!(parked.range, Period::Days30);
+                assert_eq!(parked.activity_for.as_ref().map(|f| f.0), Some(Period::All));
+                app.dispatch(Intent::Dialog(DialogKind::Statistics));
+                assert!(app.statistics().unwrap().activity_running(), "the new choice is read");
+                settle(&mut app);
+                // The fixture's commit is from 2026-01-01, outside the last 30 days.
+                assert_eq!(app.statistics().unwrap().activity.as_ref().unwrap().commits, 0);
+                // HEAD moves while the page is closed: what it kept was read at the old
+                // HEAD, so coming back reads again instead of showing it as this branch's.
+                click(&ctx, &mut app, "dialog-cancel");
+                f.write("b.txt", "b");
+                f.commit("two");
+                app.dispatch(Intent::Refresh);
+                wait(&ctx, &mut app);
+                app.dispatch(Intent::Dialog(DialogKind::Statistics));
+                assert!(app.statistics().unwrap().activity_running(), "a moved HEAD is read again");
+                settle(&mut app);
+                // Nothing moved since: back again, no read.
+                click(&ctx, &mut app, "dialog-cancel");
+                app.dispatch(Intent::Dialog(DialogKind::Statistics));
+                assert!(!app.statistics().unwrap().activity_running());
+                // What a saved view keeps, and a page started from it.
+                let view = View::capture(app.statistics().unwrap());
+                assert_eq!((view.range, view.all_branches, view.section), (Period::Days30, true, Section::Activity));
+                assert_eq!(View::capture(&State::from_view(&view)), view);
+                // Closing the tab takes its page along.
+                let id = app.tabs[0].id;
+                app.dispatch(Intent::CloseTab(id));
+                app.poll(&ctx);
+                assert!(app.tabs.is_empty() && app.insights.is_empty());
+            },
+        );
+    }
+    #[test]
+    fn numbers_read_before_head_or_a_branch_moved_are_dropped() {
+        let mut s = State::default();
+        let this_branch = ActivityScope { all_branches: false, since: None };
+        s.activity = Some(Arc::new(CommitActivity::default()));
+        (s.activity_for, s.activity_history) = (Some((Period::All, this_branch)), Some(1));
+        (s.treemap_for, s.treemap_history) = (Some(Period::Year), Some(1));
+        assert!(!s.needs_read(Section::Activity));
+        // Before the first status read nothing can be told, so nothing is dropped.
+        s.forget_moved(None);
+        assert!(s.activity.is_some() && s.treemap_for.is_some());
+        // Another branch moved: this branch's numbers and the files at HEAD stay.
+        s.forget_moved(Some(History { head: 1, all: 9 }));
+        assert!(s.activity.is_some() && s.treemap_for.is_some());
+        // All branches count every tip, so the same move drops them.
+        let all = ActivityScope { all_branches: true, since: None };
+        s.activity_for = Some((Period::All, all));
+        s.forget_moved(Some(History { head: 1, all: 9 }));
+        assert!(s.activity.is_none() && s.activity_for.is_none());
+        assert!(s.needs_read(Section::Activity));
+        // HEAD moved: the treemap goes too.
+        s.forget_moved(Some(History { head: 2, all: 9 }));
+        assert!(s.treemap_for.is_none() && s.needs_read(Section::Treemap));
     }
     #[test]
     fn sizes_steps_and_buckets() {

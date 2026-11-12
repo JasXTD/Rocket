@@ -10,6 +10,8 @@ pub enum FetchPhase {
     CheckingLfsObjects,
     UploadingLfsObjects,
     CheckingRepository,
+    /// Writing the commit-graph: commits read so far.
+    IndexingHistory,
 }
 impl FetchPhase {
     pub fn label(self) -> &'static str {
@@ -22,6 +24,7 @@ impl FetchPhase {
             Self::CheckingLfsObjects => "Checking LFS objects",
             Self::UploadingLfsObjects => "Uploading LFS objects",
             Self::CheckingRepository => "Checking repository",
+            Self::IndexingHistory => "Indexing commits",
         }
     }
 }
@@ -63,6 +66,9 @@ pub(crate) enum ProgressSink<'a> {
     Fetch(&'a SyncSender<FetchProgress>),
     Clone(&'a SyncSender<CloneProgress>),
     Lfs(&'a SyncSender<FetchProgress>),
+    /// `git commit-graph write`: Git counts the commits it reads without saying how
+    /// many there are, so the caller passes the number it expects, if it knows one.
+    HistoryIndex(&'a SyncSender<FetchProgress>, Option<u64>),
 }
 
 pub(crate) struct ProgressParser<'a> {
@@ -105,6 +111,19 @@ impl<'a> ProgressParser<'a> {
                     phase: FetchPhase::UploadingLfsObjects,
                     current,
                     total,
+                });
+            }
+            if let ProgressSink::HistoryIndex(sender, expected) = self.sink
+                && let Some((current, _)) = std::str::from_utf8(&self.line)
+                    .ok()
+                    .and_then(|s| s.trim().strip_prefix("Expanding reachable commits in commit graph: "))
+                    .and_then(parse_counts)
+            {
+                let _ = sender.try_send(FetchProgress {
+                    phase: FetchPhase::IndexingHistory,
+                    current,
+                    // Commits made since the count was taken must not pass the total.
+                    total: expected.map(|expected| expected.max(current)),
                 });
             }
             // A slow/disconnected UI must never block the pipe reader or Git.
@@ -219,6 +238,34 @@ mod tests {
         assert_eq!(rx.try_iter().count(), 2);
         drop(rx);
         p.feed(b"Uploading LFS objects: 100% (2/2)\n");
+    }
+
+    #[test]
+    fn history_index_progress_counts_commits_against_the_expected_total() {
+        let (sender, receiver) = sync_channel(8);
+        let mut parser = ProgressParser::new(ProgressSink::HistoryIndex(&sender, Some(100)));
+        parser.feed(b"Collecting referenced commits: 7\rExpanding reachable commits in commit gr");
+        parser.feed(b"aph: 40\rExpanding reachable commits in commit graph: 120, done.\n");
+        parser.feed(b"Receiving objects: 100% (4/4), done.\rExpanding reachable commits in commit graph: PRIVATE\n");
+        let updates: Vec<_> = receiver.try_iter().collect();
+        assert_eq!(
+            updates,
+            [
+                FetchProgress { phase: FetchPhase::IndexingHistory, current: 40, total: Some(100) },
+                // More commits than expected: the total follows, it never falls behind.
+                FetchProgress { phase: FetchPhase::IndexingHistory, current: 120, total: Some(120) },
+            ]
+        );
+        let mut parser = ProgressParser::new(ProgressSink::HistoryIndex(&sender, None));
+        parser.feed(b"Expanding reachable commits in commit graph: 9\r");
+        assert_eq!(
+            receiver.try_recv().unwrap(),
+            FetchProgress { phase: FetchPhase::IndexingHistory, current: 9, total: None }
+        );
+        // A fetch never reports this phase, whatever its remote prints.
+        let mut parser = ProgressParser::new(ProgressSink::Fetch(&sender));
+        parser.feed(b"remote: Expanding reachable commits in commit graph: 9\n");
+        assert!(receiver.try_recv().is_err());
     }
 
     #[test]

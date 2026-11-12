@@ -413,6 +413,8 @@ pub enum Intent {
     /// Open Explore, searching for or showing this text when given.
     Explore(Option<String>),
     Dialog(DialogKind),
+    /// The × on the "Speed up history" notice: hide it for the active repository.
+    HideHistoryNotice,
     RunContextCommand { index: usize, context: rocket_git::CommandContext },
     /// Preferences, opened at this page.
     Preferences(crate::preferences::Page),
@@ -521,6 +523,8 @@ pub enum DialogKind {
     Rebase(RebaseAction),
     MailImport(rocket_git::MailImportAction),
     Bisect,
+    /// Speed up history: write, update or remove Git's commit index.
+    HistoryIndex,
     Recovery,
     Tags,
     Worktrees,
@@ -576,6 +580,7 @@ pub struct Dialog {
     pub rebase: Option<crate::rebase::DialogState>,
     pub mail_import: Option<crate::mail_import::DialogState>,
     pub bisect: Option<crate::bisect::DialogState>,
+    pub history_index: Option<crate::history_index::DialogState>,
     pub recovery: Option<crate::recovery::DialogState>,
     pub tags: Option<crate::tags::DialogState>,
     pub worktrees: Option<crate::worktrees::DialogState>,
@@ -596,8 +601,6 @@ pub struct Dialog {
     pub issue_links: Option<crate::issue_links::Editor>,
     /// Add/Edit remote and Clone: the last Test connection.
     pub connection: Option<crate::remote_check::ConnectionTest>,
-    /// Repository Statistics: commit activity and the activity treemap.
-    pub statistics: Option<crate::statistics::State>,
     /// Git Flow: settings, branches and the review.
     pub gitflow: Option<crate::gitflow::DialogState>,
     /// File → Open: the folder browser.
@@ -755,6 +758,9 @@ pub struct Rocket {
     pub activity_history: crate::activity_history::Panel,
     pub crash_reports: crate::crash_reports::State,
     pub benchmark: crate::benchmark::State,
+    /// Each repository tab's Insights page: its numbers, filters and when they were
+    /// read, kept while the tab is open (only the shown one reads).
+    pub(crate) insights: std::collections::HashMap<u64, crate::statistics::State>,
     pub external: crate::external_tools::State,
     pub mcp: crate::mcp::Panel,
     pub integrations: crate::integrations::State,
@@ -932,6 +938,7 @@ impl Rocket {
             activity_history: Default::default(),
             crash_reports: crate::crash_reports::State::new(rocket_git::crash_reports::directory().map(PathBuf::from).unwrap_or_else(||log_path.join("crashes"))),
             benchmark: Default::default(),
+            insights: Default::default(),
             external: Default::default(),
             mcp: crate::mcp::Panel::new(state_directory.join("mcp")),
             integrations: crate::integrations::State::new(state_directory.clone()),
@@ -1114,6 +1121,11 @@ impl Rocket {
             || (self.quitting && self.terminal_log.busy())
     }
     pub(crate) fn profile_storage_ready(&self) -> bool { self.state_store.is_some() }
+    /// Whether the "Speed up history" notice was closed for this repository.
+    #[cfg(test)]
+    pub(crate) fn history_notice_closed(&self, path: &Path) -> bool {
+        self.saved.hidden_history_notices.contains(path)
+    }
     /// Running work, not counting a drafts/settings save that waits out its debounce.
     pub(crate) fn working(&self) -> bool {
         if self.quitting && !self.desktop_tasks.is_empty() { return true; }
@@ -1721,6 +1733,7 @@ impl Rocket {
             rebase: None,
             mail_import: None,
             bisect: None,
+            history_index: None,
             recovery: None,
             undo: None,
             tags: None,
@@ -1737,7 +1750,6 @@ impl Rocket {
             command_context: None,
             issue_links,
             connection: None,
-            statistics: None,
             gitflow: None,
             folder: None,
             create: None,
@@ -1751,6 +1763,7 @@ impl Rocket {
         self.start_rebase_preview();
         self.start_mail_preview();
         self.start_bisect_read(None);
+        self.start_history_index_read();
         self.start_recovery_read();
         self.start_undo_preview();
         self.start_signing_read();
@@ -1763,7 +1776,7 @@ impl Rocket {
         self.start_ssh_page();
         self.start_file_edit();
         self.start_patch_dialog();
-        self.start_statistics_read();
+        self.open_statistics();
         self.start_gitflow_read();
     }
 
@@ -1856,6 +1869,14 @@ impl Rocket {
             }
             Intent::Explore(query) => self.open_explore(query),
             Intent::Dialog(kind) => self.show_dialog(kind),
+            Intent::HideHistoryNotice => {
+                if let Some(tab) = self.tabs.get_mut(self.active) {
+                    if let Some(snapshot) = &mut tab.snapshot {
+                        snapshot.history_notice = false;
+                    }
+                    self.saved.hide_history_notice(&tab.path);
+                }
+            }
             Intent::Preferences(page) => self.show_preferences(page),
             Intent::Extension(id) => self.open_extension(id),
             Intent::ExtensionCommand(run) => self.run_extension_command(run),
@@ -2443,6 +2464,7 @@ impl Rocket {
         self.poll_rebase_preview();
         self.poll_mail_preview();
         self.poll_bisect_read();
+        self.poll_history_index_read();
         self.poll_recovery_read();
         self.poll_signing_read();
         self.poll_tag_read();
@@ -2542,6 +2564,7 @@ impl Rocket {
                             self.auto_fetch.minutes = p.auto_fetch_minutes;
                             self.commands = saved.commands.clone();
                             self.agents.load(saved.agents.clone());
+                            self.agents.copilot.clone_from(&saved.copilot_program);
                             self.library = saved.library.clone();
                             ctx.set_zoom_factor(p.zoom);
                             self.recent = saved.recent.clone();
@@ -2701,6 +2724,12 @@ impl Rocket {
                         } else if !tab.search.trim().is_empty() {
                             tab.selected_commit = previous_selected.clone();
                         }
+                        // Nothing to offer where the index cannot be written from, or
+                        // where the notice was closed.
+                        if !crate::history_index::offered(tab, &self.saved.hidden_history_notices) {
+                            snapshot.history_notice = false;
+                        }
+                        snapshot.slow_loads = crate::history_index::slow_loads(tab.snapshot.as_ref(), snapshot.history_notice);
                         tab.snapshot = Some(snapshot);
                         if !history_retained {
                             tab.relayout();
@@ -2730,6 +2759,13 @@ impl Rocket {
                 tab.more = None;
                 match result {
                     Ok(page) => {
+                        // A further page is ordered from the start again, so it counts
+                        // as a load for the "Speed up history" notice.
+                        if let Some(snapshot) = &mut tab.snapshot {
+                            let slow = snapshot.history_notice && page.ordering >= crate::history_index::SLOW;
+                            snapshot.slow_loads = crate::history_index::slow_loads(Some(&*snapshot), slow);
+                            snapshot.ordering = Some(page.ordering);
+                        }
                         if let Some(history) =
                             tab.snapshot.as_mut().and_then(|s| s.history.as_mut())
                         {
@@ -2817,6 +2853,23 @@ impl Rocket {
                 if progress.phase == rocket_git::FetchPhase::CheckingRepository {
                     write.progress = "Checking repository state…".into();
                     write.fraction = None;
+                    return;
+                }
+                if progress.phase == rocket_git::FetchPhase::IndexingHistory {
+                    // Commits read into the index, of the number counted beforehand.
+                    let done = crate::pages::number_text(progress.current as usize);
+                    write.progress = match progress.total {
+                        Some(total) => crate::i18n::trf!(
+                            "{done} of {total} commits",
+                            done,
+                            total = crate::pages::number_text(total as usize)
+                        ),
+                        None => crate::i18n::trn!(progress.current, "{found} commit", "{found} commits", found = done),
+                    };
+                    write.fraction = progress
+                        .total
+                        .filter(|total| *total > 0)
+                        .map(|total| (progress.current as f32 / total as f32).clamp(0.0, 1.0));
                     return;
                 }
                 write.progress = format!(
@@ -2915,6 +2968,7 @@ impl Rocket {
             self.finish_rebase_dialog(write.owner, &outcome);
             self.finish_mail_dialog(write.owner, &outcome);
             self.finish_bisect_dialog(write.owner, &outcome);
+            self.finish_history_index_dialog(write.owner, &outcome);
             self.finish_recovery_dialog(write.owner, &outcome);
             self.finish_signing_dialog(write.owner, &outcome);
             self.finish_tag_dialog(write.owner, &outcome);
@@ -3091,6 +3145,11 @@ impl Rocket {
         }
     }
 
+    /// The Insights choices saved for a repository, or the defaults.
+    pub(crate) fn saved_insights_view(&self, path: &Path) -> crate::statistics::View {
+        self.saved.insights_views.get(path).cloned().unwrap_or_default()
+    }
+
     fn poll_state(&mut self, ctx: &Context) {
         if let Some(result) = self.save_task.as_mut().and_then(WriteTask::try_finish) {
             self.save_task = None;
@@ -3134,7 +3193,8 @@ impl Rocket {
             language: self.language,
         };
         let agents=self.agents.records();
-        let mut changed = self.saved.agents != agents || self.saved.preferences != preferences
+        let mut changed = self.saved.agents != agents || self.saved.copilot_program != self.agents.copilot
+            || self.saved.preferences != preferences
             || self.saved.recent != self.recent
             || self.saved.tool_profiles.as_ref() != Some(&self.external.profiles)
             || self.saved.commands != self.commands
@@ -3142,6 +3202,7 @@ impl Rocket {
             || self.saved.hosting_searches != self.forge.searches;
         self.saved.hosting_searches = self.forge.searches.clone();
         self.saved.agents=agents;
+        self.saved.copilot_program.clone_from(&self.agents.copilot);
         if self.saved.library != self.library { self.saved.library = self.library.clone(); }
         if self.saved.commands != self.commands {
             self.saved.commands = self.commands.clone();
@@ -3161,6 +3222,9 @@ impl Rocket {
                 self.saved.worktree_views.insert(tab.path.clone(), view);
                 changed = true;
             }
+            if let Some(s) = self.insights.get(&tab.id) {
+                changed |= self.saved.set_insights_view(&tab.path, crate::statistics::View::capture(s));
+            }
             changed |= self.saved.set_draft(&tab.path, &tab.draft, &self.written);
             if tab.composer.recent.is_empty() {
                 changed |= self.saved.recent_messages.remove(&tab.path).is_some();
@@ -3172,6 +3236,11 @@ impl Rocket {
             }
         }
         changed |= self.saved.retain_worktree_views(
+            self.tabs.get(self.active).into_iter().map(|tab| &tab.path)
+                .chain(self.tabs.iter().rev().map(|tab| &tab.path))
+                .chain(self.recent.iter()),
+        );
+        changed |= self.saved.retain_insights_views(
             self.tabs.get(self.active).into_iter().map(|tab| &tab.path)
                 .chain(self.tabs.iter().rev().map(|tab| &tab.path))
                 .chain(self.recent.iter()),

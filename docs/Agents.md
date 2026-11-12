@@ -8,7 +8,12 @@ CLI separately; Rocket does not install it or store an AI API key.
    a new worktree folder outside existing repositories.
 2. Choose Claude Code, Codex, GitHub Copilot or Custom command. Check the absolute executable
    path. Arguments are literal, one per line; do not add shell quoting. A shell
-   runs only if you deliberately select one as the executable.
+   runs only if you deliberately select one as the executable. When a preset's
+   program is not found, the field for its path opens: type the path or choose
+   **Browse**. A program chosen with Browse is where Rocket finds that preset
+   from then on. Claude Code's and Codex's are the Program setting under
+   **Preferences → Commit messages → AI drafts**; GitHub Copilot's is saved with
+   Rocket's settings. A typed path applies to that session only.
 3. Optionally select a setup executable and arguments. Rocket never discovers or
    runs a repository's setup scripts automatically. A failing setup prevents the
    agent from starting and keeps the worktree for inspection.
@@ -60,7 +65,7 @@ scripts, shared libraries, configuration or other files it loads. Rocket never
 falls back to launching an unverified original if preparation fails.
 
 **Stop** immediately shows Stopping and requests termination of the owned process
-tree. Rocket retains the worktree and any changes. Select **Review changes** to
+tree. Rocket retains the worktree and any changes. Select **Open worktree** to
 open the worktree's ordinary Changes view; a running agent can still change those
 files. **Review and restart** verifies the worktree's registered identity, branch, commit and selected
 executable again. Setup is off by default on restart and can be selected explicitly.
@@ -72,7 +77,7 @@ Terminal input/output is not persisted as session metadata or diagnostic events.
 
 **Remove worktree** previews and rechecks removal. Staged, unstaged, untracked and
 ignored files, locks or active Git operations block it. The branch and recovery
-reference remain. **Forget session, keep files** only removes Rocket's record;
+reference remain. **Forget session** only removes Rocket's record;
 use Worktrees to manage the retained checkout. Failed or cancelled creation can
 leave a registered worktree or branch: inspect it before trying another creation.
 
@@ -87,7 +92,7 @@ behavior until you enable tracking in **Review and restart**.
 The activity badge distinguishes Ready, Working, Needs your attention, Turn
 finished and Turn interrupted. Permission requests and question tools raise an
 attention badge and request the operating system's taskbar/Dock attention signal.
-The sidebar count and **Needs attention** filter stay visible until you acknowledge
+The sidebar count stays, and the session is listed under **Needs you**, until you acknowledge
 the event or the provider starts working again. Repeated identical events do not
 notify again; unseen badges survive reopening Rocket. OS notification behavior
 still depends on focus and system settings.
@@ -121,9 +126,9 @@ stored nor logged by Rocket. Each run has a bounded capability-protected loopbac
 receiver; stopping or exiting closes it. Provider processes retain their normal
 access and own history. These events never grant permission or trigger a merge.
 
-### Review and integrate (pending release)
+### Integrate (pending release)
 
-1. In **Review and integrate**, open the worktree Changes view. Review and commit
+1. In **Integrate**, choose **Open worktree** to see its Changes view. Review and commit
    the changes you want to bring back; Rocket does not commit them automatically.
 2. Stop the agent and choose **Check integration**. Both the agent worktree and
    original checkout must be clean, and the original checkout must have a named

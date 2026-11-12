@@ -109,6 +109,7 @@ pub(super) fn parse(mut args: Vec<OsString>) -> Parsed<Options> {
                     author: tail.text("--author")?.unwrap_or_default(),
                     assignee: tail.text("--assignee")?.unwrap_or_default(),
                 },
+                reviewers: false,
             };
             if !filter.search.is_empty() {
                 filter

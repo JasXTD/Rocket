@@ -162,7 +162,7 @@ fn changing_selected_session_drops_old_changes_and_state() {
     b.destination = std::env::temp_dir().join("b");
     let mut s = changes::State::default();
     s.select_owner(&a);
-    s.patch = Some(crate::diff::Patch::default());
+    s.patch = Some(Arc::new(crate::diff::Patch::default()));
     s.error = Some("old error".into());
     s.selected = Some(1);
     s.select_owner(&b);
@@ -240,7 +240,7 @@ fn copilot_and_existing_provider_records_roundtrip_without_relaunch() {
     for provider in Provider::ALL {
         let mut r = record(&std::env::temp_dir().join("source"), &std::env::current_exe().unwrap());
         r.provider = provider;
-        r.command.arguments = provider.command().arguments;
+        r.command.arguments = provider.command(Chosen::default()).arguments;
         assert_eq!(r.command.args(), if provider == Provider::Copilot { vec!["--no-auto-update"] } else { vec![] });
         let mut s = State::default();
         s.load(model::decode(&model::encode(&[r.clone()]).unwrap()).unwrap());
@@ -301,6 +301,7 @@ fn agent_preview_protects_existing_destination_and_stale_worktree() {
                 plan: Some(p.clone()),
                 task: None,
                 error: None,
+                found: None,
             });
             assert!(
                 state.confirm().is_err(),
@@ -323,6 +324,44 @@ fn agent_preview_protects_existing_destination_and_stale_worktree() {
                 fs::read_to_string(r.destination.join("keep")).unwrap(),
                 "keep"
             );
+        },
+    );
+}
+#[test]
+fn a_new_session_proposes_its_folder_as_it_would_be_typed_and_review_accepts_it() {
+    common::isolated(
+        "ROCKET_AGENT_CASE",
+        "agents::tests::a_new_session_proposes_its_folder_as_it_would_be_typed_and_review_accepts_it",
+        || {
+            let f = common::Fixture::new();
+            fs::write(f.repository.join("資料.txt"), "base").unwrap();
+            f.commit("base");
+            // The repository's path as a tab holds it: on Windows with `\\?\` in front.
+            let source = f.repository.canonicalize().unwrap();
+            let folder = source.parent().unwrap().join("rocket-agent-1");
+            let mut state = State::default();
+            state.new_form(source, &Default::default());
+            let form = state.form.as_mut().unwrap();
+            assert_eq!(form.destination, crate::views::display_path(&folder));
+            assert!(!form.destination.starts_with(r"\\?\"), "{}", form.destination);
+            // What the field holds is what review is given, and review accepts it.
+            form.record.name = "Task 資料".into();
+            form.record.provider = Provider::Custom;
+            form.record.command = Command {
+                program: std::env::current_exe().unwrap().to_string_lossy().into_owned(),
+                arguments: String::new(),
+            };
+            let proposed = form.proposed();
+            assert_eq!(proposed.destination, Path::new(&form.destination));
+            let backend = Backend::discover(&f.root.join("logs")).unwrap();
+            let c = rocket_git::CancellationToken::new();
+            let plan = runtime::preview(&backend, proposed, Mode::Create, &c).unwrap();
+            assert_eq!(
+                crate::views::display_path(&plan.record.destination),
+                crate::views::display_path(&folder),
+                "review names the same folder"
+            );
+            assert!(!folder.exists(), "review creates nothing");
         },
     );
 }

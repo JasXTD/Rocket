@@ -54,6 +54,7 @@ pub mod gitflow;
 pub mod graph;
 mod guide;
 pub mod history;
+mod history_index;
 pub mod reviews;
 pub mod commit_links;
 pub mod hosting;

@@ -1,5 +1,12 @@
 //! Read only the selected worktree. A dropped task cannot publish into another
 //! session; directory notifications coalesce reads without polling Git while idle.
+//!
+//! What was read is kept so it is not read again for nothing. A diff read since the
+//! worktree last changed shows at once when its file is chosen again. Leaving the pane
+//! keeps the watch, so coming back reads nothing unless something changed. When the
+//! worktree does change, the list and the chosen file are read again while the old diff
+//! stays on screen. A session's list and diffs are kept while another session shows,
+//! shown again when it is chosen, and checked against the worktree right then.
 use super::{model::Record, runtime};
 use crate::{
     backend::{Backend, user_error},
@@ -13,6 +20,12 @@ use std::{
 };
 
 const MAX_FILES: usize = 2_000;
+/// Diffs kept ready for one session, and sessions whose list and diffs are kept.
+const KEPT_PATCHES: usize = 24;
+const KEPT_SESSIONS: usize = 6;
+/// Back in view after this long, the list is read again even if no change was
+/// reported: a watch can go quiet when its folder is replaced.
+const TRUSTED: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Area {
@@ -49,15 +62,36 @@ pub struct State {
     pub owner: Option<Record>,
     pub loaded: Option<Snapshot>,
     pub selected: Option<usize>,
-    pub patch: Option<Patch>,
+    /// The chosen file's diff. While that file is read again it is the earlier diff.
+    pub patch: Option<Arc<Patch>>,
     pub error: Option<String>,
     pub notice: Option<String>,
     pub stopping: bool,
     listing: Option<ReadTask<Snapshot>>,
-    content: Option<ReadTask<Patch>>,
+    content: Option<ReadTask<(File, Patch)>>,
     watch: Option<Arc<RepositoryWatch>>,
     dirty_since: Option<Instant>,
     paused: bool,
+    /// Diffs read since the worktree last changed, oldest first.
+    ready: Vec<(File, Arc<Patch>)>,
+    /// What other sessions showed last, oldest first.
+    kept: Vec<Kept>,
+}
+
+/// A session's list and diffs while another session shows. It is not watched, so it
+/// is read again when the session shows next; until that answers it shows as it was.
+struct Kept {
+    owner: Record,
+    loaded: Snapshot,
+    selected: Option<usize>,
+    patch: Option<Arc<Patch>>,
+    ready: Vec<(File, Arc<Patch>)>,
+}
+
+/// Whether two records read the same worktree. A session's other fields (its activity,
+/// whether it waits for the user) change while it runs and do not change what is read.
+fn same_worktree(a: &Record, b: &Record) -> bool {
+    a.id == b.id && a.source == b.source && a.destination == b.destination && a.branch == b.branch
 }
 
 fn open(backend: &Backend, record: &Record, cancel: &CancellationToken) -> Result<Repository> {
@@ -181,24 +215,70 @@ impl State {
         self.loaded.as_ref()?.files.get(self.selected?)
     }
     pub fn select_owner(&mut self, owner: &Record) {
-        if self.owner.as_ref() != Some(owner) {
-            *self = Self {
-                owner: Some(owner.clone()),
-                paused: true,
-                ..Default::default()
-            };
+        if let Some(current) = &mut self.owner
+            && same_worktree(current, owner)
+        {
+            if current != owner {
+                *current = owner.clone();
+            }
+            return;
+        }
+        // Another session: set aside what this one showed, and bring back what that one
+        // showed last. Only the session in view is watched.
+        let old = std::mem::take(self);
+        let mut kept = old.kept;
+        if let (Some(record), Some(mut loaded)) = (old.owner, old.loaded) {
+            loaded.watch = None;
+            kept.retain(|k| !same_worktree(&k.owner, &record));
+            kept.push(Kept {
+                owner: record,
+                loaded,
+                selected: old.selected,
+                patch: old.patch,
+                ready: old.ready,
+            });
+            if kept.len() > KEPT_SESSIONS {
+                kept.remove(0);
+            }
+        }
+        let back = kept
+            .iter()
+            .position(|k| same_worktree(&k.owner, owner))
+            .map(|i| kept.remove(i));
+        *self = Self {
+            owner: Some(owner.clone()),
+            paused: true,
+            kept,
+            ..Default::default()
+        };
+        if let Some(back) = back {
+            self.loaded = Some(back.loaded);
+            self.selected = back.selected;
+            self.patch = back.patch;
+            self.ready = back.ready;
         }
     }
+    /// Out of view: reads stop, the watch stays. A read that was cut short, or a change
+    /// already noticed, is remembered as a change, so coming back reads again.
     pub fn suspend(&mut self) {
+        if self.listing.is_some() || self.content.is_some() {
+            self.dirty_since.get_or_insert_with(Instant::now);
+        }
         self.listing = None;
         self.content = None;
+        self.stopping = false;
+        self.paused = true;
+    }
+    /// Out of view for something that may move or remove the worktree (a session dialog,
+    /// another page, quitting): reads stop and the folder is let go of, since nothing
+    /// here may hold it then. What shows is kept, and read again once back in view.
+    pub fn release(&mut self) {
+        self.suspend();
         self.watch = None;
         if let Some(s) = &mut self.loaded {
             s.watch = None;
         }
-        self.dirty_since = None;
-        self.stopping = false;
-        self.paused = true;
+        self.ready.clear();
     }
     pub fn stop(&mut self) {
         if let Some(t) = &self.listing {
@@ -208,7 +288,9 @@ impl State {
             t.cancel();
         }
         self.stopping = self.busy();
+        // No longer watched: the diff on screen stays, and nothing else is trusted.
         self.watch = None;
+        self.ready.clear();
         self.dirty_since = None;
         if let Some(s) = &mut self.loaded {
             s.watch = None;
@@ -259,18 +341,46 @@ impl State {
         };
         self.selected = Some(index);
         self.content = None;
-        self.patch = None;
         self.error = None;
         self.stopping = false;
+        // Read since the worktree last changed: it is still right, so show it again.
+        // Without a watch nothing says when it stops being right, so nothing is kept.
+        if self.watch.is_some()
+            && let Some((_, patch)) = self.ready.iter().find(|(f, _)| f == &file)
+        {
+            self.patch = Some(patch.clone());
+            return;
+        }
+        self.patch = None;
+        self.read_diff(owner, file, backend, ctx);
+    }
+    fn read_diff(&mut self, owner: Record, file: File, backend: &Backend, ctx: &Context) {
         let backend = backend.clone();
-        match crate::read_task::spawn(ctx, move |c| read_patch(&backend, &owner, &file, &c)) {
+        match crate::read_task::spawn(ctx, move |c| {
+            let patch = read_patch(&backend, &owner, &file, &c)?;
+            Ok((file, patch))
+        }) {
             Ok(task) => self.content = Some(task),
             Err(e) => self.error = Some(user_error(&e)),
         }
     }
     pub fn poll(&mut self, backend: &Backend, ctx: &Context) {
         if self.paused {
-            self.refresh(backend, ctx);
+            // Back in view. Watched all along with nothing reported, and read not long
+            // ago: what shows is still right, and nothing is read.
+            let fresh = self.loaded.as_ref().is_some_and(|s| s.at.elapsed() < TRUSTED);
+            let quiet = self.dirty_since.is_none()
+                && self.watch.as_ref().is_some_and(|w| matches!(w.take_changed(), Ok(false)));
+            if fresh && quiet {
+                self.paused = false;
+                if self.patch.is_none()
+                    && let Some(index) = self.selected
+                {
+                    self.select(index, backend, ctx);
+                }
+            } else {
+                self.refresh(backend, ctx);
+            }
         }
         if let Some(result) = self.listing.as_mut().and_then(ReadTask::try_finish) {
             self.listing = None;
@@ -278,29 +388,48 @@ impl State {
                 Ok(snapshot) if !self.stopping => {
                     let old = self.selected_file().cloned();
                     self.selected = old
-                        .and_then(|f| snapshot.files.iter().position(|n| n == &f))
+                        .as_ref()
+                        .and_then(|f| snapshot.files.iter().position(|n| n == f))
                         .or_else(|| (!snapshot.files.is_empty()).then_some(0));
                     self.watch = snapshot.watch.clone();
                     self.notice = snapshot.watch_error.clone();
                     self.loaded = Some(snapshot);
-                    if let Some(index) = self.selected {
-                        self.select(index, backend, ctx);
-                    } else {
-                        self.content = None;
+                    // A new list means the worktree may have changed: no diff read before
+                    // can be trusted. The chosen file is read again, and until that answers
+                    // its earlier diff stays on screen.
+                    self.ready.clear();
+                    self.content = None;
+                    let chosen = self.selected_file().cloned();
+                    if chosen != old {
                         self.patch = None;
+                    }
+                    if let (Some(file), Some(owner)) = (chosen, self.owner.clone()) {
+                        self.error = None;
+                        self.read_diff(owner, file, backend, ctx);
                     }
                 }
                 Err(Error::Cancelled) | Ok(_) => {}
                 Err(e) => {
                     self.error = Some(user_error(&e));
                     self.watch = None;
+                    self.ready.clear();
                 }
             }
         }
         if let Some(result) = self.content.as_mut().and_then(ReadTask::try_finish) {
             self.content = None;
             match result {
-                Ok(patch) if !self.stopping => self.patch = Some(patch),
+                Ok((file, patch)) if !self.stopping => {
+                    let patch = Arc::new(patch);
+                    self.ready.retain(|(f, _)| f != &file);
+                    if self.watch.is_some() {
+                        self.ready.push((file, patch.clone()));
+                        if self.ready.len() > KEPT_PATCHES {
+                            self.ready.remove(0);
+                        }
+                    }
+                    self.patch = Some(patch);
+                }
                 Err(Error::Cancelled) | Ok(_) => {}
                 Err(e) => self.error = Some(user_error(&e)),
             }
@@ -317,6 +446,7 @@ impl State {
                 Err(e) => {
                     self.notice = Some(user_error(&e));
                     self.watch = None;
+                    self.ready.clear();
                 }
             }
         }
@@ -329,3 +459,6 @@ impl State {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

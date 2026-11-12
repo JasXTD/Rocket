@@ -103,11 +103,9 @@ impl Repository {
             .map(OsString::from)
             .collect();
             arguments.push(format!("--max-count={}", ACTIVITY_COMMITS + 1).into());
-            if let Some(since) = scope.since {
-                // Committer dates are at least author dates in practice; the tally
-                // then keeps commits authored in the range.
-                arguments.push(format!("--since={since}").into());
-            }
+            // This view counts author dates. Git's --since filters committer dates
+            // and can prune ancestry at a skewed timestamp, hiding valid rows.
+            // Read a bounded walk and apply the author-date filter in tally().
             if scope.all_branches {
                 arguments.extend(["--branches", "--remotes"].map(OsString::from));
             } else {
@@ -189,7 +187,7 @@ impl Repository {
 }
 
 /// Count `git log -z --date=raw --format=%ad%x00%P%x00%aE%x00%aN` records, keeping
-/// commits authored at or after `since` and at most `limit` of them.
+/// commits authored at or after `since` within the first `limit` walked records.
 fn tally(output: &[u8], since: Option<i64>, limit: usize) -> Result<CommitActivity> {
     let mut fields: Vec<&[u8]> = output.split(|b| *b == 0).collect();
     if fields.last().is_some_and(|f| f.is_empty()) {
@@ -203,7 +201,8 @@ fn tally(output: &[u8], since: Option<i64>, limit: usize) -> Result<CommitActivi
     let mut months: BTreeMap<(i32, u32), usize> = BTreeMap::new();
     let mut weeks: BTreeMap<i64, usize> = BTreeMap::new();
     let mut dates: HashSet<i64> = HashSet::new();
-    for record in fields.chunks(4) {
+    activity.limited = fields.len() / 4 > limit;
+    for record in fields.chunks(4).take(limit) {
         let date = std::str::from_utf8(record[0])
             .map_err(|_| Error::parse("commit-activity", "invalid record"))?;
         let (seconds, zone) = date
@@ -217,10 +216,6 @@ fn tally(output: &[u8], since: Option<i64>, limit: usize) -> Result<CommitActivi
             zone_minutes(zone).ok_or_else(|| Error::parse("commit-activity", "invalid record"))?;
         if since.is_some_and(|s| seconds < s) {
             continue;
-        }
-        if activity.commits == limit {
-            activity.limited = true;
-            break;
         }
         activity.commits += 1;
         if record[1]
@@ -283,8 +278,19 @@ fn zone_minutes(zone: &str) -> Option<i32> {
     Some(sign * (value / 100 * 60 + value % 100))
 }
 
+/// The day, counted from 1970-01-01, of a civil date (Howard Hinnant's algorithm, the
+/// inverse of [`year_month`]'s).
+pub(crate) fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
+    let y = i64::from(year) - i64::from(month <= 2);
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let m = i64::from(month);
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + i64::from(day) - 1;
+    era * 146_097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719_468
+}
+
 /// The civil year and month of a day counted from 1970-01-01.
-fn year_month(days: i64) -> (i32, u32) {
+pub(crate) fn year_month(days: i64) -> (i32, u32) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z.rem_euclid(146_097);
@@ -472,6 +478,11 @@ mod tests {
         assert_eq!(year_month(-1), (1969, 12));
         assert_eq!(year_month(19_782), (2024, 2)); // 2024-02-29
         assert_eq!(year_month(19_783), (2024, 3));
+        // The inverse, across a leap day, the epoch and a century that isn't leap.
+        for (date, day) in [((1970, 1, 1), 0), ((2024, 2, 29), 19_782), ((2024, 3, 1), 19_783), ((1969, 12, 31), -1), ((2100, 3, 1), 47_541)] {
+            assert_eq!(days_from_civil(date.0, date.1, date.2), day, "{date:?}");
+            assert_eq!(year_month(day), (date.0, date.1));
+        }
         assert_eq!(zone_minutes("+0530"), Some(330));
         assert_eq!(zone_minutes("-0800"), Some(-480));
         assert_eq!(zone_minutes("0800"), None);

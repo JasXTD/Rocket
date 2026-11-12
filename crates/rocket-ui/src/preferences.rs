@@ -1022,15 +1022,18 @@ impl Rocket {
                 PickTarget::CommandProgram(_) | PickTarget::CommandImport | PickTarget::CommandExport => {
                     crate::custom_commands::browse_start(self.dialog.as_ref().and_then(|d| d.commands.as_ref()), target)
                 }
-                // Clone, New repository, Run command, Submodules and the repository manager
-                // browse from their own dialogs; a theme picture starts in the Pictures folder.
+                // Clone, New repository, Run command, Submodules, Agents and the repository
+                // manager browse from their own dialogs; a theme picture starts in the
+                // Pictures folder.
                 PickTarget::CloneSource
+                | PickTarget::AgentProgram
                 | PickTarget::DependencyScanner
                 | PickTarget::ExtensionFile
                 | PickTarget::LibraryRepository
                 | PickTarget::LibraryScanFolder
                 | PickTarget::CrashReportFolder
                 | PickTarget::MapExportFolder
+                | PickTarget::InsightsExportFolder
                 | PickTarget::CloneParent
                 | PickTarget::InitFolder
                 | PickTarget::WorktreeFolder

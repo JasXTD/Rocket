@@ -960,16 +960,20 @@ fn profile_editor(
             });
             field_row(ui, crate::i18n::tr("Program"), |ui| {
                 ui.horizontal(|ui| {
+                    // The button is measured first and the field takes what it leaves:
+                    // Browse is a longer word in some languages.
+                    let label = crate::i18n::tr("Browse");
+                    let button = crate::pages::button_width(ui, label, 0.0);
                     let r = ui.add_enabled(
                         !busy,
                         TextEdit::singleline(&mut profile.config.executable)
                             .font(FontId::monospace(12.0))
                             .hint_text(crate::i18n::tr("Full path to the tool's .exe"))
                             .char_limit(32768)
-                            .desired_width((ui.available_width() - 84.0).max(80.0)),
+                            .desired_width((ui.available_width() - button - ui.spacing().item_spacing.x).max(80.0)),
                     );
                     register(ui, widgets, "tools-executable", &r);
-                    let b = ui.add_enabled(!busy, Button::new(crate::i18n::tr("Browse")));
+                    let b = ui.add_enabled(!busy, Button::new(label).min_size(vec2(button, 0.0)));
                     register(ui, widgets, "tools-browse", &b);
                     if b.clicked() {
                         browse = Some(PickTarget::ToolProgram(kind, index));

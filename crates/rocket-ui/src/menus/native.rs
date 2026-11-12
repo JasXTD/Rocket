@@ -396,6 +396,14 @@ impl Rocket {
                 DialogKind::Bisect,
             ),
             (
+                10154,
+                10004,
+                "repository-history-index",
+                "Speed Up History",
+                opened,
+                DialogKind::HistoryIndex,
+            ),
+            (
                 10160,
                 10005,
                 "repository-settings",

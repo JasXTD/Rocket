@@ -396,11 +396,15 @@ fn folder_row(
     crate::patches::form_row(ui, crate::i18n::tr("Folder"), |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
+            // The button is measured first and the field takes what it leaves: Browse is
+            // a longer word in some languages.
+            let label = crate::i18n::tr("Browse");
+            let button = pages::button_width(ui, label, 0.0);
             let r = ui.add_enabled(
                 !s.applying,
                 TextEdit::singleline(first)
                     .hint_text(crate::i18n::tr("A folder of numbered .patch files"))
-                    .desired_width(ui.available_width() - 76.0)
+                    .desired_width(ui.available_width() - button - 8.0)
                     .min_size(vec2(0.0, 30.0))
                     .vertical_align(Align::Center),
             );
@@ -411,7 +415,7 @@ fn folder_row(
                 *error = None;
             }
             *review |= r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) && !first.trim().is_empty();
-            let b = ui.add_enabled(!s.applying, Button::new(crate::i18n::tr("Browse")).min_size(vec2(0.0, 30.0)));
+            let b = ui.add_enabled(!s.applying, Button::new(label).min_size(vec2(button, 30.0)));
             pages::control(widgets, "dialog-series-browse", &b, ui.clip_rect());
             *browse = b.clicked();
         });

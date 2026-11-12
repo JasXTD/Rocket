@@ -955,6 +955,7 @@ pub(crate) fn commits(
                 widgets.insert("history-search-error".into(), (&r.inner).into());
             });
     }
+    crate::history_index::notice(ui, tab, intents, widgets);
     if details {
         // Preserve useful detail/diff space after a window shrinks; persisted panel
         // sizes must not push the lower pane beyond the viewport.

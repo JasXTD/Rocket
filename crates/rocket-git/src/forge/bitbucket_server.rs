@@ -176,6 +176,8 @@ pub(super) fn server_item(repo: &ForgeRepository, v: &Json) -> Option<ForgeItem>
     let source = v.get("fromRef")?.str("id")?.strip_prefix("refs/heads/")?;
     let target = v.get("toRef")?.str("id")?.strip_prefix("refs/heads/")?;
     Some(ForgeItem {
+        timing: Some(super::insights::timing(ForgeProvider::BitbucketServer, v)),
+        reviewers: super::insights::review_requests(ForgeProvider::BitbucketServer, repo.parts().0, v),
         number,
         title: clean(v.str("title")?, 1024),
         state: state.into(),

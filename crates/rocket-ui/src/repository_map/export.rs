@@ -315,9 +315,19 @@ fn body(ui: &mut Ui, e: &mut Export, widgets: &mut HashMap<String, UiControl>, a
     pages::region(widgets, "map-export-scroll", frame.inner.intersect(ui.clip_rect()), true);
     ui.add_space(6.);
     let busy = e.running();
-    let field = (ui.available_width() - 160.).max(120.);
+    // The two labels share one column and Browse is measured before the fields, which
+    // take what is left: each is a longer word in some languages than the 60 and 84
+    // points these rows used to leave.
+    let (save_in, name, browse) = (tr("Save in"), crate::i18n::tr("Name"), crate::i18n::tr("Browse"));
+    let wide = |text: &str| {
+        let font = TextStyle::Body.resolve(ui.style());
+        ui.painter().layout_no_wrap(text.to_owned(), font, HINT()).size().x.ceil()
+    };
+    let label = wide(save_in).max(wide(name)).max(60.);
+    let button = pages::button_width(ui, browse, 0.);
+    let field = (ui.available_width() - label - button - 2. * ui.spacing().item_spacing.x).max(120.);
     ui.horizontal(|ui| {
-        ui.add_sized([60., CONTROL], Label::new(RichText::new(tr("Save in")).color(HINT())));
+        ui.add_sized([label, CONTROL], Label::new(RichText::new(save_in).color(HINT())));
         let r = ui.add_enabled(
             !busy,
             TextEdit::singleline(&mut e.dir)
@@ -327,12 +337,12 @@ fn body(ui: &mut Ui, e: &mut Export, widgets: &mut HashMap<String, UiControl>, a
                 .hint_text(crate::i18n::tr("Folder")),
         );
         pages::control(widgets, "map-export-folder", &r, ui.clip_rect());
-        let r = ui.add_enabled(!busy, Button::new(crate::i18n::tr("Browse")));
+        let r = ui.add_enabled(!busy, Button::new(browse).min_size(vec2(button, 0.)));
         pages::control(widgets, "map-export-browse", &r, ui.clip_rect());
         act.browse |= r.clicked();
     });
     ui.horizontal(|ui| {
-        ui.add_sized([60., CONTROL], Label::new(RichText::new(crate::i18n::tr("Name")).color(HINT())));
+        ui.add_sized([label, CONTROL], Label::new(RichText::new(name).color(HINT())));
         let r = ui.add_enabled(
             !busy,
             TextEdit::singleline(&mut e.name)

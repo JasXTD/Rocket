@@ -831,7 +831,12 @@ fn edit_panel(
                 form_row(ui, if url { crate::i18n::tr("Web link") } else { crate::i18n::tr("Program") }, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
-                        let buttons = if url { 0.0 } else { 2.0 * 76.0 + 16.0 };
+                        // Each button is as wide as its label needs (Browse is a longer
+                        // word in some languages) and the field takes what they leave.
+                        let (browse, check) = (crate::i18n::tr("Browse"), crate::i18n::tr("Check"));
+                        let browse_width = crate::pages::button_width(ui, browse, 76.0);
+                        let check_width = crate::pages::button_width(ui, check, 76.0);
+                        let buttons = if url { 0.0 } else { browse_width + check_width + 16.0 };
                         let r = ui.add_sized(
                             [(ui.available_width() - buttons).max(80.0), CONTROL],
                             TextEdit::singleline(&mut command.program)
@@ -851,14 +856,14 @@ fn edit_panel(
                         );
                         control(widgets, "dialog-commands-program", &r, ui.clip_rect());
                         if !url {
-                            let b = ui.add_sized([76.0, CONTROL], Button::new(crate::i18n::tr("Browse")));
+                            let b = ui.add_sized([browse_width, CONTROL], Button::new(browse));
                             control(widgets, "dialog-commands-program-browse", &b, ui.clip_rect());
                             if b.clicked() {
                                 out.browse = Some(PickTarget::CommandProgram(index));
                             }
                             let b = ui.add_enabled(
                                 runnable_path(Path::new(&command.program)),
-                                Button::new(crate::i18n::tr("Check")).min_size(vec2(76.0, CONTROL)),
+                                Button::new(check).min_size(vec2(check_width, CONTROL)),
                             );
                             control(widgets, "dialog-commands-program-check", &b, ui.clip_rect());
                             request_check = b.clicked();
@@ -1510,7 +1515,8 @@ fn path_row(
     let idle = e.transfer.is_none();
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 8.0;
-        let browse = 76.0;
+        // As wide as its label needs: Browse is a longer word in some languages.
+        let browse = crate::pages::button_width(ui, crate::i18n::tr("Browse"), 76.0);
         let width = ui.available_width() - browse - 8.0;
         let path = &mut e.exchange_path;
         let r = ui
@@ -1980,9 +1986,15 @@ pub(crate) fn form(
                     }
                     kind => {
                         ui.horizontal(|ui| {
+                            // Browse is as wide as its label needs (a longer word in
+                            // some languages); the field takes what it leaves.
+                            let button = match kind {
+                                CommandInputKind::File => crate::pages::button_width(ui, crate::i18n::tr("Browse"), 76.0),
+                                _ => 0.0,
+                            };
                             let side = match kind {
                                 CommandInputKind::Branch => 36.0,
-                                CommandInputKind::File => 84.0,
+                                CommandInputKind::File => button + 8.0,
                                 _ => 0.0,
                             };
                             ui.spacing_mut().item_spacing.x = if kind == CommandInputKind::Branch { 4.0 } else { 8.0 };
@@ -2010,7 +2022,7 @@ pub(crate) fn form(
                                     }
                                 }
                                 CommandInputKind::File => {
-                                    let r = ui.add_sized([76.0, CONTROL], Button::new(crate::i18n::tr("Browse")));
+                                    let r = ui.add_sized([button, CONTROL], Button::new(crate::i18n::tr("Browse")));
                                     control(widgets, format!("{key}-browse"), &r, ui.clip_rect());
                                     if r.clicked() {
                                         browse = Some((index, value.clone()));

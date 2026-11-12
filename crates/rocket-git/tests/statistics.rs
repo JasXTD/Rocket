@@ -38,6 +38,21 @@ const ALICE: (&str, &str) = ("Alice", "alice@example.invalid");
 const BOB: (&str, &str) = ("Bob 文", "bob@example.invalid");
 
 #[test]
+fn activity_author_range_does_not_prune_skewed_committer_dates() {
+    isolated("ROCKET_STATISTICS_CASE", "activity_author_range_does_not_prune_skewed_committer_dates", || {
+        let f = Fixture::new();
+        commit_as(&f, ALICE, "2024-03-01T10:00:00Z", "recent ancestor");
+        let out = f.command(&f.repository, &["commit", "--allow-empty", "--no-verify", "-m", "skewed child"])
+            .env("GIT_AUTHOR_DATE", "2024-03-02T10:00:00Z")
+            .env("GIT_COMMITTER_DATE", "2024-01-01T10:00:00Z").output().unwrap();
+        assert!(out.status.success());
+        let activity = f.repo().commit_activity(&ActivityScope { since: Some(seconds("2024-02-01")), all_branches: false }, &token()).unwrap();
+        assert_eq!(activity.commits, 2);
+        assert!(!activity.limited);
+    });
+}
+
+#[test]
 fn commit_activity_counts_authors_times_and_branches() {
     isolated(
         "ROCKET_STATISTICS_CASE",

@@ -592,6 +592,7 @@ impl Rocket {
                         state: s.state,
                         work_item_state: s.work_state.clone(),
                         search: if s.provider.supports_search() { s.search.clone() } else { ForgeSearch::default() },
+                        reviewers: false,
                     };
                     let recent = s.provider.is_github().then(|| search::Recent::from_state(s));
                     let append = action == "more";
@@ -1263,7 +1264,7 @@ fn item_row(
 }
 
 /// A provider's state word as shown, and its color.
-fn state_look(state: &str) -> (String, Color32) {
+pub(crate) fn state_look(state: &str) -> (String, Color32) {
     let lower = state.trim().to_lowercase();
     let color = match lower.as_str() {
         "open" | "opened" | "active" | "new" => GREEN(),
@@ -2097,6 +2098,8 @@ mod tests {
         };
         s.items = (1..=3)
             .map(|number| ForgeItem {
+                timing: None,
+                reviewers: None,
                 number,
                 title: "PRIVATE 改善 Unicode".into(),
                 state: "open".into(),

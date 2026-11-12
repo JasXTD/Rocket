@@ -544,7 +544,7 @@ impl Ui {
         state["agents"] = json!({"selected":self.app.agents.selected,"busy":self.app.agents.working(),"notice":self.app.agents.notice,
             "attention_count":self.app.agents.sessions.iter().filter(|s|s.attention).count(),
             "integration":{"reading":self.app.agents.integration.task.is_some(),"stopping":self.app.agents.integration.stopping,"error":self.app.agents.integration.error,"review":self.app.agents.integration.review.as_ref().map(|r|json!({"owner":r.owner.id,"incoming":r.merge.incoming(),"files":r.comparison.files.len(),"base":r.comparison.base.as_str(),"target":r.comparison.target.as_str()}))},
-            "pane":format!("{:?}",self.app.agents.pane),"filter":format!("{:?}",self.app.agents.filter),
+            "pane":format!("{:?}",self.app.agents.pane),"folded":self.app.agents.folded,
             "changes":{"owner":self.app.agents.changes.owner.as_ref().map(|r|r.id),"busy":self.app.agents.changes.busy(),"loading":self.app.agents.changes.loading(),"stopping":self.app.agents.changes.stopping,
                 "selected":self.app.agents.changes.selected,"loaded":self.app.agents.changes.loaded.is_some(),"error":self.app.agents.changes.error,"notice":self.app.agents.changes.notice,
                 "files":self.app.agents.changes.loaded.as_ref().map(|s|s.files.iter().enumerate().map(|(i,f)|json!({"index":i,"area":f.area.label(),"path":self.policy.private_state_allowed().then(||String::from_utf8_lossy(f.path.as_bytes()))})).collect::<Vec<_>>()),
@@ -632,7 +632,7 @@ impl Ui {
                     Err(f) => json!({"connected":false,"code":f.code,"message":f.message}),
                 })})));
             // Repository Statistics: choices, read state and the shown results.
-            value["statistics"] = json!(d.statistics.as_ref().map(statistics_state));
+            value["statistics"] = json!(self.app.statistics().map(|s| statistics_state(s, self.policy.private_state_allowed())));
             // Git Flow: request, settings, branches and the reviewed steps.
             value["gitflow"] = json!(d.gitflow.as_ref().map(gitflow_state));
             // A patch pasted from the clipboard: its size only, never its text.
@@ -770,6 +770,7 @@ impl Ui {
         // Below the picker: Save as in Crash reports opens one.
         if self.app.crash_reports.open { return target.starts_with("crash-"); }
         if self.app.map_export_open() { return target.starts_with("map-export-"); }
+        if self.app.insights_export_open() { return target.starts_with("insights-export-"); }
         match self.app.dialog.as_ref().map(|d| &d.kind) {
             Some(DialogKind::Preferences) => {
                 target.starts_with("tools-") || target.starts_with("mcp-") || target.starts_with("git-") || target == "prefs-scroll"
@@ -1366,6 +1367,7 @@ impl Ui {
                 | "tree-cancel"
                 | "map-cancel"
                 | "map-export-stop"
+                | "insights-export-stop" | "insights-detail-stop" | "stats-cancel"
                 | "compare-cancel"
                 | "stash-cancel"
                 | "conflict-cancel"
@@ -1729,6 +1731,7 @@ impl Ui {
                     | DialogKind::CommitAction(_)
                     | DialogKind::Rebase(_)
                     | DialogKind::Bisect
+                    | DialogKind::HistoryIndex
                     | DialogKind::Merge
                     | DialogKind::Recovery
                     | DialogKind::UndoCommit
@@ -2127,6 +2130,9 @@ impl Ui {
                         | "dialog-lfs-scroll"
                         | "page-details-scroll"
                         | "hosting-scroll"
+                        | "stats-scroll"
+                        | "insights-scroll"
+                        | "insights-detail-scroll" | "insights-list-scroll" | "insights-export-body"
                         | "agents-scroll"
                         | "agents-list-scroll" | "agents-changes-scroll" | "agents-diff-scroll" | "agents-details-scroll" | "agents-integration-scroll"
                         | "int-panel-scroll"
@@ -2265,6 +2271,7 @@ impl Ui {
                             | "tree-revision"
                             | "files-search" | "files-search-path" | "commit-search-path"
                             | "map-revision" | "map-search" | "map-base" | "map-path-scope" | "map-export-folder" | "map-export-name" | "crash-export-folder" | "crash-export-name"
+                            | "insights-export-folder" | "insights-export-name"
                             | "compare-base" | "compare-target" | "compare-filter"
                             | "review-base" | "review-target" | "review-base-pick-filter" | "review-target-pick-filter" | "review-choose-filter"
                             | "compare-base-pick-filter" | "compare-target-pick-filter"
@@ -3758,11 +3765,33 @@ fn hosting_state(app: &Rocket) -> Value {
     }
     value
 }
-fn statistics_state(s: &rocket_ui::statistics::State) -> Value {
+fn statistics_state(s: &rocket_ui::statistics::State, private: bool) -> Value {
     let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
-    json!({"section":format!("{:?}",s.section),"range":s.range.key(),"all_branches":s.all_branches,"period":s.period.key(),
+    let mut value = json!({"section":format!("{:?}",s.section),"range":s.range.key(),"all_branches":s.all_branches,"period":s.period.key(),
         "activity_running":s.activity_running(),"treemap_running":s.treemap_running(),
-        "activity_error":s.activity_error,"treemap_error":s.treemap_error,
+        "pulls":{"running":s.pulls.running(),"stopping":s.pulls.stopping,"loaded":s.pulls.loaded,
+            "pages":s.pulls.pages,"more":s.pulls.more,"limited":s.pulls.limited,"error":s.pulls.error,
+            "read_at":s.pulls.read_at,"repository":s.pulls.repository,
+            "loaded_count":s.pulls.items.len(),"author_count":s.pulls.metrics.loaded,"author":private.then_some(&s.pulls.author),"authors":private.then(||s.pulls.authors()),"show":s.pulls.show,
+            "visible_ids":s.pulls.visible().map(|i|i.number).collect::<Vec<_>>(),"list_running":s.pulls.list_running(),
+            "detail":{"number":s.pulls.detail.number,"running":s.pulls.detail.running(),"stopping":s.pulls.detail.stopping,"error":s.pulls.detail.error,"tab":s.pulls.detail.tab,
+                "loaded":s.pulls.detail.data.is_some(),"snapshot_number":s.pulls.detail.data.as_ref().map(|d|d.summary().number),
+                "files":private.then(||s.pulls.detail.data.as_ref().map(|d|d.files.items.iter().map(|f| &f.path).collect::<Vec<_>>())),
+                "files_limited":s.pulls.detail.data.as_ref().map(|d|d.files.limited),"files_error":s.pulls.detail.data.as_ref().map(|d|format!("{:?}",d.files.error))},
+            "export":s.export.as_ref().filter(|e|e.pulls().is_some()).map(|e|json!({"running":e.running(),"stopping":e.stopping,"format":e.format.extension(),"rows":e.rows(),"error":e.error,"notice":e.notice})),
+            "trends":s.pulls.trends,"comparison":s.pulls.comparable(),
+            "coverage":match s.pulls.coverage{rocket_git::ForgePullCoverage::Complete=>json!("complete"),rocket_git::ForgePullCoverage::After(t)=>json!({"after":t}),rocket_git::ForgePullCoverage::Unknown=>json!("unknown")},
+            "previous":s.pulls.previous.as_ref().map(|p|json!({"opened":p.opened,"merged":p.merged,"merge_samples":p.merge_samples,"median_merge_seconds":p.median_merge_seconds})),
+            "trend":{"unit":format!("{:?}",s.pulls.trend.unit),"buckets":s.pulls.trend.buckets.iter().map(|b|json!([b.start,b.opened,b.merged])).collect::<Vec<_>>()},
+            "opened":s.pulls.metrics.opened,"merged":s.pulls.metrics.merged,
+            "open_now":s.pulls.metrics.open_now,"merge_samples":s.pulls.metrics.merge_samples,
+            "median_merge_seconds":s.pulls.metrics.median_merge_seconds,"open_samples":s.pulls.metrics.open_samples,
+            "median_open_seconds":s.pulls.metrics.median_open_seconds,"incomplete_dates":s.pulls.metrics.incomplete_dates,
+            "ids":s.pulls.items.iter().map(|i|i.number).collect::<Vec<_>>()},
+        "activity_error":s.activity_error,"treemap_error":s.treemap_error,"table":s.table,
+        "activity_at":s.activity_at,"treemap_at":s.treemap_at,
+        "export":s.export.as_ref().map(|e|json!({"kind":if e.pulls().is_some(){"pulls"}else{"activity"},"running":e.running(),"stopping":e.stopping,
+            "format":e.format.extension(),"table":format!("{:?}",e.table),"emails":e.emails,"rows":e.rows(),"name":e.name,"error":e.error,"notice":e.notice,"saved":e.saved})),
         "activity":s.activity.as_deref().map(|a| json!({"commits":a.commits,"merges":a.merges,"authors":a.authors.len(),
             "top_authors":a.authors.iter().take(10).map(|x| json!({"name":text(&x.name),"commits":x.commits})).collect::<Vec<_>>(),
             "first":a.first,"last":a.last,"months":a.months.iter().map(|(y,m,n)| json!([y,m,n])).collect::<Vec<_>>(),
@@ -3770,7 +3799,31 @@ fn statistics_state(s: &rocket_ui::statistics::State) -> Value {
         "treemap":s.treemap.as_deref().map(|m| json!({"commit":m.commit.as_str(),"commits":m.commits,"limited":m.limited,
             "zoom":s.zoom.iter().map(|n| text(n)).collect::<Vec<_>>(),
             "folder":s.shown().map(|f| json!({"files":f.files,"size":f.size,"changes":f.changes,
-                "children":f.children.iter().take(400).map(|c| json!({"name":text(&c.name),"folder":c.folder,"size":c.size,"changes":c.changes,"files":c.files})).collect::<Vec<_>>()}))}))})
+                "children":f.children.iter().take(400).map(|c| json!({"name":text(&c.name),"folder":c.folder,"size":c.size,"changes":c.changes,"files":c.files})).collect::<Vec<_>>()}))}))});
+    // Review insights: names only with private state allowed, like the authors.
+    let p = &s.pulls;
+    let m = &p.review_metrics;
+    let ids = |failed: bool| {
+        let mut ids: Vec<u64> = p.reviews.iter()
+            .filter(|(_, r)| matches!(r, rocket_git::ForgeReviewRead::Failed(_)) == failed)
+            .map(|(n, _)| *n).collect();
+        ids.sort_unstable();
+        ids
+    };
+    let pulls = &mut value["pulls"];
+    pulls["provider"] = json!(p.provider.map(|p| p.key()));
+    pulls["reviewer"] = json!(private.then(|| p.reviewer.as_ref().map(|r| json!({"name":r.name,"team":r.team}))));
+    pulls["reviewers"] = json!(private.then(|| p.reviewer_choices().into_iter()
+        .map(|(r, w, v)| json!({"name":r.name,"team":r.team,"waiting":w,"reviewed":v})).collect::<Vec<_>>()));
+    pulls["waiting"] = json!(m.waiting);
+    pulls["requests"] = json!(m.requests);
+    pulls["requests_known"] = json!(m.requests_known);
+    pulls["requests_unknown"] = json!(m.requests_unknown);
+    pulls["reviews"] = json!({"running":p.reviews_running(),"progress":p.review_progress(),"error":p.review_error,
+        "read_ids":ids(false),"failed_ids":ids(true),"opened":m.opened,"read":m.read,"reviewed":m.reviewed,
+        "median_first_review_seconds":m.median_first_review_seconds,"no_review":m.no_review,"undated":m.undated,
+        "limited":m.limited,"unavailable":m.unavailable,"not_read":m.not_read});
+    value
 }
 fn dialog_name(kind: &DialogKind) -> &'static str {
     match kind {
@@ -3785,6 +3838,7 @@ fn dialog_name(kind: &DialogKind) -> &'static str {
         DialogKind::Rebase(action) => action.label(),
         DialogKind::MailImport(action) => action.label(),
         DialogKind::Bisect => "bisect",
+        DialogKind::HistoryIndex => "history-index",
         DialogKind::Merge => "merge",
         DialogKind::Recovery => "recovery",
         DialogKind::UndoCommit => "undo-commit",

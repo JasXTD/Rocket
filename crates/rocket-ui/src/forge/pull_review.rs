@@ -623,7 +623,8 @@ fn all_runs(ui: &mut Ui, tab: Option<u64>, branch: &str, widgets: &mut HashMap<S
         out.ci_runs = Some(branch.to_owned());
     }
 }
-fn pull_check_state(c: &ForgePullCheck) -> ForgeCheckState {
+/// What a pull request's reported check or status says, as one of the check states.
+pub(crate) fn pull_check_state(c: &ForgePullCheck) -> ForgeCheckState {
     let word = c.conclusion.as_deref().unwrap_or(&c.status).to_ascii_lowercase();
     match word.as_str() {
         "success" | "successful" | "succeeded" | "passed" => ForgeCheckState::Passed,

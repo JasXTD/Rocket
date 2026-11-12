@@ -82,12 +82,6 @@ Operations that change a repository open a review first. The dialog shows what w
 - Files shows the repository at HEAD, a branch, a tag or a commit. Type one and choose Browse revision, or use Repository → History & Recovery → Browse Files at Commit. It only reads: nothing in your checkout changes.
 - Text files preview up to 50,000 lines and 8 KiB per line; a binary file shows only its size. Folder history opens the history of the folder you chose.
 
-### Statistics
-
-- Statistics shows who commits, when, and which files change most. It only reads.
-- Activity counts commits over the last 30 days, 90 days, 1 year or All, on This branch or All branches: commits over time, authors grouped by email, and the weekdays and hours they commit.
-- Files is a map of the files at HEAD, coloured by how often they changed in the period. Choose a folder to look inside it; small entries are combined.
-
 ### AI tools
 
 - Rocket has three AI tools. Each one runs only when you ask, and none of them commits, pushes or saves for you.
@@ -174,7 +168,7 @@ Every operation that writes follows the same rules, so dialogs do not repeat the
 
 ### Preview
 
-- Preview opens a read-only copy in a new tab, marked Preview. Rocket downloads the history (every commit and folder, without old file versions) into its own cache, then the files of the default branch, so Files, Map and Statistics work at once.
+- Preview opens a read-only copy in a new tab, marked Preview. Rocket downloads the history (every commit and folder, without old file versions) into its own cache, then the files of the default branch, so Files, Map and Insights work at once.
 - Older file versions download when a view needs them: a commit's changes, a file at another revision, Compare, path history, blame, or the Map on another branch. While they download, the view says how many have arrived and how much, with Stop. Content search in history is off in a preview, because it needs every version of every file.
 - Viewing branch at the top left picks the branch Commits shows; clicking a branch in the sidebar does the same. Files and the Map pick their own revision.
 - Nothing from the repository runs in a preview: there is no checkout, and no hooks, submodules or Git LFS downloads. Git never fetches by itself behind a read; Rocket asks the repository's host for exactly the files a view needs. A preview has no Changes, terminal, custom commands, external tools or extensions, and nothing in it can be changed.
@@ -424,6 +418,35 @@ Push branches together publishes several branches in one atomic push: every sele
 - Prune removes only the registration of a folder that was deleted. Its metadata and committed tip are kept for recovery, and no working files are deleted. If the folder was moved instead, use Repair.
 - In a worktree's details, Find moved folder is Repair and Forget it is Prune; they appear only when its folder is missing.
 
+## Agents
+
+- A session runs Claude Code, Codex, GitHub Copilot or your own program in its own worktree, on its own branch, with a terminal of its own. Install the program and sign in to it yourself: Rocket uses your existing login, and does not install agents or store an API key.
+- A program Rocket does not find shows Not found, and the dialog opens the field for its path. Type the path, or use Browse. A program chosen with Browse is where Rocket finds it from then on: for Claude Code and Codex that is the Program setting under Edit → Preferences → Commit messages → AI drafts, which AI drafts, AI review and AI resolve use too. A path you type applies to that session only.
+- Your checkout stays as it is. Its staged, unstaged, untracked and ignored files are not copied into the new worktree, and neither are credentials or environment files.
+- A worktree separates files, not permissions. The program runs with your account's access and keeps its own permission prompts; Rocket never adds an option that bypasses them. Arguments are saved with the session, so never put a password or token in them. Terminal input and output are not saved or logged.
+- Review session checks the base commit, the folder, the program's SHA-256 and its arguments, and holds the program's file until the session ends. A program that changed since the review needs a new review. Arguments are passed as written, one per line, with no shell.
+- A setup command is optional and runs first. The agent starts only after it exits successfully, and a failed setup keeps the worktree for you to look at. It is off again on every restart until you choose it.
+- The list groups sessions by what they need from you: Needs you, Running and Not running. A group folds when you click its heading; searching shows every match.
+- Stop ends the program and keeps the worktree and its changes. Closing Rocket stops its sessions; reopening restores them without starting anything.
+
+### Activity and resuming
+
+- Track conversation activity lets the program report when it is working, has finished a turn or is waiting for you. It does not change the program's own configuration or login. Codex may ask you to review these hooks in /hooks.
+- These are the program's reports. A finished turn or an exit code of zero does not mean the work is correct. A program that reports nothing shows Activity not connected.
+- A session that waits for you is listed under Needs you until you mark it as seen or it starts working again.
+- Resume conversation reopens the same conversation after checking the worktree, branch, program and arguments again. It never runs setup and never picks another conversation. Review and restart starts a new one.
+
+### Bringing the work back
+
+- Commit what you want to keep in the worktree: Open worktree shows it in a tab of its own. Rocket commits nothing for you.
+- Check integration needs the session stopped, both checkouts clean and the original checkout on a branch. It names the branch that will receive the work and how many commits come in. Nothing is saved, stashed or discarded for you.
+- Compare committed changes opens the comparison. Review merge opens the usual merge review; applying it is your decision, checks both branch tips again and uses the conflict editor if needed. The session's branch and worktree stay, and nothing is pushed.
+
+### Removing
+
+- Remove worktree works only on a clean, unlocked worktree, and checks again right before removing. The branch and a recovery reference stay.
+- Forget session removes only Rocket's record of it. The folder and the branch stay; manage them under Worktrees.
+
 ## Submodules
 
 - Move / rename moves a clean submodule within its immediate parent repository. Choose an unused path with an existing parent folder. Close tabs for the moved subtree first. Initialized nested checkouts move with it and their Git links are updated; module names, URLs and history stay. The gitlink path and .gitmodules are staged, while unrelated local work stays.
@@ -507,6 +530,15 @@ Push branches together publishes several branches in one atomic push: every sele
 - To automate testing, enable Run a test command automatically. Choose a trusted executable outside the working folder, enter one literal argument per line and review the range, command and per-revision timeout before running. Commands have your account permissions.
 - Exit 0 means Good, 1–124 means Bad and 125 means Skip. Other codes, timeouts and cancellation stop without classifying that revision. Rocket checks for tracked edits before accepting each result and never deletes generated files. Preserve edits before resuming or restoring.
 - Test summaries survive reopening; raw output is bounded and kept only in the open dialog. After interruption, review again to resume testing or use the manual controls.
+
+## Faster history
+
+- In a large repository, Git spends most of a History refresh putting the commits in order. Git can keep an index of the commits (its commit-graph) that makes this several times faster. Rocket offers it above the History list when ordering took more than a second and the repository has none. Repository → History & Recovery → Speed Up History opens it at any time.
+- Writing the index adds files under .git/objects/info and nothing else: commits, branches, working files and remotes stay as they are. Git reads the index by itself from then on, in Rocket and on the command line. It takes about 60 bytes for each commit.
+- Git reads every commit once to write it, which takes seconds in most repositories and longer in very large ones. Stop ends the write and leaves the repository as it was.
+- Commits made or fetched later are not in the index until it is updated. Git still shows them; only that part goes without the speed-up. Keep it up to date when Rocket fetches adds the fetched commits after each fetch Rocket runs in this repository, and Update index adds what is missing on request. The choice is stored in the repository's own config as rocket.commitGraphOnFetch.
+- Remove index deletes those files again. Git writes no index for a shallow clone, and reads none while the repository has replaced or grafted commits or its core.commitGraph setting is off; the dialog says so instead of writing one.
+- The × on the notice hides it for that repository. The menu entry stays.
 
 ## Git Flow
 
@@ -676,6 +708,52 @@ the result. An error saving recovery data blocks sending the request.
 - Bitbucket Cloud: read:repository:bitbucket and read:pipeline:bitbucket; Actions needs read:pipeline:bitbucket.
 - Azure DevOps: Code (Read) and Build (Read); Code (Status) also reads commit statuses.
 - The PR Checks tab shows the head's checks the same way. Checks that ran in a fork may not appear in the base repository, and the list does not evaluate required branch rules or merge readiness.
+
+## Insights
+
+- Insights shows who commits, when, which files change most and how pull requests move. It only reads: nothing changes in your repository or on its host.
+
+### Activity and Files
+
+- Activity counts commits over the last 30 days, 90 days, 1 year or All, on This branch or All branches: commits over time, authors grouped by email, and the weekdays and hours they commit.
+- Files is a map of the files at HEAD, coloured by how often they changed in the period. Choose a folder to look inside it; small entries are combined.
+
+### Pull requests
+
+- Pull requests come from the Hosting account matched to this repository's remote. Rocket reads 50 at a time. Load more adds the next 50, up to 500 a refresh; it never reads every pull request by itself.
+- The period sets what Opened, Merged, Median merge time and Time to first review count. Open now, Median open age and Waiting for review always cover every loaded pull request. The author and the reviewer set both the numbers and the rows. All, Open, Waiting and Merged change only the rows, which list every loaded date.
+- A median uses only pull requests whose dates the host reported: creation to merge for Median merge time, creation to the read for Median open age. A row marked No dates or No merge date has a missing, future or backwards date and is left out of the timing that needs it. A number that can't be worked out shows a dash, never 0. The time a pull request was last updated is never taken as its merge time.
+- Partial sample means the host has more pull requests than were loaded, or its list was incomplete or changed while it was read. The numbers then describe the loaded pull requests, not the whole repository. Read again starts a new sample.
+- Choose a row to read that pull request's description, commits, reviews, files, discussion and checks. It is a snapshot: read it again to see changes on the host. Descriptions and comments show as plain text, up to 8,192 characters each. A missing check is never shown as passed, and reported checks don't say whether merging is allowed.
+- Stop ends a read and keeps the sample you had. So does a failed read; the page then says when its numbers are from.
+
+### Reviews
+
+- Waiting for review counts open pull requests with a review request still waiting, and the requests on them. The requests come with the pull request list, so they cost no extra read. GitHub and GitHub Enterprise Server list the people and teams asked; a person drops off once they review. Azure DevOps lists reviewers who have not voted, Bitbucket Server and Bitbucket Cloud reviewers who have not approved or asked for changes. GitLab's and Gitea's lists name the reviewers but not who still waits, so they have no Waiting for review and the Waiting filter is off.
+- The Reviewer field lists everyone the author's pull requests name as a reviewer, people before teams, with how many pull requests wait on each and how many each reviewed. Choosing one shows the pull requests they were asked to review or reviewed. A team counts as one reviewer; its members are not looked up. On GitHub and GitHub Enterprise Server, who already reviewed is known only after Read reviews. The reviewer narrows the list; Trends and its comparison count every reviewer. The chosen reviewer stays while the repository's tab is open but is not saved with its view.
+- Time to first review is the median time from when a pull request was opened to its first review by someone other than its author. Time as a draft counts. Reviews by bots, such as Copilot or a CI app, don't count. With a reviewer chosen it is still each pull request's first review by anyone.
+- Review times need each pull request's reviews, at least one request per pull request, so Rocket reads them only when you choose Read reviews: the pull requests opened in the period, the chosen author's and reviewer's first, then newest first, up to 100 at a time. Read more continues; Stop keeps what was read. Refresh starts a new sample without them; Read reviews reads them again. Only GitHub, GitHub Enterprise Server and Gitea say when a review was submitted; on other hosts Time to first review says it is not measured there.
+- What the median leaves out is named: pull requests whose reviews were not read, could not be read (the row says Reviews unavailable), have a review without a usable time (No review date), have more reviews than Rocket reads without one that counts (Some reviews not read), or have no review yet. GitHub returns reviews oldest first, so Rocket reads its pages, up to three of 100, only until a review counts; on Gitea it reads two pages of 50. A review time more than five minutes ahead of this computer's clock counts only when no earlier review does.
+### Trends
+
+- Trends shows how many pull requests were opened and merged each week of the period, weeks starting on Monday (UTC). Past a year, as in All, the bars are months, then years. The bars add up to the Opened and Merged tiles and follow the author you chose.
+- Beside the chart the period is compared with the one of the same length before it: Opened, Merged and Median merge time, with how many merged pull requests each median comes from. The tiles show the same change.
+- Pull requests are compared only when both periods are in the loaded sample. GitHub, GitLab, Gitea and Bitbucket Cloud list the most recently updated pull requests first, so the sample holds every pull request opened or merged after the oldest update in it. Weeks before that are marked Not loaded instead of showing too few, and Load more reads further back. Azure DevOps and Bitbucket Server don't list by update, so they are compared only once every pull request is loaded. A list that changed on the host while it was read isn't compared; Read again starts a new sample.
+
+### Saved views
+
+- Each repository remembers its Insights tab and choices: Activity's period, branches and table, the pull requests' period, author, state and List or Trends, and Files' period. They come back the next time you open Insights, also after Rocket restarts.
+- While the repository's tab stays open, the numbers stay too: leaving Insights and coming back shows them at once, and each row says when they were refreshed (the exact time is in its tooltip). Nothing reads again by itself; Refresh does. When HEAD has moved since, or for all branches any branch, Activity and Files read again as you come back, so their numbers are never another commit's. A choice that needs a new read keeps the old numbers, said for what they were read for, until the new ones replace them. Numbers are not saved to disk: after a restart they are read again.
+- Leaving the page stops its reads and closes an open export review.
+
+### Export
+
+- Export saves the rows as they were listed when you chose it: later reads and filters don't change what is saved. It never replaces a file, also not one another program created meanwhile; choose a new name instead.
+- CSV is for spreadsheets: UTF-8 with quoted fields, and text that looks like a formula gets a leading apostrophe. JSON keeps the exact text and adds the summary numbers with how many pull requests each comes from; times are Unix seconds and unknown dates are null.
+- Both hold repository and pull request details that may be private. Descriptions, comments, reviews, file contents and credentials are left out.
+- Each row also says who it waits on, what is known of its reviews (read, not_read, unavailable, no_usable_time, incomplete or not_measured) and its first review's time and reviewer. These columns come last in CSV, after the ones earlier exports had. Only an open row waits on anyone. A row without reviewers in its list reads not_in_list, and one whose list names reviewers but not who waits (GitLab, Gitea) reads no_review_state.
+- Export on the Activity row saves the commit activity shown. A CSV holds one table: Contributors (each name after .mailmap with its commits, most first) or Commits per week (every week from the first to the last, empty weeks included, by the Monday of each commit's own date). JSON holds every table: totals, contributors, weeks, months, weekdays, hours and the weekday-by-hour grid, with the scope that was read.
+- Email addresses are left out unless you tick Include email addresses. The file names the repository's folder, never its path.
 
 ## SSH keys
 

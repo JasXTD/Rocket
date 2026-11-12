@@ -29,7 +29,7 @@ const SUBMENUS = [
   ['repository-gitflow', ['gitflow-init', 'gitflow-start-feature', 'gitflow-start-release', 'gitflow-start-hotfix', 'gitflow-start-support', 'gitflow-finish']],
   ['repository-stash-menu', []],
   ['repository-patches-menu', ['repository-patch-import', 'repository-series-import', 'repository-patch-clipboard', 'repository-patch-export']],
-  ['repository-history-menu', ['repository-recovery', 'repository-file-backups', 'repository-tree', 'repository-bisect']],
+  ['repository-history-menu', ['repository-recovery', 'repository-file-backups', 'repository-tree', 'repository-bisect', 'repository-history-index']],
   ['repository-custom-commands', ['command-edit']],
   ['repository-remotes-menu', ['repository-manage-remotes', 'repository-hosting', 'repository-github']],
   ['repository-settings-menu', ['repository-settings', 'repository-signing', 'repository-ignore', 'repository-dependencies']],

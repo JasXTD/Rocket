@@ -69,10 +69,12 @@ async function settle() { return until(s => !s.busy && !s.input_pending && !(s.t
 const control = id => state.controls.find(c => c.id === id);
 const stats = () => state.dialog?.statistics;
 async function stable() { let last = '', count = 0; await until(s => { const now = JSON.stringify(s.controls); count = now === last ? count + 1 : 0; last = now; return count >= 3; }, 'Stable widget geometry'); }
-async function click(target) { await stable(); assert(control(target)?.enabled, 'Missing/disabled ' + target); await client.tool('rocket_click', { target, expected_tab: state.active_tab }); await settle(); }
+async function click(target) { if (target === 'view-statistics') { for (const id of ['menu-view', 'view-goto', 'goto-statistics']) await click(id); return; } await stable(); assert(control(target)?.enabled, 'Missing/disabled ' + target); await client.tool('rocket_click', { target, expected_tab: state.active_tab }); await settle(); }
 async function capture(name) { await stable(); const result = await client.request('tools/call', { name: 'rocket_capture', arguments: {} }); assert(!result.isError); const image = result.content.find(c => c.type === 'image'); assert(image); fs.writeFileSync(path.join(root, name + '.png'), Buffer.from(image.data, 'base64')); fs.writeFileSync(path.join(root, name + '.json'), JSON.stringify(state, null, 2)); report.captures = [...(report.captures || []), name]; }
 async function resize(width, height) { await client.tool('rocket_resize', { width, height }); await until(s => s.viewport[0] === width && s.viewport[1] === height && !s.input_pending); await settle(); }
 async function closeWindow() { await client.tool('rocket_close'); await until(s => ['closed', 'not_started'].includes(s.window) || (s.dialog?.kind === 'quit' && !s.input_pending), 'Close window or exit confirmation'); if (state.dialog?.kind === 'quit') { await client.tool('rocket_click', { target: 'dialog-submit', expected_tab: state.active_tab }); await until(s => ['closed', 'not_started'].includes(s.window), 'Closed window'); } }
+async function type(target, text) { await stable(); assert(control(target), 'Missing ' + target); await client.tool('rocket_type', { target, text, expected_tab: state.active_tab }); await settle(); }
+function csvRecords(text) { const out = []; let record = [], field = '', quoted = false; for (let i = 0; i < text.length; i++) { const c = text[i]; if (c === '"') { if (quoted && text[i + 1] === '"') { field += '"'; i++; } else quoted = !quoted; } else if (c === ',' && !quoted) { record.push(field); field = ''; } else if (c === '\n' && !quoted) { record.push(field.replace(/\r$/, '')); out.push(record); record = []; field = ''; } else field += c; } assert(!quoted); return out; }
 const activity = () => until(s => s.dialog?.statistics && !s.dialog.statistics.activity_running && (s.dialog.statistics.activity || s.dialog.statistics.activity_error), 'Activity');
 const treemap = () => until(s => s.dialog?.statistics && !s.dialog.statistics.treemap_running && (s.dialog.statistics.treemap || s.dialog.statistics.treemap_error), 'Treemap');
 const children = () => stats().treemap.folder.children.map(c => [c.name, c.size, c.changes]);
@@ -86,9 +88,12 @@ async function main() {
     const listener = net.createServer(); await new Promise(resolve => listener.listen(0, '127.0.0.1', resolve)); const port = listener.address().port; await new Promise(resolve => listener.close(resolve));
     fs.writeFileSync(path.join(profile, 'settings'), 'ROCKET-MCP-1\n' + port + '\n' + root + '\n');
     // The existing Git relay pauses a command whose arguments contain the gate's text.
-    const log = fs.openSync(path.join(root, 'service.log'), 'w'); service = cp.spawn(exe, ['--http-profile', profile], { env: relay.env, windowsHide: true, stdio: ['ignore', 'ignore', log] }); fs.closeSync(log); client = new RocketHttpClient(profile);
-    for (let i = 0; ; i++) { try { assert.equal((await client.raw('GET', '/health')).status, 200); break; } catch (e) { if (i === 100) throw e; await delay(100); } }
-    assert.equal((await client.initialize()).serverInfo.version, version);
+    async function startService(name) {
+      const log = fs.openSync(path.join(root, name), 'w'); service = cp.spawn(exe, ['--http-profile', profile], { env: relay.env, windowsHide: true, stdio: ['ignore', 'ignore', log] }); fs.closeSync(log); client = new RocketHttpClient(profile);
+      for (let i = 0; ; i++) { try { assert.equal((await client.raw('GET', '/health')).status, 200); break; } catch (e) { if (i === 100) throw e; await delay(100); } }
+      assert.equal((await client.initialize()).serverInfo.version, version);
+    }
+    await startService('service.log');
     await client.tool('rocket_open', { path: f.repo }); await settle(); relay.check(state); await resize(1480, 920);
     if (control('console-close')) await click('console-close');
 
@@ -135,6 +140,44 @@ async function main() {
     assert.equal(stats().activity_error, null); assert.equal(stats().activity.commits, 3);
     passed('Stop ends a held history read (' + report.stop_ms + ' ms) and keeps the last result; Refresh reads again');
 
+    // The row says when the numbers were read; leaving and returning shows them again
+    // without a history read: the relay would hold one, and none arrives.
+    assert(control('stats-refreshed'), 'Refreshed line on the Activity row'); const readAt = stats().activity_at; assert(readAt > 0);
+    fs.writeFileSync(gate, '--date=raw');
+    await click('dialog-cancel'); assert.equal(state.dialog, null);
+    await click('view-statistics'); await delay(1500); state = await client.tool('rocket_state');
+    assert(!fs.existsSync(marker), 'Opening Insights again read the history again');
+    assert.deepEqual([stats().activity_running, stats().range, stats().all_branches, stats().activity.commits, stats().activity_at], [false, '30', true, 3, readAt]);
+    fs.unlinkSync(gate);
+    await capture('activity-reopened');
+    passed('Insights again: the numbers, choices and read time at once, without a history read');
+
+    // Export what Activity shows: one table a CSV, every table in JSON, addresses only when ticked.
+    const exports = path.join(root, 'exports 検索'); fs.mkdirSync(exports);
+    await click('stats-export');
+    assert.deepEqual([stats().export.kind, stats().export.rows, stats().export.name, stats().export.emails], ['activity', 3, 'rocket-activity-contributors.csv', false]);
+    await type('insights-export-folder', exports); await capture('activity-export-contributors');
+    const save = async name => { await click('insights-export-save'); await until(s => s.dialog?.statistics?.export?.saved === name && !s.dialog.statistics.export.running, 'Saved ' + name); return fs.readFileSync(path.join(exports, name), 'utf8'); };
+    const contributors = await save('rocket-activity-contributors.csv'); assert(contributors.startsWith('\ufeff')); assert(!contributors.includes('example.invalid'), 'addresses only when ticked');
+    let table = csvRecords(contributors.slice(1)); const fields = table[0], col = n => fields.indexOf(n);
+    assert.deepEqual(fields.slice(-2), ['name', 'commits']);
+    assert.deepEqual(table.slice(1).map(r => [r[col('name')], r[col('commits')], r[col('branches')], r[col('period')]]).sort(), [['PRIVATE_Alice', '1', 'all_branches', '30'], ['PRIVATE_Carol', '1', 'all_branches', '30'], ['PRIVATE_Dave', '1', 'all_branches', '30']]);
+    const monday = w => Date.parse(w.text.slice(0, 10) + 'T00:00:00Z') / 86400000 - w.weekday;
+    const mondays = ['c3', 's1', 'c4'].map(k => monday(d[k])), weeks = [];
+    for (let m = Math.min(...mondays); m <= Math.max(...mondays); m += 7) weeks.push([new Date(m * 86400000).toISOString().slice(0, 10), String(mondays.filter(x => x === m).length)]);
+    await click('insights-export-table-weeks'); assert.deepEqual([stats().export.name, stats().export.rows], ['rocket-activity-weeks.csv', weeks.length]);
+    table = csvRecords((await save('rocket-activity-weeks.csv')).slice(1));
+    assert.deepEqual(table[0].slice(-2), ['week_start', 'commits']); assert.deepEqual(table.slice(1).map(r => r.slice(-2)), weeks);
+    await click('insights-export-json'); await click('insights-export-emails'); assert.deepEqual([stats().export.name, stats().export.emails], ['rocket-activity.json', true]);
+    await capture('activity-export-json');
+    const json = JSON.parse(await save('rocket-activity.json'));
+    assert.deepEqual([json.kind, json.scope.branches, json.scope.period, json.scope.email_addresses, json.totals.commits, json.contributors.length], ['commit_activity', 'all_branches', '30', true, 3, 3]);
+    assert(json.contributors.every(c => c.email.endsWith('@example.invalid')));
+    assert.deepEqual(json.weeks.map(w => [w.start, String(w.commits)]), weeks);
+    await click('insights-export-close'); assert.equal(stats().export, null);
+    assert.deepEqual(fs.readdirSync(exports).sort(), ['rocket-activity-contributors.csv', 'rocket-activity-weeks.csv', 'rocket-activity.json']);
+    passed('Activity export: contributors and weeks as CSV, every table as JSON, email addresses only when ticked, new files only');
+
     // The treemap: sizes at HEAD, changes in the last year (c1 is older).
     await click('stats-section-treemap');
     await treemap();
@@ -142,6 +185,7 @@ async function main() {
     assert.equal(stats().treemap.commits, 4);
     assert.deepEqual(children(), [['src', 6000, 3], ['docs', 1000, 1], ['検索', 500, 1], ['README.md', 200, 0]]);
     assert.deepEqual([stats().treemap.folder.files, stats().treemap.folder.size, stats().treemap.folder.changes], [5, 7700, 4]);
+    assert(control('stats-refreshed'), 'Refreshed line on the Files row');
     await capture('treemap-root');
     await click('treemap-cell-0');
     assert.deepEqual(stats().treemap.zoom, ['src']);
@@ -155,6 +199,18 @@ async function main() {
     assert.deepEqual(children(), [['src', 6000, 4], ['docs', 1000, 2], ['検索', 500, 1], ['README.md', 200, 1]]);
     await resize(900, 700); await capture('treemap-narrow'); await resize(1480, 920);
     passed('Treemap of HEAD: folders sized by bytes and coloured by commits in the period (last year, 30 days, all); a folder opens and the breadcrumb returns');
+
+    // After a restart the repository's tab and choices come back; the numbers are read again.
+    await closeWindow(); await client.raw('POST', '/shutdown');
+    for (let i = 0; service.exitCode === null; i++) { assert(i < 150, 'Service did not exit'); await delay(100); }
+    await startService('service-restarted.log');
+    await client.tool('rocket_open', { path: f.repo }); await settle(); await resize(1480, 920);
+    if (control('console-close')) await click('console-close');
+    await click('view-statistics');
+    assert.deepEqual([stats().section, stats().period, stats().range, stats().all_branches], ['Treemap', 'all', '30', true]);
+    await treemap(); assert.deepEqual(children(), [['src', 6000, 4], ['docs', 1000, 2], ['検索', 500, 1], ['README.md', 200, 1]]);
+    await capture('treemap-after-restart');
+    passed('After a restart the repository\'s Insights tab and choices come back from the state file, and its numbers are read again');
 
     await click('dialog-cancel');
     assert.equal(state.dialog, null);

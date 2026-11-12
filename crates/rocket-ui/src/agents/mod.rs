@@ -33,14 +33,6 @@ pub enum Pane {
     Integrate,
     Details,
 }
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum Filter {
-    #[default]
-    All,
-    Active,
-    Finished,
-    Attention,
-}
 pub struct Activity {
     pub phase: Phase,
     pub at: Instant,
@@ -197,6 +189,9 @@ pub struct Form {
     pub plan: Option<Arc<Plan>>,
     pub task: Option<ReadTask<Plan>>,
     pub error: Option<String>,
+    /// Which presets' programs are on this PC, in `Provider::ALL`'s order. Looked up
+    /// when the dialog first shows and again after Browse chose one.
+    pub found: Option<[bool; 4]>,
 }
 impl Form {
     pub fn proposed(&self) -> Record {
@@ -216,8 +211,12 @@ pub struct State {
     pub form: Option<Form>,
     pub notice: Option<String>,
     pub pane: Pane,
-    pub filter: Filter,
+    /// The list groups folded away: Needs you, Running, Not running.
+    pub folded: [bool; 3],
     pub search: String,
+    /// GitHub Copilot's program chosen with Browse; empty looks for it. Saved with the
+    /// profile. Claude Code's and Codex's are the AI features' settings.
+    pub copilot: String,
     pub changes: changes::State,
     pub integration: integration::State,
 }
@@ -248,7 +247,7 @@ impl State {
     }
     pub fn stop_all(&mut self) {
         self.integration.stop();
-        self.changes.suspend();
+        self.changes.release();
         if let Some(f) = &self.form
             && let Some(t) = &f.task
         {
@@ -258,7 +257,7 @@ impl State {
             s.stop();
         }
     }
-    pub fn new_form(&mut self, source: PathBuf) {
+    pub fn new_form(&mut self, source: PathBuf, drafting: &crate::commit_draft::Settings) {
         let id = self.next_id.max(
             self.sessions
                 .iter()
@@ -280,12 +279,15 @@ impl State {
             base: "HEAD".into(),
             branch: format!("agents/task-{id}"),
             provider,
-            command: provider.command(),
+            command: provider.command(Chosen::of(drafting, &self.copilot)),
             tracking: true,
             ..Default::default()
         };
         self.form = Some(Form {
-            destination: r.destination.to_string_lossy().into_owned(),
+            // The field reads as the folder would be typed: without the extended-length
+            // prefix (`\\?\`) the repository's path carries on Windows. Review resolves
+            // whatever the field holds.
+            destination: crate::views::display_path(&r.destination),
             record: r,
             setup_enabled: false,
             setup: Command::default(),
@@ -293,6 +295,7 @@ impl State {
             plan: None,
             task: None,
             error: None,
+            found: None,
         });
     }
     pub fn existing_form(&mut self, mode: Mode) {
@@ -309,6 +312,7 @@ impl State {
             plan: None,
             task: None,
             error: None,
+            found: None,
         });
     }
     pub fn preview(&mut self, backend: &Backend, ctx: &Context) -> Result<()> {
@@ -396,7 +400,8 @@ impl State {
         s.observe_phase();
         self.selected = Some(s.record.id);
         self.pane = Pane::Terminal;
-        self.filter = Filter::All;
+        // The session just started must show in the list.
+        self.folded = [false; 3];
         self.search.clear();
         self.form = None;
         Ok(())
@@ -604,8 +609,13 @@ impl State {
             } else {
                 self.changes = changes::State::default();
             }
-        } else {
+        } else if visible && self.form.is_none() {
+            // Another tab of this page: the watch stays, so coming back to Changes knows
+            // whether anything needs reading.
             self.changes.suspend();
+        } else {
+            // A session dialog or another page may move or remove the worktree.
+            self.changes.release();
         }
         if self.working() || self.active() {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));

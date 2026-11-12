@@ -31,7 +31,19 @@ impl Provider {
             Self::Custom => "Custom command",
         }
     }
-    pub fn installed(self) -> String {
+    /// Where this preset's program is: the path chosen by hand, else where Rocket looks
+    /// for it. Neither is checked here, so the path may name no file.
+    pub fn installed(self, chosen: Chosen) -> String {
+        let by_hand = match self {
+            Self::Claude => chosen.claude,
+            Self::Codex => chosen.codex,
+            Self::Copilot => chosen.copilot,
+            Self::Custom => "",
+        }
+        .trim();
+        if !by_hand.is_empty() {
+            return by_hand.to_owned();
+        }
         let path = match self {
             Self::Claude => rocket_git::DraftProvider::Claude.default_program(),
             Self::Codex => rocket_git::DraftProvider::Codex.default_program(),
@@ -40,9 +52,9 @@ impl Provider {
         };
         path.map_or_else(String::new, |p| p.to_string_lossy().into_owned())
     }
-    pub fn command(self) -> Command {
+    pub fn command(self, chosen: Chosen) -> Command {
         Command {
-            program: self.installed(),
+            program: self.installed(chosen),
             // The reviewed binary is held while the session runs. Updates are
             // an explicit action outside Rocket, not a side effect of launch.
             arguments: if self == Self::Copilot {
@@ -51,6 +63,26 @@ impl Provider {
                 ""
             }
             .into(),
+        }
+    }
+}
+
+/// The presets' programs chosen by hand with Browse, used before looking for them.
+/// Claude Code's and Codex's are the AI features' own settings; GitHub Copilot's is
+/// kept with Agents. Empty means none was chosen.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Chosen<'a> {
+    pub claude: &'a str,
+    pub codex: &'a str,
+    pub copilot: &'a str,
+}
+impl<'a> Chosen<'a> {
+    pub fn of(drafting: &'a crate::commit_draft::Settings, copilot: &'a str) -> Self {
+        use rocket_git::DraftProvider::{Claude, Codex};
+        Self {
+            claude: drafting.program_setting_of(Claude),
+            codex: drafting.program_setting_of(Codex),
+            copilot,
         }
     }
 }

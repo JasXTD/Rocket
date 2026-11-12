@@ -954,7 +954,9 @@ fn source_input(
         field_name(ui, label);
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
-            let width = ui.available_width() - 84.0;
+            // As wide as its label needs: Browse is a longer word in some languages.
+            let button = crate::pages::button_width(ui, crate::i18n::tr("Browse"), 76.0);
+            let width = ui.available_width() - button - 8.0;
             let source = &mut s.source;
             let r = ui
                 .add_enabled_ui(!s.applying, |ui| {
@@ -969,7 +971,7 @@ fn source_input(
             control(widgets, "dialog-submodule-source", &r, ui.clip_rect());
             edited = r.changed();
             let b = ui
-                .add_enabled_ui(!s.applying, |ui| ui.add_sized([76.0, CONTROL], Button::new(crate::i18n::tr("Browse"))))
+                .add_enabled_ui(!s.applying, |ui| ui.add_sized([button, CONTROL], Button::new(crate::i18n::tr("Browse"))))
                 .inner;
             control(widgets, "dialog-submodule-source-browse", &b, ui.clip_rect());
             *browse |= b.clicked();

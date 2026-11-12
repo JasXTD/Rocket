@@ -563,15 +563,19 @@ pub(crate) fn preferences(
             DraftProvider::Codex => tr("Found automatically when empty").into(),
         };
         ui.horizontal(|ui| {
+            // The button is measured first and the field takes what it leaves: Browse is
+            // a longer word in some languages.
+            let label = tr("Browse");
+            let button = pages::button_width(ui, label, 0.0);
             let r = ui.add(
                 TextEdit::singleline(settings.program_setting_mut())
                     .hint_text(&hint)
                     .font(FontId::monospace(12.5))
                     .char_limit(32 * 1024)
-                    .desired_width((ui.available_width() - 84.0).max(80.0)),
+                    .desired_width((ui.available_width() - button - ui.spacing().item_spacing.x).max(80.0)),
             );
             pages::control(widgets, "pref-ai-executable", &r, ui.clip_rect());
-            let b = ui.button(tr("Browse"));
+            let b = ui.add(Button::new(label).min_size(vec2(button, 0.0)));
             pages::control(widgets, "pref-ai-browse", &b, ui.clip_rect());
             browse = b.clicked();
         });

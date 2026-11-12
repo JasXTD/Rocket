@@ -718,7 +718,11 @@ impl Rocket {
                         }
                         ui.label(RichText::new(crate::i18n::tr("Folder")).size(12.0).color(MUTED()));
                         ui.horizontal(|ui| {
-                            let width = (ui.available_width() - 84.0).max(160.0);
+                            // The button is measured first: Browse is a longer word in
+                            // some languages, and the field takes what it leaves.
+                            let browse = crate::i18n::tr("Browse");
+                            let button = pages::button_width(ui, browse, 76.0);
+                            let width = (ui.available_width() - button - 8.0).max(160.0);
                             let r = ui.add_enabled(
                                 !s.applying,
                                 TextEdit::singleline(&mut d.first)
@@ -731,7 +735,7 @@ impl Rocket {
                                 s.suggested = None;
                                 edited = true;
                             }
-                            let r = ui.add_enabled(!s.applying, Button::new(crate::i18n::tr("Browse")).min_size(vec2(76.0, 30.0)));
+                            let r = ui.add_enabled(!s.applying, Button::new(browse).min_size(vec2(button, 30.0)));
                             control(widgets, "dialog-worktree-browse", &r, ui.clip_rect());
                             f.browse = r.clicked();
                         });
@@ -1375,6 +1379,47 @@ mod tests {
                     .trim(),
                     "origin/topic/remote"
                 );
+            },
+        );
+    }
+
+    /// The Folder row ends where the fields above it end, in every language. Browse is
+    /// a longer word in some (German's needs more than the button's least width), and a
+    /// row that passes its column would also widen what is laid out after it.
+    #[test]
+    fn the_folder_row_fits_its_column_in_every_language() {
+        use crate::batch::flow_tests::{click, frame, open, wait};
+        common::isolated(
+            "ROCKET_WORKTREE_UI_CASE",
+            "worktrees::tests::the_folder_row_fits_its_column_in_every_language",
+            || {
+                let f = common::Fixture::new();
+                f.write("file", "base");
+                f.commit("base");
+                let ctx = Context::default();
+                let mut app = open(&ctx, &f);
+                app.dispatch(Intent::Dialog(DialogKind::Worktrees));
+                wait(&ctx, &mut app);
+                click(&ctx, &mut app, "dialog-worktree-create");
+                for language in crate::i18n::Language::ALL {
+                    crate::i18n::scoped(language, || {
+                        frame(&ctx, &mut app, vec![]);
+                        frame(&ctx, &mut app, vec![]);
+                        let rect = |key: &str| app.frame_widgets[key].rect;
+                        let (column, path, browse) = (
+                            rect("dialog-worktree-target"),
+                            rect("dialog-worktree-path"),
+                            rect("dialog-worktree-browse"),
+                        );
+                        let (first, second) = if path.left() < browse.left() { (path, browse) } else { (browse, path) };
+                        assert!(first.right() <= second.left() + 0.5, "{language:?}: {path:?} over {browse:?}");
+                        assert!(
+                            first.left() >= column.left() - 0.5 && second.right() <= column.right() + 0.5,
+                            "{language:?}: {path:?} and {browse:?} outside {column:?}"
+                        );
+                        assert!(browse.width() >= 75.5, "{language:?}: {browse:?} is cut");
+                    });
+                }
             },
         );
     }

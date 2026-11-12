@@ -169,6 +169,7 @@ fn dialog_header(dialog: &Dialog) -> (Icon, String, String) {
         | DialogKind::Rebase(_)
         | DialogKind::MailImport(_)
         | DialogKind::Bisect
+        | DialogKind::HistoryIndex
         | DialogKind::Recovery
         | DialogKind::Tags
         | DialogKind::Worktrees
@@ -918,7 +919,7 @@ impl Rocket {
                 (To::Page(Page::Submodules), tr("Submodules"), "goto-submodules"),
                 (To::Page(Page::Lfs), tr("Git LFS"), "goto-lfs"),
                 (To::View(View::FileHistory), tr("Path History"), "goto-history"),
-                (To::Page(Page::Statistics), tr("Statistics"), "goto-statistics"),
+                (To::Page(Page::Statistics), tr("Insights"), "goto-statistics"),
                 (To::Page(Page::Benchmark), tr("Repository Benchmark"), "goto-benchmark"),
             ] {
                 let (checked, enabled, intent) = match to {
@@ -1112,6 +1113,10 @@ impl Rocket {
                     if keyed_item(ui, widgets, "repository-bisect", tr("Bisect…"), "", opened && !interaction_busy) {
                         intents.push(Intent::Dialog(DialogKind::Bisect));
                     }
+                    ui.separator();
+                    if keyed_item(ui, widgets, "repository-history-index", tr("Speed Up History"), "", opened) {
+                        intents.push(Intent::Dialog(DialogKind::HistoryIndex));
+                    }
                 });
                 keyed_submenu(ui, widgets, "repository-custom-commands", tr("Custom Commands"), opened, |ui, widgets| {
                     crate::custom_commands::menu_entries(ui, commands, rocket_git::CommandScope::Repository, None, writable, intents, widgets);
@@ -1217,6 +1222,14 @@ impl Rocket {
             .is_some_and(|d| matches!(d.kind, DialogKind::Bisect))
         {
             self.bisect_dialog(ctx);
+            return;
+        }
+        if self
+            .dialog
+            .as_ref()
+            .is_some_and(|d| matches!(d.kind, DialogKind::HistoryIndex))
+        {
+            self.history_index_dialog(ctx);
             return;
         }
         if self
@@ -1387,6 +1400,7 @@ impl Rocket {
                         | DialogKind::Rebase(_)
                         | DialogKind::MailImport(_)
                         | DialogKind::Bisect
+                        | DialogKind::HistoryIndex
                         | DialogKind::Recovery
                         | DialogKind::Tags
                         | DialogKind::Worktrees

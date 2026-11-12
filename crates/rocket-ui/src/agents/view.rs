@@ -1,7 +1,9 @@
+//! The Agents page: one header row, the session list, and the selected session with its
+//! terminal, changes, integration steps and details. Canvas section 39.
 use super::*;
 use crate::{
     app::{Rocket, UiControl, View},
-    i18n::tr,
+    i18n::{tr, trf},
     pages,
     style::*,
 };
@@ -9,13 +11,31 @@ use eframe::egui::*;
 use std::collections::HashMap;
 
 mod changes;
+mod details;
 mod form;
+mod integrate;
+mod list;
+mod parts;
+#[cfg(test)]
+mod tests;
+use parts::{Look, action as button, child};
+
 type Widgets = HashMap<String, UiControl>;
+
+/// The page header's height.
+const HEAD: f32 = 48.0;
+/// Below this width the session list becomes a switcher above the selected session.
+const NARROW: f32 = 760.0;
+/// The selected session's content starts here, in line with `pages::tabs`.
+const INSET: f32 = 24.0;
+
 enum Action {
     New,
     Preview,
     Confirm,
     Cancel,
+    /// Browse for the session dialog's program.
+    Browse,
     Stop(u64),
     Restart,
     Resume,
@@ -31,59 +51,14 @@ enum Action {
     Refresh,
     StopRead,
     File(usize),
+    DismissNotice,
 }
-fn button(ui: &mut Ui, w: &mut Widgets, id: &str, label: &'static str, enabled: bool) -> bool {
-    let r = ui.add_enabled(enabled, Button::new(tr(label)));
-    pages::control(w, id, &r, ui.clip_rect());
-    r.clicked()
-}
-fn field(
-    ui: &mut Ui,
-    w: &mut Widgets,
-    id: &str,
-    label: &'static str,
-    value: &mut String,
-    multiline: bool,
-) {
-    ui.label(RichText::new(tr(label)).color(HINT()).size(12.0));
-    let edit = if multiline {
-        TextEdit::multiline(value).desired_rows(2)
-    } else {
-        TextEdit::singleline(value)
-    };
-    let r = ui.add(edit.desired_width(f32::INFINITY).id_salt(id));
-    pages::control(w, id, &r, ui.clip_rect());
-}
-fn command(ui: &mut Ui, c: &Command) {
-    ui.add(Label::new(RichText::new(&c.program).monospace()).wrap());
-    for (i, a) in c.args().iter().enumerate() {
-        ui.add(Label::new(RichText::new(format!("argv[{}] = {a:?}", i + 1)).monospace()).wrap());
-    }
-}
+
 fn duration(d: Duration) -> String {
     let s = d.as_secs();
     format!("{:02}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
 }
-fn line(ui: &Ui, rect: Rect, text: &str, font: FontId, color: Color32) {
-    let mut job = text::LayoutJob::simple_singleline(text.into(), font, color);
-    job.wrap = text::TextWrapping::truncate_at_width(rect.width().max(0.0));
-    let galley = ui.painter().layout_job(job);
-    ui.painter().galley(
-        pos2(rect.left(), rect.center().y - galley.size().y / 2.0),
-        galley,
-        color,
-    );
-}
-fn child(ui: &mut Ui, id: &'static str, rect: Rect) -> Ui {
-    let mut out = ui.new_child(
-        UiBuilder::new()
-            .id_salt(id)
-            .max_rect(rect)
-            .layout(Layout::top_down(Align::Min)),
-    );
-    out.set_clip_rect(rect.intersect(ui.clip_rect()));
-    out
-}
+
 impl Rocket {
     pub(crate) fn agents_view(&mut self, ui: &mut Ui) {
         let ready = self.profile_storage_ready() && !self.quitting && self.write.is_none();
@@ -91,42 +66,86 @@ impl Rocket {
             .tab()
             .filter(|t| !t.is_preview() && t.worktree())
             .map(|t| t.path.clone());
+        let can_start = ready && source.is_some() && self.agents.sessions.len() < MAX_SESSIONS;
         let mut action = None;
-        ui.add_enabled_ui(self.agents.form.is_none(),|ui| {
-            Frame::new().inner_margin(12).show(ui,|ui| {
-                ui.horizontal(|ui| {
-                    ui.heading(tr("Agents"));
-                    ui.label(RichText::new(format!("{} / {}",self.agents.sessions.iter().filter(|s|s.active()).count(),self.agents.sessions.len())).color(HINT()));
-                    ui.with_layout(Layout::right_to_left(Align::Center),|ui| {
-                        if button(ui,&mut self.frame_widgets,"agents-new","New session",ready&&source.is_some()&&self.agents.sessions.len()<MAX_SESSIONS){action=Some(Action::New);}
-                    });
-                });
-                ui.add(Label::new(RichText::new(tr("Separate worktrees. Your local tools. Review changes before merging.")).color(HINT()).size(12.0)).truncate());
-                if let Some(e)=&self.state_error {ui.colored_label(RED(),e);}
-                if let Some(n)=&self.agents.notice {ui.add(Label::new(if n=="Worktree removed. The branch and recovery reference are kept."{tr("Worktree removed. The branch and recovery reference are kept.")}else{n}).wrap());}
-                ui.add_space(6.0);
-                let (rect,_)=ui.allocate_exact_size(ui.available_size().max(vec2(0.0,80.0)),Sense::hover());
-                if self.agents.sessions.is_empty() {
-                    let mut body=child(ui,"agents-empty",rect.shrink(18.0));
-                    body.add_space(20.0);body.heading(tr("Give each task its own worktree"));
-                    body.label(tr("Start Claude Code, Codex or your own executable. Your current checkout stays in place."));
-                    body.label(tr("Install and sign in to your preferred tool first. Rocket uses its existing local login."));return;
+        ui.add_enabled_ui(self.agents.form.is_none(), |ui| {
+            // A least height, as before: in a very short pane the page is cut at the
+            // bottom, and no part of it is given a negative size.
+            let mut page = ui.available_rect_before_wrap();
+            page.max.y = page.max.y.max(page.min.y + HEAD + 80.0);
+            ui.allocate_rect(page, Sense::hover());
+            let head = Rect::from_min_size(page.min, vec2(page.width(), HEAD));
+            page_head(&mut child(ui, "agents-head", head), &self.agents, &mut self.frame_widgets, can_start, &mut action);
+            ui.painter()
+                .hline(page.x_range(), head.bottom() - 0.5, Stroke::new(1.0, HAIRLINE()));
+            let mut body = Rect::from_min_max(pos2(page.left(), head.bottom()), page.max);
+            // What went wrong or what just happened, above everything it concerns.
+            if self.state_error.is_some() || self.agents.notice.is_some() {
+                let mut notes = child(ui, "agents-notes", body.shrink2(vec2(18.0, 0.0)));
+                notes.add_space(10.0);
+                if let Some(error) = &self.state_error {
+                    parts::strip(&mut notes, RED(), Icon::Warning, error, None);
                 }
-                let width=(rect.width()*0.25).clamp(160.0,248.0);
-                let left=Rect::from_min_max(rect.min,pos2(rect.left()+width,rect.bottom()));
-                let right=Rect::from_min_max(pos2(left.right()+14.0,rect.top()),rect.max);
-                ui.painter().vline(left.right()+6.0,rect.y_range(),Stroke::new(1.0,HAIRLINE()));
-                sessions(&mut child(ui,"agents-list",left),&mut self.agents,&mut self.frame_widgets);
-                workspace(&mut child(ui,"agents-workspace",right),&mut self.agents,&mut self.frame_widgets,ready,&mut action);
-            });
+                if let Some(notice) = &self.agents.notice {
+                    let removed = notice == "Worktree removed. The branch and recovery reference are kept.";
+                    let (color, image, text) = if removed {
+                        (GREEN(), Icon::Check, tr("Worktree removed. The branch and recovery reference are kept."))
+                    } else {
+                        (AMBER(), Icon::Warning, notice.as_str())
+                    };
+                    if parts::strip(&mut notes, color, image, text, Some((&mut self.frame_widgets, "agents-notice-close"))) {
+                        action = Some(Action::DismissNotice);
+                    }
+                }
+                body.min.y = notes.min_rect().bottom().min(body.bottom());
+            }
+            if self.agents.sessions.is_empty() {
+                empty(ui, body, &mut self.frame_widgets, can_start, &mut action);
+                return;
+            }
+            let narrow = body.width() < NARROW;
+            let selected = if narrow {
+                body
+            } else {
+                let width = (body.width() * 0.26).clamp(240.0, 300.0);
+                let rail = Rect::from_min_max(body.min, pos2(body.left() + width, body.bottom()));
+                ui.painter()
+                    .vline(rail.right() - 0.5, body.y_range(), Stroke::new(1.0, HAIRLINE()));
+                list::rail(
+                    &mut child(ui, "agents-list", rail.shrink2(vec2(8.0, 0.0))),
+                    &mut self.agents,
+                    &mut self.frame_widgets,
+                );
+                Rect::from_min_max(pos2(rail.right(), body.top()), body.max)
+            };
+            workspace(
+                &mut child(ui, "agents-workspace", selected),
+                &mut self.agents,
+                &mut self.frame_widgets,
+                ready,
+                narrow,
+                &mut action,
+            );
         });
-        if let Some(f) = &mut self.agents.form {
-            form::show(ui.ctx(), &mut self.frame_widgets, f, ready, &mut action);
+        let covered = self.picker.is_some();
+        match &mut self.agents.form {
+            Some(f) => {
+                let chosen = Chosen::of(&self.drafting, &self.agents.copilot);
+                form::show(ui.ctx(), &mut self.frame_widgets, f, chosen, ready, covered, &mut action);
+            }
+            None => form::forget(ui.ctx()),
         }
         let result = match action {
             Some(Action::New) => {
                 if let Some(source) = source {
-                    self.agents.new_form(source);
+                    self.agents.new_form(source, &self.drafting);
+                }
+                Ok(())
+            }
+            Some(Action::Browse) => {
+                if let Some(f) = &self.agents.form {
+                    let current = f.record.command.program.clone();
+                    self.browse(crate::folder_browser::PickTarget::AgentProgram, &current);
                 }
                 Ok(())
             }
@@ -150,20 +169,39 @@ impl Rocket {
                 self.agents.existing_form(Mode::Restart);
                 Ok(())
             }
-            Some(Action::Resume) => self.backend.as_ref().map_or(Ok(()),|b|self.agents.resume(b,&self.context)),
+            Some(Action::Resume) => self
+                .backend
+                .as_ref()
+                .map_or(Ok(()), |b| self.agents.resume(b, &self.context)),
             Some(Action::Acknowledge) => {
-                if let Some(s)=self.agents.sessions.iter_mut().find(|s|Some(s.record.id)==self.agents.selected){s.attention=false;s.record.attention=false;}
+                if let Some(s) = self
+                    .agents
+                    .sessions
+                    .iter_mut()
+                    .find(|s| Some(s.record.id) == self.agents.selected)
+                {
+                    s.attention = false;
+                    s.record.attention = false;
+                }
                 Ok(())
             }
             Some(Action::CheckIntegration) => {
-                if let (Some(b),Some(s))=(self.backend.clone(),self.agents.selected()) {
-                    if s.active(){Err(model::invalid("Stop the agent before checking integration."))}
-                    else {self.agents.integration.start(b,s.record.clone(),&self.context)}
-                }else{Ok(())}
+                if let (Some(b), Some(s)) = (self.backend.clone(), self.agents.selected()) {
+                    if s.active() {
+                        Err(model::invalid("Stop the agent before checking integration."))
+                    } else {
+                        self.agents.integration.start(b, s.record.clone(), &self.context)
+                    }
+                } else {
+                    Ok(())
+                }
             }
-            Some(Action::StopIntegration) => {self.agents.integration.stop();Ok(())}
+            Some(Action::StopIntegration) => {
+                self.agents.integration.stop();
+                Ok(())
+            }
             Some(Action::CompareIntegration) | Some(Action::MergeIntegration) => {
-                let merge=matches!(action,Some(Action::MergeIntegration));
+                let merge = matches!(action, Some(Action::MergeIntegration));
                 self.agent_integration_handoff(merge)
             }
             Some(Action::Remove) => {
@@ -204,6 +242,10 @@ impl Rocket {
                 }
                 Ok(())
             }
+            Some(Action::DismissNotice) => {
+                self.agents.notice = None;
+                Ok(())
+            }
             None => Ok(()),
         };
         if let Err(e) = result {
@@ -214,160 +256,156 @@ impl Rocket {
             }
         }
     }
-    fn agent_integration_handoff(&mut self, merge:bool)->Result<()> {
-        let s=self.agents.selected().ok_or_else(||model::invalid("Select a session."))?;
-        let r=self.agents.integration.review.as_ref().ok_or_else(||model::invalid("Check integration first."))?;
-        if s.active() || s.record!=r.owner {return Err(model::invalid("The session changed. Stop it and check integration again."));}
-        let record=s.record.clone();let preview=r.merge.clone();let comparison=r.comparison.clone();
+
+    /// Browse chose the session dialog's program. For a preset it is also where that
+    /// program is found from now on: Claude Code's and Codex's are the AI features' own
+    /// settings, GitHub Copilot's is kept with Agents. Your own program has no preset
+    /// to keep one for.
+    pub(crate) fn agent_program_picked(&mut self, program: String) {
+        let Some(f) = &mut self.agents.form else {
+            return;
+        };
+        f.record.command.program.clone_from(&program);
+        // Look again: the card of a program that is there now says Found.
+        f.found = None;
+        // Only a path a session could start is kept; review says what is wrong with
+        // any other.
+        if !rocket_git::valid_custom_program_path(std::path::Path::new(&program)) {
+            return;
+        }
+        use rocket_git::DraftProvider;
+        match f.record.provider {
+            Provider::Claude => *self.drafting.program_setting_of_mut(DraftProvider::Claude) = program,
+            Provider::Codex => *self.drafting.program_setting_of_mut(DraftProvider::Codex) = program,
+            Provider::Copilot => self.agents.copilot = program,
+            Provider::Custom => {}
+        }
+    }
+
+    fn agent_integration_handoff(&mut self, merge: bool) -> Result<()> {
+        let s = self
+            .agents
+            .selected()
+            .ok_or_else(|| model::invalid("Select a session."))?;
+        let r = self
+            .agents
+            .integration
+            .review
+            .as_ref()
+            .ok_or_else(|| model::invalid("Check integration first."))?;
+        if s.active() || s.record != r.owner {
+            return Err(model::invalid("The session changed. Stop it and check integration again."));
+        }
+        let record = s.record.clone();
+        let preview = r.merge.clone();
+        let comparison = r.comparison.clone();
         self.open(record.source);
-        let tab=self.tabs.get_mut(self.active).ok_or_else(||model::invalid("Open the original checkout."))?;
-        if tab.snapshot.is_none() {return Err(model::invalid("The original checkout is loading. Return to Agents and check integration when it is ready."));}
+        let tab = self
+            .tabs
+            .get_mut(self.active)
+            .ok_or_else(|| model::invalid("Open the original checkout."))?;
+        if tab.snapshot.is_none() {
+            return Err(model::invalid(
+                "The original checkout is loading. Return to Agents and check integration when it is ready.",
+            ));
+        }
         if merge {
             self.show_dialog(crate::app::DialogKind::Merge);
-            if let Some(d)=&mut self.dialog {
-                d.first=preview.revision().into();d.mode=preview.mode();
-                d.merge=Some(crate::merge::DialogState{preview:Some(preview),..Default::default()});
+            if let Some(d) = &mut self.dialog {
+                d.first = preview.revision().into();
+                d.mode = preview.mode();
+                d.merge = Some(crate::merge::DialogState { preview: Some(preview), ..Default::default() });
             }
-            self.terminal_log.push("agent_integration_reviewed",false);
-        }else{
-            tab.compare.base=comparison.base.to_string();tab.compare.target=comparison.target.to_string();tab.compare.local_staged=None;
+            self.terminal_log.push("agent_integration_reviewed", false);
+        } else {
+            tab.compare.base = comparison.base.to_string();
+            tab.compare.target = comparison.target.to_string();
+            tab.compare.local_staged = None;
             self.compare_intent(crate::compare::CompareIntent::Open);
             self.compare_intent(crate::compare::CompareIntent::Load);
         }
         Ok(())
     }
 }
-fn sessions(ui: &mut Ui, state: &mut State, w: &mut Widgets) {
-    let r = ui.add(
-        TextEdit::singleline(&mut state.search)
-            .hint_text(tr("Find sessions"))
-            .desired_width(f32::INFINITY),
+
+/// The page's one header row: its name, how many sessions run and how many wait for the
+/// user, the Guide and New session.
+fn page_head(ui: &mut Ui, state: &State, w: &mut Widgets, can_start: bool, action: &mut Option<Action>) {
+    let rect = ui.max_rect();
+    let inner = Rect::from_min_max(pos2(rect.left() + 18.0, rect.top()), pos2(rect.right() - 16.0, rect.bottom()));
+    let mut row = ui.new_child(
+        UiBuilder::new()
+            .max_rect(inner)
+            .layout(Layout::right_to_left(Align::Center)),
     );
-    pages::control(w, "agents-search", &r, ui.clip_rect());
-    ui.horizontal_wrapped(|ui| {
-        for (filter, id, label) in [
-            (Filter::All, "all", "All"),
-            (Filter::Active, "active", "Active sessions"),
-            (Filter::Finished, "finished", "Inactive sessions"),
-            (Filter::Attention, "attention", "Needs attention"),
-        ] {
-            let r = ui.selectable_label(state.filter == filter, tr(label));
-            pages::control(w, format!("agents-filter-{id}"), &r, ui.clip_rect());
-            if r.clicked() {
-                state.filter = filter;
+    row.spacing_mut().item_spacing.x = 8.0;
+    let r = button(&mut row, Look::Primary, Some(Icon::Plus), false, tr("New session"), can_start);
+    pages::control(w, "agents-new", &r, ui.clip_rect());
+    if r.clicked() {
+        *action = Some(Action::New);
+    }
+    crate::guide::header_button(&mut row);
+    row.with_layout(Layout::left_to_right(Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        ui.label(RichText::new(tr("Agents")).font(semibold(16.0)));
+        let running = state.sessions.iter().filter(|s| s.active()).count();
+        let waiting = state.sessions.iter().filter(|s| s.attention).count();
+        let font = FontId::proportional(12.0);
+        let mut job = text::LayoutJob::default();
+        if running > 0 {
+            job.append(&trf!("{n} running", n = running), 0.0, TextFormat::simple(font.clone(), HINT()));
+        }
+        if waiting > 0 {
+            if running > 0 {
+                job.append(" · ", 0.0, TextFormat::simple(font.clone(), HINT()));
             }
+            job.append(&trf!("{n} waiting for you", n = waiting), 0.0, TextFormat::simple(font, AMBER()));
+        }
+        if !job.is_empty() {
+            ui.add(Label::new(job).truncate());
         }
     });
-    let needle = state.search.trim().to_lowercase();
-    let out = ScrollArea::vertical()
-        .id_salt("agents-list")
-        .auto_shrink([false, false])
-        .min_scrolled_height(0.0)
-        .show(ui, |ui| {
-            ui.set_width(ui.available_width());
-            ui.spacing_mut().item_spacing.y = 4.0;
-            let mut found = false;
-            for s in &state.sessions {
-                if state.filter == Filter::Active && !s.active()
-                    || state.filter == Filter::Finished && s.active()
-                    || state.filter == Filter::Attention && !s.attention
-                {
-                    continue;
-                }
-                if !needle.is_empty()
-                    && !format!(
-                        "{} {} {}",
-                        s.record.name,
-                        s.record.branch,
-                        s.record.provider.label()
-                    )
-                    .to_lowercase()
-                    .contains(&needle)
-                {
-                    continue;
-                }
-                found = true;
-                let (rect, r) =
-                    ui.allocate_exact_size(vec2(ui.available_width(), 80.0), Sense::click());
-                let selected = state.selected == Some(s.record.id);
-                if selected || r.hovered() {
-                    ui.painter().rect_filled(
-                        rect,
-                        5.0,
-                        if selected {
-                            ui.visuals().selection.bg_fill
-                        } else {
-                            RAISED()
-                        },
-                    );
-                }
-                if selected {
-                    ui.painter().rect_filled(
-                        Rect::from_min_size(rect.min, vec2(3.0, rect.height())),
-                        2.0,
-                        BLUE(),
-                    );
-                }
-                let text = rect.shrink2(vec2(10.0, 5.0));
-                line(
-                    ui,
-                    Rect::from_min_size(text.min, vec2(text.width(), 24.0)),
-                    &s.record.name,
-                    semibold(13.0),
-                    TEXT(),
-                );
-                line(
-                    ui,
-                    Rect::from_min_size(text.min + vec2(0.0, 25.0), vec2(text.width(), 20.0)),
-                    &s.record.branch,
-                    FontId::monospace(11.0),
-                    MUTED(),
-                );
-                line(
-                    ui,
-                    Rect::from_min_size(text.min + vec2(0.0, 47.0), vec2(text.width(), 20.0)),
-                    &format!(
-                        "{} · {}",
-                        tr(s.record.provider.label()),
-                        tr(if s.active(){s.activity_state.label()}else{s.phase.label()})
-                    ),
-                    FontId::proportional(11.0),
-                    if s.phase == Phase::Failed {
-                        RED()
-                    } else if s.attention { AMBER() } else {
-                        HINT()
-                    },
-                );
-                pages::control(
-                    w,
-                    format!("agents-session-{}", s.record.id),
-                    &r,
-                    ui.clip_rect(),
-                );
-                if r.clicked() {
-                    state.integration.clear();
-                    state.selected = Some(s.record.id);
-                    state.changes.suspend();
-                }
-                r.on_hover_text(format!(
-                    "{}\n{}",
-                    s.record.name,
-                    s.record.destination.display()
-                ));
-            }
-            if !found {
-                ui.label(tr("No matching sessions"));
-            }
-        });
-    pages::region(w, "agents-list-scroll", out.inner_rect, ui.is_enabled());
 }
-fn workspace(
-    ui: &mut Ui,
-    state: &mut State,
-    w: &mut Widgets,
-    ready: bool,
-    action: &mut Option<Action>,
-) {
+
+/// No sessions yet: what the page is for and the way to start.
+fn empty(ui: &mut Ui, rect: Rect, w: &mut Widgets, can_start: bool, action: &mut Option<Action>) {
+    let clip = ui.clip_rect();
+    parts::centered(
+        ui,
+        rect,
+        Icon::Prompt,
+        BLUE(),
+        tr("Give each task its own worktree"),
+        tr("Run Claude Code, Codex, GitHub Copilot or your own program in a separate folder. This checkout stays as it is."),
+        14.0 + CONTROL + 8.0 + 22.0,
+        |ui| {
+            ui.add_space(14.0);
+            let r = button(ui, Look::Primary, Some(Icon::Plus), false, tr("New session"), can_start);
+            pages::control(w, "agents-start", &r, clip);
+            if r.clicked() {
+                *action = Some(Action::New);
+            }
+            ui.add_space(8.0);
+            // 22 points tall, so it is easy to hit and automation counts it as shown.
+            let link = ui.add(
+                Button::new(RichText::new(tr("How agents work")).size(12.5).color(ACCENT_TEXT()))
+                    .frame(false)
+                    .min_size(vec2(0.0, 22.0)),
+            );
+            pages::control(w, "agents-guide", &link, clip);
+            if link.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                crate::guide::request(ui.ctx());
+            }
+        },
+    );
+}
+
+/// The selected session: its header, the tabs and the pane they choose.
+fn workspace(ui: &mut Ui, state: &mut State, w: &mut Widgets, ready: bool, narrow: bool, action: &mut Option<Action>) {
+    ui.spacing_mut().item_spacing.y = 0.0;
+    if narrow {
+        list::switcher(ui, state, w);
+    }
     let Some(s) = state
         .sessions
         .iter_mut()
@@ -375,170 +413,228 @@ fn workspace(
     else {
         return;
     };
-    ui.horizontal(|ui| {
-        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if s.active() {
-                if button(
-                    ui,
-                    w,
-                    "agents-stop",
-                    if s.phase == Phase::Stopping {
-                        "Stopping"
-                    } else {
-                        "Stop"
-                    },
-                    s.phase != Phase::Stopping,
-                ) {
-                    *action = Some(Action::Stop(s.record.id));
-                }
-            } else {
-                if s.resumable() {
-                    if button(ui,w,"agents-resume","Resume conversation",ready){*action=Some(Action::Resume);}
-                } else if button(ui,w,"agents-restart","Review and restart",ready){*action=Some(Action::Restart);}
-            }
-            ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
-                ui.add(Label::new(RichText::new(&s.record.name).font(semibold(16.0))).truncate());
-            });
-        });
+    session_head(ui, s, w, ready, narrow, action);
+    let files = state
+        .changes
+        .loaded
+        .as_ref()
+        .filter(|_| state.changes.owner.as_ref().is_some_and(|o| o.id == s.record.id))
+        .map(|l| l.files.len());
+    let panes = [
+        (Pane::Terminal, "Terminal", "agents-tab-terminal", None),
+        (Pane::Changes, "Changes", "agents-tab-changes", files),
+        (Pane::Integrate, "Integrate", "agents-tab-integrate", None),
+        (Pane::Details, "Details", "agents-tab-details", None),
+    ];
+    let items = panes.map(|(pane, label, key, count)| pages::TabItem {
+        label: tr(label),
+        count,
+        selected: state.pane == pane,
+        enabled: true,
+        key,
     });
-    ui.add(
-        Label::new(
-            RichText::new(format!(
-                "{} · {} · {}",
-                tr(s.record.provider.label()),
-                s.record.branch,
-                tr(s.phase.label())
-            ))
-            .color(if s.phase == Phase::Failed {
-                RED()
-            } else {
-                HINT()
-            })
-            .size(12.0),
-        )
-        .truncate(),
-    );
-    ui.horizontal_wrapped(|ui| {
-        if s.active() {ui.label(RichText::new(tr(s.activity_state.label())).color(if s.attention{AMBER()}else{HINT()}));}
-        if s.attention && button(ui,w,"agents-acknowledge","Mark as seen",true){*action=Some(Action::Acknowledge);}
-    });
-    ui.horizontal_wrapped(|ui| {
-        for (pane, id, label) in [
-            (Pane::Terminal, "terminal", "Terminal"),
-            (Pane::Changes, "changes", "Changes"),
-            (Pane::Integrate, "integrate", "Review and integrate"),
-            (Pane::Details, "details", "Details"),
-        ] {
-            let r = ui.selectable_label(state.pane == pane, tr(label));
-            pages::control(w, format!("agents-tab-{id}"), &r, ui.clip_rect());
-            if r.clicked() {
-                state.pane = pane;
-            }
+    if let Some(i) = pages::tabs(ui, &items, w) {
+        state.pane = panes[i].0;
+    }
+    // `tabs` reports what it drew; under the session dialog the whole page is disabled.
+    for (_, _, key, _) in panes {
+        if let Some(c) = w.get_mut(key) {
+            c.enabled &= ui.is_enabled();
         }
-    });
-    ui.separator();
-    let (rect, _) = ui.allocate_exact_size(ui.available_size().max(vec2(0.0, 0.0)), Sense::hover());
+    }
+    let (rect, _) = ui.allocate_exact_size(ui.available_size().max(Vec2::ZERO), Sense::hover());
     let mut body = child(ui, "agents-selected", rect);
     match state.pane {
-        Pane::Terminal => {
-            if let Some(e) = &s.error {
-                body.add(Label::new(RichText::new(e).color(RED())).wrap());
-            }
-            let id = s.terminal_id();
-            let stopping = s.phase == Phase::Stopping;
-            if let Some(t) = &mut s.terminal {
-                if let Some(p) = t.show_agent(&mut body, id, w, stopping) {
-                    *action = Some(match p {
-                        crate::terminal::PaneAction::Settings => Action::TerminalSettings,
-                        crate::terminal::PaneAction::TryAgain => Action::Restart,
-                    });
-                }
-            } else {
-                if s.active() {
-                    body.spinner();
-                }
-                body.label(tr(if s.phase==Phase::Restored{"Saved session. No process was restarted. Review the worktree and executable before running again."}else if s.phase==Phase::Saving{"Saving session before starting any command."}else{"No terminal output yet"}));
-            }
-            for id in [
-                "terminal-screen",
-                "terminal-command",
-                "terminal-send",
-                "terminal-settings",
-                "terminal-try-again",
-            ] {
-                if let Some(c) = w.get_mut(id) {
-                    c.rect = c.rect.intersect(rect);
-                    c.enabled &= ui.is_enabled();
-                }
-            }
-        }
+        Pane::Terminal => terminal(&mut body, s, w, ready, narrow, action),
         Pane::Changes => {
             state.changes.select_owner(&s.record);
-            changes::show(
-                &mut body,
-                &state.changes,
-                w,
-                &s.record.destination,
-                ready,
-                action,
-            );
+            changes::show(&mut body, &state.changes, w, &s.record.destination, ready, action);
         }
-        Pane::Details => details(&mut body, s, w, ready, action),
-        Pane::Integrate => integrate(&mut body,s,&state.integration,w,ready,action),
+        Pane::Integrate => integrate::show(&mut body, s, &state.integration, w, ready, action),
+        Pane::Details => details::show(&mut body, s, w, ready, action),
     }
 }
-fn details(ui: &mut Ui, s: &Session, w: &mut Widgets, ready: bool, action: &mut Option<Action>) {
-    let out=ScrollArea::vertical().id_salt(("agent-details",s.record.id)).auto_shrink([false,false]).min_scrolled_height(0.0).show(ui,|ui|{
-        pages::field(ui,&tr("Worktree folder"),&s.record.destination.to_string_lossy(),true);
-        pages::field(ui,&tr("Base"),&s.record.base,true);
-        pages::field(ui,&tr("Conversation activity"),tr(s.activity_state.label()),false);
-        if let Some(id)=&s.record.conversation{pages::field(ui,&tr("Conversation ID"),id,true);}
-        if let Some(d)=s.elapsed(){pages::field(ui,&tr("Elapsed"),&duration(d),false);}
-        if let Some(c)=s.exit_code{pages::field(ui,&tr("Exit code"),&c.to_string(),false);}
-        if let Some(e)=&s.error{ui.colored_label(RED(),e);}
-        ui.separator();ui.strong(tr("Session activity"));
-        for e in s.activity.iter().rev(){ui.horizontal(|ui|{ui.label(RichText::new(duration(e.at.elapsed())).monospace().color(HINT()));ui.label(tr(e.phase.label()));});}
-        pages::note(ui,&tr("Time since each event; current app session only."));
-        ui.separator();ui.strong(tr("Agent executable"));command(ui,&s.record.command);
-        if let Some(setup)=&s.record.setup{ui.strong(tr("Setup command"));command(ui,setup);}
-        ui.separator();
-        ui.horizontal_wrapped(|ui|{
-            if button(ui,w,"agents-restart","Review and restart",ready&&!s.active()){*action=Some(Action::Restart);}
-            if button(ui,w,"agents-open","Review changes",ready){*action=Some(Action::Open(s.record.destination.clone()));}
-            if button(ui,w,"agents-remove","Remove worktree",ready&&!s.active()){*action=Some(Action::Remove);}
-            if button(ui,w,"agents-forget","Forget session, keep files",ready&&!s.active()){*action=Some(Action::Forget);}
+
+/// The session's name with its state, the one action that fits that state, and under
+/// them the program, branch, base and how long it has run. In a narrow window the
+/// switcher above already names the session, so this is one row: state, those facts
+/// and the action.
+fn session_head(ui: &mut Ui, s: &Session, w: &mut Widgets, ready: bool, narrow: bool, action: &mut Option<Action>) {
+    let inset = if narrow { 14.0 } else { INSET };
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), if narrow { 44.0 } else { 64.0 }), Sense::hover());
+    let top = if narrow { rect.top() + 8.0 } else { rect.top() + 12.0 };
+    let line = Rect::from_min_max(pos2(rect.left() + inset, top), pos2(rect.right() - 16.0, top + CONTROL));
+    let mut row = ui.new_child(
+        UiBuilder::new()
+            .id_salt("agents-session-head")
+            .max_rect(line)
+            .layout(Layout::right_to_left(Align::Center)),
+    );
+    row.spacing_mut().item_spacing.x = 8.0;
+    head_actions(&mut row, s, w, ready, ui.clip_rect(), action);
+    row.with_layout(Layout::left_to_right(Align::Center), |ui| {
+        ui.spacing_mut().item_spacing.x = 10.0;
+        // What is left of the buttons is all the name and state get: with long labels
+        // and little room they are cut there, never drawn over a button.
+        ui.set_clip_rect(ui.max_rect().intersect(ui.clip_rect()));
+        if narrow {
+            pages::pill(ui, tr(parts::state_label(s)), parts::state_color(s));
+            let width = ui.available_width();
+            ui.add(Label::new(facts(s, width)).truncate());
+            return;
+        }
+        // The pill keeps its place: the name gives way first.
+        let pill = ui
+            .painter()
+            .layout_no_wrap(tr(parts::state_label(s)).to_owned(), semibold(11.0), TEXT())
+            .size()
+            .x
+            + 16.0;
+        let room = (ui.available_width() - pill - 10.0).max(40.0);
+        let name = ui
+            .painter()
+            .layout_no_wrap(s.record.name.clone(), semibold(16.0), TEXT())
+            .size()
+            .x;
+        ui.allocate_ui_with_layout(vec2(name.min(room), CONTROL), Layout::left_to_right(Align::Center), |ui| {
+            ui.add(Label::new(RichText::new(&s.record.name).font(semibold(16.0))).truncate())
+                .on_hover_text(&s.record.name);
         });
-        pages::note(ui,&tr("Stopping keeps the worktree and all changes."));
-        pages::note(ui,&tr("Worktrees separate files, not permissions. Agents run with your user account and keep their own permission prompts."));
-        pages::note(ui,&tr("Credentials and terminal output are not saved in session metadata or diagnostic logs. Do not put secrets in arguments."));
+        pages::pill(ui, tr(parts::state_label(s)), parts::state_color(s));
     });
-    pages::region(w, "agents-details-scroll", out.inner_rect, ui.is_enabled());
+    if narrow {
+        return;
+    }
+    let meta = Rect::from_min_max(pos2(rect.left() + inset, line.bottom() + 2.0), pos2(rect.right() - 16.0, rect.bottom() - 2.0));
+    let galley = ui.painter().layout_job(facts(s, meta.width()));
+    ui.painter()
+        .galley(pos2(meta.left(), meta.center().y - galley.size().y / 2.0), galley, HINT());
 }
 
-fn integrate(ui:&mut Ui, s:&Session, state:&integration::State,w:&mut Widgets,ready:bool,action:&mut Option<Action>) {
-    let out=ScrollArea::vertical().id_salt("agents-integration").auto_shrink([false,false]).show(ui,|ui|{
-        ui.heading(tr("Review and integrate"));
-        ui.label(tr("1. Review the worktree changes and commit the work you want to keep."));
-        if button(ui,w,"agents-open","Open worktree changes",ready){*action=Some(Action::Open(s.record.destination.clone()));}
-        ui.add_space(10.0);
-        ui.label(tr("2. Stop the agent, then compare its committed branch with the original checkout."));
-        ui.label(tr("Local changes must be committed or stashed in both checkouts. Nothing is saved or discarded automatically."));
-        if s.active(){ui.colored_label(AMBER(),tr("Stop this session before integration."));}
-        ui.horizontal_wrapped(|ui|{
-            if button(ui,w,"agents-integration-check","Check integration",ready&&!s.active()&&state.task.is_none()){*action=Some(Action::CheckIntegration);}
-            if state.task.is_some(){ui.spinner();if button(ui,w,"agents-integration-stop",if state.stopping{"Stopping"}else{"Stop"},!state.stopping){*action=Some(Action::StopIntegration);}}
-        });
-        if let Some(e)=&state.error{ui.colored_label(RED(),e);}
-        if let Some(r)=&state.review {
-            let into=match r.merge.head(){rocket_git::Head::Branch{name,..}=>String::from_utf8_lossy(name),_=>std::borrow::Cow::Borrowed("Detached")};
-            pages::field(ui,&tr("Original checkout"),&r.owner.source.to_string_lossy(),true);
-            pages::field(ui,&tr("Merge into"),&into,true);
-            pages::field(ui,&tr("Agent branch"),&r.owner.branch,true);
-            ui.label(format!("{} {} · {} {}",r.merge.incoming(),tr("incoming commits"),r.comparison.files.len(),tr("changed files")));
-            if button(ui,w,"agents-integration-compare","Compare committed changes",ready&&!s.active()){*action=Some(Action::CompareIntegration);}
-            ui.add_space(10.0);ui.label(tr("3. Review the merge and explicitly apply it. Conflicts use the existing conflict editor and Continue / Abort recovery."));
-            if button(ui,w,"agents-integration-merge","Review merge",ready&&!s.active()&&r.merge.incoming()>0){*action=Some(Action::MergeIntegration);}
-            pages::note(ui,&tr("The merge checks both branch tips and the original checkout again. The agent branch and worktree stay available afterward. Nothing is pushed."));
+/// The one action that fits the session's state, and Mark as seen while it waits.
+fn head_actions(row: &mut Ui, s: &Session, w: &mut Widgets, ready: bool, clip: Rect, action: &mut Option<Action>) {
+    if s.active() {
+        let stopping = s.phase == Phase::Stopping;
+        let r = button(
+            row,
+            Look::Danger,
+            (!stopping).then_some(Icon::Stop),
+            stopping,
+            tr(if stopping { "Stopping" } else { "Stop" }),
+            !stopping,
+        );
+        pages::control(w, "agents-stop", &r, clip);
+        if r.clicked() {
+            *action = Some(Action::Stop(s.record.id));
         }
-    });pages::region(w,"agents-integration-scroll",out.inner_rect,ui.is_enabled());
+    } else if s.resumable() {
+        let r = button(row, Look::Primary, Some(Icon::Play), false, tr("Resume conversation"), ready);
+        pages::control(w, "agents-resume", &r, clip);
+        if r.clicked() {
+            *action = Some(Action::Resume);
+        }
+    } else {
+        let r = button(row, Look::Primary, None, false, tr("Review and restart"), ready);
+        pages::control(w, "agents-restart", &r, clip);
+        if r.clicked() {
+            *action = Some(Action::Restart);
+        }
+    }
+    if s.attention {
+        let r = button(row, Look::Quiet, None, false, tr("Mark as seen"), true);
+        pages::control(w, "agents-acknowledge", &r, clip);
+        if r.clicked() {
+            *action = Some(Action::Acknowledge);
+        }
+    }
+}
+
+/// Program · branch · base · time on one line, cut at `width`.
+fn facts(s: &Session, width: f32) -> text::LayoutJob {
+    let font = FontId::proportional(12.0);
+    let dot = |job: &mut text::LayoutJob| job.append("  ·  ", 0.0, TextFormat::simple(font.clone(), FAINT()));
+    let mut job = text::LayoutJob::default();
+    job.append(tr(s.record.provider.label()), 0.0, TextFormat::simple(font.clone(), HINT()));
+    dot(&mut job);
+    job.append(&s.record.branch, 0.0, TextFormat::simple(FontId::monospace(12.0), MUTED()));
+    dot(&mut job);
+    job.append(&trf!("from {base}", base = &s.record.base), 0.0, TextFormat::simple(font.clone(), HINT()));
+    if let Some(time) = s.elapsed() {
+        dot(&mut job);
+        job.append(&parts::short_time(time), 0.0, TextFormat::simple(font.clone(), HINT()));
+    }
+    job.wrap = text::TextWrapping::truncate_at_width(width.max(0.0));
+    job
+}
+
+/// The session's terminal with its input, in one card; or, with no terminal, why.
+fn terminal(ui: &mut Ui, s: &mut Session, w: &mut Widgets, ready: bool, narrow: bool, action: &mut Option<Action>) {
+    let clip = ui.clip_rect();
+    let side = if narrow { 12.0 } else { 18.0 };
+    let mut area = ui.max_rect().shrink2(vec2(side, 0.0));
+    area.min.y += 12.0;
+    area.max.y -= if narrow { 12.0 } else { 16.0 };
+    if let Some(error) = &s.error {
+        let mut top = child(ui, "agents-terminal-error", area);
+        parts::strip(&mut top, RED(), Icon::Warning, error, None);
+        area.min.y = (top.min_rect().bottom() + 10.0).min(area.bottom());
+    }
+    ui.painter()
+        .rect(area, 8.0, DEEP(), Stroke::new(1.0, CARD_STROKE()), StrokeKind::Inside);
+    let id = s.terminal_id();
+    let stopping = s.phase == Phase::Stopping;
+    let Some(t) = &mut s.terminal else {
+        match s.phase {
+            Phase::Saving | Phase::Starting | Phase::Setup | Phase::Stopping => {
+                pages::loading(&mut child(ui, "agents-terminal-wait", area), tr(s.phase.label()));
+            }
+            Phase::Restored => {
+                let resumable = s.resumable();
+                parts::centered(
+                    ui,
+                    area,
+                    Icon::Console,
+                    MUTED(),
+                    tr("Nothing is running"),
+                    tr("Rocket reopened this session without starting it."),
+                    if resumable { 14.0 + CONTROL } else { 0.0 },
+                    |ui| {
+                        // The header already offers the action that fits; here is the other one.
+                        if resumable {
+                            ui.add_space(14.0);
+                            let r = button(ui, Look::Plain, None, false, tr("Review and restart"), ready);
+                            pages::control(w, "agents-restart", &r, clip);
+                            if r.clicked() {
+                                *action = Some(Action::Restart);
+                            }
+                        }
+                    },
+                );
+            }
+            _ => parts::centered(ui, area, Icon::Console, MUTED(), tr("No terminal output yet"), "", 0.0, |_| ()),
+        }
+        return;
+    };
+    // The input's row is the card's foot: a band under the screen, closed by a hairline.
+    let foot = Rect::from_min_max(pos2(area.left() + 1.0, area.bottom() - CONTROL - 17.0), area.max - vec2(1.0, 1.0));
+    ui.painter()
+        .rect_filled(foot, CornerRadius { nw: 0, ne: 0, sw: 7, se: 7 }, PANEL());
+    ui.painter()
+        .hline(foot.x_range(), foot.top(), Stroke::new(1.0, CARD_LINE()));
+    let inner = Rect::from_min_max(area.min + vec2(12.0, 10.0), area.max - vec2(8.0, 8.0));
+    let mut body = child(ui, "agents-terminal", inner);
+    // The screen ends above the foot; the input sits inside it.
+    body.spacing_mut().item_spacing.y = 10.0;
+    if let Some(p) = t.show_agent(&mut body, id, w, stopping) {
+        *action = Some(match p {
+            crate::terminal::PaneAction::Settings => Action::TerminalSettings,
+            crate::terminal::PaneAction::TryAgain => Action::Restart,
+        });
+    }
+    for id in ["terminal-screen", "terminal-command", "terminal-send", "terminal-settings", "terminal-try-again"] {
+        if let Some(c) = w.get_mut(id) {
+            c.rect = c.rect.intersect(inner);
+            c.enabled &= ui.is_enabled();
+        }
+    }
 }

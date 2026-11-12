@@ -342,6 +342,8 @@ pub enum Icon {
     Bookmark,
     /// A ring around a play triangle: Actions, the host's CI runs.
     Actions,
+    /// A lightning bolt: Speed up history.
+    Bolt,
 }
 pub fn icon(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
     let p = |x: f32, y: f32| {
@@ -914,6 +916,12 @@ pub fn icon(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             painter.circle_stroke(c, r, Stroke::new(1.3, color));
             let s = r * 0.5;
             painter.add(Shape::convex_polygon(vec![c + vec2(-s * 0.7, -s), c + vec2(s, 0.0), c + vec2(-s * 0.7, s)], color, Stroke::NONE));
+        }
+        Icon::Bolt => {
+            painter.add(Shape::closed_line(
+                vec![p(0.57, 0.08), p(0.2, 0.56), p(0.47, 0.56), p(0.41, 0.92), p(0.8, 0.42), p(0.52, 0.42)],
+                Stroke::new(1.3, color),
+            ));
         }
         Icon::Play => {
             painter.add(Shape::convex_polygon(

@@ -62,7 +62,7 @@
   "{other} is not a placeholder here. Use {placeholders}.": "{other} ist hier kein Platzhalter. Verwenden Sie {placeholders}.",
   "Program not found. Browse to it again, or remove this profile.": "Programm nicht gefunden. Erneut auswählen oder dieses Profil entfernen.",
   "Ready · passes {placeholders}": "Bereit · übergibt {placeholders}",
-  "Full path to the tool's .exe": "Vollständiger Pfad zur .exe des Tools",
+  "Full path to the tool's .exe": "Vollständiger Pfad zur .exe",
   "Insert": "Einfügen",
   "Add {placeholder} as an argument": "{placeholder} als Argument einfügen",
   "Used by default for files": "Standard für Dateien",

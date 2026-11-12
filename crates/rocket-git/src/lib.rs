@@ -73,6 +73,10 @@ mod file_history;
 mod force_push;
 mod forge;
 mod gitflow;
+mod history_index;
+pub use history_index::{
+    HistoryIndex, HistoryIndexChange, HistoryIndexFile, HistoryIndexReport, HistoryIndexUnused,
+};
 mod history_search;
 mod hosting;
 mod integration_transport;

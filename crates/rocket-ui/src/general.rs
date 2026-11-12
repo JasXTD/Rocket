@@ -347,7 +347,9 @@ impl Rocket {
         let general = &mut self.general;
         let mut problem: Option<String> = None;
         field(ui, tr("Source code folder"), |ui| {
-            let width = (ui.available_width() - 86.0 - ui.spacing().item_spacing.x).max(80.0);
+            // As wide as its label needs: Browse is a longer word in some languages.
+            let button = pages::button_width(ui, tr("Browse"), 86.0);
+            let width = (ui.available_width() - button - ui.spacing().item_spacing.x).max(80.0);
             let set = !text.is_empty();
             let r = ui.add_sized(
                 [width, CONTROL],
@@ -394,7 +396,7 @@ impl Rocket {
                 pages::control(widgets, "pref-source-clear", &close, ui.clip_rect());
                 clear = close.clicked();
             }
-            let r = ui.add_sized([86.0, CONTROL], Button::new(tr("Browse")));
+            let r = ui.add_sized([button, CONTROL], Button::new(tr("Browse")));
             pages::control(widgets, "pref-source-browse", &r, ui.clip_rect());
             browse = r.clicked();
         });

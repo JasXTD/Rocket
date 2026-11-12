@@ -271,6 +271,9 @@ pub struct HistoryPage {
     pub next: Option<HistoryCursor>,
     pub(crate) tips: Vec<ObjectId>,
     pub order: HistoryOrder,
+    /// How long Git took to order this page's commits, the part of a history read
+    /// that grows with the repository. Zero when nothing was ordered.
+    pub ordering: std::time::Duration,
 }
 
 impl HistoryPage {

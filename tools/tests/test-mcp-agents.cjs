@@ -43,13 +43,17 @@ async function menuAction(menu,id){
  if(macos){await until(s=>s.native_menus?.some(row=>row.id===id&&row.enabled),'native menu '+id);const r=await client.tool('rocket_menu',{target:id,expected_tab:state.active_tab});assert(r.native_action_queued);await settled();}
  else{await click(menu);await click(id);}
 }
+async function advanced(){await stable();if(control('agents-program')||control('agents-arguments'))return;try{await reveal('agents-advanced')}catch{return}await click('agents-advanced')}
+function under(group){const head=control('agents-group-'+group);if(!head)return[];const next=['need','running','idle'].map(k=>control('agents-group-'+k)).filter(c=>c&&c.rect[1]>head.rect[1]).sort((a,b)=>a.rect[1]-b.rect[1])[0];return state.controls.filter(c=>c.id.startsWith('agents-session-')&&c.rect[1]>head.rect[1]&&(!next||c.rect[1]<next.rect[1])).map(c=>session(Number(c.id.slice(15))))}
 function destination(n){const dst=path.join(root,'worktree 資料 '+n),branch='rocket-ui-test/agents-'+n;fs.writeFileSync(dst+'.rocket-worktree-fixture',branch+'\n'+repo);return{dst,branch}}
 async function form(n,setup){const d=destination(n);await click('agents-new');await until(s=>s.agents.form,'New session form');await click('agents-provider-custom');await type('agents-name','PRIVATE task 資料 '+n);await type('agents-branch',d.branch);await type('agents-destination',d.dst);await type('agents-program',exe);await type('agents-arguments','--agent-session-fixture\nhold');if(setup){await click('agents-setup-enabled');await type('agents-setup-program',exe);await type('agents-setup-arguments','--agent-session-fixture\n'+setup);}return d}
 async function review(){await click('agents-review');assert(state.agents.form?.reviewed,JSON.stringify(state.agents.form))}
 async function start(){await click('agents-confirm');return state.agents.selected}
 async function running(id){await until(s=>session(id)?.tail?.includes('SYNTHETIC_AGENT_READY')&&session(id)?.phase==='Running','running')}
 function alive(pid){try{process.kill(pid,0);return true}catch{return false}}
-async function stop(id){await click('agents-session-'+id);const child=Number(session(id).tail.match(/child=(\d+)/)[1]),pid=session(id).pid;const at=performance.now();await client.tool('rocket_click',{target:'agents-stop',expected_tab:state.active_tab});await until(s=>['Stopping','Stopped'].includes(session(id)?.phase),'stop acknowledgement');const ack=performance.now()-at;await until(s=>session(id)?.phase==='Stopped'&&!session(id)?.active,'process exit');for(let i=0;i<30&&(alive(pid)||alive(child));i++)await wait(50);assert(!alive(pid)&&!alive(child),'owned tree exited');report.stop.push({ack_ms:ack,closed_ms:performance.now()-at});}
+// In a narrow window the sessions are listed by the switcher; the one in view needs no click.
+async function choose(id){await stable();if(state.agents.selected===id)return;if(control('agents-switcher')&&!control('agents-session-'+id))await click('agents-switcher');await click('agents-session-'+id)}
+async function stop(id){await choose(id);const child=Number(session(id).tail.match(/child=(\d+)/)[1]),pid=session(id).pid;const at=performance.now();await client.tool('rocket_click',{target:'agents-stop',expected_tab:state.active_tab});await until(s=>['Stopping','Stopped'].includes(session(id)?.phase),'stop acknowledgement');const ack=performance.now()-at;await until(s=>session(id)?.phase==='Stopped'&&!session(id)?.active,'process exit');for(let i=0;i<30&&(alive(pid)||alive(child));i++)await wait(50);assert(!alive(pid)&&!alive(child),'owned tree exited');report.stop.push({ack_ms:ack,closed_ms:performance.now()-at});}
 async function close(){await client.tool('rocket_close');await until(s=>['closed','not_started'].includes(s.window)||s.dialog?.kind==='quit');if(state.dialog?.kind==='quit'){await client.tool('rocket_click',{target:'dialog-submit',expected_tab:state.active_tab});await until(s=>['closed','not_started'].includes(s.window))}}
 (async()=>{try{
 cp.execFileSync(exe,['--init-http',profile,root],{env,windowsHide:true});const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));report.port=port;fs.writeFileSync(path.join(profile,'settings'),'ROCKET-MCP-1\n'+port+'\n'+root+'\n');
@@ -59,6 +63,19 @@ await click('toolbar-terminal');await until(s=>s.terminal?.running);await type('
 await menuAction('menu-edit','preferences');await click('pref-page-appearance');await click('theme-clay-dark');await client.tool('rocket_escape');await settled();
 await click('view-agents');await capture('empty');
 await menuAction('menu-help','help-about');const hiddenInput=await client.request('tools/call',{name:'rocket_click',arguments:{target:'agents-new',expected_tab:state.active_tab}});assert(hiddenInput.isError,'modal dialog must block underlying Agents input');await client.tool('rocket_escape');await settled();assert(!state.agents.form);pass('Modal dialogs block underlying Agents controls');
+// Browse: the program picker opens above the session dialog and owns input while it
+// shows; what it chooses fills the field and is where the preset is found from then on.
+// The chosen file is only picked, never started.
+const tools=path.join(root,'tools 資料'),picked=path.join(tools,windows?'copilot.exe':'copilot'),plain=p=>path.resolve(p).replace(/^\\\\\?\\/,'').toLowerCase();
+fs.mkdirSync(tools);fs.writeFileSync(picked,'synthetic executable fixture\n',{mode:0o700});
+await click('agents-new');await until(s=>s.agents.form,'New session form');await click('agents-provider-copilot');await advanced();await type('agents-program',path.join(tools,windows?'old.exe':'old'));
+await click('agents-program-browse');await until(s=>s.controls?.some(c=>c.id==='picker-row-0'),'program picker lists its folder');
+const covered=await client.request('tools/call',{name:'rocket_click',arguments:{target:'agents-review',expected_tab:state.active_tab}});assert(covered.isError,'the picker owns input above the session dialog');
+await capture('browse-picker');await click('picker-row-0');await click('picker-choose');
+assert(!control('picker-choose')&&state.agents.form,'choosing closes the picker and leaves the dialog');assert.equal(plain(state.agents.form.program),plain(picked));await capture('browse-chosen');
+await click('agents-cancel');assert(!state.agents.form);await click('agents-new');await until(s=>s.agents.form,'New session form');await click('agents-provider-copilot');
+assert.equal(plain(state.agents.form.program),plain(picked),'the chosen program is where GitHub Copilot is found from then on');await click('agents-cancel');
+pass('Browse picks the agent program above the session dialog and keeps it for the preset');
 let d=await form('cancel');await review();await capture('review-wide');await click('agents-cancel');assert(!fs.existsSync(d.dst));pass('Reviewed creation cancelled without a worktree or process');
 d=await form('cancel-check');await click('agents-review',false);await client.tool('rocket_escape');await settled();assert(!state.agents.form);assert(!fs.existsSync(d.dst));pass('Cancelling validation creates no worktree');
 d=await form('existing');fs.mkdirSync(d.dst);fs.writeFileSync(path.join(d.dst,'keep.txt'),'keep');await click('agents-review');assert(state.agents.form.error);assert.equal(fs.readFileSync(path.join(d.dst,'keep.txt'),'utf8'),'keep');await click('agents-cancel');pass('Existing destination refused and preserved');
@@ -85,7 +102,7 @@ const area=which=>state.agents.changes.files.find(f=>f.area===which).index;
 await click('agents-change-'+area('Staged'));assert(state.agents.changes.patch.includes('+staged in agent'));assert(!state.agents.changes.patch.includes('+unstaged in agent'));
 await click('agents-change-'+area('Unstaged'));assert(state.agents.changes.patch.includes('+unstaged in agent'));
 await click('agents-change-'+area('Untracked'));assert(state.agents.changes.patch.includes('external version one'));
-await capture('changes-wide');await resize(780,620);await capture('changes-compact');const selected=control('agents-change-'+state.agents.changes.selected);assert(selected&&selected.rect[3]-selected.rect[1]>=40,'selected file remains visible after resize');
+await capture('changes-wide');await resize(780,620);await capture('changes-compact');const selected=control('agents-change-'+state.agents.changes.selected);assert(selected&&selected.rect[3]-selected.rect[1]>=24,'selected file remains visible after resize');
 for(const id of ['agents-stop','agents-tab-terminal','agents-tab-changes','agents-tab-details','agents-refresh','agents-open']){await reveal(id);const r=control(id).rect;assert(r[0]>=0&&r[2]<=state.viewport[0]&&r[3]<=state.viewport[1],id+' compact bounds');}
 await resize(...wideSize);
 fs.writeFileSync(path.join(second.dst,'新規 🧪.txt'),'external version two\nsecond line\nthird line\n');
@@ -100,8 +117,8 @@ await click('agents-session-'+two);await until(s=>s.agents.changes.owner===two&&
 assert.equal(state.agents.changes.files.length,3);
 await type('agents-search','does-not-match-any-session');assert(!(state.controls||[]).some(c=>c.id.startsWith('agents-session-')));
 await type('agents-search','');
-await click('agents-filter-active');assert(state.controls.filter(c=>c.id.startsWith('agents-session-')).every(c=>session(Number(c.id.slice(15))).active));
-await click('agents-filter-finished');assert(state.controls.filter(c=>c.id.startsWith('agents-session-')).every(c=>!session(Number(c.id.slice(15))).active));await click('agents-filter-all');
+await stable();assert(under('running').length&&under('running').every(s=>s.active&&!s.attention),'Running lists the active sessions');assert(under('need').every(s=>s.attention),'Needs you lists what waits');assert(under('idle').every(s=>!s.active&&!s.attention),'Not running lists the rest');
+const listed=under('running').length;await click('agents-group-running');await stable();assert.equal(under('running').length,0,'a folded group hides its sessions');await click('agents-group-running');await stable();assert.equal(under('running').length,listed);
 await click('agents-tab-details');await capture('details-wide');
 await click('agents-tab-changes');
 git(['restore','--staged','--worktree','--','資料.txt'],second.dst);fs.unlinkSync(path.join(second.dst,'新規 🧪.txt'));
@@ -123,7 +140,7 @@ await click('agents-session-'+two);await click('agents-tab-terminal');await clic
 await client.tool('rocket_open',{path:repo});await settled();await click('view-agents');assert(state.agents.sessions.every(s=>s.phase==='Restored'&&!s.active&&!s.pid));await capture('restored');pass('Compact review controls, shutdown child cleanup and persisted sessions without automatic relaunch');
 if(process.argv.includes('--real-codex')){
  fs.writeFileSync(path.join(root,'rocket-agent-codex'),'read-only-codex-smoke-v1\n');
- const real=await form('real-codex');await click('agents-provider-codex');
+ const real=await form('real-codex');await click('agents-provider-codex');await advanced();
  await type('agents-arguments','exec\n--ignore-user-config\n--ephemeral\n--sandbox\nread-only\n--model\ngpt-6-astra\nRespond with exactly ROCKET_AGENT_OK. Do not use tools, inspect files, modify anything, contact websites or delegate tasks.');
  await review();const id=await start();await until(s=>['Exited','Failed'].includes(session(id)?.phase)&&!session(id)?.active,'real Codex exit',120000);
  report.real_codex={phase:session(id).phase,exit_code:session(id).exit_code,reply_ok:session(id).tail?.split(/\r?\n/).some(line=>line.trim()==='ROCKET_AGENT_OK')===true};

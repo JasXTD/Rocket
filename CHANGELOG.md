@@ -12,6 +12,102 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Speed up history in large repositories. When ordering the History list took more
+  than a second and the repository has no commit index (Git's commit-graph), a line
+  above the list says so and opens Speed up history; Repository → History & Recovery →
+  Speed Up History opens it at any time. The dialog writes the index with Git, shows
+  the commits read so far and a Stop that leaves the repository as it was, and then
+  the ordering time before and after as measured there. Opened again it shows the
+  index's size, date and commit count, with Update and Remove. "Keep it up to date
+  when Rocket fetches" adds the fetched commits after each fetch Rocket runs in that
+  repository; the choice is stored in the repository's own config as
+  `rocket.commitGraphOnFetch`, and fetches elsewhere are unchanged. Writing the
+  index changes no commit, branch, working file or remote. A shallow clone, replaced
+  or grafted commits and `core.commitGraph=false` are explained instead of written.
+  The notice's × hides it for that repository (saved state v32; older builds refuse a
+  state that has one). Help → Guide has a Faster history topic.
+- Add review insights to Insights → Pull requests. A Reviewer field beside Author
+  narrows the numbers and rows to the pull requests a person or team was asked to
+  review or reviewed, and lists how many wait on each. Waiting for review counts open
+  pull requests with a review request still waiting, from the list Rocket already
+  reads (GitHub, GitHub Enterprise Server, Azure DevOps, Bitbucket Server and
+  Bitbucket Cloud; GitLab's and Gitea's lists don't say who still waits), and a
+  Waiting filter lists them. Trends keeps counting every reviewer. Time to first review is the median from opening to the first review by
+  someone other than the author, bots left out; Read reviews reads it, newest first
+  and 100 at a time, on GitHub, GitHub Enterprise Server and Gitea. Missing data is
+  named instead of estimated: a dash with the reason, a strip listing what was left
+  out, and row marks such as Reviews unavailable. Exports gain the reviewer filter
+  and five review columns after the earlier ones.
+- Add Insights pull request trends, saved views and an activity export. Pull
+  requests gains List | Trends: opened and merged per week (per month past a year)
+  and a comparison with the previous period of the same length, shown only when both
+  periods are in the loaded sample; the tiles show the change. Each repository
+  remembers its Insights tab and filters across restarts (state format v30, written
+  only when they differ from the defaults), and its numbers stay while its tab is
+  open, with "Refreshed 4 min ago" on each filter row. Export on the Activity row
+  saves contributors or commits per week as CSV, or every table as JSON; email
+  addresses only when ticked. The Pull requests row says "refreshed … ago" instead
+  of a UTC time. Activity keeps its numbers, labelled for what they were read for,
+  until a new read replaces them.
+- Redesign the Insights Pull requests tab, its details card and the Export dialog:
+  one control row, five tiles (Median open age joins them), one Partial sample
+  strip holding Load more, and the list beside the details, each scrolling by
+  itself. Rows show state, author, branches and time, and mark pull requests
+  without usable dates. Details gain counts on their tabs and marks for files,
+  reviews and checks. What is read, the numbers, filters, export files and
+  automation names are unchanged. Insights has its own Guide topic.
+- Redesign the Agents tab. Sessions are grouped by what they need from you (Needs
+  you, Running, Not running) instead of four filters, each with a state mark and
+  two lines; a group folds from its heading. The selected session shows its name,
+  a state pill and the one action that fits (Stop, Resume conversation or Review and
+  restart), underlined tabs with the changed-file count, and its terminal and input
+  in one card. Changes lists one line per file under Git's groups with the diff's
+  added and removed counts; Integrate is three steps, each with its action; Details
+  is Session, Command, Activity and Manage cards, with arguments shown one by one.
+  In the session dialog the task name comes first, each program says whether it was
+  found, and the program's path, arguments and setup command are folded away until
+  they are needed. A narrow window lists sessions in a switcher. The page's notes
+  moved to a new Agents topic in the Guide. Every check, review and refusal is
+  unchanged. Automation: `agents-filter-*` are gone; groups are
+  `agents-group-need`, `agents-group-running` and `agents-group-idle`,
+  `agents-switcher` opens the list in a narrow window, `agents-advanced` opens the
+  folded fields, and the agents state reports `folded` instead of `filter`. The
+  Agents labels are translated in all nine catalogs.
+- Agents: Changes keeps the diffs it has read. A file chosen again shows at once,
+  coming back to the tab reads nothing unless the worktree changed, and while a
+  changed file is read again its earlier diff stays on screen instead of "Loading
+  diff". A session's list and diffs are kept while you look at another session. A
+  provider event no longer reloads the whole pane.
+- Agents: choose a program with Browse. Agent executable in the session dialog has
+  a Browse button, and its field opens by itself when the chosen program is not
+  found. A program chosen with Browse is where Rocket finds that preset from then
+  on: Claude Code's and Codex's are the Program setting AI drafts already use,
+  GitHub Copilot's is saved with the profile (state v31, written only once one is
+  chosen). A typed path still applies to that session only. Automation:
+  `agents-program-browse`.
+- Agents: the session dialog proposes its worktree folder as you would type it,
+  without the `\\?\` prefix Windows paths carried there. Review resolves the folder
+  as before.
+- New worktree: the Folder row stays inside the dialog when Browse is a longer word
+  in the chosen language. In German the button passed the dialog's column by 19
+  points and widened what was laid out below it. The button is now measured before
+  the field, as in the Agents session dialog.
+- Browse rows fit in every language. In twelve more rows a translated Browse was
+  wider than the room its row left, so the row passed its column or the button sat
+  over its field: Import and Export commit series, Custom commands (Program, the
+  definitions file, a file input), External tools, AI drafts, General's source code
+  folder, Terminal's custom shell, MCP server, Submodules and Map export. German
+  everywhere; French, Arabic, Korean and others where the room was smallest. Each
+  row now measures the button first and the field takes what is left. In English the
+  path fields of Import and Export commit series, External tools, AI drafts and Map
+  export are 6 to 22 points wider, so Browse ends at the right edge like the fields
+  around it. Map export's two labels share one measured column. German's placeholder
+  for a tool's program is shorter, to fit beside the wider button.
+- Export commit series: the Commits row fits its dialog in every language. Its two
+  fields now share what First, the arrow and Last leave; the row kept a fixed 110
+  points for those, which German, French, Russian, Ukrainian and Korean exceed, so
+  the row ran up to 32 points past the dialog and widened the rows under it.
+  English is unchanged.
 - Keep long lists responsive. The Changes file list, the Branches page, the
   sidebar's local and remote branches and a commit's changed-files list build only
   the rows in or next to the visible area instead of every row on every frame, and
@@ -29,10 +125,22 @@ keep detailed test evidence in `VALIDATION.md`.
   stale-state, local-change and conflict recovery protections.
   Honor an agent terminal's requested bracketed-paste mode so long command-bar
   prompts submit with one Enter instead of remaining in its input buffer.
+- Add Insights PR drilldowns, exact-author filters and reviewed CSV/JSON exports.
+  Read only the selected PR through the existing Hosting adapters, retain clear
+  partial/error states, and cancel stale detail reads. Author selection scopes
+  metrics; state filters scope rows. Exports disclose the loaded sample and
+  filters, guard spreadsheet formulas, and never replace existing files.
 - Add a GitHub Copilot CLI preset to Agents, with native executable discovery,
   reviewed arguments and automatic CLI updates disabled by default. Reuse the
   worktree, interactive terminal and Stop lifecycle; saved sessions do not
   auto-start. Rocket does not install Copilot or change its account configuration.
+- Extend Statistics into Insights: local activity charts and file treemap, plus
+  PR opened/merged counts, current open age and creation-to-merge medians. Reuse
+  the matched Hosting account; read one guarded page at a time, up to 500 PRs.
+  Show sample coverage, timing denominators and missing dates. Stop retains the
+  last successful sample; changing accounts/repositories discards stale results.
+- Correct activity ranges for skewed committer dates by filtering author dates
+  after a bounded history walk, with honest truncation reporting.
 
 ## 0.92.3 — Agents, Intel Mac preview and security hardening
 

@@ -75,12 +75,13 @@ async function click(id) { await reveal(id); assert(control(id).enabled, 'Disabl
 async function type(id, text) { await reveal(id); await client.tool('rocket_type', { target: id, text, expected_tab: state.active_tab }); await settled(); }
 async function capture(name) { await stable(); const r = await client.request('tools/call', { name: 'rocket_capture', arguments: {} }); assert(!r.isError); fs.writeFileSync(path.join(reportDir, name + '.png'), Buffer.from(r.content.find(c => c.type === 'image').data, 'base64')); fs.writeFileSync(path.join(reportDir, name + '.json'), JSON.stringify(state, null, 2)); }
 async function resize(width, height) { await until(s => s.first_presentation && !s.state_pending, 'window initialized'); await stable(); await client.tool('rocket_resize', { width, height }); await until(s => s.viewport[0] === width && s.viewport[1] === height && !s.input_pending, 'resize'); report.viewports.push([width, height]); }
+async function advanced(){await stable();if(control('agents-program')||control('agents-arguments'))return;try{await reveal('agents-advanced')}catch{return}await click('agents-advanced')}
 function destination(name) { const folder = path.join(root, 'worktree 資料 ' + name), branch = 'rocket-ui-test/copilot-' + name; fs.writeFileSync(folder + '.rocket-worktree-fixture', branch + '\n' + repo); return { folder, branch }; }
 async function form(name) {
   const d = destination(name); await click('agents-new'); await click('agents-provider-copilot');
   assert.equal(state.agents.form.provider, 'copilot'); assert.equal(canonical(state.agents.form.program), canonical(copilot)); assert.equal(state.agents.form.arguments, '--no-auto-update');
   await type('agents-name', 'PRIVATE Copilot task 資料'); await type('agents-branch', d.branch); await type('agents-destination', d.folder);
-  await type('agents-arguments', args); return d;
+  await advanced(); await type('agents-arguments', args); return d;
 }
 async function review() { await click('agents-review'); assert(state.agents.form.reviewed, state.agents.form.error); }
 async function close() { await client.tool('rocket_close'); await until(s => ['closed', 'not_started'].includes(s.window) || s.dialog?.kind === 'quit'); if (state.dialog?.kind === 'quit') { await client.tool('rocket_click', { target: 'dialog-submit', expected_tab: state.active_tab }); await until(s => ['closed', 'not_started'].includes(s.window)); } }

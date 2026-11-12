@@ -888,7 +888,7 @@ pub(crate) fn ci_now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 /// Seconds since the epoch for "2026-11-04T09:12:03Z" or with an offset/fraction.
-fn timestamp(s: &str) -> Option<u64> {
+pub(super) fn timestamp(s: &str) -> Option<u64> {
     let b = s.as_bytes();
     if b.len() < 20 || b[4] != b'-' || b[7] != b'-' || !matches!(b[10], b'T' | b't' | b' ') || b[13] != b':' || b[16] != b':' {
         return None;

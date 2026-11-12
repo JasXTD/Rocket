@@ -360,7 +360,7 @@ macro_rules! files {
     };
 }
 const FILES: &[(Language, &str, &str)] =
-    files!["common", "menus", "chrome", "views", "diff", "preferences", "git-settings", "terminal", "commit-draft", "settings-extra", "dialogs-extra", "advanced-views", "advanced-workflows", "dialogs-more", "custom-command-extra", "workflow-ui", "map-extra", "actions-extra", "batch-extra", "recovery-extra", "commit-actions-extra", "hosting-extra", "agents"];
+    files!["common", "menus", "chrome", "views", "diff", "preferences", "git-settings", "terminal", "commit-draft", "settings-extra", "dialogs-extra", "advanced-views", "advanced-workflows", "dialogs-more", "custom-command-extra", "workflow-ui", "map-extra", "actions-extra", "batch-extra", "recovery-extra", "commit-actions-extra", "hosting-extra", "agents", "history-index"];
 
 /// One catalog entry: a text, or a counted phrase's forms by CLDR category.
 #[derive(Clone, Debug)]
@@ -1245,6 +1245,284 @@ With a second line.
             assert_eq!((app.secret_protection, app.guard_ai_api_keys, app.secret_scan_mib), original_protections, "UI language must preserve protection policy");
             assert!(problems.is_empty(), "Translation layout regressions:\n{}", problems.join("\n"));
         });
+    }
+
+    /// How a frame drew one button's label: where, whether it was cut, on how many lines.
+    #[derive(Clone, Copy, Debug)]
+    struct Label {
+        rect: eframe::egui::Rect,
+        elided: bool,
+        rows: usize,
+    }
+
+    /// The label `text` a frame drew on `button`, if it drew one there.
+    fn label_on(output: &eframe::egui::FullOutput, text: &str, button: eframe::egui::Rect) -> Option<Label> {
+        use eframe::egui::{Rect, Shape};
+        fn visit(shape: &Shape, text: &str, button: Rect, found: &mut Option<Label>) {
+            match shape {
+                Shape::Text(drawn) if drawn.galley.job.text == text => {
+                    let rect = drawn.visual_bounding_rect();
+                    if button.expand(24.0).contains(rect.center()) {
+                        *found = Some(Label { rect, elided: drawn.galley.elided, rows: drawn.galley.rows.len() });
+                    }
+                }
+                Shape::Vec(shapes) => shapes.iter().for_each(|s| visit(s, text, button, found)),
+                _ => {}
+            }
+        }
+        let mut found = None;
+        for clipped in &output.shapes {
+            visit(&clipped.shape, text, button, &mut found);
+        }
+        found
+    }
+
+    /// Every translated Browse button beside a path field shows its label whole, on the
+    /// button, and its row ends where English's ends, in every language. Browse is a
+    /// longer word in some (German's needs 95 points where most rows left 76 or less): a
+    /// button wider than the room its row leaves pushes the row past its column or out of
+    /// its slot over the field. Each row measures its button first (`pages::button_width`)
+    /// and gives the field the rest.
+    #[test]
+    fn browse_rows_fit_in_every_language() {
+        crate::test_common::isolated("ROCKET_I18N_UI_CASE", "i18n::tests::browse_rows_fit_in_every_language", || {
+            use crate::{
+                app::{DialogKind, Intent, Rocket, View},
+                batch::flow_tests::{click, frame, wait},
+                preferences::Page,
+                repository_map::MapIntent,
+                test_common::Fixture,
+            };
+            use eframe::egui::{Context, FullOutput, Pos2, RawInput, Rect, vec2};
+            use std::time::{Duration, Instant};
+            /// Polls and draws until `done`, for what a screen reads before its row shows.
+            fn until(ctx: &Context, app: &mut Rocket, what: &str, done: fn(&Rocket) -> bool) {
+                let deadline = Instant::now() + Duration::from_secs(40);
+                loop {
+                    app.poll(ctx);
+                    frame(ctx, app, vec![]);
+                    if done(app) {
+                        return;
+                    }
+                    assert!(Instant::now() < deadline, "{what}");
+                    std::thread::sleep(Duration::from_millis(10));
+                }
+            }
+            type Show = fn(&Context, &mut Rocket, &Fixture);
+            let rows: Vec<(&str, &str, Show)> = vec![
+                ("Import commit series: Folder", "dialog-series-browse", |_, app, _| {
+                    app.dispatch(Intent::Dialog(DialogKind::MailImport(rocket_git::MailImportAction::Start)));
+                }),
+                ("Export commit series: Save to", "dialog-patch-browse", |_, app, _| app.export_series(None)),
+                ("Custom commands: Program", "dialog-commands-program-browse", |ctx, app, _| {
+                    app.dispatch(Intent::Preferences(Page::Commands));
+                    click(ctx, app, "dialog-commands-new");
+                }),
+                ("Custom commands: definitions file", "dialog-commands-share-browse", |ctx, app, _| {
+                    app.dispatch(Intent::Preferences(Page::Commands));
+                    frame(ctx, app, vec![]);
+                    frame(ctx, app, vec![]);
+                    let import = ["dialog-commands-show-import", "dialog-commands-empty-import"]
+                        .into_iter()
+                        .find(|key| app.frame_widgets.contains_key(*key))
+                        .expect("the commands page offers Import");
+                    click(ctx, app, import);
+                }),
+                ("Run command: a file input", "dialog-command-input-f-browse", |_, app, _| {
+                    app.commands = vec![rocket_git::CustomCommand {
+                        name: "With a file".into(),
+                        program: if cfg!(windows) { r"C:\Tools\git.exe" } else { "/usr/bin/git" }.into(),
+                        arguments: "{input:f}".into(),
+                        inputs: vec![rocket_git::CommandInput {
+                            key: "f".into(),
+                            label: "File".into(),
+                            kind: rocket_git::CommandInputKind::File,
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }];
+                    app.dispatch(Intent::Dialog(DialogKind::RunCommand(0)));
+                }),
+                ("External tools: Program", "tools-browse", |_, app, _| app.show_preferences(Page::Tools)),
+                ("AI drafts: Program", "pref-ai-browse", |_, app, _| {
+                    app.drafting.enabled = true;
+                    app.show_preferences(Page::Commit);
+                }),
+                ("Git: Custom path", "git-browse", |_, app, _| {
+                    // Filled in by hand: the user's global Git configuration is not read.
+                    app.git_settings.loaded = true;
+                    app.git_settings.automatic = true;
+                    app.git_settings.name = "Fixture".into();
+                    app.git_settings.email = "fixture@example.invalid".into();
+                    app.show_preferences(Page::Git);
+                }),
+                ("General: source folder", "pref-source-browse", |_, app, _| app.show_preferences(Page::General)),
+                ("Terminal: custom shell", "shell-browse", |_, app, _| {
+                    app.terminal_shell.editing.choice = crate::terminal_settings::Choice::Custom;
+                    app.show_preferences(Page::Terminal);
+                }),
+                ("MCP server: test repositories", "mcp-browse", |ctx, app, _| {
+                    app.show_preferences(Page::Mcp);
+                    until(ctx, app, "the MCP page loads", |app| !app.mcp.busy());
+                }),
+                ("Submodules: source", "dialog-submodule-source-browse", |ctx, app, _| {
+                    app.dispatch(Intent::Dialog(DialogKind::Submodules));
+                    wait(ctx, app);
+                    click(ctx, app, "dialog-submodule-add");
+                }),
+                ("Map export: Save in", "map-export-browse", |ctx, app, _| {
+                    // The history map has something to export in the smallest repository.
+                    app.dispatch(Intent::Map(MapIntent::History(String::new())));
+                    until(ctx, app, "the map loads", |app| app.frame_widgets.get("map-export").is_some_and(|c| c.enabled));
+                    click(ctx, app, "map-export");
+                }),
+                ("Insights export: folder", "insights-export-browse", |ctx, app, _| {
+                    app.dispatch(Intent::Dialog(DialogKind::Statistics));
+                    until(ctx, app, "Insights loads", |app| app.frame_widgets.get("stats-export").is_some_and(|c| c.enabled));
+                    click(ctx, app, "stats-export");
+                }),
+                ("New worktree: Folder", "dialog-worktree-browse", |ctx, app, _| {
+                    app.dispatch(Intent::Dialog(DialogKind::Worktrees));
+                    wait(ctx, app);
+                    click(ctx, app, "dialog-worktree-create");
+                }),
+                ("Agents session: Agent executable", "agents-program-browse", |_, app, fixture| {
+                    app.tabs[0].view = View::Agents;
+                    app.agents.new_form(fixture.repository.clone(), &app.drafting);
+                    // A program that is not found shows its path field without being asked.
+                    app.agents.form.as_mut().unwrap().record.command.program =
+                        fixture.root.join("missing").join("agent.exe").to_string_lossy().into_owned();
+                }),
+            ];
+            let fixture = Fixture::new();
+            fixture.write("README.md", "# Fixture\n");
+            fixture.commit("Start the fixture");
+            let draw = |ctx: &Context, app: &mut Rocket| -> FullOutput {
+                let mut last = None;
+                // A dialog that just opened is laid out before it shows and takes a few
+                // frames to reach its size.
+                for _ in 0..4 {
+                    if let Some(output) = last.take() {
+                        FullOutput::drop_without_applying_deltas(output);
+                    }
+                    app.frame_widgets.clear();
+                    last = Some(ctx.run_ui(
+                        RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1480.0, 1000.0))),
+                            ..Default::default()
+                        },
+                        |ui| {
+                            // As the app's frame: the window, its intents, then what draws above it.
+                            let mut intents = Vec::new();
+                            app.shell(ui, &mut intents);
+                            for intent in intents {
+                                app.dispatch(intent);
+                            }
+                            let ctx = ui.ctx().clone();
+                            app.dialog_ui(&ctx);
+                            app.crash_reports_ui(&ctx);
+                            app.picker_dialog(&ctx);
+                            app.tool_launch_dialog(&ctx);
+                        },
+                    ));
+                }
+                last.expect("four frames")
+            };
+            let mut problems = Vec::new();
+            for (index, (name, id, show)) in rows.into_iter().enumerate() {
+                let ctx = Context::default();
+                let mut app = Rocket::with_storage(
+                    &ctx,
+                    vec![fixture.repository.clone()],
+                    fixture.root.join(format!("logs {index}")),
+                    fixture.root.join(format!("state {index}")),
+                );
+                wait(&ctx, &mut app);
+                app.auto_refresh = false;
+                show(&ctx, &mut app, &fixture);
+                let mut english = None;
+                for language in Language::ALL {
+                    scoped(language, || {
+                        ctx.set_fonts(crate::fonts::definitions());
+                        let output = draw(&ctx, &mut app);
+                        let button = app.frame_widgets.get(id).map(|control| control.rect);
+                        let label = button.and_then(|button| label_on(&output, tr("Browse"), button));
+                        output.drop_without_applying_deltas();
+                        let (Some(button), Some(label)) = (button, label) else {
+                            problems.push(format!("{name} / {language:?}: {id} {button:?} shows no \"{}\"", tr("Browse")));
+                            return;
+                        };
+                        let english: Rect = *english.get_or_insert(button);
+                        if label.elided || label.rows != 1 {
+                            problems.push(format!("{name} / {language:?}: the label is cut or wrapped: {label:?}"));
+                        }
+                        if label.rect.left() < button.left() - 0.5 || label.rect.right() > button.right() + 0.5 {
+                            problems.push(format!("{name} / {language:?}: the label {:?} passes its button {button:?}", label.rect));
+                        }
+                        if button.right() > english.right() + 0.5 {
+                            problems.push(format!(
+                                "{name} / {language:?}: the row ends at {}, where English's ends at {}",
+                                button.right(),
+                                english.right()
+                            ));
+                        }
+                    });
+                }
+            }
+            assert!(problems.is_empty(), "Browse rows that do not fit:\n{}", problems.join("\n"));
+        });
+    }
+
+    /// Export commit series ends its rows inside the dialog in every language. The range
+    /// row's two fields share what First, the arrow and Last leave, and those are longer
+    /// words in some languages than the 110 points the row kept for them; a row wider
+    /// than the dialog also widened the Save to row and the buttons under it.
+    #[test]
+    fn export_commit_series_rows_end_inside_the_dialog_in_every_language() {
+        crate::test_common::isolated(
+            "ROCKET_I18N_UI_CASE",
+            "i18n::tests::export_commit_series_rows_end_inside_the_dialog_in_every_language",
+            || {
+                use crate::{
+                    app::Rocket,
+                    batch::flow_tests::{frame, wait},
+                    test_common::Fixture,
+                };
+                use eframe::egui::Context;
+                let fixture = Fixture::new();
+                fixture.write("README.md", "# Fixture\n");
+                fixture.commit("Start the fixture");
+                let ctx = Context::default();
+                let mut app = Rocket::with_storage(
+                    &ctx,
+                    vec![fixture.repository.clone()],
+                    fixture.root.join("logs"),
+                    fixture.root.join("state"),
+                );
+                wait(&ctx, &mut app);
+                app.auto_refresh = false;
+                app.export_series(None);
+                let mut problems = Vec::new();
+                for language in Language::ALL {
+                    scoped(language, || {
+                        ctx.set_fonts(crate::fonts::definitions());
+                        // New fonts and a dialog's size take a few frames to settle.
+                        for _ in 0..4 {
+                            frame(&ctx, &mut app, vec![]);
+                        }
+                        // The header's close button sits at the dialog's right edge.
+                        let edge = app.frame_widgets["dialog-close"].rect.right();
+                        for key in ["dialog-patch-revision-choice", "dialog-patch-browse", "dialog-submit"] {
+                            let right = app.frame_widgets[key].rect.right();
+                            if right > edge + 0.5 {
+                                problems.push(format!("{language:?}: {key} ends at {right}, past the dialog's {edge}"));
+                            }
+                        }
+                    });
+                }
+                assert!(problems.is_empty(), "Rows wider than the dialog:\n{}", problems.join("\n"));
+            },
+        );
     }
 
     /// Prints each language's untranslated strings as JSON to fill in:

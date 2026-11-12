@@ -581,7 +581,10 @@ impl Rocket {
                     row(ui, tr("Program"), |ui| {
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 8.0;
-                            let width = (ui.available_width() - 86.0 - 8.0).max(80.0);
+                            // As wide as its label needs: Browse is a longer word in
+                            // some languages.
+                            let button = pages::button_width(ui, tr("Browse"), 86.0);
+                            let width = (ui.available_width() - button - 8.0).max(80.0);
                             let r = ui.add_sized(
                                 [width, CONTROL],
                                 TextEdit::singleline(&mut s.editing.program)
@@ -595,7 +598,7 @@ impl Rocket {
                             if !matches!(ready, Readiness::Ready(_) | Readiness::Checking) {
                                 ui.painter().rect_stroke(r.rect, 6.0, Stroke::new(1.0, color.gamma_multiply(0.6)), StrokeKind::Inside);
                             }
-                            let r = ui.add_sized([86.0, CONTROL], Button::new(tr("Browse")));
+                            let r = ui.add_sized([button, CONTROL], Button::new(tr("Browse")));
                             pages::control(widgets, "shell-browse", &r, ui.clip_rect());
                             browse = r.clicked();
                         });

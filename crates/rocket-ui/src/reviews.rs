@@ -133,6 +133,10 @@ impl Review {
                         sequence: None,
                         history: Some(page),
                         warnings: vec![],
+                        // A pinned review is read-only: no notice about its history.
+                        ordering: None,
+                        history_notice: false,
+                        slow_loads: 0,
                     });
                     if let Some(path) = self.request.path.clone() {
                         self.tab.file_history.mode = if self.request.blame {

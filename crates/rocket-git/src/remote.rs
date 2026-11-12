@@ -139,12 +139,25 @@ impl Repository {
         progress: Option<&SyncSender<FetchProgress>>,
         cancel: &CancellationToken,
     ) -> Result<FetchOutput> {
-        self.runner.observe("write_result", "fetch", || {
+        let fetched = self.runner.observe("write_result", "fetch", || {
             let output = self
                 .runner
                 .fetch(self.cwd(), arguments, input, cancel, progress)?;
             self.fetch_output(output)
-        })
+        })?;
+        self.index_fetched_commits(&fetched, cancel);
+        Ok(fetched)
+    }
+
+    /// Where the repository keeps a commit index up to date, add what this fetch
+    /// brought. Nothing runs when every branch was already up to date.
+    fn index_fetched_commits(&self, fetched: &FetchOutput, cancel: &CancellationToken) {
+        let brought = fetched.updates.as_ref().map_or(true, |updates| {
+            updates.iter().any(|update| update.kind != FetchUpdateKind::UpToDate)
+        });
+        if brought {
+            self.update_history_index_after_fetch(cancel);
+        }
     }
 
     /// [`Repository::execute_fetch`] for automatic fetches, which may never prompt.
@@ -154,12 +167,14 @@ impl Repository {
         input: Vec<u8>,
         cancel: &CancellationToken,
     ) -> Result<FetchOutput> {
-        self.runner.observe("write_result", "fetch", || {
+        let fetched = self.runner.observe("write_result", "fetch", || {
             let output = self
                 .runner
                 .quiet_fetch(self.cwd(), arguments, input, cancel)?;
             self.fetch_output(output)
-        })
+        })?;
+        self.index_fetched_commits(&fetched, cancel);
+        Ok(fetched)
     }
 
     fn fetch_output(&self, output: crate::runner::Output) -> Result<FetchOutput> {

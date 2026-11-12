@@ -14,6 +14,8 @@ mod adapter;
 mod azure_server;
 mod checks;
 pub use checks::*;
+mod insights;
+pub use insights::*;
 mod bitbucket_server;
 mod pagination;
 mod protection;
@@ -259,6 +261,9 @@ pub struct ForgeFilter {
     pub work_item_state: String,
     /// GitHub/GitLab server-side text/author/assignee search. Others reject it.
     pub search: ForgeSearch,
+    /// Ask for each pull request's reviewers where a host leaves them out of lists
+    /// unless asked (Bitbucket Cloud). Insights sets it; it costs a larger response.
+    pub reviewers: bool,
 }
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ForgeSearch {
@@ -315,6 +320,11 @@ impl fmt::Debug for ForgeCursor {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForgeItem {
+    /// Optional PR dates from the list response; absent for issues/search results.
+    pub timing: Option<ForgePullTiming>,
+    /// The PR's reviewers as its list row gives them; absent for issues, search
+    /// results and rows without reviewer fields.
+    pub reviewers: Option<ForgeReviewRequests>,
     pub number: u64,
     pub title: String,
     pub state: String,

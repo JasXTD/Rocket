@@ -710,7 +710,9 @@ impl Repository {
             .iter()
             .flat_map(|id| format!("{}^{{commit}}\n", id.as_str()).into_bytes())
             .collect();
+        let started = std::time::Instant::now();
         let output = self.read("history traversal", &arguments, input, cancel)?;
+        let ordering = started.elapsed();
         let mut ids = Vec::new();
         for value in output
             .split(|&b| b == b'\n')
@@ -726,6 +728,7 @@ impl Repository {
                 next: None,
                 tips,
                 order,
+                ordering,
             });
         }
         let input: Vec<u8> = ids
@@ -757,6 +760,7 @@ impl Repository {
             next,
             tips,
             order,
+            ordering,
         })
     }
 

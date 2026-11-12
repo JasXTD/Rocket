@@ -163,8 +163,14 @@ impl ForgeSession {
                         ForgeState::Closed => "state=MERGED&state=DECLINED",
                         ForgeState::All => "state=OPEN&state=MERGED&state=DECLINED",
                     };
+                    // Lists leave reviewers and participants out unless asked.
+                    let fields = if filter.reviewers {
+                        "&fields=%2Bvalues.reviewers,%2Bvalues.participants"
+                    } else {
+                        ""
+                    };
                     format!(
-                        "{pre}/pullrequests?{states}&sort=-updated_on&pagelen={PAGE}&page={page}"
+                        "{pre}/pullrequests?{states}&sort=-updated_on&pagelen={PAGE}&page={page}{fields}"
                     )
                 }
                 ForgeProvider::Azure | ForgeProvider::AzureServer => self.azure_pull_path(repo, filter, page),
@@ -482,6 +488,10 @@ impl ForgeSession {
             ForgeProvider::BitbucketServer => unreachable!("separate server adapter"),
         };
         Some(ForgeItem {
+            timing: (kind == ForgeKind::Pulls).then(|| super::insights::timing(self.config.provider(), v)),
+            reviewers: (kind == ForgeKind::Pulls)
+                .then(|| super::insights::review_requests(self.config.provider(), r.parts().0, v))
+                .flatten(),
             number,
             title: crate::display_text::bounded(title, 1024).text,
             state: crate::display_text::bounded(state, 64).text,

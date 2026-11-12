@@ -856,14 +856,23 @@ fn export_body(
         form_row(ui, crate::i18n::tr("Commits"), |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 8.0;
-                let half = ((ui.available_width() - 110.0) / 2.0).max(120.0);
-                ui.label(RichText::new(crate::i18n::tr("First")).color(HINT()));
+                // The two fields share what the labels, the arrow and the four gaps
+                // between them leave: 110 at least, as before, and more where First and
+                // Last are longer words.
+                let (first, last) = (crate::i18n::tr("First"), crate::i18n::tr("Last"));
+                let wide = |text: &str| {
+                    let font = TextStyle::Body.resolve(ui.style());
+                    ui.painter().layout_no_wrap(text.to_owned(), font, HINT()).size().x
+                };
+                let fixed = (wide(first) + wide("→") + wide(last) + 4.0 * 8.0).ceil().max(110.0);
+                let half = ((ui.available_width() - fixed) / 2.0).max(120.0);
+                ui.label(RichText::new(first).color(HINT()));
                 let (head, choices) = (context.head.as_ref(), &context.choices);
                 if crate::commit_picker::field(ui, &mut s.base, "dialog-patch-base", choices, head, half, enabled, widgets) {
                     s.touched();
                 }
                 ui.label(RichText::new("→").color(FAINT()));
-                ui.label(RichText::new(crate::i18n::tr("Last")).color(HINT()));
+                ui.label(RichText::new(last).color(HINT()));
                 if crate::commit_picker::field(ui, &mut s.revision, "dialog-patch-revision", choices, head, half, enabled, widgets) {
                     s.touched();
                 }
@@ -904,7 +913,11 @@ fn export_body(
     form_row(ui, if series { crate::i18n::tr("Save to") } else { crate::i18n::tr("Save as") }, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
-            let width = if series { ui.available_width() - 76.0 } else { f32::INFINITY };
+            // The button is measured first and the field takes what it leaves: Browse is
+            // a longer word in some languages.
+            let label = crate::i18n::tr("Browse");
+            let button = if series { pages::button_width(ui, label, 0.0) } else { 0.0 };
+            let width = if series { ui.available_width() - button - 8.0 } else { f32::INFINITY };
             let r = ui.add_enabled(
                 enabled,
                 TextEdit::singleline(&mut s.path)
@@ -918,7 +931,7 @@ fn export_body(
                 s.touched();
             }
             if series {
-                let r = ui.add_enabled(enabled, Button::new(crate::i18n::tr("Browse")).min_size(vec2(0.0, 30.0)));
+                let r = ui.add_enabled(enabled, Button::new(label).min_size(vec2(button, 30.0)));
                 register(ui, widgets, "dialog-patch-browse", &r);
                 *browse = r.clicked();
             }

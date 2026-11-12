@@ -335,6 +335,25 @@ impl Runner {
         )
     }
 
+    /// `git commit-graph write`, a write whose progress counts commits. The second
+    /// half of `progress` is the number of commits expected, when the caller knows it.
+    pub(crate) fn history_index(
+        &self,
+        cwd: &Path,
+        args: &[OsString],
+        cancel: &CancellationToken,
+        progress: Option<(&mpsc::SyncSender<FetchProgress>, Option<u64>)>,
+    ) -> Result<Output> {
+        self.execute(
+            cwd,
+            args,
+            Vec::new(),
+            cancel,
+            ExecutionKind::Write,
+            progress.map(|(sender, expected)| ProgressSink::HistoryIndex(sender, expected)),
+        )
+    }
+
     /// [`Runner::fetch`] for automatic fetches: see `ExecutionKind::QuietFetch`.
     pub(crate) fn quiet_fetch(
         &self,

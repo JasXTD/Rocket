@@ -45,6 +45,15 @@ const LANGUAGE_MAGIC: &[u8] = b"ROCKET-STATE\0\x1b";
 const SCAN_BUDGET_MAGIC: &[u8] = b"ROCKET-STATE\0\x1c";
 // v29 appends reviewed agent session definitions. Loading never starts a process.
 const AGENTS_MAGIC: &[u8] = b"ROCKET-STATE\0\x1d";
+// v30 appends each repository's Insights choices, written only once one differs from the
+// defaults, so a state without them stays readable by older binaries.
+const INSIGHTS_MAGIC: &[u8] = b"ROCKET-STATE\0\x1e";
+// v31 appends GitHub Copilot's program chosen with Browse in Agents, written only once one
+// is chosen, so a state without it stays readable by older binaries.
+const AGENT_PROGRAM_MAGIC: &[u8] = b"ROCKET-STATE\0\x1f";
+// v32 appends the repositories whose "Speed up history" notice was closed, written only
+// once one is, so a state without them stays readable by older binaries.
+const HISTORY_NOTICE_MAGIC: &[u8] = b"ROCKET-STATE\0\x20";
 /// Heights the commit message area can be dragged to and saved at.
 pub const COMMIT_HEIGHTS: std::ops::RangeInclusive<f32> = 120.0..=2000.0;
 // v15 uses the v14 layout and version-2 definitions for context-specific commands.
@@ -77,6 +86,10 @@ const OLD_MAGIC: &[u8] = b"ROCKET-STATE\0\x01";
 pub const MESSAGE_REPOSITORIES: usize = 64;
 /// Per-worktree presentation records retained in the state file.
 pub const WORKTREE_VIEWS: usize = 256;
+/// Repositories whose Insights choices are retained.
+pub const INSIGHTS_VIEWS: usize = 256;
+/// Repositories whose closed "Speed up history" notice is remembered.
+pub const HIDDEN_HISTORY_NOTICES: usize = 256;
 /// Automatic fetch intervals in minutes; 0 turns automatic fetch off.
 pub const AUTO_FETCH_MINUTES: [u16; 6] = [0, 5, 10, 15, 30, 60];
 
@@ -143,8 +156,15 @@ impl Default for Preferences {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SavedState {
     pub agents: Vec<crate::agents::model::Record>,
+    /// GitHub Copilot's program chosen with Browse in Agents; empty looks for it.
+    pub copilot_program: String,
     pub hosting_searches: Vec<crate::forge::search::Recent>,
     pub worktree_views: BTreeMap<PathBuf, crate::worktree_view::Settings>,
+    /// The Insights tab and filters per repository, only where they differ from the
+    /// defaults.
+    pub insights_views: BTreeMap<PathBuf, crate::statistics::View>,
+    /// Repositories where the "Speed up history" notice was closed.
+    pub hidden_history_notices: BTreeSet<PathBuf>,
     pub library: crate::repository_library::Library,
     pub tools: [rocket_git::ExternalToolConfig; 3],
     pub tool_profiles: Option<crate::tool_profiles::Profiles>,
@@ -203,6 +223,60 @@ impl SavedState {
             keep.insert(path.clone());
         }
         self.worktree_views.retain(|path, _| keep.contains(path));
+        true
+    }
+
+    /// Keep a repository's Insights choices, or forget them once they are the defaults
+    /// again, so an untouched state stays readable by older binaries. Returns whether
+    /// anything changed.
+    pub(crate) fn set_insights_view(&mut self, path: &Path, view: crate::statistics::View) -> bool {
+        if view == crate::statistics::View::default() || !view.valid() {
+            return self.insights_views.remove(path).is_some();
+        }
+        if self.insights_views.get(path) == Some(&view) {
+            return false;
+        }
+        self.insights_views.insert(path.to_owned(), view);
+        true
+    }
+
+    /// Remember that the "Speed up history" notice was closed for this repository. At
+    /// the bound the first one kept is forgotten, where the notice may then show again.
+    pub(crate) fn hide_history_notice(&mut self, path: &Path) {
+        if !path.is_absolute() || self.hidden_history_notices.contains(path) {
+            return;
+        }
+        while self.hidden_history_notices.len() >= HIDDEN_HISTORY_NOTICES {
+            self.hidden_history_notices.pop_first();
+        }
+        self.hidden_history_notices.insert(path.to_owned());
+    }
+
+    /// Prefer active, open and recent repositories when the Insights choices reach their
+    /// bound.
+    pub(crate) fn retain_insights_views<'a>(
+        &mut self,
+        preferred: impl IntoIterator<Item = &'a PathBuf>,
+    ) -> bool {
+        if self.insights_views.len() <= INSIGHTS_VIEWS {
+            return false;
+        }
+        let mut keep = BTreeSet::new();
+        for path in preferred {
+            if keep.len() == INSIGHTS_VIEWS {
+                break;
+            }
+            if self.insights_views.contains_key(path) {
+                keep.insert(path.clone());
+            }
+        }
+        for path in self.insights_views.keys() {
+            if keep.len() == INSIGHTS_VIEWS {
+                break;
+            }
+            keep.insert(path.clone());
+        }
+        self.insights_views.retain(|path, _| keep.contains(path));
         true
     }
 }
@@ -371,7 +445,16 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
         return Err(invalid());
     }
     rocket_git::validate_secret_scan_mib(p.secret_scan_mib).map_err(|_| invalid())?;
-    let agents = !state.agents.is_empty();
+    let copilot = !state.copilot_program.is_empty();
+    // Only a program a session could start is kept.
+    if copilot && !rocket_git::valid_custom_program_path(Path::new(&state.copilot_program)) {
+        return Err(invalid());
+    }
+    let notices = !state.hidden_history_notices.is_empty();
+    // Every record before the newest one is written, v31's program as an empty text.
+    let program = notices || copilot;
+    let insights = program || !state.insights_views.is_empty();
+    let agents = insights || !state.agents.is_empty();
     let scan_budget = agents || p.secret_scan_mib != rocket_git::DEFAULT_SECRET_SCAN_MIB;
     let language = scan_budget || p.language.is_some();
     let commit_height = language || p.commit_height.is_some();
@@ -536,6 +619,27 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     if language { put(&mut bytes, p.language.map_or("", |chosen| chosen.tag()).as_bytes())?; }
     if scan_budget { bytes.extend(p.secret_scan_mib.to_le_bytes()); }
     if agents { bytes[..AGENTS_MAGIC.len()].copy_from_slice(AGENTS_MAGIC);put(&mut bytes,&crate::agents::model::encode(&state.agents)?)?; }
+    if insights {
+        bytes[..INSIGHTS_MAGIC.len()].copy_from_slice(INSIGHTS_MAGIC);
+        encode_insights(&mut bytes, &state.insights_views)?;
+    }
+    if program {
+        bytes[..AGENT_PROGRAM_MAGIC.len()].copy_from_slice(AGENT_PROGRAM_MAGIC);
+        put(&mut bytes, state.copilot_program.as_bytes())?;
+    }
+    if notices {
+        if state.hidden_history_notices.len() > HIDDEN_HISTORY_NOTICES {
+            return Err(invalid());
+        }
+        bytes[..HISTORY_NOTICE_MAGIC.len()].copy_from_slice(HISTORY_NOTICE_MAGIC);
+        bytes.extend((state.hidden_history_notices.len() as u32).to_le_bytes());
+        for path in &state.hidden_history_notices {
+            if !path.is_absolute() {
+                return Err(invalid());
+            }
+            put(&mut bytes, &path_bytes(path))?;
+        }
+    }
     if bytes.len() as u64 > MAX_BYTES {
         return Err(invalid());
     }
@@ -556,6 +660,72 @@ fn encode_views(bytes: &mut Vec<u8>, views: &BTreeMap<PathBuf, crate::worktree_v
         for id in folded { put(bytes, id.as_str().as_bytes())?; }
     }
     Ok(())
+}
+/// Each saved Insights view: its repository, the tab and filters as small codes, then
+/// the author when one is chosen.
+fn encode_insights(bytes: &mut Vec<u8>, views: &BTreeMap<PathBuf, crate::statistics::View>) -> io::Result<()> {
+    use crate::statistics::{Period, Section};
+    if views.len() > INSIGHTS_VIEWS {
+        return Err(invalid());
+    }
+    let period = |p: Period| Period::ALL.iter().position(|q| *q == p).unwrap_or(0) as u8;
+    bytes.extend((views.len() as u32).to_le_bytes());
+    for (path, v) in views {
+        if !path.is_absolute() || !v.valid() {
+            return Err(invalid());
+        }
+        put(bytes, &path_bytes(path))?;
+        bytes.extend([
+            Section::ALL.iter().position(|s| *s == v.section).unwrap_or(0) as u8,
+            period(v.range),
+            u8::from(v.all_branches),
+            u8::from(v.table),
+            period(v.period),
+            period(v.pull_period),
+            v.show,
+            u8::from(v.trends),
+            u8::from(v.author.is_some()),
+        ]);
+        put(bytes, v.author.as_deref().unwrap_or("").as_bytes())?;
+    }
+    Ok(())
+}
+fn decode_insights(r: &mut Reader<'_>) -> io::Result<BTreeMap<PathBuf, crate::statistics::View>> {
+    use crate::statistics::{Period, Section, View};
+    let count = r.u32()? as usize;
+    if count > INSIGHTS_VIEWS {
+        return Err(invalid());
+    }
+    let period = |code: u8| Period::ALL.get(usize::from(code)).copied().ok_or_else(invalid);
+    let mut views = BTreeMap::new();
+    for _ in 0..count {
+        let path = r.path()?;
+        let section = Section::ALL.get(usize::from(r.take(1)?[0])).copied().ok_or_else(invalid)?;
+        let range = period(r.take(1)?[0])?;
+        let (all_branches, table) = (r.boolean()?, r.boolean()?);
+        let (files, pulls) = (period(r.take(1)?[0])?, period(r.take(1)?[0])?);
+        let show = r.take(1)?[0];
+        let (trends, chosen) = (r.boolean()?, r.boolean()?);
+        let author = std::str::from_utf8(r.bytes()?).map_err(|_| invalid())?;
+        if !chosen && !author.is_empty() {
+            return Err(invalid());
+        }
+        let view = View {
+            section,
+            range,
+            all_branches,
+            table,
+            period: files,
+            pull_period: pulls,
+            author: chosen.then(|| author.to_owned()),
+            show,
+            trends,
+        };
+        if !view.valid() || views.insert(path, view).is_some() {
+            return Err(invalid());
+        }
+    }
+    Ok(views)
 }
 fn decode_views(r: &mut Reader<'_>) -> io::Result<BTreeMap<PathBuf, crate::worktree_view::Settings>> {
     let mut views = BTreeMap::new(); let count = r.u32()?;
@@ -676,7 +846,10 @@ impl<'a> Reader<'a> {
 fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     let mut r = Reader(bytes);
     let magic = r.take(MAGIC.len())?;
-    let agents = magic == AGENTS_MAGIC;
+    let notices = magic == HISTORY_NOTICE_MAGIC;
+    let copilot = notices || magic == AGENT_PROGRAM_MAGIC;
+    let insights = copilot || magic == INSIGHTS_MAGIC;
+    let agents = insights || magic == AGENTS_MAGIC;
     let scan_budget = agents || magic == SCAN_BUDGET_MAGIC;
     let language = scan_budget || magic == LANGUAGE_MAGIC;
     let commit_height = language || magic == COMMIT_HEIGHT_MAGIC;
@@ -978,6 +1151,24 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
         state.preferences.secret_scan_mib = u64::from_le_bytes(r.take(8)?.try_into().unwrap());
     }
     if agents { state.agents=crate::agents::model::decode(r.bytes()?)?; }
+    if insights {
+        state.insights_views = decode_insights(&mut r)?;
+    }
+    if copilot {
+        state.copilot_program = std::str::from_utf8(r.bytes()?).map_err(|_| invalid())?.to_owned();
+    }
+    if notices {
+        let count = r.u32()? as usize;
+        // The record exists only once a notice was closed, and each repository is there once.
+        if count == 0 || count > HIDDEN_HISTORY_NOTICES {
+            return Err(invalid());
+        }
+        for _ in 0..count {
+            if !state.hidden_history_notices.insert(r.path()?) {
+                return Err(invalid());
+            }
+        }
+    }
     if !r.0.is_empty() {
         return Err(invalid());
     }
@@ -1006,6 +1197,76 @@ mod scan_budget_tests {
         assert_eq!(decode(&encoded).unwrap(),saved);
         let mut corrupt=encoded.clone();corrupt.push(0);assert!(decode(&corrupt).is_err());
         saved.agents.clear();assert_ne!(&encode(&saved).unwrap()[..MAGIC.len()],AGENTS_MAGIC);
+    }
+
+    #[test]
+    fn closed_history_notices_roundtrip_as_v32_only_when_one_was_closed() {
+        let root = std::env::temp_dir();
+        let mut state = SavedState::default();
+        state.hide_history_notice(Path::new("relative"));
+        assert!(state.hidden_history_notices.is_empty(), "only a repository's full path is kept");
+        assert_ne!(&encode(&state).unwrap()[..MAGIC.len()], HISTORY_NOTICE_MAGIC);
+        state.hide_history_notice(&root.join("資料"));
+        state.hide_history_notice(&root.join("other"));
+        state.hide_history_notice(&root.join("other"));
+        assert_eq!(state.hidden_history_notices.len(), 2);
+        let bytes = encode(&state).unwrap();
+        assert_eq!(&bytes[..MAGIC.len()], HISTORY_NOTICE_MAGIC);
+        assert_eq!(decode(&bytes).unwrap(), state);
+        // v31's program is written empty before it and read back empty; a chosen one stays.
+        let mut chosen = state.clone();
+        chosen.copilot_program = std::env::current_exe().unwrap().to_string_lossy().into_owned();
+        assert_eq!(decode(&encode(&chosen).unwrap()).unwrap(), chosen);
+        // An older version can't skip the record, and nothing may follow it.
+        let mut old = bytes.clone();
+        old[MAGIC.len() - 1] = 0x1f;
+        assert!(decode(&old).is_err(), "closed notices cannot be silently ignored");
+        let mut trailing = bytes.clone();
+        trailing.push(0);
+        assert!(decode(&trailing).is_err());
+        // A repository named twice, or none at all, is not a record Rocket writes.
+        let one = encode(&SavedState { hidden_history_notices: [root.join("x")].into(), ..Default::default() }).unwrap();
+        let record = one.len() - 4 - 4 - path_bytes(&root.join("x")).len();
+        let mut twice = one.clone();
+        twice[record..record + 4].copy_from_slice(&2u32.to_le_bytes());
+        twice.extend_from_slice(&one[record + 4..]);
+        assert!(decode(&twice).is_err());
+        let mut none = one[..record + 4].to_vec();
+        none[record..].copy_from_slice(&0u32.to_le_bytes());
+        assert!(decode(&none).is_err());
+        // Past the bound the first one kept makes room.
+        let mut full = SavedState::default();
+        for i in 0..HIDDEN_HISTORY_NOTICES + 3 {
+            full.hide_history_notice(&root.join(format!("r{i:04}")));
+        }
+        assert_eq!(full.hidden_history_notices.len(), HIDDEN_HISTORY_NOTICES);
+        assert!(!full.hidden_history_notices.contains(&root.join("r0000")));
+        assert!(full.hidden_history_notices.contains(&root.join(format!("r{:04}", HIDDEN_HISTORY_NOTICES + 2))));
+        assert_eq!(decode(&encode(&full).unwrap()).unwrap(), full);
+    }
+
+    #[test]
+    fn a_chosen_copilot_program_roundtrips_as_v31_only_when_one_is_chosen() {
+        let mut state = SavedState::default();
+        assert_ne!(&encode(&state).unwrap()[..MAGIC.len()], AGENT_PROGRAM_MAGIC);
+        state.copilot_program = std::env::current_exe().unwrap().to_string_lossy().into_owned();
+        let bytes = encode(&state).unwrap();
+        assert_eq!(&bytes[..MAGIC.len()], AGENT_PROGRAM_MAGIC);
+        assert_eq!(decode(&bytes).unwrap(), state);
+        // An older version can't skip it, and nothing may follow it.
+        let mut old = bytes.clone();
+        old[MAGIC.len() - 1] = 0x1e;
+        assert!(decode(&old).is_err(), "the program cannot be silently ignored");
+        let mut trailing = bytes.clone();
+        trailing.push(0);
+        assert!(decode(&trailing).is_err());
+        // Only a program a session could start is kept, on both paths.
+        let at = bytes.len() - state.copilot_program.len();
+        let mut relative = bytes.clone();
+        relative[at..at + 3].copy_from_slice(b"../");
+        assert!(decode(&relative).is_err());
+        state.copilot_program = "copilot.exe".into();
+        assert!(encode(&state).is_err());
     }
 
     #[test]
@@ -1869,4 +2130,79 @@ fn decode_library(r: &mut Reader<'_>, nested_workspaces: bool) -> io::Result<cra
     // decode() validates the complete state, including those parent records.
     if !nested_workspaces { l.validate().map_err(|_| invalid())?; }
     Ok(l)
+}
+
+#[cfg(test)]
+mod insights_view_tests {
+    use super::*;
+    use crate::statistics::{Period, Section, View};
+
+    #[test]
+    fn insights_views_roundtrip_as_v30_only_when_chosen_and_reject_bad_records() {
+        let root = std::env::temp_dir();
+        let mut state = SavedState::default();
+        // Opening Insights with the default choices writes nothing new.
+        assert!(!state.set_insights_view(&root.join("plain"), View::default()));
+        assert_ne!(&encode(&state).unwrap()[..MAGIC.len()], INSIGHTS_MAGIC);
+        let view = View {
+            section: Section::Pulls,
+            range: Period::Days90,
+            all_branches: true,
+            table: true,
+            period: Period::All,
+            pull_period: Period::Year,
+            author: Some("作者 =1+1".into()),
+            show: 2,
+            trends: true,
+        };
+        assert!(state.set_insights_view(&root.join("資料"), view.clone()));
+        assert!(!state.set_insights_view(&root.join("資料"), view.clone()));
+        let mut none = view.clone();
+        none.author = None;
+        assert!(state.set_insights_view(&root.join("other"), none));
+        let bytes = encode(&state).unwrap();
+        assert_eq!(&bytes[..MAGIC.len()], INSIGHTS_MAGIC);
+        let back = decode(&bytes).unwrap();
+        assert_eq!(back, state);
+        assert_eq!(back.insights_views[&root.join("資料")], view);
+        // Agents written with it still read back, and an older version can't skip it.
+        let mut old = bytes.clone();
+        old[MAGIC.len() - 1] = 0x1d;
+        assert!(decode(&old).is_err(), "the views cannot be silently ignored");
+        let mut trailing = bytes.clone();
+        trailing.push(0);
+        assert!(decode(&trailing).is_err());
+        // Back to the defaults: the record goes, and so does the version.
+        assert!(state.set_insights_view(&root.join("資料"), View::default()));
+        state.insights_views.clear();
+        assert_ne!(&encode(&state).unwrap()[..MAGIC.len()], INSIGHTS_MAGIC);
+        // Invalid values are refused on both paths.
+        let mut bad = SavedState::default();
+        bad.insights_views.insert(root.join("x"), View { show: 4, ..view.clone() });
+        assert!(encode(&bad).is_err());
+        // Waiting for review is a state filter a view keeps like the others.
+        assert!(View { show: 3, ..view.clone() }.valid());
+        bad.insights_views.clear();
+        bad.insights_views.insert(PathBuf::from("relative"), view.clone());
+        assert!(encode(&bad).is_err());
+        let mut long = view.clone();
+        long.author = Some("a".repeat(crate::statistics::VIEW_AUTHOR + 1));
+        assert!(!long.valid());
+    }
+
+    #[test]
+    fn insights_views_keep_open_and_recent_repositories_at_their_bound() {
+        let root = std::env::temp_dir();
+        let mut state = SavedState::default();
+        let view = View { trends: true, ..View::default() };
+        for i in 0..INSIGHTS_VIEWS + 5 {
+            state.set_insights_view(&root.join(format!("r{i:04}")), view.clone());
+        }
+        let open = root.join(format!("r{:04}", INSIGHTS_VIEWS + 4));
+        assert!(state.retain_insights_views([&open]));
+        assert_eq!(state.insights_views.len(), INSIGHTS_VIEWS);
+        assert!(state.insights_views.contains_key(&open));
+        assert!(!state.retain_insights_views([&open]));
+        assert!(decode(&encode(&state).unwrap()).is_ok());
+    }
 }

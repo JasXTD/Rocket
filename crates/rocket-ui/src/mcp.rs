@@ -382,7 +382,10 @@ impl Panel {
                     });
                     text_row(ui, crate::i18n::tr("Test repositories"), LABEL, |ui| {
                         // The field's width is kept while it waits, so Browse never moves.
-                        let width = (ui.available_width() - 76.0 - ui.spacing().item_spacing.x).max(80.0);
+                        // Browse is as wide as its label needs (a longer word in some
+                        // languages), and the field takes what it leaves.
+                        let button = pages::button_width(ui, crate::i18n::tr("Browse"), 76.0);
+                        let width = (ui.available_width() - button - ui.spacing().item_spacing.x).max(80.0);
                         if waiting {
                             placeholder(ui, width, 300.0);
                         } else {
@@ -396,7 +399,7 @@ impl Panel {
                                 .on_hover_text(crate::i18n::tr("Only marked test repositories in this folder can be controlled."));
                             pages::control(widgets, "mcp-root", &r, ui.clip_rect());
                         }
-                        let r = ui.add_sized([76.0, CONTROL], Button::new(crate::i18n::tr("Browse")));
+                        let r = ui.add_sized([button, CONTROL], Button::new(crate::i18n::tr("Browse")));
                         pages::control(widgets, "mcp-browse", &r, ui.clip_rect());
                         browse = r.clicked();
                     });

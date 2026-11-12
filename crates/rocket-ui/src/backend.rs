@@ -34,6 +34,14 @@ pub struct Snapshot {
     pub sequence: Option<CommitSequence>,
     pub history: Option<HistoryPage>,
     pub warnings: Vec<String>,
+    /// How long Git took to order the first History page in this refresh. `history`
+    /// may be an earlier refresh's page, kept for the pages loaded after it.
+    pub ordering: Option<Duration>,
+    /// Ordering was slow and the repository has no commit index that would speed it up.
+    pub history_notice: bool,
+    /// How many loads in a row were slow like that, this one included. The app carries
+    /// the count from one refresh to the next and counts Load more pages too.
+    pub slow_loads: u8,
 }
 #[derive(Clone, Debug)]
 pub enum Action {
@@ -57,6 +65,7 @@ pub enum Action {
     Rebase(Arc<RebasePreview>),
     MailImport(Arc<MailImportPreview>),
     Bisect(Arc<BisectPreview>),
+    HistoryIndex(HistoryIndexChange),
     BisectAuto { preview: Arc<BisectAutoPreview>, progress: Arc<std::sync::Mutex<BisectAutoProgress>>, storage: PathBuf },
     Recovery(Arc<RecoveryPreview>),
     Tag(Arc<TagPreview>),
@@ -175,6 +184,7 @@ impl Action {
             Self::Rebase(preview) => preview.action().label(),
             Self::MailImport(preview) => preview.action().label(),
             Self::Bisect(preview) => preview.action().label(),
+            Self::HistoryIndex(change) => change.label(),
             Self::BisectAuto { .. } => "bisect-auto",
             Self::Recovery(preview) => preview.action().label(),
             Self::Tag(preview) => preview.action().label(),
@@ -987,6 +997,25 @@ impl Outcome {
                 self.details.push("The observed refs/index already match the reviewed result, although Git did not confirm completion. Do not repeat the operation blindly.".into());
             }
         }
+    }
+    fn history_index(&mut self, report: HistoryIndexReport, change: HistoryIndexChange) {
+        let phase = match change {
+            HistoryIndexChange::Write { .. } => crate::history_index::WRITE_PHASE,
+            HistoryIndexChange::Remove => "Remove the commit index",
+            HistoryIndexChange::OnFetch(_) => "Save the fetch setting",
+        };
+        self.command_succeeded = self.observe(phase, report.result).is_some();
+        self.observe("Read the commit index", report.index);
+        self.summary = match (change, self.command_succeeded) {
+            (HistoryIndexChange::Write { .. }, true) => "Commit index written. Commits, branches and files are as they were.",
+            (HistoryIndexChange::Write { .. }, false) => "The commit index was not written. Commits, branches and files are as they were.",
+            (HistoryIndexChange::Remove, true) => "Commit index removed.",
+            (HistoryIndexChange::Remove, false) => "The commit index was not removed.",
+            (HistoryIndexChange::OnFetch(true), true) => "Rocket keeps the commit index up to date after fetches.",
+            (HistoryIndexChange::OnFetch(false), true) => "Rocket no longer updates the commit index after fetches.",
+            (HistoryIndexChange::OnFetch(_), false) => "The fetch setting was not saved.",
+        }
+        .into();
     }
     fn bisect(&mut self, report: BisectWriteReport) {
         let inspection_failed =
@@ -2238,6 +2267,12 @@ impl Backend {
                         ))
                     })?;
                 cancel.check()?;
+                let ordering = history.as_ref().map(|page| page.ordering);
+                // Offer the commit index only where it would help: ordering was slow,
+                // there is none, and Git would read one here.
+                let history_notice = ordering.is_some_and(|took| took >= crate::history_index::SLOW)
+                    && !repo.info().is_shallow
+                    && !repo.has_history_index();
                 let refresh_guard = refresh_guard.filter(|guard| warnings.is_empty()
                     && head.is_some() && status.is_some()
                     && watcher.as_ref().and_then(|watch| watch.metadata_generation()) == Some(guard.generation)
@@ -2256,8 +2291,20 @@ impl Backend {
                     sequence,
                     history,
                     warnings,
+                    ordering,
+                    history_notice,
+                    slow_loads: u8::from(history_notice),
                 })
             })
+    }
+    /// The commit index as it is now: file checks and three small Git reads.
+    pub fn history_index(&self, path: &Path, cancel: &CancellationToken) -> Result<HistoryIndex> {
+        self.request("history-index-read", false, |git| git.open(path, cancel)?.history_index(cancel))
+    }
+    /// Every commit the index would cover. Without an index Git walks the whole
+    /// history for this, so it gets the long limit.
+    pub fn count_commits(&self, path: &Path, cancel: &CancellationToken) -> Result<u64> {
+        self.request("history-index-count", true, |git| git.open(path, cancel)?.count_commits(cancel))
     }
     pub fn history(
         &self,
@@ -2444,6 +2491,9 @@ impl Backend {
                 | Action::Lfs(_)
                 | Action::LfsLock(_)
                 | Action::Workflow{..}
+                // Git reads every commit to write the index, which outlasts 30 seconds
+                // in a very large repository.
+                | Action::HistoryIndex(HistoryIndexChange::Write { .. })
         ) || matches!(action, Action::Rebase(preview) if preview.runs_commands());
         self.request(
             action.label(),
@@ -2451,7 +2501,7 @@ impl Backend {
             |git| {
                 let repo = git.open(root, cancel)?;
                 let mut out = Outcome::default();
-                if !matches!(action, Action::Bisect(_) | Action::BisectAuto { .. } | Action::RunCommand { .. })
+                if !matches!(action, Action::Bisect(_) | Action::BisectAuto { .. } | Action::RunCommand { .. } | Action::HistoryIndex(_))
                     && repo.is_bisecting(cancel)?
                 {
                     return Err(Error::Bisect(BisectFailure::ActiveOperation));
@@ -2495,6 +2545,7 @@ impl Backend {
                         out.rebase_result(preview);
                     }
                     Action::Bisect(preview) => out.bisect(repo.apply_bisect(preview,cancel)?),
+                    Action::HistoryIndex(change) => out.history_index(repo.change_history_index(*change, Some(progress), cancel)?, *change),
                     Action::BisectAuto { preview, progress, storage } => crate::bisect::automatic::outcome(&mut out, repo.run_bisect_auto(preview,storage,Some(progress),cancel)?),
                     Action::MailImport(preview) => out.mail_import(repo.apply_mail_import(preview,cancel)?,preview),
                     Action::Recovery(preview) => out.recovery(repo.apply_recovery(preview, cancel)?, preview),
