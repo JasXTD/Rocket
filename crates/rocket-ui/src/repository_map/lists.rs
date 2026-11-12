@@ -237,7 +237,7 @@ pub(super) fn topology(
                 let pill = Rect::from_min_size(at, galley.size() + vec2(16., 6.));
                 painter.rect_filled(pill, 9., color.gamma_multiply(0.14));
                 painter.galley(at + vec2(8., 3.), galley, color);
-                let r = ui.interact(pill, ui.id().with(("map-tip", k)), Sense::click()).on_hover_text(text);
+                let r = ui.interact(pill, ui.scope_id().with(("map-tip", k)), Sense::click()).on_hover_text(text);
                 register(ui, widgets, &format!("map-tip-{k}"), &r);
                 if r.clicked() && !covered {
                     s.selected = Some(*tip);
@@ -253,7 +253,7 @@ pub(super) fn topology(
                 if selected {
                     painter.rect_filled(band, 0., ACCENT_SOFT());
                 }
-                let response = ui.interact(band, ui.id().with(("map-line", k)), Sense::click());
+                let response = ui.interact(band, ui.scope_id().with(("map-line", k)), Sense::click());
                 register(ui, widgets, &format!("map-line-{k}"), &response);
                 if response.clicked() && !covered {
                     s.line = Some(k);
@@ -330,7 +330,7 @@ pub(super) fn topology(
             }
         });
     if !covered {
-        register(ui, widgets, "map-canvas", &ui.interact(scroll.inner_rect, ui.id().with("map-topology-area"), Sense::hover()));
+        register(ui, widgets, "map-canvas", &ui.interact(scroll.inner_rect, ui.scope_id().with("map-topology-area"), Sense::hover()));
     }
 }
 fn line_job(text: String, size: f32, color: Color32, width: f32) -> text::LayoutJob {
@@ -423,7 +423,7 @@ pub(super) fn commits(
                 } else {
                     painter.circle_filled(dot, 4.5, BLUE());
                 }
-                let response = ui.interact(band, ui.id().with(("map-commit", i)), Sense::click());
+                let response = ui.interact(band, ui.scope_id().with(("map-commit", i)), Sense::click());
                 register(ui, widgets, &format!("map-node-{i}"), &response);
                 if response.clicked() && !covered {
                     picked = Some(i);
@@ -451,7 +451,7 @@ pub(super) fn commits(
         s.show_details = true;
     }
     if !covered {
-        register(ui, widgets, "map-canvas", &ui.interact(scroll.inner_rect, ui.id().with("map-commits-area"), Sense::hover()));
+        register(ui, widgets, "map-canvas", &ui.interact(scroll.inner_rect, ui.scope_id().with("map-commits-area"), Sense::hover()));
     }
 }
 
@@ -519,7 +519,7 @@ pub(super) fn grid(
                 let galley = painter.layout_no_wrap(name, if on { semibold(12.) } else { FontId::proportional(12.) }, if on { BLUE() } else { MUTED() });
                 painter.add(epaint::TextShape::new(anchor, galley, MUTED()).with_angle(-0.9));
                 let head = Rect::from_min_size(grid + vec2(c as f32 * CELL.x, -HEAD + 10.), vec2(CELL.x - 4., HEAD - 14.));
-                let r = ui.interact(head, ui.id().with(("map-area", a)), Sense::click()).on_hover_text(&full);
+                let r = ui.interact(head, ui.scope_id().with(("map-area", a)), Sense::click()).on_hover_text(&full);
                 register(ui, widgets, &format!("map-node-{a}"), &r);
                 if r.clicked() && !covered {
                     s.selected = Some(a);
@@ -532,7 +532,7 @@ pub(super) fn grid(
                 let y = grid.y + row as f32 * CELL.y;
                 let on = s.selected == Some(p) || s.cell.map(|(q, _)| q) == Some(p);
                 let names = Rect::from_min_size(pos2(origin.x, y), vec2(NAMES - 32., CELL.y - 4.));
-                let r = ui.interact(names, ui.id().with(("map-person", p)), Sense::click());
+                let r = ui.interact(names, ui.scope_id().with(("map-person", p)), Sense::click());
                 register(ui, widgets, &format!("map-node-{p}"), &r);
                 if r.clicked() && !covered {
                     s.selected = Some(p);
@@ -572,7 +572,7 @@ pub(super) fn grid(
                         painter.rect_stroke(cell.expand(3.), 8., Stroke::new(2., TEXT()), StrokeKind::Inside);
                     }
                     painter.text(cell.center(), Align2::CENTER_CENTER, pages::number_text(weight), semibold(12.5), ink);
-                    let r = ui.interact(cell, ui.id().with(("map-cell", p, a)), Sense::click());
+                    let r = ui.interact(cell, ui.scope_id().with(("map-cell", p, a)), Sense::click());
                     let full = data.nodes[a].path.as_ref().map(|x| label(x)).unwrap_or_default();
                     let r = r.on_hover_text(trf!("{person} · {folder} · commits {count}", person = label(&n.label), folder = full, count = weight));
                     register(ui, widgets, &format!("map-cell-{p}-{a}"), &r);
@@ -595,6 +595,6 @@ pub(super) fn grid(
             }
         });
     if !covered {
-        register(ui, widgets, "map-canvas", &ui.interact(scroll.inner_rect, ui.id().with("map-grid-area"), Sense::hover()));
+        register(ui, widgets, "map-canvas", &ui.interact(scroll.inner_rect, ui.scope_id().with("map-grid-area"), Sense::hover()));
     }
 }

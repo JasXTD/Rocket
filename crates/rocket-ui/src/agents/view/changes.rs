@@ -83,7 +83,7 @@ pub(super) fn show(
         Rect::from_min_max(pos2(rect.left(), list.bottom() + 8.0), rect.max)
     };
     let mut files = child(ui, "agent-files", list);
-    let focus_key = files.id().with("revealed-selection");
+    let focus_key = files.scope_id().with("revealed-selection");
     let focus = (
         s.owner.as_ref().map(|r| r.id),
         s.selected,

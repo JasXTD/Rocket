@@ -55,7 +55,7 @@ impl Rocket {
         };
         let mut review = false;
         let mut dismiss = false;
-        Area::new(Id::new("rocket-update-notice"))
+        Area::new(Id::unique("rocket-update-notice"))
             .order(Order::Foreground)
             .anchor(Align2::RIGHT_TOP, vec2(-18.0, 122.0))
             .show(ctx, |ui| {
@@ -180,14 +180,14 @@ fn dialog(ctx: &Context, s: &mut State, widgets: &mut Widgets, can_install: bool
     let mut a = Actions::default();
     let width = (ctx.content_rect().width() - 48.0).clamp(300.0, 574.0);
     let expanded_heading = s.error.is_none() && matches!(s.status, "available" | "ready");
-    let footer_id = Id::new((
+    let footer_id = Id::unique((
         "update-footer-height",
         s.status,
         s.installable,
         width.to_bits(),
     ));
     let reserve: f32 = ctx.data(|d| d.get_temp(footer_id)).unwrap_or(128.0);
-    let modal = Modal::new(Id::new("rocket-app-update"))
+    let modal = Modal::new(Id::unique("rocket-app-update"))
         .backdrop_color(Color32::from_black_alpha(125))
         .frame(
             Frame::new()

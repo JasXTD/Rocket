@@ -322,7 +322,7 @@ fn tag_check_row(
     job.wrap = text::TextWrapping::truncate_at_width(width);
     let detail = painter.layout_job(job);
     painter.galley(pos2(left, rect.bottom() - 12.0 - detail.size().y / 2.0), detail, HINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, on, &item.label));
+    response.widget_info(|| WidgetInfo::selected(Role::CheckBox, enabled, on, &item.label));
     response
 }
 

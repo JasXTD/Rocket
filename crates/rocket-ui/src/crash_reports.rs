@@ -494,7 +494,7 @@ fn recent_notice(ctx: &Context, s: &mut State, widgets: &mut Widgets) -> Option<
     let image = if report.kind == Kind::WindowsException { Icon::Blocked } else { Icon::Warning };
     let color = if report.kind == Kind::WindowsException { RED() } else { AMBER() };
     let mut open = None;
-    Area::new(Id::new("crash-recent-notice"))
+    Area::new(Id::unique("crash-recent-notice"))
         .order(Order::Foreground)
         .anchor(Align2::RIGHT_BOTTOM, vec2(-16.0, -40.0))
         .show(ctx, |ui| {

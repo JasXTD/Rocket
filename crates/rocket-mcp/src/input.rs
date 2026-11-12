@@ -87,7 +87,7 @@ mod tests {
             };
             prepare_fixture_input(&mut input);
             let mut output = ctx.run_ui(input, |ui| {
-                ui.add(TextEdit::multiline(text).id(Id::new("test-editor")))
+                ui.add(TextEdit::multiline(text).id(Id::unique("test-editor")))
                     .request_focus();
             });
             // This headless widget test has no renderer to apply texture updates.

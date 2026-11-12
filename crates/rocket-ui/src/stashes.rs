@@ -258,7 +258,7 @@ pub(crate) fn view(
     } else {
         pages::list_pane(
             ui,
-            Id::new(("stash-list", tab.id)),
+            Id::unique(("stash-list", tab.id)),
             280.0,
             200.0..=380.0,
             |ui| {

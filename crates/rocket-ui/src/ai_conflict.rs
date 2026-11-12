@@ -446,7 +446,7 @@ fn intent(intents: &mut Vec<Intent>, action: Action) {
 }
 /// AI resolve: the page's way in, with the AI mark before its label.
 pub(crate) fn resolve_button(ui: &mut Ui, enabled: bool) -> Response {
-    let mark = ui.next_auto_id().with("ai-mark");
+    let mark = IdSalt::new("ai-mark");
     let button = Button::new((Atom::custom(mark, vec2(14.0, 14.0)), crate::i18n::tr("AI resolve")));
     let button = if enabled { button.stroke(Stroke::new(1.0, BLUE().gamma_multiply(0.5))) } else { button };
     let out = ui.add_enabled_ui(enabled, |ui| button.atom_ui(ui)).inner;
@@ -713,7 +713,7 @@ fn goes_to(
     let side = |ui: &mut Ui| match check {
         Some(ProgramCheck::Found(path)) => {
             found(ui, crate::i18n::tr("Found"));
-            ui.interact(ui.min_rect(), Id::new("conflict-ai-found"), Sense::hover()).on_hover_text(path.as_str());
+            ui.interact(ui.min_rect(), Id::unique("conflict-ai-found"), Sense::hover()).on_hover_text(path.as_str());
         }
         Some(_) => {
             pages::pill(ui, crate::i18n::tr("Not found"), AMBER());
@@ -1015,7 +1015,7 @@ pub fn view(
         "conflict-ai-scroll",
         &ui.interact(
             area.inner_rect,
-            Id::new("conflict-ai-scroll"),
+            Id::unique("conflict-ai-scroll"),
             Sense::hover(),
         ),
         ui.clip_rect(),

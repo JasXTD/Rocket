@@ -99,7 +99,7 @@ pub(crate) struct Menu {
     pub(crate) busy: Option<&'static str>,
 }
 fn menu_id() -> Id {
-    Id::new("rocket-extension-commands")
+    Id::unique("rocket-extension-commands")
 }
 pub(crate) fn menu(ctx: &Context) -> Menu {
     ctx.data(|d| d.get_temp(menu_id())).unwrap_or_default()

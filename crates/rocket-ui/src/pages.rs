@@ -178,7 +178,7 @@ pub(crate) fn region(
 
 /// Where the last [`split`] drew its details card's scroll viewport this frame.
 fn details_viewport_id() -> Id {
-    Id::new("page-details-viewport")
+    Id::unique("page-details-viewport")
 }
 
 /// Publish the details card's visible viewport as `page-details-scroll`, so automation
@@ -287,7 +287,7 @@ pub(crate) fn tabs(
         );
         let response = ui.interact(
             rect,
-            ui.id().with(("page-tab", item.key)),
+            ui.scope_id().with(("page-tab", item.key)),
             if item.enabled {
                 Sense::click()
             } else {
@@ -327,7 +327,7 @@ pub(crate) fn tabs(
                 BLUE(),
             );
         }
-        response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, item.enabled, item.label));
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, item.enabled, item.label));
         let control_rect = rect.intersect(ui.clip_rect());
         if control_rect.is_positive() {
             widgets.insert(
@@ -433,7 +433,7 @@ fn card(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
             // egui's 64 px minimum if need be) so the last action can still scroll into view.
             let shown = (ui.clip_rect().bottom() - ui.available_rect_before_wrap().top()).max(0.0);
             let output = ScrollArea::vertical()
-                .id_salt(ui.id().with("page-card"))
+                .id_salt(ui.scope_id().with("page-card"))
                 .max_height(shown)
                 .min_scrolled_height(shown.min(64.0))
                 .auto_shrink([false, true])
@@ -537,7 +537,7 @@ pub(crate) fn row(ui: &mut Ui, row: Row, selected: bool, enabled: bool) -> Respo
             FAINT(),
         );
     }
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, row.title));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, row.title));
     response
 }
 
@@ -655,7 +655,7 @@ pub(crate) fn steps(ui: &mut Ui, id: &str, rows: &[Step]) {
                     ui.set_width(ui.available_width());
                     ui.spacing_mut().item_spacing.y = 0.0;
                     // Once for each stop: a row past the sixth starts out of view.
-                    let seen = ui.id().with("seen");
+                    let seen = ui.scope_id().with("seen");
                     let stop = rows.iter().find(|s| matches!(s.mark, StepMark::Stopped | StepMark::LeftOut)).map(|s| s.number);
                     let first = ui.data(|d| d.get_temp::<Option<usize>>(seen)).flatten() != stop;
                     for (i, step) in rows.iter().enumerate() {
@@ -906,7 +906,7 @@ pub(crate) fn option_cards(
                         HINT(),
                     );
                     response.widget_info(|| {
-                        WidgetInfo::selected(WidgetType::RadioButton, enabled, selected, title)
+                        WidgetInfo::selected(Role::RadioButton, enabled, selected, title)
                     });
                     response
                 })
@@ -939,7 +939,7 @@ pub(crate) fn disclosure(ui: &mut Ui, open: bool, label: &str) -> Response {
         galley,
         ink,
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
     response
 }
 
@@ -1022,7 +1022,7 @@ pub(crate) fn tool(ui: &mut Ui, image: Icon, label: &str, enabled: bool) -> Resp
         font,
         ink,
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     response
 }
 
@@ -1161,7 +1161,7 @@ pub(crate) fn plain(
 ) -> ReviewResponse {
     let width = (ctx.content_rect().width() - 48.0).clamp(300.0, max_width);
     let mut closed = false;
-    let modal = Modal::new(Id::new(id))
+    let modal = Modal::new(Id::unique(id))
         .backdrop_color(Color32::from_black_alpha(120))
         .frame(modal_frame())
         .show(ctx, |ui| {
@@ -1254,7 +1254,7 @@ pub(crate) fn full_review(
 /// but a press on the dialog below in that same frame ties with the raise, the older order wins
 /// and the new dialog stays hidden behind. Call this for the new dialog's first two frames.
 pub(crate) fn raise(ctx: &Context, id: &str) {
-    ctx.move_to_top(LayerId::new(Order::Foreground, Id::new(id)));
+    ctx.move_to_top(LayerId::new(Order::Foreground, Id::unique(id)));
     ctx.request_repaint();
 }
 
@@ -1287,7 +1287,7 @@ fn review_dialog(
     let width = (ctx.content_rect().width() - 48.0).clamp(300.0, max_width);
     let height = (ctx.content_rect().height() - 250.0).max(100.0);
     let mut closed = false;
-    let modal = Modal::new(Id::new(id))
+    let modal = Modal::new(Id::unique(id))
         .backdrop_color(Color32::from_black_alpha(120))
         .frame(modal_frame())
         .show(ctx, |ui| {
@@ -1881,7 +1881,7 @@ pub(crate) fn done_strip(
 /// check running now; earlier ones are done. Returns whether Stop was clicked.
 pub fn input_check(ctx: &Context, kind: &str, steps: &[&str], step: usize, stopping: bool) -> bool {
     let mut stop = false;
-    Modal::new(Id::new("mcp-input-check"))
+    Modal::new(Id::unique("mcp-input-check"))
         .backdrop_color(Color32::from_black_alpha(120))
         .frame(modal_frame())
         .show(ctx, |ui| {
@@ -1959,7 +1959,7 @@ pub(crate) fn slot_button(ui: &mut Ui, image: Option<Icon>, label: &str, width: 
     if !compact {
         ui.painter().galley(pos2(left + 20.0, rect.center().y - text.size().y / 2.0), text, ink);
     }
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     if compact { response.on_hover_text(label) } else { response }
 }
 
@@ -1977,7 +1977,7 @@ pub(crate) fn search_box(ui: &mut Ui, value: &mut String, id: &str, hint: &str, 
                 top: 0,
                 bottom: 0,
             })
-            .vertical_align(Align::Center),
+            .align(Align2::LEFT_CENTER),
     );
     icon(
         ui.painter(),
@@ -2074,7 +2074,7 @@ pub(crate) fn list_row(
             FAINT(),
         );
     }
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, label));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, label));
     response
 }
 

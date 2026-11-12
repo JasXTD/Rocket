@@ -150,7 +150,7 @@ fn line(ui: &mut Ui, enabled: bool, text: &mut String, hint: &str) -> Response {
             .char_limit(4096)
             .desired_width(f32::INFINITY)
             .min_size(vec2(0.0, 30.0))
-            .vertical_align(Align::Center),
+            .align(Align2::LEFT_CENTER),
     )
 }
 
@@ -615,7 +615,7 @@ fn branch_row(
     job.wrap = text::TextWrapping::truncate_at_width(width);
     let detail = painter.layout_job(job);
     painter.galley(pos2(left, rect.bottom() - 13.0 - detail.size().y / 2.0), detail, HINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, on, name));
+    response.widget_info(|| WidgetInfo::selected(Role::CheckBox, enabled, on, name));
     response
 }
 
@@ -683,7 +683,7 @@ fn address_row(
             TextEdit::singleline(text)
                 .hint_text(RichText::new(hint).color(FAINT()))
                 .char_limit(4096)
-                .vertical_align(Align::Center),
+                .align(Align2::LEFT_CENTER),
         );
         control(widgets, "dialog-remote-url", &r, ui.clip_rect());
         if r.changed() {
@@ -911,7 +911,7 @@ pub(crate) fn push_body(
                 vec2(half, 30.0),
                 TextEdit::singleline(&mut dialog.second)
                     .char_limit(4096)
-                    .vertical_align(Align::Center),
+                    .align(Align2::LEFT_CENTER),
             );
             control(widgets, "push-destination", &r, ui.clip_rect());
         });

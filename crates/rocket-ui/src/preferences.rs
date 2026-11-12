@@ -577,7 +577,7 @@ fn nav_row(ui: &mut Ui, page: Page, selected: bool, rail: bool, dot: bool) -> Re
         };
         ui.painter().circle_filled(center, 3.5, GREEN());
     }
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, page.nav_label()));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, page.nav_label()));
     if rail {
         response.on_hover_text(page.nav_label())
     } else {
@@ -614,7 +614,7 @@ fn extension_nav_row(ui: &mut Ui, entry: &crate::integrations::Entry, selected: 
         let name = ui.painter().layout_job(job);
         ui.painter().galley(pos2(rect.left() + 38.0, rect.center().y - name.size().y / 2.0), name, color);
     }
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, &entry.name));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &entry.name));
     if rail { response.on_hover_text(&entry.name) } else { response }
 }
 
@@ -684,7 +684,7 @@ impl Rocket {
         let (mut shell_save, mut shell_discard, mut open_git) = (false, false, false);
         let mut intents = Vec::new();
         let mut browse = None;
-        let response = Modal::new(Id::new("rocket-preferences"))
+        let response = Modal::new(Id::unique("rocket-preferences"))
             .backdrop_color(Color32::from_black_alpha(120))
             .frame(pages::modal_frame())
             .show(ctx, |ui| {

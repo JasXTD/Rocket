@@ -377,7 +377,7 @@ fn draw_row(ui: &mut Ui, e: &Entry, hit: Option<(usize, usize)>, current: bool, 
     } else {
         format!("{} ({})", e.label, e.reason)
     };
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, &text));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &text));
     response
 }
 
@@ -760,8 +760,8 @@ impl Rocket {
         };
         let palette = &mut self.palette;
         let widgets = &mut self.frame_widgets;
-        let modal = Modal::new(Id::new("command-palette"))
-            .area(Modal::default_area(Id::new("command-palette")).anchor(Align2::CENTER_TOP, vec2(0.0, 84.0)))
+        let modal = Modal::new(Id::unique("command-palette"))
+            .area(Modal::default_area(Id::unique("command-palette")).anchor(Align2::CENTER_TOP, vec2(0.0, 84.0)))
             .backdrop_color(Color32::from_black_alpha(110))
             .frame(crate::pages::modal_frame())
             .show(ctx, |ui| {
@@ -780,7 +780,7 @@ impl Rocket {
                     };
                     let edit = ui.add(
                         TextEdit::singleline(&mut palette.query)
-                            .id(Id::new("command-palette-input"))
+                            .id(Id::unique("command-palette-input"))
                             .frame(Frame::NONE)
                             .font(FontId::proportional(15.0))
                             .hint_text(hint)

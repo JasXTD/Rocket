@@ -71,11 +71,14 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.";
 
 /// egui's embedded fonts: (font file, its notice file, name, license).
-const FONTS: [(&str, &str, &str, &str); 4] = [
+const FONTS: [(&str, &str, &str, &str); 5] = [
     ("Ubuntu-Light.ttf", "UFL.txt", "Ubuntu Light", "Ubuntu-font-1.0"),
     ("Hack-Regular.ttf", "Hack-Regular.txt", "Hack Regular", "MIT AND Bitstream-Vera"),
     ("NotoEmoji-Regular.ttf", "OFL.txt", "Noto Emoji", "OFL-1.1"),
     ("emoji-icon-font.ttf", "emoji-icon-font-mit-license.txt", "emoji-icon-font", "MIT"),
+    // Five logo glyphs cut from emoji-icon-font, which egui 0.37 always embeds; its
+    // `egui-icons.txt` places it under that font's license.
+    ("egui-icons.ttf", "emoji-icon-font-mit-license.txt", "egui-icons (emoji-icon-font subset)", "MIT"),
 ];
 /// Licenses the font entries cover, so the fonts' crate needs no text for them.
 const FONT_LICENSES: [&str; 2] = ["OFL-1.1", "Ubuntu-font-1.0"];

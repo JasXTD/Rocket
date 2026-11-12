@@ -531,7 +531,7 @@ impl Rocket {
                                     .hint_text("v1.2")
                                     .desired_width(f32::INFINITY)
                                     .min_size(vec2(0.0, 30.0))
-                                    .vertical_align(Align::Center),
+                                    .align(Align2::LEFT_CENTER),
                             );
                             control(widgets, "dialog-tag-name", &r, ui.clip_rect());
                             edited |= r.changed();
@@ -548,7 +548,7 @@ impl Rocket {
                                     .font(TextStyle::Monospace)
                                     .desired_width(f32::INFINITY)
                                     .min_size(vec2(0.0, 30.0))
-                                    .vertical_align(Align::Center),
+                                    .align(Align2::LEFT_CENTER),
                             );
                             control(widgets, "dialog-tag-target", &r, ui.clip_rect());
                             edited |= r.changed();
@@ -911,7 +911,7 @@ pub(crate) fn tag_row(ui: &mut Ui, row: TagRow, selected: bool, enabled: bool) -
         commit,
         HINT(),
     );
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, row.name));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, row.name));
     response
 }
 

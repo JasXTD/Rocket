@@ -193,12 +193,12 @@ fn sections() -> &'static [(String, Vec<Block>)] {
 
 /// This frame's topic for what is on screen; a review header shows "?" only with one.
 fn context_id() -> Id {
-    Id::new("rocket-guide-context")
+    Id::unique("rocket-guide-context")
 }
 
 /// Set by a header "?" or Help → Guide; the guide opens after this frame's dialogs.
 fn request_id() -> Id {
-    Id::new("rocket-guide-request")
+    Id::unique("rocket-guide-request")
 }
 
 /// Open the guide at the topic for what is on screen, once this frame's dialogs are drawn.
@@ -232,7 +232,7 @@ pub(crate) fn header_button(ui: &mut Ui) {
         semibold(13.0),
         if hovered { TEXT() } else { MUTED() },
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, crate::i18n::tr("Guide")));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, crate::i18n::tr("Guide")));
     if response.on_hover_text(crate::i18n::tr("Guide (F1)")).clicked() {
         request(ui.ctx());
     }
@@ -278,7 +278,7 @@ impl Rocket {
         let height = (content.height() - 190.0).clamp(160.0, 600.0);
         let list = (width * 0.28).clamp(140.0, 220.0);
         let mut close = false;
-        let response = Modal::new(Id::new("rocket-guide"))
+        let response = Modal::new(Id::unique("rocket-guide"))
             .backdrop_color(Color32::from_black_alpha(120))
             .frame(pages::modal_frame())
             .show(ctx, |ui| {
@@ -513,7 +513,7 @@ fn topic_row(ui: &mut Ui, title: &str, selected: bool) -> Response {
         galley,
         color,
     );
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, title));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, title));
     response
 }
 

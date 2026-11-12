@@ -209,7 +209,7 @@ pub(crate) fn source(
         };
         let painter = ui
             .ctx()
-            .layer_painter(LayerId::new(Order::Tooltip, Id::new("stage-drag-label")));
+            .layer_painter(LayerId::new(Order::Tooltip, Id::unique("stage-drag-label")));
         let galley = painter.layout_no_wrap(label, FontId::proportional(12.0), TEXT());
         let rect = Rect::from_min_size(pos + vec2(16.0, 16.0), galley.size() + vec2(16.0, 12.0));
         painter.rect_filled(rect, 5.0, RAISED());
@@ -243,7 +243,7 @@ pub(crate) fn target(
             enabled: writable && ui.is_enabled(),
         },
     );
-    let response = ui.interact(rect, Id::new((name, tab.id)), Sense::hover());
+    let response = ui.interact(rect, Id::unique((name, tab.id)), Sense::hover());
     if let Some(payload) = response.dnd_hover_payload::<Payload>()
         && payload.tab == tab.id
         && payload.staged != staged

@@ -441,7 +441,7 @@ fn choice_row(ui: &mut Ui, label: &str, detail: &str, selected: bool, enabled: b
     let ink = if enabled { TEXT() } else { FAINT() };
     painter.text(pos2(rect.left() + 30.0, rect.center().y), Align2::LEFT_CENTER, label, FontId::proportional(13.0), ink);
     painter.text(pos2(rect.right() - 9.0, rect.center().y), Align2::RIGHT_CENTER, detail, FontId::proportional(12.0), HINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, label));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, label));
     response
 }
 
@@ -587,7 +587,7 @@ impl Rocket {
                                 TextEdit::singleline(&mut s.editing.program)
                                     .hint_text(RichText::new(if cfg!(windows) { tr("Full path to the shell's .exe") } else { tr("Full path to the shell's program") }).font(FontId::proportional(13.0)).color(FAINT()))
                                     .font(FontId::monospace(12.0))
-                                    .vertical_align(Align::Center)
+                                    .align(Align2::LEFT_CENTER)
                                     .char_limit(32768)
                                     .margin(Margin::symmetric(8, 2)),
                             );

@@ -479,7 +479,7 @@ impl Rocket {
                             vec2(ui.available_width().max(160.0), 32.0),
                             TextEdit::singleline(&mut s.query)
                                 .hint_text("Search GitHub or paste a repository address")
-                                .vertical_align(Align::Center)
+                                .align(Align2::LEFT_CENTER)
                                 .margin(Margin::symmetric(10, 6)),
                         );
                         control(widgets, "explore-query", &edit, ui.clip_rect());

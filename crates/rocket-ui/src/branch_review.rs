@@ -787,7 +787,7 @@ fn bar(ui: &mut Ui, s: &mut State, intents: &mut Vec<Intent>, widgets: &mut Hash
                     let r = ui
                         .add_enabled(filled, Button::new("").min_size(vec2(30.0, 30.0)))
                         .on_hover_text("Read the changes again");
-                    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, filled, "Read the changes again"));
+                    r.widget_info(|| WidgetInfo::labeled(Role::Button, filled, "Read the changes again"));
                     icon(ui.painter(), Rect::from_center_size(r.rect.center(), vec2(14.0, 14.0)), Icon::Refresh, if filled { TEXT() } else { FAINT() });
                     pages::control(widgets, "review-read", &r, ui.clip_rect());
                     if swap {
@@ -963,7 +963,7 @@ fn choose(ui: &mut Ui, s: &mut State, intents: &mut Vec<Intent>, widgets: &mut H
 
 /// A tab of the card's switch: its name and a count, framed only when selected.
 fn tab_button(ui: &mut Ui, label: &str, count: Option<&str>, selected: bool, enabled: bool) -> Response {
-    let mark = ui.next_auto_id().with("count");
+    let mark = IdSalt::new("count");
     let ink = if selected { TEXT() } else if enabled { MUTED() } else { FAINT() };
     let chip = count.map(|c| ui.painter().layout_no_wrap(c.to_owned(), semibold(10.5), ink));
     let text = RichText::new(label).size(12.5).color(ink);
@@ -1115,7 +1115,7 @@ fn file_list(ui: &mut Ui, s: &mut State, c: &Changes, widgets: &mut HashMap<Stri
                     Sent::Named => "left out to fit: only its name is sent",
                 };
                 let r = r.on_hover_text(format!("{}\n{}, {what}", row.label, crate::compare::change_label(row.file.change)));
-                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("{}: {what}", row.label)));
+                r.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("{}: {what}", row.label)));
                 pages::control(widgets, format!("review-file-{i}"), &r, ui.clip_rect());
                 if r.clicked() {
                     picked = Some(i);
@@ -1607,7 +1607,7 @@ fn goes_to(ui: &mut Ui, s: &State, check: &ProgramCheck, last: bool, compact: bo
     let side = |ui: &mut Ui| match check {
         ProgramCheck::Found(path) => {
             found(ui, "Found");
-            ui.interact(ui.min_rect(), Id::new("review-found"), Sense::hover()).on_hover_text(path.as_str());
+            ui.interact(ui.min_rect(), Id::unique("review-found"), Sense::hover()).on_hover_text(path.as_str());
         }
         _ => {
             pages::pill(ui, "Not found", AMBER());

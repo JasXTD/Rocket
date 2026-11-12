@@ -74,7 +74,7 @@ impl Budget {
 }
 pub(super) fn admit(ctx: &Context, target: &Arc<Mutex<Cached>>, bytes: usize) -> bool {
     let budget = ctx.data_mut(|data| {
-        let id = Id::new("rocket-image-texture-budget");
+        let id = Id::unique("rocket-image-texture-budget");
         if let Some(budget) = data.get_temp::<Arc<Mutex<Budget>>>(id) {
             budget
         } else {

@@ -507,7 +507,7 @@ pub(crate) fn view(
                 }
             } else {
                 let left = CornerRadius { nw: 8, sw: 8, ne: 0, se: 0 };
-                Panel::left(Id::new(("compare-files", tab.id)))
+                Panel::left(("compare-files", tab.id))
                     .default_size(300.0)
                     .size_range(200.0..=(ui.available_width() * 0.45))
                     .resizable(true)
@@ -711,7 +711,7 @@ pub(crate) fn swap_button(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>,
     let r = ui
         .add_enabled(enabled, Button::new("").min_size(vec2(30.0, 30.0)))
         .on_hover_text(crate::i18n::tr("Swap base and target"));
-    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, crate::i18n::tr("Swap base and target")));
+    r.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, crate::i18n::tr("Swap base and target")));
     let color = if enabled { TEXT() } else { FAINT() };
     let c = r.rect.center();
     arrow(ui.painter(), c - vec2(0.0, 3.5), false, color);
@@ -1033,7 +1033,7 @@ fn file_list(
                     None => change_label(file.change).to_owned(),
                 };
                 let r = r.on_hover_text(format!("{path}\n{what}"));
-                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, format!("{path}: {what}")));
+                r.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, format!("{path}: {what}")));
                 let row = r.rect.shrink2(vec2(6.0, 1.0));
                 row_background(ui.painter(), row, tab.compare.selected == Some(i), r.hovered());
                 status_badge(ui.painter(), pos2(row.left() + 15.0, row.center().y), letter(file.change));

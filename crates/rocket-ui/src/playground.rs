@@ -311,7 +311,7 @@ fn editor(ui: &mut Ui, s: &mut State, widgets: &mut HashMap<String, UiControl>, 
             "int-play-code-scroll",
             &ui.interact(
                 area.inner_rect,
-                Id::new("int-play-code-scroll"),
+                Id::unique("int-play-code-scroll"),
                 Sense::hover(),
             ),
             ui.clip_rect(),
@@ -349,7 +349,7 @@ fn preview(
             "int-play-preview-scroll",
             &ui.interact(
                 area.inner_rect,
-                Id::new("int-play-preview-scroll"),
+                Id::unique("int-play-preview-scroll"),
                 Sense::hover(),
             ),
             ui.clip_rect(),

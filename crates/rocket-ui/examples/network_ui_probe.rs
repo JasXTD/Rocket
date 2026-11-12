@@ -50,7 +50,7 @@ impl Probe {
     }
     fn capture(&mut self, ctx: &Context, name: &'static str) {
         self.capture = Some(name);
-        ctx.send_viewport_cmd(ViewportCommand::Screenshot(UserData::default()));
+        support::request_screenshot(ctx);
     }
     fn record(&self) {
         let activity = self.app.activities.last().expect("operation result");
@@ -123,12 +123,10 @@ impl App for Probe {
     fn ui(&mut self, ui: &mut Ui, frame: &mut Frame) {
         let ctx = ui.ctx().clone();
         self.app.ui(ui, frame);
-        for event in ctx.input(|i| i.events.clone()) {
-            if let Event::Screenshot { image, .. } = event
-                && let Some(name) = self.capture.take()
-            {
-                support::save_bmp(&self.output.join(format!("{name}.bmp")), &image).unwrap();
-            }
+        if let Some(image) = support::take_screenshot()
+            && let Some(name) = self.capture.take()
+        {
+            support::save_bmp(&self.output.join(format!("{name}.bmp")), &image).unwrap();
         }
         if self.app.write.is_some() && !self.progress_captured && self.capture.is_none() {
             self.progress_captured = true;

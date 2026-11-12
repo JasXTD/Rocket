@@ -473,7 +473,7 @@ pub fn hint(ctx: &Context, old: &str) -> String {
         if let Some(tail) = old.strip_prefix("Ctrl+") { return format!("Cmd+{tail}"); }
         return old.into();
     };
-    ctx.data(|d| d.get_temp::<Bindings>(Id::new("rocket-shortcut-hints")))
+    ctx.data(|d| d.get_temp::<Bindings>(Id::unique("rocket-shortcut-hints")))
         .unwrap_or_default()
         .label(command.action)
 }

@@ -137,7 +137,7 @@ const PROGRAM_CHECK: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// Whether a CLI's program is there, checked when its path changes and every few seconds.
 pub(crate) fn check_program(ctx: &Context, settings: &Settings, provider: DraftProvider) -> ProgramCheck {
-    let id = Id::new(("ai-program-check", provider.code()));
+    let id = Id::unique(("ai-program-check", provider.code()));
     let key = settings.program_setting_of(provider).trim().to_owned();
     let cached = ctx
         .data(|d| d.get_temp::<(String, std::time::Instant, ProgramCheck)>(id))

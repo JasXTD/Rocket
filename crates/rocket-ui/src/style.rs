@@ -57,6 +57,14 @@ pub fn apply(ctx: &Context, palette: &Palette, light: bool) {
     style.visuals.widgets.inactive.corner_radius = CornerRadius::same(6);
     style.visuals.widgets.hovered.corner_radius = CornerRadius::same(6);
     style.visuals.widgets.active.corner_radius = CornerRadius::same(6);
+    // egui 0.37 changed these defaults (rounder frames, a lighter hovered mark, scroll
+    // areas that stretch past their ends); Rocket keeps what it showed on 0.36.
+    style.visuals.widgets.noninteractive.corner_radius = CornerRadius::same(2);
+    style.visuals.widgets.open.corner_radius = CornerRadius::same(2);
+    if !light {
+        style.visuals.widgets.hovered.fg_stroke.color = Color32::from_gray(240);
+    }
+    style.spacing.scroll.kinetic.rubber_band = false;
     style.animation_time = 0.0;
     style
         .text_styles
@@ -71,11 +79,30 @@ pub fn apply(ctx: &Context, palette: &Palette, light: bool) {
     style
         .text_styles
         .insert(TextStyle::Monospace, FontId::monospace(13.0));
+    // Registered once; later calls leave it in place.
+    ctx.add_widget_theme::<egui::widget_style::TextEditStyle>(ClassicTextEdit);
     // Every theme uses egui's dark style slot, so switching never asks the window to
     // change its title bar (see `install`).
     ctx.set_theme(Theme::Dark);
     ctx.set_style_of(Theme::Dark, style);
     ctx.request_repaint();
+}
+
+/// egui 0.37 pads a text field like a button and makes it at least as tall as one.
+/// Rocket's fields were laid out around the padding and height egui 0.36 gave them
+/// (4 by 2 points, no minimum), so they keep those; a field that sets its own margin,
+/// frame or minimum size is not affected. This uses egui's `experimental` theme hook,
+/// the only place that default can be changed.
+struct ClassicTextEdit;
+impl egui::theme::StyleProvider<egui::widget_style::TextEditStyle> for ClassicTextEdit {
+    fn style(&mut self, args: &egui::widget_style::StyleArgs<'_>) -> egui::widget_style::TextEditStyle {
+        let mut style: egui::widget_style::TextEditStyle = egui::theme::DefaultStyle.style(args);
+        // As egui does for a field's own margin: the outline takes its room from it.
+        let outline = style.atom_layout.frame.stroke.width;
+        style.atom_layout.frame.inner_margin = Margin::symmetric(4, 2) - Margin::from(outline);
+        style.atom_layout.min_size = Vec2::ZERO;
+        style
+    }
 }
 
 pub fn semibold(size: f32) -> FontId {
@@ -159,7 +186,7 @@ pub fn switch(ui: &mut Ui, on: &mut bool, label: &str) -> Response {
     }
     let checked = *on;
     response.widget_info(|| {
-        WidgetInfo::selected(WidgetType::Checkbox, ui.is_enabled(), checked, label)
+        WidgetInfo::selected(Role::CheckBox, ui.is_enabled(), checked, label)
     });
     if ui.is_rect_visible(rect) {
         let hot = response.hovered() || response.has_focus();
@@ -971,7 +998,7 @@ pub fn search_field(ui: &mut Ui, value: &mut String, hint: &str, width: f32) -> 
                     TextEdit::singleline(value)
                         .frame(Frame::NONE)
                         .min_size(vec2(0.0, 22.0))
-                        .vertical_align(Align::Center)
+                        .align(Align2::LEFT_CENTER)
                         .hint_text(hint)
                         .desired_width(ui.available_width()),
                 )
@@ -1081,9 +1108,7 @@ mod unicode_tests {
                         // same face that supplies the replacement glyph.
                         assert!(
                             fonts
-                                .fonts
-                                .font(&font.family)
-                                .characters()
+                                .characters(&font.family)
                                 .contains_key(&ch),
                             "missing {ch:?} in {:?}",
                             font.family
@@ -1183,9 +1208,11 @@ mod widget_tests {
     fn quiet_buttons_keep_their_size_when_hovered() {
         let framed_on_hover = |label| Button::new(label).frame_when_inactive(false);
         let raw = neighbour_positions(framed_on_hover, false);
-        // egui 0.36 lays out the idle button without its 1 px stroke. If an egui update
-        // stops this, `quiet` is no longer needed.
-        assert_ne!(raw.first(), raw.last(), "egui moved the neighbour on hover");
+        // egui 0.36 laid out the idle button without its 1 px stroke, so hovering it
+        // moved its neighbour; `quiet` was written for that. egui 0.37 keeps the hidden
+        // frame's room, so its own button is steady too. `quiet` still draws Rocket's
+        // buttons, so it is checked as before; this line says when egui regresses.
+        assert!(raw.iter().all(|p| *p == raw[0]), "egui moves the neighbour on hover again: {raw:?}");
         let stable = neighbour_positions(Button::new, true);
         assert!(
             stable.iter().all(|p| *p == stable[0]),

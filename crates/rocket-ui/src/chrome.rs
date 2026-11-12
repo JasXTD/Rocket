@@ -456,7 +456,7 @@ impl Rocket {
                 .x
                 + 44.0;
             let tab = Rect::from_min_size(pos2(x, rect.top()), vec2(width, 36.0));
-            let response = ui.interact(tab, Id::new(key), Sense::click());
+            let response = ui.interact(tab, Id::unique(key), Sense::click());
             let on = is_activity == activity;
             let color = if on || response.hovered() {
                 TEXT()
@@ -498,7 +498,7 @@ impl Rocket {
                     BLUE(),
                 );
             }
-            response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+            response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
             self.frame_widgets.insert(key.into(), (&response).into());
             // A tab opens a collapsed drawer as well as switching to its pane.
             if response.clicked() {
@@ -530,7 +530,7 @@ impl Rocket {
                     (Icon::Chevron, tr("Collapse"), tr("Collapse drawer"), "drawer-collapse")
                 };
                 let arrow = icon_button(ui, image, true, false, 26.0).on_hover_text(hover);
-                arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name));
+                arrow.widget_info(|| WidgetInfo::labeled(Role::Button, true, name));
                 self.frame_widgets.insert(key.into(), (&arrow).into());
                 if !collapsed {
                     // The ids of the old hide buttons, which automation still uses.
@@ -629,7 +629,7 @@ impl Rocket {
         painter.galley(pos2(left, area.center().y - galley.size().y / 2.0), galley, MUTED());
         let line = if title.is_empty() { detail } else { format!("{title} · {detail}") };
         let response = response.on_hover_text(&line);
-        response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &line));
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &line));
         self.frame_widgets
             .insert("drawer-summary".into(), (&response).into());
         if response.clicked() {
@@ -754,7 +754,7 @@ impl Rocket {
                     // Reading that is actually running, not a save waiting out its
                     // debounce, and only what nothing else on screen shows.
                     let reading = self.background_reading();
-                    let id = Id::new("status-busy");
+                    let id = Id::unique("status-busy");
                     let mut indicator: BusyIndicator =
                         ui.data(|d| d.get_temp(id)).unwrap_or_default();
                     let now = ui.input(|i| i.time);
@@ -912,11 +912,11 @@ impl Rocket {
                         );
                         let response = ui.interact(
                             Rect::from_min_max(rect.min, pos2(close_rect.left(), rect.bottom())),
-                            Id::new(("tab", tab.id)),
+                            Id::unique(("tab", tab.id)),
                             Sense::click(),
                         );
                         let close =
-                            ui.interact(close_rect, Id::new(("close-tab", tab.id)), Sense::click());
+                            ui.interact(close_rect, Id::unique(("close-tab", tab.id)), Sense::click());
                         let hovered = response.hovered() || close.hovered();
                         let top = CornerRadius {
                             nw: 8,
@@ -999,10 +999,10 @@ impl Rocket {
                             }
                         }
                         response
-                            .widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &title));
+                            .widget_info(|| WidgetInfo::labeled(Role::Button, true, &title));
                         close.widget_info(|| {
                             WidgetInfo::labeled(
-                                WidgetType::Button,
+                                Role::Button,
                                 true,
                                 trf!("Close {repository}", repository = tab.title),
                             )
@@ -1150,7 +1150,7 @@ impl Rocket {
             let refresh = icon_button(ui, Icon::Refresh, enabled, false, 32.0)
                 .on_hover_text(tr("Refresh local state (F5)"));
             refresh.widget_info(|| {
-                WidgetInfo::labeled(WidgetType::Button, enabled, tr("Refresh local repository"))
+                WidgetInfo::labeled(Role::Button, enabled, tr("Refresh local repository"))
             });
             self.frame_widgets
                 .insert("refresh".into(), (&refresh).into());
@@ -1400,7 +1400,7 @@ impl Rocket {
             FAINT(),
         );
         response.widget_info(|| {
-            WidgetInfo::labeled(WidgetType::Button, true, trf!("Switch branch: {head}", head))
+            WidgetInfo::labeled(Role::Button, true, trf!("Switch branch: {head}", head))
         });
         let writable = self.can_write();
         crate::branch_switcher::popup(&response, tab, writable, intents, &mut self.frame_widgets);
@@ -1602,7 +1602,7 @@ impl Rocket {
                             let response =
                                 icon_button(ui, image, true, selected, 36.0).on_hover_text(label);
                             response.widget_info(|| {
-                                WidgetInfo::labeled(WidgetType::Button, true, label)
+                                WidgetInfo::labeled(Role::Button, true, label)
                             });
                             insert_visible(&mut self.frame_widgets, key, &response, ui.clip_rect());
                             if response.clicked() {
@@ -1678,7 +1678,7 @@ impl Rocket {
                                 let ci = tab.ci.branch_mark(&branch.reference).map(|(s, c)| (s, c.to_owned()));
                                 let (response, mark) = branch_row(ui, &label, branch.is_head, meta.as_deref(), ci.as_ref().map(|(s, _)| (*s, tab.ci.faded)));
                                 if let (Some(rect), Some((state, commit))) = (mark, &ci) {
-                                    let r = ui.interact(rect, Id::new(("ci-branch-mark", tab.id, &branch.reference)), Sense::click());
+                                    let r = ui.interact(rect, Id::unique(("ci-branch-mark", tab.id, &branch.reference)), Sense::click());
                                     self.frame_widgets.insert(format!("ci-branch-mark-{}", display(&branch.reference)), (&r).into());
                                     if r.on_hover_text(tab.ci.branch_tip(*state, commit, Some(branch.target.as_str()))).clicked() {
                                         intents.push(Intent::CiChecks(commit.clone(), rect));
@@ -1768,7 +1768,7 @@ impl Rocket {
                                         let center = pos2(row.rect.right() - 17.0, row.rect.center().y);
                                         crate::ci_checks::paint_mark(ui.painter(), center, state, tab.ci.faded);
                                         let rect = Rect::from_center_size(center, vec2(22.0, 22.0));
-                                        let r = ui.interact(rect, Id::new(("ci-remote-mark", tab.id, &branch.reference)), Sense::click());
+                                        let r = ui.interact(rect, Id::unique(("ci-remote-mark", tab.id, &branch.reference)), Sense::click());
                                         self.frame_widgets.insert(format!("ci-branch-mark-{}", display(&branch.reference)), (&r).into());
                                         if r.on_hover_text(tab.ci.branch_tip(state, branch.target.as_str(), None)).clicked() {
                                             intents.push(Intent::CiChecks(branch.target.as_str().to_owned(), rect));
@@ -1866,7 +1866,7 @@ impl Rocket {
         ui.painter()
             .hline(rect.x_range(), rect.top(), Stroke::new(1.0, HAIRLINE()));
         let row = Rect::from_min_max(rect.min + vec2(8.0, 7.0), rect.max - vec2(8.0, 7.0));
-        let response = ui.interact(row, Id::new("sidebar-labels"), Sense::click());
+        let response = ui.interact(row, Id::unique("sidebar-labels"), Sense::click());
         if response.hovered() {
             ui.painter().rect_filled(row, 7.0, HOVER());
         }
@@ -1891,7 +1891,7 @@ impl Rocket {
                 color,
             );
         }
-        response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, toggle_label));
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, true, toggle_label));
         self.frame_widgets
             .insert("sidebar-labels".into(), (&response).into());
         let clicked = response.clicked();
@@ -2394,7 +2394,7 @@ fn tool_button(ui: &mut Ui, image: Icon, label: &str, options: ToolOptions) -> R
         options.enabled,
         Button::new("").frame(false).min_size(vec2(width, 32.0)),
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, options.enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, options.enabled, label));
     let rect = response.rect;
     let painter = ui.painter();
     if options.enabled
@@ -2467,7 +2467,7 @@ pub(crate) fn command_field(ui: &mut Ui, compact: bool) -> Response {
         .add(Button::new("").frame(false).min_size(vec2(290.0, 32.0)))
         .on_hover_text(tooltip);
     response
-        .widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tr("Search or run a command")));
+        .widget_info(|| WidgetInfo::labeled(Role::Button, true, tr("Search or run a command")));
     let rect = response.rect;
     let painter = ui.painter();
     painter.rect(
@@ -2518,7 +2518,7 @@ fn chip(ui: &mut Ui, image: Icon, label: &str, selected: bool, tint: Option<Colo
         .x
         + 32.0;
     let response = ui.add(Button::new("").frame(false).min_size(vec2(width, 20.0)));
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
     let rect = response.rect;
     let color = tint.unwrap_or(if selected { BLUE() } else { MUTED() });
     if tint.is_some() || selected {
@@ -2558,12 +2558,12 @@ fn repository_row(ui: &mut Ui, tab: &Tab, selected: bool) -> (Response, Response
         Rect::from_center_size(pos2(rect.right() - 14.0, rect.center().y), vec2(22.0, 22.0));
     let row = ui.interact(
         Rect::from_min_max(rect.min, pos2(close_rect.left(), rect.bottom())),
-        Id::new(("repository-row", tab.id)),
+        Id::unique(("repository-row", tab.id)),
         Sense::click(),
     );
     let close = ui.interact(
         close_rect,
-        Id::new(("repository-row-close", tab.id)),
+        Id::unique(("repository-row-close", tab.id)),
         Sense::click(),
     );
     let active = row.hovered() || close.hovered() || row.has_focus() || close.has_focus();
@@ -2649,8 +2649,8 @@ fn repository_row(ui: &mut Ui, tab: &Tab, selected: bool) -> (Response, Response
         }
     }
     let title = tab.title.clone();
-    row.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &title));
-    close.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, trf!("Close {repository}", repository = title)));
+    row.widget_info(|| WidgetInfo::labeled(Role::Button, true, &title));
+    close.widget_info(|| WidgetInfo::labeled(Role::Button, true, trf!("Close {repository}", repository = title)));
     (
         row.on_hover_text(crate::views::display_path(&tab.path)),
         close.on_hover_text(tr("Close repository")),
@@ -2739,7 +2739,7 @@ fn nav_row(
             );
         }
     }
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     if rail {
         response.on_hover_text(match count {
             Some(n) => format!("{label} · {n}"),
@@ -2769,7 +2769,7 @@ fn section_header(
     state: Option<&mut bool>,
 ) -> SectionHeader {
     // Keyed, not labelled, so a section keeps its state when the language changes.
-    let id = Id::new(("sidebar-section", key));
+    let id = Id::unique(("sidebar-section", key));
     let mut expanded = state.as_deref().copied().unwrap_or_else(|| ui.ctx().data_mut(|d| *d.get_persisted_mut_or(id, true)));
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::hover());
     let chevron_rect = Rect::from_min_size(rect.min, vec2(20.0, rect.height()));
@@ -2851,10 +2851,10 @@ fn section_header(
             if add.hovered() { TEXT() } else { MUTED() },
         );
     }
-    open.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    open.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
     chevron.widget_info(|| {
         WidgetInfo::labeled(
-            WidgetType::Button,
+            Role::Button,
             true,
             if expanded { trf!("Collapse {group}", group = label) } else { trf!("Expand {group}", group = label) },
         )
@@ -2952,7 +2952,7 @@ fn branch_row(ui: &mut Ui, label: &str, current: bool, meta: Option<&str>, mark:
         crate::ci_checks::paint_mark(ui.painter(), center, state, faded);
         Rect::from_center_size(center, vec2(22.0, 22.0))
     });
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
     (response, mark_rect)
 }
 
@@ -3033,7 +3033,7 @@ fn leaf_row_reserved(
             FAINT(),
         );
     }
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     response
 }
 
@@ -3077,7 +3077,7 @@ fn extension_row(ui: &mut Ui, entry: &crate::integrations::Entry, selected: bool
     if entry.attention {
         ui.painter().circle_filled(pos2(rect.right() - 12.0, rect.center().y), 3.5, AMBER());
     }
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, &entry.name));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &entry.name));
     response
 }
 
@@ -3099,7 +3099,7 @@ fn letter_button(ui: &mut Ui, entry: &crate::integrations::Entry, selected: bool
     if entry.attention {
         ui.painter().circle_filled(rect.right_top() + vec2(-8.0, 8.0), 3.5, AMBER());
     }
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &entry.name));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &entry.name));
     response
 }
 

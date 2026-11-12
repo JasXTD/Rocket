@@ -401,7 +401,7 @@ fn find_field(ui: &mut Ui, value: &mut String, width: f32, finding: bool) -> (Op
                     ))
                 };
                 let find = crate::chrome::icon_button(ui, Icon::Keyboard, true, finding, 22.0);
-                find.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, "Find by pressing keys"));
+                find.widget_info(|| WidgetInfo::labeled(Role::Button, true, "Find by pressing keys"));
                 (field, find.on_hover_text("Press keys to find the command that uses them"))
             })
             .inner
@@ -459,7 +459,7 @@ fn shortcut_cell(ui: &mut Ui, size: Vec2, cell: &Cell, enabled: bool, command: &
             "No shortcut".to_owned()
         }
     };
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, format!("{command} shortcut: {described}")));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, format!("{command} shortcut: {described}")));
     if enabled && !matches!(cell, Cell::Empty) {
         response.on_hover_text("Click, then press the keys or mouse gesture")
     } else {

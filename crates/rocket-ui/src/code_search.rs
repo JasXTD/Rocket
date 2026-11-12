@@ -438,7 +438,7 @@ fn scope_picker(ui: &mut Ui, s: &mut State, revision: Option<&ObjectId>, widgets
     );
     icon(ui.painter(), Rect::from_center_size(pos2(rect.right() - 12.0, rect.center().y), vec2(10.0, 10.0)), Icon::Chevron, FAINT());
     let picker = picker.on_hover_text(crate::i18n::tr("Where to search"));
-    picker.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, crate::i18n::trf!("Search in: {label}", label)));
+    picker.widget_info(|| WidgetInfo::labeled(Role::Button, true, crate::i18n::trf!("Search in: {label}", label)));
     Popup::menu(&picker).show(|ui| {
         ui.set_min_width(300.0);
         let mut choice = |ui: &mut Ui, scope: Scope, key: &str, title: String, detail: &str, enabled: bool| {

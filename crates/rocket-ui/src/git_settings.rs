@@ -780,7 +780,7 @@ impl Rocket {
                                     [width, CONTROL],
                                     TextEdit::singleline(&mut s.custom)
                                         .font(TextStyle::Monospace)
-                                        .vertical_align(Align::Center)
+                                        .align(Align2::LEFT_CENTER)
                                         .hint_text(
                                             RichText::new(r"C:\Program Files\Git\cmd\git.exe")
                                                 .monospace()
@@ -876,7 +876,7 @@ impl Rocket {
                                     [ui.available_width(), CONTROL],
                                     TextEdit::singleline(value)
                                         .char_limit(1024)
-                                        .vertical_align(Align::Center)
+                                        .align(Align2::LEFT_CENTER)
                                         .hint_text(hint),
                                 );
                                 pages::control(widgets, key, &r, ui.clip_rect());
@@ -1075,7 +1075,7 @@ fn choice_row(
     let below = top + heading.size().y + 3.0;
     ui.painter().galley(pos2(rect.left() + 40.0, top), heading, TEXT());
     ui.painter().galley(pos2(rect.left() + 40.0, below), path, HINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, enabled, selected, title));
+    response.widget_info(|| WidgetInfo::selected(Role::RadioButton, enabled, selected, title));
     response.on_hover_text(detail)
 }
 /// The version `git --version` gave, or why the copy cannot be used.

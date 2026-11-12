@@ -606,7 +606,7 @@ fn kind_card(
         painter.galley(at, galley, color);
         at.y += height + 3.0;
     }
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, title));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, title));
     response
 }
 
@@ -767,7 +767,7 @@ fn known_row(ui: &mut Ui, name: &str, file: &str, here: bool, added: bool) -> Re
     } else {
         painter.text(right, Align2::RIGHT_CENTER, file, FontId::monospace(11.5), if here { HINT() } else { FAINT() });
     }
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, name));
     response
 }
 
@@ -823,7 +823,7 @@ fn profile_row(
     let galley = painter.layout_job(job);
     painter.galley(pos2(rect.left() + 12.0, rect.top() + 16.0 - galley.size().y / 2.0), galley, TEXT());
     painter.galley(pos2(rect.left() + 12.0, rect.top() + 26.0), program_galley, HINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, name));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, name));
     response
 }
 

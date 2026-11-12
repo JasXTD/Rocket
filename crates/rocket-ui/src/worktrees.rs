@@ -552,7 +552,7 @@ impl Rocket {
                                 TextEdit::singleline(&mut d.first)
                                     .desired_width(f32::INFINITY)
                                     .min_size(vec2(0.0, 30.0))
-                                    .vertical_align(Align::Center),
+                                    .align(Align2::LEFT_CENTER),
                             );
                             control(widgets, "dialog-worktree-path", &r, ui.clip_rect());
                             if r.changed() {
@@ -607,7 +607,7 @@ impl Rocket {
                                         .hint_text(RichText::new("origin/main").color(FAINT()))
                                         .desired_width(width)
                                         .min_size(vec2(0.0, 30.0))
-                                        .vertical_align(Align::Center),
+                                        .align(Align2::LEFT_CENTER),
                                 );
                                 control(widgets, "dialog-worktree-upstream", &r, ui.clip_rect());
                                 edited |= r.changed();
@@ -653,7 +653,7 @@ impl Rocket {
                                     .hint_text(RichText::new("feature/my-change").color(FAINT()))
                                     .desired_width(width)
                                     .min_size(vec2(0.0, 30.0))
-                                    .vertical_align(Align::Center),
+                                    .align(Align2::LEFT_CENTER),
                             );
                             control(widgets, "dialog-worktree-branch", &r, ui.clip_rect());
                             edited |= r.changed();
@@ -694,7 +694,7 @@ impl Rocket {
                                     .hint_text(RichText::new(tr("HEAD, a branch or a commit ID")).color(FAINT()))
                                     .desired_width(f32::INFINITY)
                                     .min_size(vec2(0.0, 30.0))
-                                    .vertical_align(Align::Center),
+                                    .align(Align2::LEFT_CENTER),
                             );
                             control(widgets, "dialog-worktree-target", &r, ui.clip_rect());
                             edited |= r.changed();
@@ -724,7 +724,7 @@ impl Rocket {
                                 TextEdit::singleline(&mut d.first)
                                     .desired_width(width)
                                     .min_size(vec2(0.0, 30.0))
-                                    .vertical_align(Align::Center),
+                                    .align(Align2::LEFT_CENTER),
                             );
                             control(widgets, "dialog-worktree-path", &r, ui.clip_rect());
                             if r.changed() {
@@ -1132,7 +1132,7 @@ fn worktree_row(
     job.wrap = text::TextWrapping::truncate_at_width(right - left);
     let path = painter.layout_job(job);
     painter.galley(pos2(left, rect.bottom() - 11.0 - path.size().y / 2.0), path, FAINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, folder_name(&e.path)));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, folder_name(&e.path)));
     response
 }
 

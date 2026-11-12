@@ -189,7 +189,7 @@ impl TerminalPane {
                                 .id(command_id(id))
                                 .frame(Frame::NONE)
                                 .font(TextStyle::Monospace)
-                                .vertical_align(Align::Center)
+                                .align(Align2::LEFT_CENTER)
                                 .min_size(vec2(0.0, CONTROL - 2.0))
                                 .desired_width(ui.available_width())
                                 .hint_text(if agent { crate::i18n::tr("Type in this session…") } else { crate::i18n::tr("Command or input · Enter to send") }),
@@ -522,10 +522,10 @@ fn paint_row(painter: &Painter, row: &[Cell], origin: Pos2, size: Vec2, font: &F
     }
 }
 fn command_id(id: u64) -> Id {
-    Id::new(("terminal-command", id))
+    Id::unique(("terminal-command", id))
 }
 fn screen_id(id: u64) -> Id {
-    Id::new(("terminal-screen", id))
+    Id::unique(("terminal-screen", id))
 }
 fn palette(color: u8) -> Color32 {
     ANSI()[usize::from(color.min(15))]

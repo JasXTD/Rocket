@@ -290,7 +290,7 @@ mod tests {
                     let o = show(
                         ui,
                         Rect::from_min_size(pos2(20.0, 20.0), vec2(WIDTH, 300.0)),
-                        Id::new("drag-overview"),
+                        Id::unique("drag-overview"),
                         &summary,
                         View {
                             offset: 0.0,
@@ -314,7 +314,7 @@ mod tests {
     fn keyboard_navigation_requires_overview_focus() {
         let ctx = Context::default();
         let s = Summary::from_rows((0..300).map(|_| ADDED));
-        let id = Id::new("overview-keyboard-test");
+        let id = Id::unique("overview-keyboard-test");
         let view = View {
             offset: 120.0,
             extent: 6600.0,

@@ -884,7 +884,7 @@ pub(crate) fn chip(ui: &mut Ui, label: &str, count: usize, on: bool, dot: bool) 
     let (text_width, figure_height) = (text.size().x, figure.size().y);
     painter.galley(pos2(x, rect.center().y - text.size().y / 2.0), text, ink);
     painter.galley(pos2(x + text_width + 6.0, rect.center().y - figure_height / 2.0), figure, number);
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, ui.is_enabled(), on, label));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, ui.is_enabled(), on, label));
     response
 }
 
@@ -897,7 +897,7 @@ pub(crate) fn icon_button(ui: &mut Ui, image: Icon, label: &str, enabled: bool) 
     let ink = if enabled { TEXT() } else { MUTED() };
     icon(ui.painter(), Rect::from_center_size(pos2(rect.left() + 16.0, rect.center().y), vec2(14.0, 14.0)), image, ink);
     ui.painter().text(pos2(rect.left() + 29.0, rect.center().y), Align2::LEFT_CENTER, label, font, ink);
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     response
 }
 

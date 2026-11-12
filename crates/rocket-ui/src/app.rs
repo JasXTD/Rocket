@@ -3313,7 +3313,7 @@ impl eframe::App for Rocket {
     }
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        ctx.data_mut(|data| data.insert_temp(Id::new("rocket-shortcut-hints"), self.keybindings.bindings.clone()));
+        ctx.data_mut(|data| data.insert_temp(Id::unique("rocket-shortcut-hints"), self.keybindings.bindings.clone()));
         self.frame_widgets.clear();
         self.apply_text_command(&ctx);
         // F1 opens the guide; while it is open it takes Esc and Ctrl+Enter.

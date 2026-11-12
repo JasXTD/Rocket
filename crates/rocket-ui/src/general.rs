@@ -136,7 +136,7 @@ impl Default for Options {
     }
 }
 fn options_id() -> Id {
-    Id::new("rocket-general-options")
+    Id::unique("rocket-general-options")
 }
 pub(crate) fn options(ctx: &Context) -> Options {
     ctx.data(|d| d.get_temp(options_id())).unwrap_or_default()
@@ -354,7 +354,7 @@ impl Rocket {
                 TextEdit::singleline(text)
                     .hint_text(RichText::new(tr("Next to the latest repository")).font(FontId::proportional(13.0)).color(FAINT()))
                     .font(FontId::monospace(12.0))
-                    .vertical_align(Align::Center)
+                    .align(Align2::LEFT_CENTER)
                     .margin(Margin { left: 8, right: if set { 52 } else { 8 }, top: 2, bottom: 2 }),
             );
             pages::control(widgets, "pref-source-folder", &r, ui.clip_rect());

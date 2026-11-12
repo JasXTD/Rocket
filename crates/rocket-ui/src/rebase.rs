@@ -504,7 +504,7 @@ fn target_field(
             .hint_text(RichText::new(tr("main, origin/main or a commit ID")).color(FAINT()))
             .desired_width(width)
             .min_size(vec2(0.0, 30.0))
-            .vertical_align(Align::Center),
+            .align(Align2::LEFT_CENTER),
     );
     control(widgets, "dialog-rebase-target", &r, ui.clip_rect());
     if r.changed() {
@@ -1232,7 +1232,7 @@ fn row_editor(ui: &mut Ui, s: &mut DialogState, p: &RebasePreview, widgets: &mut
             .char_limit(MAX_REBASE_COMMAND)
             .desired_width(f32::INFINITY)
             .min_size(vec2(0.0, 28.0))
-            .vertical_align(Align::Center),
+            .align(Align2::LEFT_CENTER),
     );
     control(widgets, "dialog-rebase-exec", &r, ui.clip_rect());
     if r.changed() {

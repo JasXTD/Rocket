@@ -31,7 +31,6 @@ pub struct Review {
     pub closed: bool,
     pub error: Option<String>,
     pub notice: Option<String>,
-    pub screenshots: Vec<Event>,
     backend: Backend,
     repository: Repository,
     read: Option<ReadTask<HistoryPage>>,
@@ -64,7 +63,6 @@ impl Review {
             closed: false,
             error: None,
             notice: None,
-            screenshots: Vec::new(),
             backend,
             repository,
             read: None,
@@ -203,14 +201,6 @@ impl Review {
         let ctx = ui.ctx().clone();
         self.size = [ui.available_width(), ui.available_height()];
         self.widgets.clear();
-        for event in ctx.input(|i| i.events.clone()) {
-            if matches!(event, Event::Screenshot { .. }) {
-                if self.screenshots.len() == 4 {
-                    self.screenshots.remove(0);
-                }
-                self.screenshots.push(event);
-            }
-        }
         if ctx.input(|i| i.viewport().close_requested()) {
             self.close();
             ctx.request_repaint_of(ViewportId::ROOT);
@@ -246,7 +236,7 @@ impl Review {
             (None, None) => (Icon::Commit, format!("Commit {short}"), self.tab.title.clone()),
         };
         let body = commit.and_then(|(_, _, body)| body).filter(|_| file.is_none());
-        Panel::top(Id::new(("review-header", self.id)))
+        Panel::top(("review-header", self.id))
             .frame(Frame::new().fill(BG()))
             .show(ui, |ui| {
                 pages::header(ui, image, &title, &description, |ui| {
@@ -338,7 +328,7 @@ impl Review {
         let wide = ui.available_width() >= 760.0;
         if wide && let Some(patch) = &self.tab.patch {
             let files: Vec<_> = patch.files.iter().map(|f| (f.label.clone(), f.added, f.removed)).collect();
-            Panel::left(Id::new(("review-file-list", self.id)))
+            Panel::left(("review-file-list", self.id))
                 .default_size(260.0)
                 .size_range(200.0..=(ui.available_width() * 0.45))
                 .resizable(true)
@@ -362,7 +352,7 @@ impl Review {
                 });
         }
         if !wide {
-            Panel::top(Id::new(("review-commit", self.id)))
+            Panel::top(("review-commit", self.id))
                 .frame(Frame::new().fill(BG()).inner_margin(Margin::symmetric(20, 8)))
                 .show(ui, |ui| {
                 if let Some(patch) = &self.tab.patch {
@@ -435,7 +425,7 @@ fn file_row(ui: &mut Ui, label: &str, added: usize, removed: usize, selected: bo
     let response = ui
         .add(Button::new("").frame(false).min_size(vec2(ui.available_width(), 30.0)))
         .on_hover_text(label);
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, label));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, label));
     let r = response.rect;
     let painter = ui.painter();
     row_background(painter, r, selected, response.hovered());

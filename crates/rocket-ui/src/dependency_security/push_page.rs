@@ -344,7 +344,7 @@ impl Rocket {
         let editable = self.dependencies.editable;
         let widgets = &mut self.frame_widgets;
         // Phase-specific sizing avoids inheriting loading bounds in a warning view.
-        let response = Modal::new(Id::new(("dependency-push-review", active.id, phase)))
+        let response = Modal::new(Id::unique(("dependency-push-review", active.id, phase)))
             .frame(Frame::new().fill(PANEL()).stroke(Stroke::new(1.0, CARD_STROKE())).corner_radius(12).inner_margin(22))
             .show(ctx, |ui| {
                 ui.set_width((ctx.content_rect().width() - 100.0).clamp(280.0, 610.0));
@@ -386,7 +386,7 @@ impl Rocket {
                     if failed { let button = pages::primary(ui, editable, crate::i18n::tr("Open scanner setup")); pages::control(widgets, "dependency-push-setup", &button, ui.clip_rect()); setup = button.clicked(); }
                     let button = if reviewing { pages::primary(ui, true, crate::i18n::tr("Cancel push")) } else { ui.button(if failed { crate::i18n::tr("Close") } else { crate::i18n::tr("Cancel push") }) };
                     pages::control(widgets, "dependency-push-cancel", &button, ui.clip_rect());
-                    let focus = Id::new(("dependency-push-focus", active.id, phase));
+                    let focus = Id::unique(("dependency-push-focus", active.id, phase));
                     if !ui.ctx().data(|d| d.get_temp::<bool>(focus).unwrap_or(false)) { button.request_focus(); ui.ctx().data_mut(|d| d.insert_temp(focus, true)); }
                     cancel |= button.clicked();
                     if reviewing { let button = ui.add_enabled(editable, Button::new(RichText::new(crate::i18n::tr("Push anyway")).color(AMBER()))); pages::control(widgets, "dependency-push-continue", &button, ui.clip_rect()); approve = button.clicked(); }

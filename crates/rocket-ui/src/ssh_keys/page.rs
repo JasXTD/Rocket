@@ -405,7 +405,7 @@ fn list_card(
             HINT(),
         );
         painter.hline(bar.x_range(), bar.bottom() - 0.5, Stroke::new(1.0, CARD_LINE()));
-        ui.interact(place, Id::new("ssh-folder-name"), Sense::hover())
+        ui.interact(place, Id::unique("ssh-folder-name"), Sense::hover())
             .on_hover_text(crate::views::display_path(&s.scan_directory));
         let can_tick = s.loaded && s.agent_running && !busy;
         let rows = (ui.available_height() - 48.0).max(52.0);
@@ -501,8 +501,8 @@ fn key_row(ui: &mut Ui, k: &Listed, selected: bool, unlocked: bool, can_tick: bo
     let right = rect.right() - 10.0;
     clipped_text(ui, Rect::from_min_max(pos2(left, rect.top() + 8.0), pos2(right, rect.center().y + 1.0)), &k.name, 13.0, TEXT());
     clipped_text(ui, Rect::from_min_max(pos2(left, rect.center().y + 1.0), pos2(right, rect.bottom() - 7.0)), &k.detail, 12.0, HINT());
-    row.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, true, selected, &k.name));
-    tick.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, can_tick, unlocked, crate::i18n::tr("Unlocked in ssh-agent")));
+    row.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &k.name));
+    tick.widget_info(|| WidgetInfo::selected(Role::CheckBox, can_tick, unlocked, crate::i18n::tr("Unlocked in ssh-agent")));
     (row, tick)
 }
 
@@ -522,7 +522,7 @@ fn icon_btn(ui: &mut Ui, image: Icon, label: &str, enabled: bool, primary: bool,
     let left = r.rect.center().x - content / 2.0;
     icon(ui.painter(), Rect::from_center_size(pos2(left + 6.5, r.rect.center().y), vec2(13.0, 13.0)), image, ink);
     ui.painter().galley(pos2(left + 19.0, r.rect.center().y - galley.size().y / 2.0), galley, ink);
-    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    r.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     r
 }
 

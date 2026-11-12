@@ -561,7 +561,7 @@ fn add_rules(
                     .hint_text(RichText::new("logs/session.log").color(FAINT()))
                     .desired_width(f32::INFINITY)
                     .min_size(vec2(0.0, 30.0))
-                    .vertical_align(Align::Center),
+                    .align(Align2::LEFT_CENTER),
             );
             control(widgets, "dialog-ignore-path", &r, ui.clip_rect());
             let r = ui.add(checkbox(&mut s.folder, "A folder, with what's inside"));

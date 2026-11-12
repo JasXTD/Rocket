@@ -700,7 +700,7 @@ fn preferences_controls_render_at_supported_sizes_and_mcp_cannot_change_policy()
                         if app.frame_widgets[key].rect.height() >= 18.0 { break; }
                         let scroll = app.frame_widgets["prefs-scroll"].rect;
                         let delta = if app.frame_widgets[key].rect.center().y < scroll.center().y { 150.0 } else { -150.0 };
-                        frame(&ctx, &mut app, size, vec![Event::PointerMoved(scroll.center()), Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, delta), phase: TouchPhase::Move, modifiers: Modifiers::NONE }]);
+                        frame(&ctx, &mut app, size, vec![Event::PointerMoved(scroll.center()), Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, delta), phase: TouchPhase::Move, source: MouseWheelSource::Unknown, modifiers: Modifiers::NONE }]);
                     }
                     let control = &app.frame_widgets[key];
                     assert!(

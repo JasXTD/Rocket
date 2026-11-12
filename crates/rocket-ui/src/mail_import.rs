@@ -402,7 +402,7 @@ fn folder_row(
                     .hint_text(crate::i18n::tr("A folder of numbered .patch files"))
                     .desired_width(ui.available_width() - 76.0)
                     .min_size(vec2(0.0, 30.0))
-                    .vertical_align(Align::Center),
+                    .align(Align2::LEFT_CENTER),
             );
             pages::control(widgets, "dialog-series-folder", &r, ui.clip_rect());
             if r.changed() {

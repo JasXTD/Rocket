@@ -12,6 +12,35 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Move the interface from egui/eframe 0.36.2 to 0.37.0, keeping Rocket's look and
+  behaviour. Twelve locked versions change: eframe, egui, egui-winit, egui_glow, emath,
+  ecolor, epaint and epaint_default_fonts 0.36.2 → 0.37.0, accesskit 0.24.1 → 0.25.1,
+  glifo 0.2.0 → 0.3.0, vello_common and vello_cpu 0.1.0 → 0.2.0. Two are new:
+  unicode-properties 0.1.4 and, for eframe's web build only, send_wrapper 0.6.0.
+  `vendor/epaint` is epaint 0.37.0 with the Arabic bidirectional-text change re-applied
+  to its reworked text code. `DEPENDENCIES.md` has the review.
+  Also move `rustix` 1.1.5 → 1.1.6 in the lockfile for RUSTSEC-2026-0486 (Linux
+  windowing crates only; nothing Rocket uses called the affected functions).
+  - Kept as before by naming what 0.37 no longer turns on by itself: the system
+    clipboard (`clipboard`) and the two outline emoji fonts (`monochrome_emoji_fonts`).
+    Style values 0.37 changed are set back in `style::apply`: the corner radius of
+    frames and open menus, the hovered mark's colour, and scroll areas that stretch
+    past their ends. Text fields keep egui 0.36's padding and height through egui's
+    `experimental` theme hook (`ClassicTextEdit` in `style.rs`), which the next egui
+    upgrade must re-check.
+  - Twenty screens (the main views, an open menu and submenu, six dialogs and six
+    Preferences pages) drawn off-screen on 0.36.2 and on 0.37.0 are the same pixel for
+    pixel. Known differences that stay: text with its own line height is now centred
+    in each line, so an extension panel's code block sits about 2.5 px lower; a
+    drag-scroll that is let go coasts on egui's new curve. egui's own fixes to menus,
+    text selection and scroll bars come with the release.
+  - The MCP server and the example probes take screenshots through egui's new callback;
+    the diff overview hands its scroll target to the next frame, because a scroll
+    area's stored offset is no longer writable.
+  - eframe's new `system_fonts` feature (installed fonts and colour emoji on demand) is
+    off; it would add `egui_system_font_provider` and `fontique`.
+  - Not verified: the running app, native MCP runs, Linux and macOS builds. To go
+    back, revert this change; the 0.36.2 crates are still in the Cargo cache.
 - Keep long lists responsive. The Changes file list, the Branches page, the
   sidebar's local and remote branches and a commit's changed-files list build only
   the rows in or next to the visible area instead of every row on every frame, and

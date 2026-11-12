@@ -1,5 +1,127 @@
 # Dependency review
 
+## egui and eframe 0.37.0 — 2026-11-12
+
+With the user's approval ("Yes, download"), the interface moves from eframe/egui 0.36.2
+to 0.37.0: `eframe =0.37.0` in `crates/rocket-ui` and `crates/rocket-mcp`, and the
+Linux-only `egui-winit =0.37.0` pin. eframe 0.37.0 still uses glutin 0.32.3 and
+glutin-winit 0.5.0, so those two pins stay. `vendor/epaint` is now the published epaint
+0.37.0 with the bidirectional-text change re-applied; `vendor/epaint/patch.md` describes
+it.
+
+For egui, Cargo.lock changes twelve versions and adds two packages. Nothing is removed,
+and the 20 ICU4X and helper crates of the Arabic patch keep their versions. A thirteenth
+version, rustix, moves for an advisory; see the end of this entry.
+
+| Package | Change | License | Published (crates.io) |
+| --- | --- | --- | --- |
+| eframe, egui, egui-winit, egui_glow, emath, ecolor | 0.36.2 → 0.37.0 | MIT OR Apache-2.0 | 2026-10-15, rerunio |
+| epaint | 0.36.2 → 0.37.0, built from `vendor/epaint` | MIT OR Apache-2.0 | 2026-10-15, rerunio |
+| epaint_default_fonts | 0.36.2 → 0.37.0 | (MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0 | 2026-10-15, rerunio |
+| accesskit | 0.24.1 → 0.25.1 | MIT OR Apache-2.0 | 2026-09-25, DataTriny |
+| glifo | 0.2.0 → 0.3.0 | Apache-2.0 OR MIT | 2026-08-07, LaurenzV |
+| vello_common, vello_cpu | 0.1.0 → 0.2.0 | Apache-2.0 OR MIT | 2026-08-07, LaurenzV |
+| unicode-properties | new, 0.1.4 (epaint 0.37 uses it to recognise emoji) | MIT/Apache-2.0 | 2025-10-30, Manishearth |
+| send_wrapper | new, 0.6.0; a lock entry for eframe's wasm32 build only, never downloaded or built for Windows, Linux or macOS | MIT/Apache-2.0 | 2022-06-05, thk1 |
+
+Choices made with the versions:
+
+- **accesskit 0.25.1 and unicode-properties 0.1.4**, not Cargo's newest picks. Cargo chose
+  accesskit 0.25.2 (2026-10-25, 18 days old) and unicode-properties 0.1.5 (2026-10-31,
+  12 days old). egui 0.37.0's own `Cargo.lock` at its release tag pins 0.25.1 and 0.1.4,
+  so those are what egui was released with; they were set with
+  `cargo update -p <name> --precise <version>`.
+- **`clipboard` is now listed** among eframe's features. eframe 0.36.2 always turned on
+  egui-winit's `clipboard`; 0.37.0 made it a default feature, which Rocket's
+  `default-features = false` would have dropped, leaving copy and paste inside Rocket
+  only. The crates behind it (arboard, and smithay-clipboard on Linux) were already
+  locked.
+- **A direct `egui =0.37.0` dependency with `monochrome_emoji_fonts` and `experimental`**
+  in `crates/rocket-ui`. Neither feature adds a crate: egui was already in the tree.
+  - egui 0.37 moved Noto Emoji and emoji-icon-font out of `default_fonts` into
+    `monochrome_emoji_fonts`, and eframe does not pass it through. `fonts.rs` orders
+    Rocket's fallbacks around those two fonts. The four font files are byte-for-byte
+    those of 0.36.2; 0.37 also always embeds `egui-icons.ttf`, five logo glyphs cut from
+    emoji-icon-font under its MIT license.
+  - `experimental` makes egui's theme hook public (`Context::add_widget_theme`).
+    `style.rs` uses it for one thing: egui 0.37 gives every text field a button's
+    padding and minimum height, and that default can be changed nowhere else. About a
+    hundred of Rocket's fields rely on the 0.36 values. egui says of the feature that it
+    does not break semver but may change or go in a later release, so the next egui
+    upgrade has to re-check `ClassicTextEdit` in `style.rs`.
+- **Linux: `winit =0.30.13` with `wayland`, and egui-winit with `x11` only.** egui-winit
+  0.37's own `wayland` feature also turns on arboard's `wayland-data-control`, which
+  would lock eight more crates (wl-clipboard-rs 0.9.5, tree_magic_mini 3.2.2, os_pipe
+  1.2.3, petgraph 0.8.3, fixedbitset 0.5.9 published 2026-11-08, nom 8.0.0, hashbrown
+  0.15.5, foldhash 0.1.5). Turning on winit's Wayland backend directly is what egui-winit
+  0.36.2's `wayland` did, so the Linux clipboard stays as it was: smithay-clipboard on
+  Wayland, arboard on X11. winit 0.30.13 was already locked. This wiring was read from
+  egui-winit's source; it has not been built on Linux.
+- **eframe's new `system_fonts` feature is left off.** It would add
+  `egui_system_font_provider` and `fontique` (with their dependencies) and let egui load
+  installed fonts on demand for characters Rocket's own fallback list lacks, colour emoji
+  among them. Whether Rocket wants that is the user's decision; it is not needed to keep
+  today's behaviour.
+
+Checks on 2026-11-12, before anything was downloaded:
+
+- OSV's API (`querybatch`, which includes RustSec and the OpenSSF malicious-packages
+  list) for all 346 name and version pairs of the old lockfile, the new one and the eight
+  Linux crates that were left out: no entry for any package that changes or is new, in the
+  versions used or in Cargo's newer picks, and no `MAL-` id under any of the 22 crate
+  names in any version.
+- `cargo audit --no-fetch --stale` (cargo-audit 0.22.2) on the candidate lockfile: no
+  findings, against the local RustSec snapshot of 2026-11-06 (1,422 advisories).
+- crates.io: no version is yanked, every lockfile checksum equals the crates.io checksum,
+  and every package comes from the crates.io registry. Owners: emilk and rerunio for the
+  eight egui crates, as for 0.36.2; DataTriny and mwcampbell for accesskit; raphlinus,
+  DJMcNab, xStrom, LaurenzV and grebmeg (linebender/vello) for glifo, vello_common and
+  vello_cpu; Manishearth (unicode-rs) for unicode-properties.
+
+After the download, before the first build:
+
+- `cargo fetch --locked --target x86_64-pc-windows-msvc` downloaded the 13 archives a
+  Windows build needs. The SHA-256 of each file in the Cargo cache equals its crates.io
+  checksum. epaint's archive is used only to re-create `vendor/epaint`.
+- None of the 13 has a build script, a proc macro or a native library to link. Their only
+  non-source files are the fonts in epaint_default_fonts and a 10 kB reference image in
+  vello_common that its renderer self-check reads.
+- Defender is off on this machine, so the archives had Cargo's SHA-256 check and no
+  antivirus scan.
+
+To go back: restore `Cargo.lock`, the three manifests and `vendor/epaint` from the commit
+before this one. The 0.36.2 archives are still in the Cargo cache.
+
+This is a bounded integrity and advisory review, not proof against an undisclosed
+compromise.
+
+### rustix 1.1.5 → 1.1.6 in the same change
+
+The OSV query above also returned RUSTSEC-2026-0486 (GHSA-jh2m-fhpj-3vr7, published
+2026-10-27) for `rustix 1.1.5`, which was already locked: its `rustix::fs` xattr
+functions mark unwritten bytes as initialized when given a zero-length buffer, which is
+undefined behaviour reachable from safe code. It is classed as unsound (informational),
+which is why cargo-audit's snapshot does not report it as a vulnerability. The user asked
+for the update on 2026-11-12, so the lockfile entry moves to 1.1.6, the fixed release.
+No other entry moves: 1.1.6 raises its bitflags requirement to 2.9.2, and 2.13.2 is
+locked. `rustix 0.38.44`, also locked, is not affected.
+
+Rocket was not exposed. rustix 1.1.x is used only by Linux windowing crates (calloop,
+calloop-wayland-source, gethostname, polling, smithay-client-toolkit, wayland-backend,
+wayland-client, wayland-cursor, x11rb). None of them mentions xattr in its source, and
+Rocket's own code does not use rustix.
+
+Checks on 2026-11-12: OSV lists nothing for 1.1.6; crates.io shows it published on
+2026-10-27 by sunfishcode, the crate's only owner and the publisher of every earlier 1.1
+release, not yanked, with the license unchanged; the lockfile checksum
+(`e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa`) equals the crates.io
+checksum. It is 16 days old and is the only release with the fix.
+
+The entry was changed with `cargo update -p rustix@1.1.5 --precise 1.1.6`, which reads the
+registry index only. The 1.1.6 archive has NOT been downloaded: a Windows build does not
+use rustix 1.1.x, so nothing here compiled or ran it. The first Linux build will download
+it, and rustix has a build script; compare it with 1.1.5's before that build.
+
 ## macOS core/credential adapters — 2026-11-08
 
 No new packages, versions or tools were installed. The previously reviewed and

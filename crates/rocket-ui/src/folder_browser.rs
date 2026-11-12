@@ -943,7 +943,7 @@ impl Browser {
                 let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::click());
                 let chevron = Rect::from_min_max(pos2(rect.right() - 30.0, rect.top()), rect.max);
                 let into = (!entry.program).then(|| {
-                    ui.interact(chevron, ui.id().with(("enter", index)), Sense::click())
+                    ui.interact(chevron, ui.scope_id().with(("enter", index)), Sense::click())
                         .on_hover_text(format!("Go into {}", entry.name))
                 });
                 paint_row(ui, rect, entry, selected, response.hovered() || response.has_focus(), repository_column, modified_column);
@@ -959,7 +959,7 @@ impl Browser {
                     );
                     pages::control(widgets, format!("{}-row-{index}-enter", ids.prefix), into, ui.clip_rect());
                 }
-                response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, &entry.name));
+                response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &entry.name));
                 pages::control(widgets, format!("{}-row-{index}", ids.prefix), &response, ui.clip_rect());
                 if into.as_ref().is_some_and(Response::clicked) {
                     entered = Some(entry.path.clone());
@@ -1052,7 +1052,7 @@ fn crumb(ui: &mut Ui, label: &str, last: bool) -> Response {
         ui.painter().rect_filled(rect, 4.0, HOVER());
     }
     truncated(ui, pos2(rect.left() + 6.0, rect.center().y), rect.width() - 12.0, label, font, if last || hot { TEXT() } else { MUTED() });
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
     response.on_hover_text(label)
 }
 
@@ -1074,7 +1074,7 @@ fn place_row(ui: &mut Ui, image: Icon, label: &str, detail: &str, current: bool)
     if !detail.is_empty() {
         truncated(ui, pos2(rect.right() - 8.0 - detail_width, rect.center().y), detail_width, detail, FontId::proportional(11.5), HINT());
     }
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, current, label));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, current, label));
     response
 }
 
@@ -1652,7 +1652,7 @@ fn browse_modal(
 ) -> ModalResponse<()> {
     let width = (ctx.content_rect().width() - 48.0).clamp(360.0, 880.0);
     let height = (ctx.content_rect().height() - 48.0).clamp(380.0, 600.0);
-    Modal::new(Id::new(id))
+    Modal::new(Id::unique(id))
         .backdrop_color(Color32::from_black_alpha(120))
         .frame(pages::modal_frame())
         .show(ctx, |ui| {

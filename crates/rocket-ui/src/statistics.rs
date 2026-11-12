@@ -1121,7 +1121,7 @@ fn treemap(
         }
         let r = ui.interact(
             *rect,
-            Id::new(("treemap-cell", depth, i)),
+            Id::unique(("treemap-cell", depth, i)),
             if folder_cell {
                 Sense::click()
             } else {

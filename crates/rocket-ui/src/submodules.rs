@@ -962,7 +962,7 @@ fn source_input(
                         [width, CONTROL],
                         TextEdit::singleline(source)
                             .font(TextStyle::Monospace)
-                            .vertical_align(Align::Center),
+                            .align(Align2::LEFT_CENTER),
                     )
                 })
                 .inner;
@@ -1056,7 +1056,7 @@ fn add_inputs(
                     [width, CONTROL],
                     TextEdit::singleline(path)
                         .font(TextStyle::Monospace)
-                        .vertical_align(Align::Center)
+                        .align(Align2::LEFT_CENTER)
                         .hint_text("vendor/library"),
                 )
             })

@@ -1471,7 +1471,7 @@ fn branch_field(
                 .add_enabled_ui(enabled, |ui| {
                     ui.add_sized(
                         [width - picker_width - ui.spacing().item_spacing.x, CONTROL],
-                        TextEdit::singleline(value).font(TextStyle::Monospace).vertical_align(Align::Center),
+                        TextEdit::singleline(value).font(TextStyle::Monospace).align(Align2::LEFT_CENTER),
                     )
                 })
                 .inner;
@@ -1633,7 +1633,7 @@ fn account_row(ui: &mut Ui, name: &str, line: &str, selected: bool, connected: b
         ui.painter()
             .galley(pos2(rect.left() + 12.0, y - galley.size().y / 2.0), galley, ink);
     }
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, name));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, name));
     response
 }
 
@@ -1901,7 +1901,7 @@ fn icon_field(
                 [width, CONTROL],
                 TextEdit::singleline(value)
                     .hint_text(hint)
-                    .vertical_align(Align::Center)
+                    .align(Align2::LEFT_CENTER)
                     .margin(Margin { left: 28, right: 8, top: 4, bottom: 4 }),
             )
         })
@@ -1934,7 +1934,7 @@ fn prefix_field(
                 [width, CONTROL],
                 TextEdit::singleline(value)
                     .char_limit(256)
-                    .vertical_align(Align::Center)
+                    .align(Align2::LEFT_CENTER)
                     .margin(Margin { left: inset.min(120.0) as i8, right: 8, top: 4, bottom: 4 }),
             )
         })
@@ -1972,7 +1972,7 @@ fn form_field(
             .add_enabled_ui(enabled, |ui| {
                 ui.add_sized(
                     [width, CONTROL],
-                    TextEdit::singleline(value).password(password).vertical_align(Align::Center),
+                    TextEdit::singleline(value).password(password).align(Align2::LEFT_CENTER),
                 )
             })
             .inner;

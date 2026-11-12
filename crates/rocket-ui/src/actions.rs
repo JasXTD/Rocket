@@ -658,7 +658,7 @@ fn external_button(ui: &mut Ui, label: &str, widgets: &mut HashMap<String, UiCon
     ui.painter().rect(rect, 6.0, if hovered { HOVER() } else { RAISED() }, Stroke::new(1.0, BORDER()), StrokeKind::Inside);
     ui.painter().galley(pos2(rect.left() + 12.0, rect.center().y - galley.size().y / 2.0), galley, TEXT());
     icon(ui.painter(), Rect::from_center_size(pos2(rect.right() - 15.0, rect.center().y), vec2(12.0, 12.0)), Icon::External, MUTED());
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
     control(widgets, id, &response, ui.clip_rect());
     response.on_hover_cursor(CursorIcon::PointingHand).clicked()
 }
@@ -1057,7 +1057,7 @@ fn run_row(ui: &mut Ui, run: &ForgeCiRun, selected: bool, compact: bool, subject
     job.wrap = text::TextWrapping::truncate_at_width((text_right - left).max(20.0));
     let galley = painter.layout_job(job);
     painter.galley(pos2(left, rect.center().y + 9.0 - galley.size().y / 2.0), galley, fade(MUTED()));
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, run_name(run)));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, run_name(run)));
     response.on_hover_cursor(CursorIcon::PointingHand)
 }
 

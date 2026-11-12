@@ -161,7 +161,7 @@ impl Rocket {
                             .hint_text("Branch, tag or commit ID")
                             .desired_width(f32::INFINITY)
                             .min_size(vec2(0.0, 30.0))
-                            .vertical_align(Align::Center),
+                            .align(Align2::LEFT_CENTER),
                     );
                     pages::control(widgets, "dialog-merge-target", &r, ui.clip_rect());
                     changed |= r.changed();

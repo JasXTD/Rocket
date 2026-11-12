@@ -190,7 +190,7 @@ fn drag_label(ui: &Ui, text: &str) {
     };
     let painter = ui
         .ctx()
-        .layer_painter(LayerId::new(Order::Tooltip, Id::new("rocket-drag-label")));
+        .layer_painter(LayerId::new(Order::Tooltip, Id::unique("rocket-drag-label")));
     let galley = painter.layout_no_wrap(text.into(), FontId::proportional(12.5), TEXT());
     let rect = Rect::from_min_size(pos + vec2(14.0, 10.0), galley.size() + vec2(16.0, 10.0));
     painter.rect(
@@ -331,7 +331,7 @@ impl Rocket {
         // The pointer rests on the menu's heading, not a choice. egui hit-tests rows
         // behind a popup until it covers the pointer's whole search radius, and a
         // hovered row's tooltip would be drawn over the choices.
-        let area = Area::new(Id::new("rocket-drop-menu"))
+        let area = Area::new(Id::unique("rocket-drop-menu"))
             .order(Order::Foreground)
             .fixed_pos(pending.pos - vec2(16.0, 14.0))
             .constrain(true)

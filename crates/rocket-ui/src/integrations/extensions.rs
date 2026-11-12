@@ -237,7 +237,7 @@ fn list_row(
     job.wrap = text::TextWrapping::truncate_at_width(room);
     let detail = painter.layout_job(job);
     painter.galley(pos2(left, rect.center().y + 9.0 - detail.size().y / 2.0), detail, FAINT());
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, row.name));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, row.name));
     pages::control(widgets, row.key, &response, ui.clip_rect());
     response
 }
@@ -497,7 +497,7 @@ fn back_link(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, enabled: boo
     let ink = if hot { TEXT() } else { MUTED() };
     icon(ui.painter(), Rect::from_center_size(pos2(rect.left() + 10.0, rect.center().y), vec2(11.0, 11.0)), Icon::ArrowLeft, ink);
     ui.painter().galley(pos2(rect.left() + 22.0, rect.center().y - galley.size().y / 2.0), galley, ink);
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     pages::control(widgets, "int-back", &response, ui.clip_rect());
     enabled && response.clicked()
 }

@@ -541,7 +541,7 @@ impl Rocket {
         let widgets = &mut self.frame_widgets;
         let width = (ctx.content_rect().width() - 48.0).clamp(480.0, 900.0);
         let height = (ctx.content_rect().height() - 96.0).clamp(360.0, 560.0);
-        let response = Modal::new(Id::new("rocket-workflows"))
+        let response = Modal::new(Id::unique("rocket-workflows"))
             .backdrop_color(Color32::from_black_alpha(120))
             .frame(pages::modal_frame())
             .show(ctx, |ui| {
@@ -951,7 +951,7 @@ pub(crate) fn nav_row(ui: &mut Ui, title: &str, about: &str, selected: bool) -> 
         let galley = ui.painter().layout_job(job);
         ui.painter().galley(pos2(rect.left() + 12.0, rect.top() + 24.0), galley, HINT());
     }
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, title));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, title));
     response
 }
 
@@ -1022,7 +1022,7 @@ fn stash_row(ui: &mut Ui, entry: &StashEntry, selected: bool, line: bool) -> Res
             .hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, CARD_LINE()));
     }
     response.widget_info(|| {
-        WidgetInfo::selected(WidgetType::RadioButton, enabled, selected, format!("{name} · {subject}"))
+        WidgetInfo::selected(Role::RadioButton, enabled, selected, format!("{name} · {subject}"))
     });
     response
 }
@@ -1374,6 +1374,7 @@ mod tests {
                     unit: MouseWheelUnit::Point,
                     delta: vec2(0.0, if step == 0 { 2000.0 } else { -140.0 }),
                     phase: TouchPhase::Move,
+                    source: MouseWheelSource::Unknown,
                     modifiers: Modifiers::NONE,
                 },
             ]);

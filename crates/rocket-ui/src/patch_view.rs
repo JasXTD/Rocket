@@ -96,7 +96,7 @@ pub(crate) fn patch_view(
     }
     tab.patch_file = tab.patch_file.min(patch.files.len() - 1);
     if file_list {
-        Panel::left(Id::new(("patch-files", tab.id)))
+        Panel::left(("patch-files", tab.id))
             .default_size(220.0)
             .size_range(140.0..=(ui.available_width() * 0.5).max(140.0))
             .resizable(true)
@@ -106,7 +106,7 @@ pub(crate) fn patch_view(
                 ui.separator();
                 // Offscreen rows are absent, so carry keyboard focus into the
                 // newly visible row on the next frame. Reject old diff requests.
-                let focus_id = ui.id().with("patch-files-focus");
+                let focus_id = ui.scope_id().with("patch-files-focus");
                 let generation = patch.files[0].id;
                 let focus = ui.data_mut(|data| data.remove_temp::<(u64, usize, bool)>(focus_id))
                     .filter(|(id, row, _)| *id == generation && *row < patch.files.len())
@@ -241,7 +241,7 @@ pub(crate) fn patch_view(
                 if one_row {
                     // Everything but the path and Find, as laid out last pass: Find takes
                     // the free width, 200 to 360 px, and the path what is left after it.
-                    let fixed_id = Id::new(("diff-header-fixed", tab.id));
+                    let fixed_id = Id::unique(("diff-header-fixed", tab.id));
                     let fixed = ui.ctx().data(|d| d.get_temp::<f32>(fixed_id)).unwrap_or(440.0);
                     let path_width = ui
                         .painter()
@@ -428,12 +428,18 @@ pub(crate) fn patch_view(
                 tab.split_diff,
             ));
             let row_height = tab.diff_tools.row_height();
+            // egui 0.37 no longer lets a scroll area's stored offset be written, so a
+            // position chosen on the overview waits here for the next frame.
+            let overview_target = Id::unique(("diff-overview-target", tab.id, tab.patch_file, tab.split_diff));
+            let pending = ui.data_mut(|d| d.remove_temp::<f32>(overview_target));
             if let Some(row) = jump {
                 area = area.vertical_scroll_offset(row as f32 * row_height);
+            } else if let Some(offset) = pending {
+                area = area.vertical_scroll_offset(offset);
             }
             let available = ui.available_size();
             let mut rail = Rect::NOTHING;
-            let mut scroll = ui.horizontal_top(|ui| {
+            let scroll = ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 let scroll = ui.allocate_ui_with_layout(
                     vec2((available.x - crate::overview::WIDTH - 4.0).max(40.0), available.y),
@@ -533,25 +539,24 @@ pub(crate) fn patch_view(
                 scroll
             }).inner;
             let view = crate::overview::View {
-                offset: scroll.state.offset.y,
+                offset: scroll.state.clamped_offset().y,
                 extent: scroll.content_size.y,
                 viewport: scroll.inner_rect.height(),
             };
             tab.diff_tools.overview = crate::overview::Probe::new(&file.overview[mode], view);
             if let Some(o) = crate::overview::show(ui, rail,
-                Id::new(("diff-overview", tab.id, file.id, mode)), &file.overview[mode], view,
+                Id::unique(("diff-overview", tab.id, file.id, mode)), &file.overview[mode], view,
                 tr("Loaded diff: green added, red removed. Click or drag to scroll. Focus here for arrows, Page Up/Down, Home/End.")) {
                 crate::pages::control(widgets, "diff-overview", &o.response, ui.clip_rect());
                 if let Some(target) = o.target {
-                    scroll.state.offset.y = target;
-                    scroll.state.store(ui.ctx(), scroll.id);
+                    ui.data_mut(|d| d.insert_temp(overview_target, target));
                     ui.ctx().request_repaint();
                 }
             }
             if let Some(header) = header {
                 // Match the actual scrolling columns, rather than the viewport
                 // midpoint, when wide glyphs/lines extend beyond the viewport.
-                let left = scroll.inner_rect.left() - scroll.state.offset.x;
+                let left = scroll.inner_rect.left() - scroll.state.unclamped_offset().x;
                 let middle = left + scroll.content_size.x / 2.0;
                 let painter = ui
                     .painter()
@@ -612,7 +617,7 @@ fn draw(
             if hunk { "hunk" } else { "line" },
             line.raw_index
         );
-        let r = ui.interact(rect, ui.id().with(&key), Sense::click());
+        let r = ui.interact(rect, ui.scope_id().with(&key), Sense::click());
         let visible = r.interact_rect.intersect(ui.clip_rect());
         if visible.is_positive() {
             widgets.insert(
@@ -909,7 +914,7 @@ fn mini(ui: &mut Ui, image: Icon, enabled: bool, tip: &str) -> Response {
     }
     let color = if !enabled { FAINT().gamma_multiply(0.6) } else if r.hovered() { TEXT() } else { MUTED() };
     icon(ui.painter(), Rect::from_center_size(r.rect.center(), vec2(12.0, 12.0)), image, color);
-    r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, tip));
+    r.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, tip));
     r
 }
 
@@ -1035,7 +1040,7 @@ mod performance_tests {
             for _ in 0..60 {
                 widgets = frame(&ctx, &mut tab, size, vec![
                     Event::PointerMoved(pos),
-                    Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, -2000.0), modifiers: Modifiers::NONE, phase: TouchPhase::Move },
+                    Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, -2000.0), modifiers: Modifiers::NONE, phase: TouchPhase::Move, source: MouseWheelSource::Unknown },
                 ]);
                 if widgets.contains_key("patch-file-999") { break; }
             }
@@ -1055,6 +1060,10 @@ mod performance_tests {
     fn virtual_file_list_keeps_keyboard_navigation_across_offscreen_rows() {
         for size in [vec2(1280.0, 800.0), vec2(780.0, 620.0)] {
             let ctx = Context::default();
+            // As in the app. egui 0.37's own default lets a list run past its end and
+            // spring back, which would carry the jump to the first row away again;
+            // Rocket's style turns that off.
+            crate::style::install(&ctx);
             let mut tab = large_tab();
             let widgets = frame(&ctx, &mut tab, size, vec![]);
             let first = widgets["patch-file-0"].rect.center();
