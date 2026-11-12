@@ -181,6 +181,62 @@ fn a_cancelled_request_writes_nothing() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn stopped_write_preserves_locks_created_by_an_external_writer_after_preflight() {
+    common::isolated("ROCKET_INDEX_RACE", "stopped_write_preserves_locks_created_by_an_external_writer_after_preflight", || {
+        use std::{io::Write, os::unix::fs::PermissionsExt, thread, time::{Duration, Instant}};
+        for timeout in [false, true] {
+            let f = Fixture::new();
+            commits(&f, &["base"]);
+            let info = f.repository.join(".git/objects/info");
+            fs::create_dir_all(info.join("commit-graphs")).unwrap();
+            let marker = f.root.join("write-started");
+            let relay = f.root.join("git-relay");
+            let quote = |p: &Path| format!("'{}'", p.to_str().unwrap().replace('\'', "'\\''"));
+            // Pass every discovery/read through to real Git. Only the graph write
+            // waits at a deterministic barrier, after Rocket's lock preflight.
+            fs::write(&relay, format!("#!/bin/sh\nfor arg in \"$@\"; do\n if [ \"$arg\" = commit-graph ]; then\n  : > {}\n  while :; do sleep 0.02; done\n fi\ndone\nexec {} \"$@\"\n", quote(&marker), quote(f.git.executable()))).unwrap();
+            fs::set_permissions(&relay, fs::Permissions::from_mode(0o700)).unwrap();
+            let log = DiagnosticLog::open(f.root.join("logs")).unwrap();
+            let git = GitClient::new_with_log(&relay, CommandLimits { timeout: Duration::from_secs(3), ..Default::default() }, log.clone()).unwrap();
+            let repo = git.open(&f.repository, &token()).unwrap();
+            let before = observed(&f, &f.repository);
+            let cancel = token();
+            let paths = [info.join("commit-graph.lock"), info.join("commit-graphs/commit-graph-chain.lock"), info.join("commit-graphs/tmp_graph_external")];
+            let report = thread::scope(|scope| {
+                let writer = scope.spawn(|| repo.change_history_index(write(false), None, &cancel));
+                let deadline = Instant::now() + Duration::from_secs(10);
+                while !marker.exists() && !writer.is_finished() && Instant::now() < deadline {
+                    thread::sleep(Duration::from_millis(5));
+                }
+                assert!(marker.exists(), "graph write did not reach the barrier");
+                // These handles belong to this process, not Rocket's Git child.
+                let held: Vec<_> = paths.iter().map(|path| {
+                    let mut file = fs::OpenOptions::new().write(true).create_new(true).open(path).unwrap();
+                    file.write_all(b"external writer data").unwrap();
+                    file
+                }).collect();
+                if !timeout { cancel.cancel(); }
+                let report = writer.join().unwrap().unwrap();
+                for path in &paths {
+                    assert_eq!(fs::read(path).unwrap(), b"external writer data", "{}", path.display());
+                }
+                drop(held);
+                report
+            });
+            assert!(if timeout { matches!(report.result, Err(Error::TimedOut)) } else { matches!(report.result, Err(Error::Cancelled)) }, "{:?}", report.result);
+            assert_eq!(observed(&f, &f.repository), before);
+            let retry = repo.change_history_index(write(false), None, &token()).unwrap();
+            let error = retry.result.unwrap_err().to_string();
+            assert!(error.contains("Another Git process") && error.contains("commit-graph.lock"), "{error}");
+            assert_eq!(log.health().dropped_events, 0);
+            // Only this test knows who owns these disposable files.
+            for path in paths { fs::remove_file(path).unwrap(); }
+        }
+    });
+}
+
 #[test]
 fn a_fetch_adds_what_it_brought_only_where_the_repository_asks() {
     let f = Fixture::new();
@@ -232,7 +288,7 @@ fn a_fetch_adds_what_it_brought_only_where_the_repository_asks() {
 /// `ROCKET_LOAD_PROBE_REPOSITORY=<folder> cargo test -p rocket-git --test history_index -- --ignored`
 #[test]
 #[ignore = "manual check; needs ROCKET_LOAD_PROBE_REPOSITORY, a repository with 100,000 commits or more"]
-fn a_write_stopped_while_git_holds_its_lock_leaves_none_behind() {
+fn a_stopped_real_write_preserves_work_and_reports_a_retained_lock() {
     let Some(root) = std::env::var_os("ROCKET_LOAD_PROBE_REPOSITORY").map(std::path::PathBuf::from) else {
         println!("ROCKET_LOAD_PROBE_REPOSITORY is not set");
         return;
@@ -262,15 +318,17 @@ fn a_write_stopped_while_git_holds_its_lock_leaves_none_behind() {
     });
     println!("stopped after {} ms: {:?}", started.elapsed().as_millis(), report.result);
     assert!(matches!(report.result, Err(Error::Cancelled)), "{:?}", report.result);
-    assert!(!lock.exists(), "the stopped write left its lock");
     assert_eq!(report.index.unwrap().file, None);
     assert_eq!(observed_plain(&git, &root), before);
-    // Nothing is in the way of the next write.
-    let started = std::time::Instant::now();
-    let index = change(&repo, write(false));
-    println!("written in {} ms: {:?}", started.elapsed().as_millis(), index.file);
-    assert!(index.file.unwrap().commits.is_some_and(|commits| commits >= 100_000));
-    assert_eq!(observed_plain(&git, &root), before);
+    // Do not assume a surviving lock is ours. This opt-in probe does not own its
+    // input repository, so it leaves recovery to the operator rather than unlinking.
+    if lock.exists() {
+        let contents = fs::read(&lock).unwrap();
+        let retry = repo.change_history_index(write(false), None, &token()).unwrap();
+        assert!(matches!(retry.result, Err(Error::Unsupported(_))));
+        assert_eq!(fs::read(&lock).unwrap(), contents);
+        assert_eq!(observed_plain(&git, &root), before);
+    }
 }
 
 fn observed_plain(git: &GitClient, at: &Path) -> Vec<Vec<u8>> {

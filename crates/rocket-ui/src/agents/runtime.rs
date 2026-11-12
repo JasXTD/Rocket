@@ -192,6 +192,8 @@ fn start_observed(
         let mut bridge = if !setup && plan.record.tracking {Some(super::events::Bridge::new(wake.clone()).map_err(|e|io("connect agent activity",e))?)}else{None};
         let arguments = if let Some(b)=&mut bridge {b.arguments(&plan.record,plan.mode==Mode::Resume).map_err(|e|io("prepare agent activity",e))?}else{command.args()};
         let environment=bridge.as_ref().map_or_else(Vec::new,|b|b.environment.clone());
+        #[cfg(unix)]
+        program.check_launch_policy()?;
         let session = rocket_terminal::Session::start_shell_held_with_environment(
             &plan.record.destination, 100, 18, wake,
             &rocket_terminal::Shell::Custom { program: program.path.clone(), arguments },
@@ -225,6 +227,48 @@ mod tests {
         assert_eq!(session.status().exit_code, Some(0));
         session.snapshot(0).unwrap().text()
     }
+    #[cfg(unix)]
+    #[test]
+    fn policy_revoked_during_worktree_preparation_prevents_terminal_start() {
+        crate::test_common::isolated(
+            "ROCKET_AGENT_POLICY_REVOCATION",
+            "agents::runtime::tests::policy_revoked_during_worktree_preparation_prevents_terminal_start",
+            || {
+                use std::{fs, os::unix::fs::PermissionsExt};
+                let fixture = crate::test_common::Fixture::new();
+                fs::write(fixture.repository.join("base"), b"base\n").unwrap();
+                fixture.commit("base");
+                let executable = fixture.root.join("agent 文");
+                fs::copy("/bin/true", &executable).unwrap();
+                fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+                let backend = Backend::discover(&fixture.root.join("logs")).unwrap();
+                let record = Record {
+                    id: 1,
+                    tracking: false, approval: None, conversation: None,
+                    attention: false, last_activity: Default::default(),
+                    name: "policy fixture".into(),
+                    source: fixture.repository.clone(),
+                    destination: fixture.root.join("worktree 文"),
+                    branch: "agents/policy".into(), base: "HEAD".into(),
+                    provider: super::super::model::Provider::Custom,
+                    command: Command { program: executable.to_str().unwrap().into(), arguments: String::new() },
+                    setup: None,
+                };
+                let cancel = CancellationToken::new();
+                let plan = preview(&backend, record, Mode::Create, &cancel).unwrap();
+                let snapshot = plan.program.as_ref().unwrap().launch_path().to_owned();
+                let result = start_observed(&backend, &plan, false, Arc::new(|| {}), &cancel, || {
+                    fs::set_permissions(&executable, fs::Permissions::from_mode(0o600)).unwrap();
+                });
+                assert!(matches!(result, Err(Error::InvalidInput(ref reason)) if reason.contains("not executable")));
+                assert!(plan.record.destination.join("base").is_file(), "prepared worktree must stay recoverable");
+                drop(plan);
+                assert!(!snapshot.exists());
+                assert_eq!(fs::metadata(executable).unwrap().permissions().mode() & 0o777, 0o600);
+            },
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn executable_swap_after_recheck_never_runs_replacement() {

@@ -1089,6 +1089,15 @@ source ACLs are not inherited. Unsafe storage ancestors and linked source files
 are refused. Original executable paths are still rechecked before starting,
 including the transition from setup to the agent, so updates require new review.
 
+Snapshot preparation checks execution policy on the opened source before and after
+copying and again at launch revalidation. Linux uses `faccessat2` with effective
+credentials and the held descriptor, enforcing ACLs and `noexec`; unsupported
+kernels or failed policy checks refuse launch. macOS refuses any source with a
+`com.apple.quarantine` attribute, without parsing an approval bit or clearing it.
+This deliberately also refuses quarantined files approved elsewhere by macOS:
+Rocket cannot transfer that approval merely by copying bytes. These checks do not
+claim to sandbox agents or reproduce every platform's code-signing policy.
+
 The terminal worker holds the snapshot/lock across asynchronous creation and
 process cleanup, even when the review is closed. Partial and released snapshots
 are removed using only their owned file and empty directory; no recursive delete

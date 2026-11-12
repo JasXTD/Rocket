@@ -56,6 +56,16 @@ writes and deletion through the same lifetime. Cancelled preparation removes
 partial copies; normal completion, Stop and closing the review release owned copies.
 A forced application/OS crash can leave a private temporary copy behind.
 
+Before copying and again before launch, Rocket checks the opened source's execution
+policy. Linux uses the kernel's effective-permission check, including ACLs and
+`noexec` mounts (Linux 5.8 or newer); an unavailable check refuses launch. macOS
+refuses files carrying `com.apple.quarantine`, including empty or previously
+approved-looking values. Choose a trusted installed executable without quarantine
+metadata. Rocket does not clear quarantine, grant a Gatekeeper exception or treat
+a copied signature as proof of approval. This conservative restriction also applies
+to quarantined executables macOS may otherwise have approved. Permissions and
+metadata on the original file remain unchanged.
+
 Arguments and the worktree working directory are unchanged. Native Unix programs
 retain the original `argv[0]`, but programs locating resources through their actual
 executable location, and scripts using their own filename, see the private copy.

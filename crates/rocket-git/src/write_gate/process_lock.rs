@@ -144,7 +144,7 @@ mod windows {
 
 #[cfg(not(windows))]
 pub(crate) struct ProcessLock {
-    _file: std::fs::File,
+    file: std::fs::File,
 }
 #[cfg(not(windows))]
 impl ProcessLock {
@@ -170,8 +170,8 @@ impl ProcessLock {
             }
             _ => {}
         }
-        // The file is persistent and never truncated/unlinked. Closing the
-        // non-inheritable handle releases the OS lock, including on process exit.
+        // The file is persistent and never truncated/unlinked. CLOEXEC prevents
+        // inheritance after exec; Drop must also release pre-exec duplicates.
         let mut options = OpenOptions::new();
         options.read(true).write(true).create(true).truncate(false);
         #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -205,9 +205,111 @@ impl ProcessLock {
             ));
         }
         match file.try_lock() {
-            Ok(()) => Ok(Self { _file: file }),
+            Ok(()) => Ok(Self { file }),
             Err(TryLockError::WouldBlock) => Err(Error::RepositoryBusy),
             Err(TryLockError::Error(e)) => Err(Error::io("acquire repository write ownership", e)),
         }
+    }
+}
+
+#[cfg(not(windows))]
+impl Drop for ProcessLock {
+    fn drop(&mut self) {
+        // A concurrent fork may still hold this open-file description before
+        // exec, even with CLOEXEC. Explicitly unlock before waking local waiters;
+        // closing our descriptor alone can leave them spuriously RepositoryBusy.
+        let released = self.file.unlock();
+        debug_assert!(
+            released.is_ok(),
+            "release repository ownership: {released:?}"
+        );
+        // File still closes on drop, including if unlock unexpectedly fails.
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::ProcessLock;
+    use std::{
+        ffi::{c_int, c_void},
+        io::Read,
+        os::{fd::AsRawFd, unix::net::UnixStream},
+        time::Duration,
+    };
+
+    unsafe extern "C" {
+        fn fork() -> c_int;
+        fn close(fd: c_int) -> c_int;
+        fn read(fd: c_int, buffer: *mut c_void, count: usize) -> isize;
+        fn write(fd: c_int, buffer: *const c_void, count: usize) -> isize;
+        fn kill(pid: c_int, signal: c_int) -> c_int;
+        fn waitpid(pid: c_int, status: *mut c_int, options: c_int) -> c_int;
+        fn _exit(status: c_int) -> !;
+    }
+
+    struct HeldChild(c_int);
+    impl Drop for HeldChild {
+        fn drop(&mut self) {
+            // This unreaped, test-owned child cannot have its PID reused. It has
+            // no work to preserve; always reap it, including on an assertion panic.
+            unsafe {
+                kill(self.0, 9);
+                loop {
+                    let result = waitpid(self.0, std::ptr::null_mut(), 0);
+                    if result >= 0
+                        || std::io::Error::last_os_error().kind() != std::io::ErrorKind::Interrupted
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn dropping_owner_releases_lock_while_forked_child_still_holds_descriptor() {
+        let fixture = super::super::tests::Fixture::new();
+        let common = fixture.0.join("checkout 文/.git");
+        let owner = ProcessLock::acquire(&common).unwrap();
+        assert!(matches!(
+            ProcessLock::acquire(&common),
+            Err(crate::Error::RepositoryBusy)
+        ));
+        let (mut parent, child) = UnixStream::pair().unwrap();
+        parent
+            .set_read_timeout(Some(Duration::from_secs(5)))
+            .unwrap();
+        let parent_fd = parent.as_raw_fd();
+        let child_fd = child.as_raw_fd();
+        // SAFETY: the child calls only async-signal-safe syscalls then _exit;
+        // no Rust allocations, destructors or runtime calls run after fork.
+        let pid = unsafe { fork() };
+        assert!(pid >= 0, "fork: {}", std::io::Error::last_os_error());
+        if pid == 0 {
+            unsafe {
+                close(parent_fd);
+                let ready = [1u8];
+                if write(child_fd, ready.as_ptr().cast(), 1) != 1 {
+                    _exit(1);
+                }
+                let mut release = [0u8];
+                read(child_fd, release.as_mut_ptr().cast(), 1);
+                _exit(0);
+            }
+        }
+        let _child = HeldChild(pid);
+        drop(child);
+        let mut ready = [0u8];
+        parent.read_exact(&mut ready).unwrap();
+        assert_eq!(ready, [1]);
+        drop(owner);
+        // CLOEXEC only closes the child's duplicate at exec. Releasing our
+        // permit must not depend on another thread's child reaching exec first.
+        let _next =
+            ProcessLock::acquire(&common).expect("owner dropped while child remains before exec");
+        assert!(matches!(
+            ProcessLock::acquire(&common),
+            Err(crate::Error::RepositoryBusy)
+        ));
     }
 }

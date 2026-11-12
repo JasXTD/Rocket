@@ -1,5 +1,10 @@
 # Insights
 
+Repository activity accepts author dates from years 1 through 9999, including the
+author's local time after its timezone offset. Invalid offsets and out-of-range
+dates return a readable error rather than overflowing or displaying wrapped dates.
+The repository and local work remain unchanged.
+
 Insights extends the former **Statistics** page. This is pending in the next build;
 the published 0.92.3 packages still show Statistics. Open **Insights** in the sidebar
 or **View → Go to → Insights**, or search for Insights in the command palette.

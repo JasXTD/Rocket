@@ -38,6 +38,36 @@ const ALICE: (&str, &str) = ("Alice", "alice@example.invalid");
 const BOB: (&str, &str) = ("Bob 文", "bob@example.invalid");
 
 #[test]
+fn real_git_extreme_author_date_returns_an_error_and_preserves_local_work() {
+    isolated("ROCKET_STATISTICS_CASE", "real_git_extreme_author_date_returns_an_error_and_preserves_local_work", || {
+        use std::{io::Write, process::Stdio};
+        let f = Fixture::new();
+        f.write("file 文", "base\n");
+        f.commit("base");
+        let tree = String::from_utf8(f.run(&["rev-parse", "HEAD^{tree}"])).unwrap();
+        let commit = format!("tree {}\nauthor Test <test@example.invalid> 9223372036854775807 +0100\ncommitter Test <test@example.invalid> 1705307400 +0000\n\nExtreme date\n", tree.trim());
+        let mut child = f.command(&f.repository, &["hash-object", "-t", "commit", "-w", "--stdin"])
+            .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().unwrap();
+        child.stdin.take().unwrap().write_all(commit.as_bytes()).unwrap();
+        let object = child.wait_with_output().unwrap();
+        assert!(object.status.success());
+        let id = String::from_utf8(object.stdout).unwrap();
+        f.run(&["update-ref", "refs/heads/main", id.trim()]);
+        f.write("file 文", "keep local work\n");
+        let status = f.run(&["status", "--porcelain=v2"]);
+        let index = std::fs::read(f.repository.join(".git/index")).unwrap();
+        let raw = f.run(&["log", "-1", "--date=raw", "--format=%ad"]);
+        assert!(String::from_utf8_lossy(&raw).contains("9223372036854775807"));
+        let error = f.repo().commit_activity(&ActivityScope::default(), &token()).unwrap_err().to_string();
+        assert!(error.contains("author date") && error.contains("9999"), "{error}");
+        assert_eq!(f.run(&["rev-parse", "HEAD"]), id.as_bytes());
+        assert_eq!(std::fs::read(f.repository.join(".git/index")).unwrap(), index);
+        assert_eq!(f.run(&["status", "--porcelain=v2"]), status);
+        assert_eq!(std::fs::read(f.repository.join("file 文")).unwrap(), b"keep local work\n");
+    });
+}
+
+#[test]
 fn activity_author_range_does_not_prune_skewed_committer_dates() {
     isolated("ROCKET_STATISTICS_CASE", "activity_author_range_does_not_prune_skewed_committer_dates", || {
         let f = Fixture::new();

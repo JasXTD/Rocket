@@ -10,6 +10,9 @@ use std::{
 
 const MAX_PROGRAM: u64 = 512 * 1024 * 1024;
 
+#[cfg(unix)]
+use rocket_git::check_agent_executable_source;
+
 fn open(path: &Path) -> Result<File> {
     let mut options = OpenOptions::new();
     options.read(true);
@@ -89,11 +92,11 @@ impl Program {
                     "Executable changed during review. Review the session again.",
                 ));
             }
-            // Copying must not turn a non-executable data file into a program.
-            if opened.mode() & 0o111 == 0 {
-                return Err(invalid("The selected agent file is not executable."));
-            }
-            Snapshot::capture(&mut file, &path, MAX_PROGRAM, cancel)?
+            check_agent_executable_source(&file)?;
+            let captured = Snapshot::capture(&mut file, &path, MAX_PROGRAM, cancel)?;
+            // The source policy may have changed while the bytes were copied.
+            check_agent_executable_source(&file)?;
+            captured
         };
         #[cfg(not(unix))]
         let digest = sha256_reader(&mut file, MAX_PROGRAM, cancel)?;
@@ -109,11 +112,20 @@ impl Program {
 
     pub(super) fn recheck(&self, cancel: &CancellationToken) -> Result<()> {
         cancel.check()?;
-        if sha256_reader(&mut open(&self.path)?, MAX_PROGRAM, cancel)? != self.digest {
+        let mut current = open(&self.path)?;
+        if sha256_reader(&mut current, MAX_PROGRAM, cancel)? != self.digest {
             return Err(invalid(
                 "Executable changed after review. Review the session again.",
             ));
         }
+        #[cfg(unix)]
+        {
+            // Check both the held source and today's path after hashing. Replacing
+            // one with identical bytes must not erase a newly imposed restriction.
+            check_agent_executable_source(&self._file)?;
+            check_agent_executable_source(&current)?;
+        }
+        cancel.check()?;
         Ok(())
     }
 
@@ -126,6 +138,14 @@ impl Program {
         {
             &self.path
         }
+    }
+
+    #[cfg(unix)]
+    pub(super) fn check_launch_policy(&self) -> Result<()> {
+        // Worktree preparation can take time after recheck. Revisit the cheap OS
+        // policy checks just before handing the held snapshot to the terminal.
+        check_agent_executable_source(&self._file)?;
+        check_agent_executable_source(&open(&self.path)?)
     }
 }
 
@@ -267,6 +287,82 @@ mod tests {
         assert!(open(&link).is_err());
         assert!(open(&root.0).is_err());
         fs::remove_file(link).unwrap();
+        fs::remove_file(source).unwrap();
+        root.empty();
+    }
+
+    #[test]
+    fn revoked_execute_permission_blocks_inspection_and_recheck() {
+        let root = Directory::new();
+        let source = root.0.join("agent 文");
+        fs::copy(Path::new("/bin/sh").canonicalize().unwrap(), &source).unwrap();
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).unwrap();
+        let command = Command { program: source.to_str().unwrap().into(), arguments: String::new() };
+        let program = Program::inspect(&command, &CancellationToken::new()).unwrap();
+        let snapshot = program.launch_path().to_owned();
+        program.recheck(&CancellationToken::new()).unwrap();
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(program.recheck(&CancellationToken::new()).is_err());
+        assert!(Program::inspect(&command, &CancellationToken::new()).is_err());
+        assert_eq!(fs::metadata(&source).unwrap().mode() & 0o777, 0o600);
+        drop(program);
+        assert!(!snapshot.exists());
+        fs::remove_file(source).unwrap();
+        root.empty();
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "needs ROCKET_AGENT_NOEXEC_TEST_ROOT on a disposable noexec mount"]
+    fn noexec_mount_cannot_be_bypassed_by_the_agent_snapshot() {
+        let parent = std::env::var_os("ROCKET_AGENT_NOEXEC_TEST_ROOT")
+            .expect("provide a disposable noexec directory");
+        let directory = PathBuf::from(parent).join(format!("agent-noexec-{}", std::process::id()));
+        rocket_git::local_storage::create_private_new(&directory).unwrap();
+        let source = directory.join("agent 文");
+        fs::copy("/bin/true", &source).unwrap();
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).unwrap();
+        let before = fs::read(&source).unwrap();
+        let direct = std::process::Command::new(&source).status();
+        assert!(matches!(direct, Err(ref e) if e.kind() == std::io::ErrorKind::PermissionDenied), "fixture must really be noexec: {direct:?}");
+        let result = Program::inspect(&Command { program: source.to_str().unwrap().into(), arguments: String::new() }, &CancellationToken::new());
+        assert!(result.is_err(), "Rocket must not copy a noexec source into an executable directory");
+        assert_eq!(fs::read(&source).unwrap(), before);
+        assert_eq!(fs::metadata(&source).unwrap().mode() & 0o777, 0o700);
+        fs::remove_file(source).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn quarantine_blocks_snapshot_and_later_launch_without_changing_the_source() {
+        let root = Directory::new();
+        let source = root.0.join("agent 文");
+        fs::copy("/bin/echo", &source).unwrap();
+        fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).unwrap();
+        let before = fs::read(&source).unwrap();
+        let command = Command { program: source.to_str().unwrap().into(), arguments: String::new() };
+        let program = Program::inspect(&command, &CancellationToken::new()).unwrap();
+        let snapshot = program.launch_path().to_owned();
+        for marker in ["0083;00000000;Rocket security test;", "0041;00000000;approved-looking;", ""] {
+            // Only Apple's installed utility and this test's disposable file.
+            let set = std::process::Command::new("/usr/bin/xattr")
+                .args(["-w", "com.apple.quarantine", marker]).arg(&source).output().unwrap();
+            assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stderr));
+            for result in [program.recheck(&CancellationToken::new()), program.check_launch_policy(), Program::inspect(&command, &CancellationToken::new()).map(|_| ())] {
+                assert!(result.unwrap_err().to_string().contains("quarantine"));
+            }
+            let read = std::process::Command::new("/usr/bin/xattr")
+                .args(["-p", "com.apple.quarantine"]).arg(&source).output().unwrap();
+            assert!(read.status.success());
+            assert_eq!(String::from_utf8(read.stdout).unwrap().trim_end(), marker);
+        }
+        assert_eq!(fs::read(&source).unwrap(), before);
+        assert_eq!(fs::metadata(&source).unwrap().mode() & 0o777, 0o700);
+        // The attribute still refuses the held source; Rocket never cleared it.
+        assert!(check_agent_executable_source(&program._file).is_err());
+        drop(program);
+        assert!(!snapshot.exists());
         fs::remove_file(source).unwrap();
         root.empty();
     }

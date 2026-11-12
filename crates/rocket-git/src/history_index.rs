@@ -5,7 +5,6 @@
 //! no commit, branch or file.
 use crate::{runner::args, *};
 use std::{
-    ffi::OsString,
     fs,
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
@@ -18,6 +17,9 @@ use std::{
 const ON_FETCH_KEY: &str = "rocket.commitGraphOnFetch";
 /// Git merges layers long before a chain grows this long; a longer one is not Git's.
 const MAX_LAYERS: usize = 64;
+// At most 64 SHA-256 IDs, each followed by Git's LF terminator. Bound both the
+// initial size check and the actual read: a file can grow after its metadata read.
+const MAX_CHAIN_BYTES: u64 = (MAX_LAYERS * 65) as u64;
 
 /// What Rocket can do to the index. Each one is a repository write.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -105,13 +107,16 @@ impl Layout {
         if is_file(&self.single())? {
             return Ok(vec![self.single()]);
         }
-        let chain = match fs::read(self.chain()) {
+        let chain = match read_chain(&self.chain()) {
             Ok(chain) => chain,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(Error::io("read commit index", error)),
+            Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error),
         };
         let mut layers = Vec::new();
-        for name in chain.split(|byte| *byte == b'\n').filter(|name| !name.is_empty()) {
+        for (number, name) in chain.split(|byte| *byte == b'\n').filter(|name| !name.is_empty()).enumerate() {
+            if number == MAX_LAYERS {
+                return Err(Error::parse("read commit index", "commit-graph chain exceeds 64 layers"));
+            }
             // Object IDs only, so a chain file can never name a path outside its folder.
             let name = std::str::from_utf8(name).ok().filter(|name| {
                 matches!(name.len(), 40 | 64) && name.bytes().all(|b| b.is_ascii_hexdigit())
@@ -119,9 +124,6 @@ impl Layout {
             let Some(name) = name else {
                 return Ok(Vec::new());
             };
-            if layers.len() == MAX_LAYERS {
-                return Ok(Vec::new());
-            }
             let layer = self.chain_folder().join(format!("graph-{name}.graph"));
             if is_file(&layer)? {
                 layers.push(layer);
@@ -129,16 +131,48 @@ impl Layout {
         }
         Ok(layers)
     }
-    /// Half-written layers of a chain. Git removes its own when it ends by itself.
-    fn temporary(&self) -> Vec<OsString> {
-        let Ok(entries) = fs::read_dir(self.chain_folder()) else {
-            return Vec::new();
-        };
-        entries
-            .filter_map(|entry| Some(entry.ok()?.file_name()))
-            .filter(|name| name.to_string_lossy().starts_with("tmp_graph_"))
-            .collect()
+}
+
+fn read_chain(path: &Path) -> Result<Vec<u8>> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        // Refuse links and don't block on a FIFO substituted at the path.
+        #[cfg(target_os = "linux")]
+        options.custom_flags(0x20000 | 0x800); // O_NOFOLLOW | O_NONBLOCK
+        #[cfg(target_os = "macos")]
+        options.custom_flags(0x100 | 0x4);
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
+    }
+    let file = options.open(path).map_err(|e| Error::io("read commit index", e))?;
+    let meta = file.metadata().map_err(|e| Error::io("inspect commit index chain", e))?;
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if meta.file_attributes() & 0x400 != 0 {
+            return Err(Error::parse("read commit index", "commit-graph chain is a reparse point"));
+        }
+    }
+    if !meta.is_file() || meta.len() > MAX_CHAIN_BYTES {
+        return Err(Error::parse("read commit index", "commit-graph chain must be a regular file of at most 4160 bytes"));
+    }
+    read_chain_bytes(file)
+}
+
+fn read_chain_bytes(reader: impl Read) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    reader.take(MAX_CHAIN_BYTES + 1).read_to_end(&mut bytes)
+        .map_err(|e| Error::io("read commit index", e))?;
+    if bytes.len() as u64 > MAX_CHAIN_BYTES {
+        return Err(Error::parse("read commit index", "commit-graph chain exceeds 4160 bytes"));
+    }
+    Ok(bytes)
 }
 
 fn is_file(path: &Path) -> Result<bool> {
@@ -194,46 +228,24 @@ fn layer_commits(path: &Path) -> Option<u64> {
     Some(u64::from(u32::from_be_bytes(last)))
 }
 
-/// What was there before a write, so that only what a stopped write of ours left
-/// behind is cleared afterwards.
-struct Before {
-    temporary: Vec<OsString>,
-}
-
-impl Before {
-    fn observe(layout: &Layout) -> Result<Self> {
-        for lock in layout.locks() {
-            if fs::symlink_metadata(&lock).is_ok() {
-                // Named from the .git folder: the full path is long and, on Windows,
-                // in a form people do not type.
-                let inside = Path::new("objects").join("info").join(lock.strip_prefix(&layout.info).unwrap_or(&lock));
-                return Err(Error::Unsupported(format!(
-                    "Another Git process is writing this repository's commit index, or one was interrupted. If no Git is running, delete {} in the repository's .git folder and try again.",
-                    inside.display()
-                )));
-            }
+/// This is only a preflight check, not proof of ownership of any later lock.
+/// External Git processes do not participate in Rocket's repository write gate.
+fn ensure_unlocked(layout: &Layout) -> Result<()> {
+    for lock in layout.locks() {
+        match fs::symlink_metadata(&lock) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(Error::io("inspect commit index lock", error)),
+            Ok(_) => {}
         }
-        Ok(Self {
-            temporary: layout.temporary(),
-        })
+        // Named from the common Git directory (also correct for linked worktrees).
+        let inside = Path::new("objects").join("info")
+            .join(lock.strip_prefix(&layout.info).unwrap_or(&lock));
+        return Err(Error::Unsupported(format!(
+            "Another Git process is writing this repository's commit index, or one was interrupted. If no Git is running, delete {} in the repository's common Git directory and try again.",
+            inside.display()
+        )));
     }
-
-    /// Call only after Rocket stopped its own Git, which is reaped by then. Git
-    /// removes its lock when it ends by itself, but a stopped process cannot, and
-    /// the lock would refuse every later write. No lock existed when this write
-    /// began and Rocket's write gate was held throughout, so one that exists now is
-    /// that process's. The index is a copy of what the commits say; nothing else in
-    /// the repository is touched, and no other Git lock is ever removed here.
-    fn clear_stopped_write(&self, layout: &Layout) {
-        for lock in layout.locks() {
-            let _ = remove(&lock);
-        }
-        for name in layout.temporary() {
-            if !self.temporary.contains(&name) {
-                let _ = remove(&layout.chain_folder().join(name));
-            }
-        }
-    }
+    Ok(())
 }
 
 impl Repository {
@@ -398,31 +410,27 @@ impl Repository {
         cancel: &CancellationToken,
     ) -> Result<()> {
         let layout = self.index_layout();
-        let before = Before::observe(&layout)?;
+        ensure_unlocked(&layout)?;
         let mut arguments = args(&["commit-graph", "write", "--reachable", "--progress"]);
         if !layout.layers()?.is_empty() {
             arguments.push("--split".into());
         }
-        match self.runner.history_index(
+        // Never unlink locks or tmp_graph_* after stopping Git: their appearance
+        // since preflight cannot prove our child created them. Keep cancellation
+        // typed, and let the next attempt explain any interrupted-writer lock.
+        self.runner.history_index(
             self.cwd(),
             &arguments,
             cancel,
             progress.map(|sender| (sender, commits)),
-        ) {
-            Ok(output) => output.success("write commit index").map(|_| ()),
-            Err(error @ (Error::Cancelled | Error::TimedOut)) => {
-                before.clear_stopped_write(&layout);
-                Err(error)
-            }
-            Err(error) => Err(error),
-        }
+        )?.success("write commit index").map(|_| ())
     }
 
     /// Caller holds the write permit.
     fn remove_index(&self, cancel: &CancellationToken) -> Result<()> {
         let layout = self.index_layout();
         // A lock means Git is writing the index right now.
-        Before::observe(&layout)?;
+        ensure_unlocked(&layout)?;
         cancel.check()?;
         // The chain file goes before its layers: without it Git reads none of them.
         let mut files = vec![layout.single(), layout.chain()];
@@ -479,6 +487,83 @@ mod tests {
     use super::*;
 
     #[test]
+    fn oversized_chain_is_rejected_before_parsing() {
+        let folder = std::env::temp_dir().join(format!("rocket-history-chain-size-{}", std::process::id()));
+        let layout = Layout { info: folder };
+        fs::create_dir_all(layout.chain_folder()).unwrap();
+        // Just beyond the largest supported SHA-256 chain: enough to expose the
+        // missing read bound without making the failing test allocate a huge file.
+        fs::write(layout.chain(), vec![b'\n'; 64 * 65 + 1]).unwrap();
+        let result = layout.layers();
+        fs::remove_file(layout.chain()).unwrap();
+        fs::remove_dir(layout.chain_folder()).unwrap();
+        fs::remove_dir(&layout.info).unwrap();
+        assert!(result.is_err(), "oversized chain must report its limit");
+    }
+
+    #[test]
+    fn chain_read_stops_at_the_bound_even_if_the_file_grows() {
+        struct Growing(usize);
+        impl Read for Growing {
+            fn read(&mut self, out: &mut [u8]) -> std::io::Result<usize> {
+                self.0 += out.len();
+                out.fill(b'a');
+                Ok(out.len())
+            }
+        }
+        let mut reader = Growing(0);
+        assert!(read_chain_bytes(&mut reader).is_err());
+        assert_eq!(reader.0 as u64, MAX_CHAIN_BYTES + 1);
+        assert_eq!(read_chain_bytes(std::io::repeat(b'a').take(MAX_CHAIN_BYTES)).unwrap().len() as u64, MAX_CHAIN_BYTES);
+    }
+
+    #[test]
+    fn chain_accepts_both_hash_sizes_and_counts_missing_layers_too() {
+        let folder = std::env::temp_dir().join(format!("rocket-history-chain-layers-{}", std::process::id()));
+        let layout = Layout { info: folder };
+        fs::create_dir_all(layout.chain_folder()).unwrap();
+        for width in [40, 64] {
+            let names: Vec<_> = (0..MAX_LAYERS).map(|n| format!("{n:0width$x}")).collect();
+            for name in &names {
+                fs::write(layout.chain_folder().join(format!("graph-{name}.graph")), b"layer").unwrap();
+            }
+            for ending in ["", "\n"] {
+                fs::write(layout.chain(), names.join("\n") + ending).unwrap();
+                assert_eq!(layout.layers().unwrap().len(), MAX_LAYERS);
+            }
+            for name in &names {
+                fs::remove_file(layout.chain_folder().join(format!("graph-{name}.graph"))).unwrap();
+            }
+        }
+        // SHA-1 is short enough that 65 names fit within the byte limit. Missing
+        // layers must not let a chain sidestep the independent count limit.
+        fs::write(layout.chain(), ("a".repeat(40) + "\n").repeat(MAX_LAYERS + 1)).unwrap();
+        assert!(layout.layers().is_err());
+        fs::write(layout.chain(), b"../../outside\n").unwrap();
+        assert!(layout.layers().unwrap().is_empty());
+        fs::remove_file(layout.chain()).unwrap();
+        fs::remove_dir(layout.chain_folder()).unwrap();
+        fs::remove_dir(&layout.info).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn chain_refuses_links_and_non_regular_files() {
+        let folder = std::env::temp_dir().join(format!("rocket-history-chain-kind-{}", std::process::id()));
+        fs::create_dir(&folder).unwrap();
+        let target = folder.join("target");
+        let link = folder.join("chain");
+        fs::write(&target, b"keep").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert!(read_chain(&link).is_err());
+        assert!(read_chain(&folder).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"keep");
+        fs::remove_file(link).unwrap();
+        fs::remove_file(target).unwrap();
+        fs::remove_dir(folder).unwrap();
+    }
+
+    #[test]
     fn layer_count_reads_the_fanout_and_refuses_other_layouts() {
         let folder = std::env::temp_dir().join(format!("rocket-history-index-{}", std::process::id()));
         fs::create_dir_all(&folder).unwrap();
@@ -512,7 +597,7 @@ mod tests {
     }
 
     #[test]
-    fn a_stopped_write_loses_its_lock_and_half_written_layer_and_nothing_older() {
+    fn preflight_preserves_external_locks_and_temporary_layers() {
         let folder =
             std::env::temp_dir().join(format!("rocket-history-index-stop-{}", std::process::id()));
         let layout = Layout { info: folder.clone() };
@@ -527,19 +612,19 @@ mod tests {
         let older = layout.chain_folder().join("tmp_graph_older");
         read_only(&older);
         read_only(&layout.single());
-        let before = Before::observe(&layout).unwrap();
-        let ours = layout.chain_folder().join("tmp_graph_ours");
-        for path in layout.locks().iter().chain([&ours]) {
+        ensure_unlocked(&layout).unwrap();
+        let external = layout.chain_folder().join("tmp_graph_external");
+        for path in layout.locks().iter().chain([&external]) {
             read_only(path);
         }
         // While a lock is there, a new write is refused rather than started.
-        assert!(matches!(Before::observe(&layout), Err(Error::Unsupported(_))));
-        before.clear_stopped_write(&layout);
-        for path in layout.locks().iter().chain([&ours]) {
-            assert!(!path.exists(), "{}", path.display());
+        assert!(matches!(ensure_unlocked(&layout), Err(Error::Unsupported(_))));
+        for path in layout.locks().iter().chain([&external]) {
+            assert_eq!(fs::read(path).unwrap(), b"x", "{}", path.display());
+            remove(path).unwrap();
         }
         assert!(older.exists() && layout.single().exists());
-        assert!(Before::observe(&layout).is_ok());
+        assert!(ensure_unlocked(&layout).is_ok());
         for path in [&older, &layout.single()] {
             remove(path).unwrap();
         }
