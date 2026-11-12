@@ -42,9 +42,16 @@ keep detailed test evidence in `VALIDATION.md`.
     no longer needs crates that only a web build of egui uses.
   - eframe's new `system_fonts` feature (installed fonts and colour emoji on demand) is
     off; it would add `egui_system_font_provider` and `fontique`.
-  - Type-checked from Windows for Linux and for both Mac targets. Not verified: the
-    running app, native MCP runs, and linked builds or tests on Linux and macOS. To go
-    back, revert this change; the 0.36.2 crates are still in the Cargo cache.
+  - Checked in the running app on Windows with a release build and three native MCP
+    runners (themes, diff overview, review windows), which also take their screenshots
+    through the new callback. Type-checked from Windows for Linux and for both Mac
+    targets. Not verified: the other native runners, and linked builds or tests on
+    Linux and macOS. To go back, revert this change; the 0.36.2 crates are still in the
+    Cargo cache.
+  - Frame times in an optimized build, against 0.36.2 on the same code: long lists and
+    History are level (within 9% either way). An idle frame of a one-file diff is level
+    to about 25% slower; with 8,000-character lines it goes from 12.3 ms to 14.3 ms.
+    egui 0.37 is not a speed-up for Rocket.
 - Keep long lists responsive. The Changes file list, the Branches page, the
   sidebar's local and remote branches and a commit's changed-files list build only
   the rows in or next to the visible area instead of every row on every frame, and
