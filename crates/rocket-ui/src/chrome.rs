@@ -1671,7 +1671,7 @@ impl Rocket {
                             if !filter.is_empty() {
                                 local.retain(|b| short_ref(&b.reference).to_lowercase().contains(&filter));
                             }
-                            crate::long_list::rows(ui, Id::new(("sidebar-branch-rows", tab.id)), local.len(), SIDEBAR_ROW, |ui, index| {
+                            crate::long_list::rows(ui, Id::unique(("sidebar-branch-rows", tab.id)), local.len(), SIDEBAR_ROW, |ui, index| {
                                 let branch = local[index];
                                 let label = short_ref(&branch.reference);
                                 let meta = if branch.is_head { ahead_behind.map(|(a, b)| format!("↑{a} ↓{b}")) } else { None };
@@ -1758,7 +1758,7 @@ impl Rocket {
                                         None => listed(&short_ref(&b.reference)),
                                     }
                                 }).collect();
-                                crate::long_list::rows(ui, Id::new(("sidebar-remote-rows", tab.id, &remote.name)), tracking.len(), SIDEBAR_ROW, |ui, index| {
+                                crate::long_list::rows(ui, Id::unique(("sidebar-remote-rows", tab.id, &remote.name)), tracking.len(), SIDEBAR_ROW, |ui, index| {
                                     let branch = tracking[index];
                                     let label = short_ref(&branch.reference);
                                     let short = label.strip_prefix(&prefix).unwrap_or(&label);

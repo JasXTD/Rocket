@@ -137,13 +137,24 @@ fn main() -> ExitCode {
             }
         }
     }
-    let metadata: Value =
-        serde_json::from_slice(&cargo(&["metadata", "--format-version", "1", "--features", "rocket-integrations/runtime"])).expect("cargo metadata JSON");
+    // Package details, asked for each target. Asked without one, Cargo also wants the
+    // crates that only a web build of egui uses, which Rocket never downloads.
+    let mut members: HashSet<String> = HashSet::new();
+    let mut packages: BTreeMap<String, Value> = BTreeMap::new();
+    for (_, target) in TARGETS {
+        let metadata: Value = serde_json::from_slice(&cargo(&[
+            "metadata", "--format-version", "1", "--features", "rocket-integrations/runtime", "--filter-platform", target,
+        ]))
+        .expect("cargo metadata JSON");
+        members.extend(array(&metadata["workspace_members"]).iter().map(|m| string(m).to_owned()));
+        for package in array(&metadata["packages"]) {
+            packages.entry(string(&package["id"]).to_owned()).or_insert_with(|| package.clone());
+        }
+    }
     let apache = read_text(&root.join("LICENSE-APACHE"));
 
-    let members: HashSet<&str> = array(&metadata["workspace_members"]).iter().map(string).collect();
-    let mut crates: Vec<&Value> = array(&metadata["packages"])
-        .iter()
+    let mut crates: Vec<&Value> = packages
+        .values()
         .filter(|p| !members.contains(string(&p["id"])))
         .filter(|p| compiled.contains_key(&(string(&p["name"]).to_owned(), string(&p["version"]).to_owned())))
         .collect();

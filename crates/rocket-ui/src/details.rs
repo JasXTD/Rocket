@@ -399,7 +399,7 @@ fn file_list(ui: &mut Ui, tab: &mut Tab, widgets: &mut HashMap<String, UiControl
             ui.spacing_mut().item_spacing.y = 1.0;
             // A commit can change thousands of files: build only the rows in or next
             // to the visible area.
-            crate::long_list::rows(ui, Id::new(("detail-file-rows", tab.id)), patch.files.len(), FILE_ROW, |ui, i| {
+            crate::long_list::rows(ui, Id::unique(("detail-file-rows", tab.id)), patch.files.len(), FILE_ROW, |ui, i| {
                 let file = &patch.files[i];
                 let response = ui
                     .add(

@@ -514,8 +514,10 @@ mod tests {
             let m = &localized.font_data[bundled_cjk::MONOSPACE];
             assert_eq!((p.index, m.index), (proportional, mono));
             assert_eq!(localized.families, definitions.families, "locale keeps fallback precedence");
-            assert!(std::ptr::eq(p.font.as_ptr(), m.font.as_ptr()), "faces share immutable bytes");
-            assert!(std::ptr::eq(p.font.as_ptr(), definitions.font_data[bundled_cjk::PROPORTIONAL].font.as_ptr()));
+            // Where a face's file bytes start; egui 0.37 holds them behind a shared pointer.
+            let bytes = |data: &FontData| AsRef::<[u8]>::as_ref(&*data.font).as_ptr();
+            assert!(std::ptr::eq(bytes(p), bytes(m)), "faces share immutable bytes");
+            assert!(std::ptr::eq(bytes(p), bytes(&definitions.font_data[bundled_cjk::PROPORTIONAL])));
         }
         assert_eq!(definitions.font_data[bundled_cjk::PROPORTIONAL].index, 2, "changing a locale preserves the cached definition");
     }

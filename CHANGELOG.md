@@ -37,9 +37,13 @@ keep detailed test evidence in `VALIDATION.md`.
   - The MCP server and the example probes take screenshots through egui's new callback;
     the diff overview hands its scroll target to the next frame, because a scroll
     area's stored offset is no longer writable.
+  - `THIRD-PARTY-NOTICES.txt` is regenerated (unicode-properties and egui's small icon
+    font are new entries). Its generator now asks Cargo once per release target, so it
+    no longer needs crates that only a web build of egui uses.
   - eframe's new `system_fonts` feature (installed fonts and colour emoji on demand) is
     off; it would add `egui_system_font_provider` and `fontique`.
-  - Not verified: the running app, native MCP runs, Linux and macOS builds. To go
+  - Type-checked from Windows for Linux and for both Mac targets. Not verified: the
+    running app, native MCP runs, and linked builds or tests on Linux and macOS. To go
     back, revert this change; the 0.36.2 crates are still in the Cargo cache.
 - Keep long lists responsive. The Changes file list, the Branches page, the
   sidebar's local and remote branches and a commit's changed-files list build only

@@ -22,7 +22,7 @@ version, rustix, moves for an advisory; see the end of this entry.
 | glifo | 0.2.0 → 0.3.0 | Apache-2.0 OR MIT | 2026-08-07, LaurenzV |
 | vello_common, vello_cpu | 0.1.0 → 0.2.0 | Apache-2.0 OR MIT | 2026-08-07, LaurenzV |
 | unicode-properties | new, 0.1.4 (epaint 0.37 uses it to recognise emoji) | MIT/Apache-2.0 | 2025-10-30, Manishearth |
-| send_wrapper | new, 0.6.0; a lock entry for eframe's wasm32 build only, never downloaded or built for Windows, Linux or macOS | MIT/Apache-2.0 | 2022-06-05, thk1 |
+| send_wrapper | new, 0.6.0; a lock entry for eframe's wasm32 build only, not downloaded and never built for Windows, Linux or macOS | MIT/Apache-2.0 | 2022-06-05, thk1 |
 
 Choices made with the versions:
 
@@ -55,8 +55,11 @@ Choices made with the versions:
   1.2.3, petgraph 0.8.3, fixedbitset 0.5.9 published 2026-11-08, nom 8.0.0, hashbrown
   0.15.5, foldhash 0.1.5). Turning on winit's Wayland backend directly is what egui-winit
   0.36.2's `wayland` did, so the Linux clipboard stays as it was: smithay-clipboard on
-  Wayland, arboard on X11. winit 0.30.13 was already locked. This wiring was read from
-  egui-winit's source; it has not been built on Linux.
+  Wayland, arboard on X11. winit 0.30.13 was already locked. A Linux type-check from
+  Windows passes with this wiring (`cargo check --locked --offline -p rocket-ui -p
+  rocket-mcp --all-targets --target x86_64-unknown-linux-gnu`): winit has `x11` and
+  `wayland`, smithay-clipboard is compiled, and arboard has no `wayland-data-control`.
+  It has not been linked or run on Linux.
 - **eframe's new `system_fonts` feature is left off.** It would add
   `egui_system_font_provider` and `fontique` (with their dependencies) and let egui load
   installed fonts on demand for characters Rocket's own fallback list lacks, colour emoji
@@ -89,6 +92,14 @@ After the download, before the first build:
 - Defender is off on this machine, so the archives had Cargo's SHA-256 check and no
   antivirus scan.
 
+THIRD-PARTY-NOTICES.txt was regenerated with `cargo run -p rocket-ui --example
+third_party_notices` and passes its `--check`: 220 crates and 8 other entries. It gains
+unicode-properties and "egui-icons (emoji-icon-font subset)", moves the thirteen versions
+and loses nothing. The generator used to ask `cargo metadata` about every locked package
+at once, which would have needed the `send_wrapper` archive although no Rocket build uses
+it. It now asks once per release target (`--filter-platform`), so crates that only a web
+build uses are never needed; `send_wrapper` was not downloaded.
+
 To go back: restore `Cargo.lock`, the three manifests and `vendor/epaint` from the commit
 before this one. The 0.36.2 archives are still in the Cargo cache.
 
@@ -117,10 +128,15 @@ release, not yanked, with the license unchanged; the lockfile checksum
 (`e5e76742e5294153d4dde1207dbec5bdd81eef6fabdc0d2118babadabfd858aa`) equals the crates.io
 checksum. It is 16 days old and is the only release with the fix.
 
-The entry was changed with `cargo update -p rustix@1.1.5 --precise 1.1.6`, which reads the
-registry index only. The 1.1.6 archive has NOT been downloaded: a Windows build does not
-use rustix 1.1.x, so nothing here compiled or ran it. The first Linux build will download
-it, and rustix has a build script; compare it with 1.1.5's before that build.
+The entry was changed with `cargo update -p rustix@1.1.5 --precise 1.1.6`. With the
+user's approval, `cargo fetch --locked --target x86_64-unknown-linux-gnu` then downloaded
+the one archive (426,484 bytes; its SHA-256 equals the checksum above), which the notices
+generator needs for the Linux target. rustix has a build script: `build.rs` in 1.1.6 is
+byte-for-byte the one in 1.1.5, and the manifest still declares no proc macro and no
+native library. The other differences are ordinary source (30 files, the xattr fix among
+them). A Windows build does not use rustix 1.1.x. With the user's approval, the Linux
+type-check named above then compiled it on this PC, build script included. It has not
+been linked or run on Linux.
 
 ## macOS core/credential adapters — 2026-11-08
 

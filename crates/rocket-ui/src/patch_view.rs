@@ -1163,7 +1163,7 @@ mod performance_tests {
                     .map(|_| {
                         timed_frame(&ctx, tab, vec![
                             Event::PointerMoved(pos2(900.0, 450.0)),
-                            Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, -step), modifiers: Modifiers::NONE, phase: TouchPhase::Move },
+                            Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, -step), modifiers: Modifiers::NONE, phase: TouchPhase::Move, source: MouseWheelSource::Unknown },
                         ])
                     })
                     .collect();

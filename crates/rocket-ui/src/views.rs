@@ -2474,7 +2474,7 @@ fn change_groups(
     if !conflicts.is_empty() {
         let (expanded, _) = group_header(ui, tab.id, tr("Conflicts"), conflicts.len(), None);
         if expanded {
-            crate::long_list::rows(ui, Id::new(("change-rows", tab.id, "conflicts")), conflicts.len(), CHANGE_ROW, |ui, index| {
+            crate::long_list::rows(ui, Id::unique(("change-rows", tab.id, "conflicts")), conflicts.len(), CHANGE_ROW, |ui, index| {
                 change_row(ui, tab, ChangeRow { entry: conflicts[index], staged: false }, writable, intents, widgets, commands)
             });
         }
@@ -2498,7 +2498,7 @@ fn change_groups(
             if staged.is_empty() {
                 empty_hint(ui, tr("No files staged"));
             }
-            crate::long_list::rows(ui, Id::new(("change-rows", tab.id, "staged")), staged.len(), CHANGE_ROW, |ui, index| {
+            crate::long_list::rows(ui, Id::unique(("change-rows", tab.id, "staged")), staged.len(), CHANGE_ROW, |ui, index| {
                 change_row(ui, tab, ChangeRow { entry: staged[index], staged: true }, writable, intents, widgets, commands)
             });
         }
@@ -2528,7 +2528,7 @@ fn change_groups(
             if unstaged.is_empty() {
                 empty_hint(ui, tr("Working tree clean"));
             }
-            crate::long_list::rows(ui, Id::new(("change-rows", tab.id, "unstaged")), unstaged.len(), CHANGE_ROW, |ui, index| {
+            crate::long_list::rows(ui, Id::unique(("change-rows", tab.id, "unstaged")), unstaged.len(), CHANGE_ROW, |ui, index| {
                 change_row(ui, tab, ChangeRow { entry: unstaged[index], staged: false }, writable, intents, widgets, commands)
             });
         }
@@ -3294,7 +3294,7 @@ pub(crate) fn branches(
                         pages::caption(ui, &format!("{title} · {}", group.len()));
                         // A repository can have thousands of branches: build only the
                         // rows in or next to the visible area.
-                        crate::long_list::rows(ui, Id::new(("branch-rows", tab.id, key)), group.len(), BRANCH_ROW, |ui, row| {
+                        crate::long_list::rows(ui, Id::unique(("branch-rows", tab.id, key)), group.len(), BRANCH_ROW, |ui, row| {
                             let (index, branch) = group[row];
                             let current = selected.is_some_and(|s| s.reference == branch.reference);
                             let r = branch_row(ui, branch, current, ahead_behind);
