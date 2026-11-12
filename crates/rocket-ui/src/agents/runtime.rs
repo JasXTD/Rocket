@@ -239,7 +239,7 @@ mod tests {
                 fs::write(fixture.repository.join("base"), b"base\n").unwrap();
                 fixture.commit("base");
                 let executable = fixture.root.join("agent 文");
-                fs::copy("/bin/true", &executable).unwrap();
+                fs::copy("/bin/echo", &executable).unwrap();
                 fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
                 let backend = Backend::discover(&fixture.root.join("logs")).unwrap();
                 let record = Record {
