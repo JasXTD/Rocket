@@ -16,6 +16,8 @@ Repository insights, agent lifecycle improvements, Rust module maps, faster hist
 views and security fixes. See [release notes](docs/releases/0.92.4.md) for packages,
 requirements and validation limits.
 
+- Intel macOS history-index cleanup uses matching native directory-stream ABIs,
+  preserving held-directory cleanup when an external process replaces its path.
 - Secret protection recognizes JSON line breaks around JWK member separators, so
   formatting a private key across lines cannot bypass commit or push checks.
   Long whitespace runs remain cancellable; public keys still pass.

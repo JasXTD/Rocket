@@ -19,6 +19,16 @@ test('Native security evidence requires every affected suite and named regressio
     }
     fs.writeFileSync(file, clean['agents-runtime']);
     const probe = path.join(root, 'gatekeeper-probe.log');
+    const observation = clean['gatekeeper-probe'].match(/ROCKET_GATEKEEPER_BUNDLE_PROBE=.*\n/)[0];
+    const interleaved = clean['gatekeeper-probe'].replace(observation, '').replace(' ... ok', ' ... ' + observation + 'ok');
+    for (const valid of [interleaved, interleaved.replaceAll('\n', '\r\n')]) {
+      fs.writeFileSync(probe, valid);
+      assert.equal(verify(root).total, 42);
+    }
+    for (const invalid of [interleaved.replace('\nok\n', '\nignored\n'), interleaved.replace('\nok\n', '\nFAILED\n'), interleaved.replace('"rocket_refused":true', '"rocket_refused":false'), interleaved + observation]) {
+      fs.writeFileSync(probe, invalid);
+      assert.throws(() => verify(root));
+    }
     for (const status of ['allowed', 'timed_out']) {
       fs.writeFileSync(probe, clean['gatekeeper-probe'].replace('"blocked"', JSON.stringify(status)));
       assert.equal(verify(root).os_block_reproduced, false, 'No OS block may be claimed without evidence');

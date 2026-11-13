@@ -18,7 +18,12 @@ function verify(directory) {
     const results = [...log.matchAll(/^test result: ok\. (\d+) passed; 0 failed;/gm)];
     assert.equal(results.length, 1, `${suite} must run once`);
     assert.equal(Number(results[0][1]), expected, `${suite} test count changed`);
-    for (const name of names) assert(log.includes(name + ' ... ok'), `Missing regression: ${name}`);
+    // With --nocapture, this test's one JSON observation can occur between
+    // libtest's name and its result. Validate that observation separately below.
+    const outcomes = suite === 'gatekeeper-probe'
+      ? log.replace(/^(test [\w:]+ \.\.\. )ROCKET_GATEKEEPER_BUNDLE_PROBE=\{[^\r\n]+\}\r?\nok\r?$/gm, '$1ok')
+      : log;
+    for (const name of names) assert(new RegExp('^test [\\w:]*' + name + ' \\.\\.\\. ok\\r?$', 'm').test(outcomes), `Missing regression: ${name}`);
     counts[suite] = expected;
   }
   const probes = [...fs.readFileSync(path.join(directory, 'gatekeeper-probe.log'), 'utf8').matchAll(/ROCKET_GATEKEEPER_BUNDLE_PROBE=(\{[^\r\n]+\})/g)];

@@ -208,6 +208,12 @@ mod platform {
     unsafe extern "C" {
         fn openat(fd: c_int, path: *const c_char, flags: c_int, ...) -> c_int;
         fn unlinkat(fd: c_int, path: *const c_char, flags: c_int) -> c_int;
+        // Intel Darwin has two directory ABIs; opening and reading the stream
+        // must both use the 64-bit-inode variant, as the native headers do.
+        #[cfg_attr(
+            all(target_os = "macos", target_arch = "x86_64"),
+            link_name = "fdopendir$INODE64"
+        )]
         fn fdopendir(fd: c_int) -> *mut c_void;
         #[cfg_attr(
             all(target_os = "macos", target_arch = "x86_64"),

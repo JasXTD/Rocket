@@ -542,6 +542,12 @@ mod tests {
             fs::create_dir(&outside).unwrap();
             fs::write(outside.join(&name), b"outside canary").unwrap();
             let opened = layout.open().unwrap();
+            for _ in 0..2 {
+                let names = opened.chain.as_ref().unwrap().entries().unwrap()
+                    .collect::<std::io::Result<Vec<_>>>().unwrap();
+                assert!(names.iter().any(|entry| entry == std::ffi::OsStr::new(&name)),
+                    "each independent directory stream must enumerate the graph: {names:?}");
+            }
             let source = directory.join(parent);
             let moved = root.join("moved");
             let rename = fs::rename(&source, &moved);
@@ -556,8 +562,9 @@ mod tests {
                 std::os::unix::fs::symlink(&outside, &source).unwrap();
                 // Cleanup is anchored to the original directory. Removing its
                 // now-substituted empty-folder name may refuse the link instead.
-                let _ = opened.remove(&CancellationToken::new());
-                assert!(!moved.join(if parent == "info" { format!("commit-graphs/{name}") } else { name.clone() }).exists());
+                let result = opened.remove(&CancellationToken::new());
+                assert!(!moved.join(if parent == "info" { format!("commit-graphs/{name}") } else { name.clone() }).exists(),
+                    "cleanup must remove the graph from the held directory: {result:?}");
                 fs::remove_file(&source).unwrap();
                 fs::remove_dir_all(&moved).unwrap();
             }
