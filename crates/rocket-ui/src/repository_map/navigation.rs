@@ -211,6 +211,7 @@ impl MapPage {
             .take(DISPLAY_NODES)
             .collect();
         self.visible.sort_unstable();
+        let before = self.selected;
         if let Some(i) = self.selected {
             self.selected = shown(i);
         }
@@ -219,6 +220,10 @@ impl MapPage {
         }
         if !query.is_empty() && !self.selected.is_some_and(|i| matched.contains(&i)) {
             self.selected = self.visible.iter().copied().find(|i| matched.contains(i));
+        }
+        // A People cell belongs to the person it was picked with.
+        if self.selected != before {
+            self.cell = None;
         }
         // Layout the same expanded/collapsed structure, independently of search
         // and neighbor filtering. A retained node does not jump between lanes.

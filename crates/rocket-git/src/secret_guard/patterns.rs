@@ -7,6 +7,10 @@ mod syntax;
 use syntax::{SCAN_WINDOW, literal};
 #[path = "ai_keys.rs"]
 mod ai_keys;
+#[path = "cloud_keys.rs"]
+mod cloud_keys;
+#[path = "jwk.rs"]
+mod jwk;
 
 #[derive(Clone, Copy)]
 pub(super) struct Policy {
@@ -438,6 +442,22 @@ fn message_reference(value: &[u8], quoted: bool, prose_prefix: bool) -> bool {
     object_id || ((!quoted || prose_prefix) && looks_like_type_reference(value))
 }
 
+/// Whether an identifier ends with `suffix`, ignoring case, `_` and `-`, so
+/// OIDC_CLIENT_SECRET, googleClientSecret and client-secret all end in
+/// `clientsecret`. Only a bounded tail is read, however long the identifier.
+fn name_suffix(raw: &[u8], suffix: &[u8]) -> bool {
+    let mut letters = raw
+        .iter()
+        .rev()
+        .take(64)
+        .filter(|b| !matches!(b, b'_' | b'-'))
+        .map(u8::to_ascii_lowercase);
+    suffix
+        .iter()
+        .rev()
+        .all(|expected| letters.next() == Some(*expected))
+}
+
 fn assignment(
     line: &[u8],
     context: Context,
@@ -491,24 +511,30 @@ fn assignment(
                 }
             }
         }
-        let general_key = matches!(
-            key.as_slice(),
-            b"token"
-                | b"githubtoken"
-                | b"ghtoken"
-                | b"githubpat"
-                | b"password"
-                | b"passwd"
-                | b"secret"
-                | b"apikey"
-                | b"apisecret"
-                | b"accesstoken"
-                | b"authtoken"
-                | b"clientsecret"
-                | b"awssecretaccesskey"
-                | b"databasepassword"
-                | b"dbpassword"
-        );
+        // AWS SDKs and tools name the secret key aws_secret_access_key,
+        // secretAccessKey (JS SDK, STS JSON) or AWS_SECRET_KEY (legacy Java).
+        let aws_secret = key == b"awssecretkey" || name_suffix(raw_key, b"secretaccesskey");
+        // OAuth/OIDC client secrets carry their provider in the name
+        // (OIDC_CLIENT_SECRET, AZURE_CLIENT_SECRET, googleClientSecret).
+        let general_key = aws_secret
+            || name_suffix(raw_key, b"clientsecret")
+            || matches!(
+                key.as_slice(),
+                b"token"
+                    | b"githubtoken"
+                    | b"ghtoken"
+                    | b"githubpat"
+                    | b"password"
+                    | b"passwd"
+                    | b"secret"
+                    | b"apikey"
+                    | b"apisecret"
+                    | b"accesstoken"
+                    | b"authtoken"
+                    | b"awssessiontoken"
+                    | b"databasepassword"
+                    | b"dbpassword"
+            );
         let ai_key = policy.ai_keys && ai_keys::context_name(&key);
         if !(policy.secrets && general_key || ai_key) {
             continue;
@@ -534,6 +560,11 @@ fn assignment(
             return Ok(Some(SecretKind::AiApiKey));
         }
         if !policy.secrets || !general_key {
+            continue;
+        }
+        // AWS documentation examples (wJalrXUtnFEMI/K7MDENG/bPxRfiCY...) end in
+        // EXAMPLEKEY; a generated 40-character secret realistically never does.
+        if aws_secret && value.ends_with(b"EXAMPLEKEY") {
             continue;
         }
         // Generic token/secret names can describe structured data. Stronger
@@ -633,6 +664,12 @@ fn ascii_scan(
         }
         if policy.secrets && github(line, check)? {
             return Ok(Some((SecretKind::GithubToken, number + 1)));
+        }
+        if policy.secrets && cloud_keys::contains_aws_key_id(line, check)? {
+            return Ok(Some((SecretKind::AwsAccessKey, number + 1)));
+        }
+        if policy.secrets && cloud_keys::contains_google_client_secret(line, check)? {
+            return Ok(Some((SecretKind::Credential, number + 1)));
         }
         let mut line_context = context;
         if context == Context::Message {
@@ -753,6 +790,12 @@ fn scan_context(
         })? {
             return Ok(Some(found));
         }
+    }
+    // JWK members can span lines (pretty-printed JSON), so check whole objects.
+    if policy.secrets
+        && let Some(line) = jwk::find(bytes, check)?
+    {
+        return Ok(Some((SecretKind::PrivateKey, line)));
     }
     if let Some(found) = ascii_scan(bytes, context, policy, check)? {
         return Ok(Some(found));

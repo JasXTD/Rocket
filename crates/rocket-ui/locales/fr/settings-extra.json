@@ -157,7 +157,7 @@
     "many": "{n} avis à examiner",
     "other": "{n} avis à examiner"
   },
-  "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face et clés API Google standard (également utilisées par Gemini).",
+  "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face et clés API Google standard (également utilisées par Gemini).",
   "DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs.": "Les clés DeepSeek et GLM / Z.ai sont vérifiées dans des affectations comme DEEPSEEK_API_KEY, ZAI_API_KEY ou api_key, sans confondre les hachages ordinaires et les identifiants à points.",
   "Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked.": "Reconnaît les formats connus, pas tous les fournisseurs ni les versions futures. Les variables restent autorisées ; les clés synthétiques réalistes sont bloquées.",
   "Advisory data is {age} days old. Update it in Scanner & data to check newer advisories.": "Les avis datent de {age} jours. Actualisez-les dans Scanner et données pour vérifier les avis récents.",

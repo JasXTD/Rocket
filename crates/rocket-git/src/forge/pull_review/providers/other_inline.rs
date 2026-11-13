@@ -240,16 +240,7 @@ impl ForgeSession {
         if j.str("path") != Some(path) || j.str("commitId") != Some(commit) {
             return fail(ForgeFailure::PullChanged);
         }
-        if j.str("gitObjectType") != Some("blob")
-            || j.bool("isFolder") == Some(true)
-            || j.bool("isSymLink") == Some(true)
-            || at(&j, &["contentMetadata"]).and_then(|m| m.bool("isBinary")) != Some(false)
-        {
-            return Ok(None);
-        }
-        Ok(j.str("content")
-            .filter(|s| s.len() <= 128 * 1024 && !s.contains('\0'))
-            .map(str::to_owned))
+        Ok(azure_text(&j))
     }
     pub(super) fn azure_files(
         &self,
@@ -566,6 +557,21 @@ impl ForgeSession {
     }
 }
 
+/// The text of an Azure Items read when it is a plain text blob. Azure leaves false
+/// flags out of its JSON: Microsoft's samples show text files whose `contentMetadata`
+/// has only encoding, contentType, fileName and extension, and files without
+/// `isFolder`. So only an explicit `isBinary: true` marks a binary file; the content
+/// must still be bounded and free of NUL.
+fn azure_text(j: &Json) -> Option<String> {
+    if j.str("gitObjectType") != Some("blob")
+        || j.bool("isFolder") == Some(true)
+        || j.bool("isSymLink") == Some(true)
+        || at(j, &["contentMetadata"]).and_then(|m| m.bool("isBinary")) == Some(true)
+    {
+        return None;
+    }
+    j.str("content").filter(|s| s.len() <= 128 * 1024 && !s.contains('\0')).map(str::to_owned)
+}
 fn raw_body(j: &Json, p: ForgeProvider) -> Option<&str> {
     match p {
         ForgeProvider::Bitbucket => txt(j, &["content", "raw"]),
@@ -743,6 +749,25 @@ mod tests {
     use super::*;
     fn json(s: &str) -> Json {
         crate::hosting::json::parse(s.as_bytes()).unwrap()
+    }
+    #[test]
+    fn azure_text_files_need_no_is_binary_flag() {
+        // Microsoft's Items sample: a text file's contentMetadata has no isBinary key.
+        let text = json(r#"{"gitObjectType":"blob","contentMetadata":{"encoding":65001,"contentType":"application/xml","fileName":"Web.config","extension":"config"},"content":"<a/>\n"}"#);
+        assert_eq!(azure_text(&text).as_deref(), Some("<a/>\n"));
+        assert_eq!(azure_text(&json(r#"{"gitObjectType":"blob","contentMetadata":{"isBinary":false},"content":"x"}"#)).as_deref(), Some("x"));
+        assert_eq!(azure_text(&json(r#"{"gitObjectType":"blob","content":"x"}"#)).as_deref(), Some("x"));
+        for refused in [
+            r#"{"gitObjectType":"blob","contentMetadata":{"isBinary":true},"content":"x"}"#,
+            r#"{"gitObjectType":"tree","isFolder":true,"content":"x"}"#,
+            r#"{"gitObjectType":"blob","isSymLink":true,"content":"x"}"#,
+            r#"{"gitObjectType":"blob","content":"a\u0000b"}"#,
+            r#"{"gitObjectType":"blob"}"#,
+        ] {
+            assert_eq!(azure_text(&json(refused)), None, "{refused}");
+        }
+        let large = format!(r#"{{"gitObjectType":"blob","content":"{}"}}"#, "a".repeat(128 * 1024 + 1));
+        assert_eq!(azure_text(&json(&large)), None);
     }
     fn files() -> Vec<ForgePullFile> {
         vec![file(&json(r#"{"path":{"toString":"資料/新.rs"},"srcPath":{"toString":"資料/旧.rs"},"type":"MOVE"}"#),ForgeProvider::BitbucketServer).unwrap()]

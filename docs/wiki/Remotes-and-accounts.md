@@ -192,7 +192,7 @@ Binary or incomplete patches cannot accept line comments. Open GitHub for those.
 
 ### Merge a reviewed GitHub PR
 
-1. Finish or discard the review draft, then choose a method under **Merge on provider**.
+1. Finish or discard the review draft, then choose a method in the **Merge** card.
 2. Choose **Review merge** and inspect the remote target, method and commit IDs.
 3. Choose **Merge reviewed PR**, then read the result and refresh the PR.
 

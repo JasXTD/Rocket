@@ -127,86 +127,94 @@ pub(super) fn section(
     let Some(details) = s.pull.details.clone() else {
         return;
     };
+    let open = !details.summary().merged && details.summary().state == "open";
+    // A closed PR has nothing left to choose; the header's pill already says why.
+    if !open && s.pull.merge.preview.is_none() && s.pull.merge.result.is_none() {
+        return;
+    }
+    let provider = details.repository().config().provider();
     let allowed = !busy
         && s.pull.unknown.is_none()
         && s.pull.merge.unknown.is_none()
         && !s.pull.threads.unknown
         && !s.pull.has_draft()
         && s.pull.preview.is_none();
-    ui.separator();
-    ui.strong(tr("Merge on provider"));
-    if let Some(result) = &s.pull.merge.result {
-        ui.add(Label::new(RichText::new(result).color(GREEN())).wrap());
-    }
-    if let Some(preview) = s.pull.merge.preview.clone() {
-        ui.label(format!(
-            "{} · {} #{} → {}",
-            method_label(details.repository().config().provider(), preview.method()),
-            preview.repository().path(),
-            preview.summary().number,
-            preview.summary().target
-        ));
-        ui.add(
-            Label::new(
-                RichText::new(trf!("Reviewed head {head}\nReviewed base {base}", head = preview.summary().head, base = preview.summary().base))
-                .monospace(),
-            )
-            .wrap(),
-        );
-        let condition = details.merge_condition();
-        let guidance = MERGE_GUIDANCE.iter().find(|&&known| known == condition).map_or(condition, |&known| tr(known));
-        ui.colored_label(AMBER(), guidance);
-        ui.label(tr("This updates the remote target branch. Local files stay unchanged and no branch is deleted."));
-        ui.horizontal_wrapped(|ui| {
-            if btn(ui, widgets, "hosting-merge-back", tr("Cancel preview"), !busy) {
-                s.pull.merge.preview = None;
+    super::card(ui, |ui, header| {
+        if header {
+            ui.label(RichText::new(tr("Merge")).font(semibold(13.0)));
+            if let Some(preview) = &s.pull.merge.preview {
+                ui.label(RichText::new(method_label(provider, preview.method())).size(12.5).color(MUTED()));
             }
-            if btn(
-                ui,
-                widgets,
-                "hosting-merge-submit",
-                tr("Merge reviewed PR"),
-                allowed,
-            ) {
-                out.action = Some("pull-merge-submit");
-            }
-        });
-    } else if details.summary().merged || details.summary().state != "open" {
-        ui.label(tr("This PR is no longer open for merging."));
-    } else {
-        ui.horizontal_wrapped(|ui| {
-            for method in [
-                ForgeMergeMethod::Merge,
-                ForgeMergeMethod::Squash,
-                ForgeMergeMethod::Rebase,
-            ] {
-                let r = ui.add_enabled(
-                    allowed && details.supports_merge(method),
-                    Button::selectable(s.pull.merge.method == method, method_label(details.repository().config().provider(), method)),
-                );
-                control(
-                    widgets,
-                    format!("hosting-merge-method-{}", method.key()),
-                    &r,
-                    ui.clip_rect(),
-                );
-                if r.clicked() {
-                    s.pull.merge.method = method;
-                }
-            }
-            if btn(
-                ui,
-                widgets,
-                "hosting-merge-preview",
-                tr("Review merge"),
-                allowed,
-            ) {
-                out.action = Some("pull-merge-preview");
-            }
-        });
-        ui.colored_label(MUTED(), tr("Preview rechecks the PR and available readiness data. The server enforces permissions and policy, and may queue a merge. Rocket does not bypass policy or automatically retry requests."));
-        if s.pull.has_draft() {
-            ui.colored_label(AMBER(), tr("Submit or discard your review draft before merging."));
+            return;
         }
-    }
+        if let Some(result) = &s.pull.merge.result {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                if matches!(result.len(), 40 | 64) && result.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    pages::pill(ui, tr("Merged"), VIOLET());
+                    super::chip(ui, &result[..12], TEXT()).on_hover_text(result);
+                } else {
+                    ui.add(Label::new(RichText::new(result).color(GREEN())).wrap());
+                }
+            });
+        }
+        if let Some(preview) = s.pull.merge.preview.clone() {
+            // Exactly what will be sent: where to, and the two commits reviewed.
+            ui.label(format!("{} #{} → {}", preview.repository().path(), preview.summary().number, preview.summary().target));
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                let (head, base) = (&preview.summary().head, &preview.summary().base);
+                super::chip(ui, &trf!("head {commit}", commit = &head[..12.min(head.len())]), TEXT()).on_hover_text(head);
+                super::chip(ui, &trf!("base {commit}", commit = &base[..12.min(base.len())]), TEXT()).on_hover_text(base);
+            });
+            let condition = details.merge_condition();
+            let guidance = MERGE_GUIDANCE.iter().find(|&&known| known == condition).map_or(condition, |&known| tr(known));
+            ui.add(Label::new(RichText::new(guidance).size(12.5).color(AMBER())).wrap());
+            pages::note(ui, tr("This updates the remote target branch. Local files stay unchanged and no branch is deleted."));
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing.x = 8.0;
+                let r = pages::primary(ui, allowed, tr("Merge reviewed PR"));
+                control(widgets, "hosting-merge-submit", &r, ui.clip_rect());
+                if r.clicked() {
+                    out.action = Some("pull-merge-submit");
+                }
+                if btn(ui, widgets, "hosting-merge-back", tr("Cancel preview"), !busy) {
+                    s.pull.merge.preview = None;
+                }
+            });
+        } else if open {
+            // The methods this host can merge with, and Review merge, on one row.
+            let methods: Vec<_> = [ForgeMergeMethod::Merge, ForgeMergeMethod::Squash, ForgeMergeMethod::Rebase]
+                .into_iter()
+                .filter(|m| details.supports_merge(*m))
+                .collect();
+            // A method picked on another host's PR may not be offered here (only some
+            // hosts rebase); start from the first one this host offers.
+            if let Some(&first) = methods.first()
+                && !methods.contains(&s.pull.merge.method)
+            {
+                s.pull.merge.method = first;
+            }
+            ui.horizontal(|ui| {
+                let items: Vec<_> = methods.iter().map(|m| (method_label(provider, *m), s.pull.merge.method == *m)).collect();
+                let responses = ui.add_enabled_ui(allowed, |ui| pages::segments(ui, &items)).inner;
+                for (method, r) in methods.iter().zip(&responses) {
+                    control(widgets, format!("hosting-merge-method-{}", method.key()), r, ui.clip_rect());
+                    if r.clicked() {
+                        s.pull.merge.method = *method;
+                    }
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let r = pages::primary(ui, allowed && methods.contains(&s.pull.merge.method), tr("Review merge"));
+                    control(widgets, "hosting-merge-preview", &r, ui.clip_rect());
+                    if r.clicked() {
+                        out.action = Some("pull-merge-preview");
+                    }
+                });
+            });
+            if s.pull.has_draft() || s.pull.preview.is_some() {
+                ui.add(Label::new(RichText::new(tr("Submit or discard the review draft before merging.")).size(12.5).color(AMBER())).wrap());
+            }
+        }
+    });
 }

@@ -56,7 +56,7 @@ impl Threads {
                         "[]".into()
                     } else {
                         format!(
-                            r#"[{{"id":"PRRT_fixture","path":"資料/新.rs","startLine":1,"line":2,"isResolved":{},"isOutdated":false,"viewerCanResolve":{can},"viewerCanUnresolve":true,"comments":{{"pageInfo":{{"hasNextPage":false}},"nodes":[{{"databaseId":8,"author":{{"login":"contributor"}},"body":"PRIVATE original","createdAt":"today","path":"資料/新.rs","line":2,"replyTo":null}}]}}}}]"#,
+                            r#"[{{"id":"PRRT_fixture","path":"資料/新.rs","startLine":1,"line":2,"isResolved":{},"isOutdated":false,"viewerCanResolve":{can},"viewerCanUnresolve":true,"comments":{{"pageInfo":{{"hasNextPage":false}},"nodes":[{{"fullDatabaseId":"8","author":{{"login":"contributor"}},"body":"PRIVATE original","createdAt":"today","path":"資料/新.rs","line":2,"replyTo":null}}]}}}}]"#,
                             r.load(Ordering::Acquire)
                         )
                     };

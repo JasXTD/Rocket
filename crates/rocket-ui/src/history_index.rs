@@ -276,7 +276,7 @@ impl Rocket {
                 s.before = None;
             }
             if stopped {
-                s.notice = Some(tr("Stopped. The repository is as it was.").into());
+                s.notice = Some(tr("Stopped. Commits and working files are unchanged. Git locks and temporary index files are kept; retry only after the writer has exited.").into());
             } else {
                 s.failure = Some(Failure {
                     change,

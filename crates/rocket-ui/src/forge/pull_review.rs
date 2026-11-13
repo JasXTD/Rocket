@@ -217,6 +217,11 @@ pub(super) fn section(
             ) {
                 out.action = Some("pull-refresh");
             }
+            // In this row, not a line of its own: a draft saves within a fraction of a
+            // second, and a line that came and went moved every control below it.
+            if s.drafts.error.is_none() && s.drafts.saving() {
+                ui.add(Label::new(RichText::new(tr("Saving protected draft and recovery")).size(12.0).color(FAINT())).truncate());
+            }
         });
     });
     if let Some(error) = &s.error {
@@ -225,9 +230,7 @@ pub(super) fn section(
     if let Some(notice) = &s.notice {
         pages::note(ui, notice);
     }
-    if let Some(error)=&s.drafts.error {pages::callout(ui,RED(),&trf!("{error} Open Saved drafts to retry storage after resolving the problem.", error));} else if s.drafts.saving() {
-        pages::note(ui,tr("Saving protected draft and recovery"));
-    }
+    if let Some(error)=&s.drafts.error {pages::callout(ui,RED(),&trf!("{error} Open Saved drafts to retry storage after resolving the problem.", error));}
     if s.drafts.has_restored() {
         pages::callout(ui,AMBER(),tr("Saved line comments do not match the loaded revision. Their text is preserved; review it before removing the old locations."));
         for raw in &s.drafts.restored {ui.label(RichText::new(trf!("{path} · {side} lines {start}–{end}",path=raw.path,side=inline::side_label(raw.side),start=raw.start,end=raw.line)).size(12.5).color(MUTED()));ui.add(Label::new(&raw.body).wrap());}
@@ -413,7 +416,7 @@ pub(super) fn section(
             pages::note(ui, tr("Markdown is shown as text. Remote images and HTML are not loaded."));
         }
         1 => {
-            collection_note(ui, &details.commits);
+            collection_note(ui, &details.commits, tr("No commits returned."));
             ui.scope(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for commit in &details.commits.items {
@@ -424,10 +427,8 @@ pub(super) fn section(
         }
         2 => inline::files(ui, &details, s, widgets, busy),
         3 => {
-            ui.strong(tr("Conversation"));
-            comments(ui, &details.discussion);
-            ui.strong(tr("Inline review comments"));
-            comments(ui, &details.inline_comments);
+            comments(ui, tr("Conversation"), &details.discussion, tr("No comments yet."));
+            comments(ui, tr("Inline review comments"), &details.inline_comments, tr("No inline comments."));
             threads::section(ui,s,widgets,busy,out);
         }
         4 => {
@@ -437,21 +438,36 @@ pub(super) fn section(
                     trf!("Confirmed {reference} · {state}. Refresh to reload the review history.", reference = if r.id == 0 { tr("review action").into() } else { trf!("submission #{number}", number = r.id) }, state = r.state),
                 );
             }
-            collection_note(ui, &details.reviews);
-            for r in &details.reviews.items {
-                let reference = if r.id == 0 { tr("review action").into() } else { trf!("review #{number}", number = r.id) };
-                ui.strong(format!("{} · {} · {reference}", r.author, r.state));
-                ui.colored_label(
-                    MUTED(),
-                    format!(
-                        "{} · {}",
-                        r.date,
-                        r.commit.as_deref().unwrap_or(tr("No commit reported"))
-                    ),
-                );
-                ui.label(&r.body);
-                ui.separator();
-            }
+            card(ui, |ui, header| {
+                if header {
+                    ui.label(RichText::new(tr("Reviews")).font(semibold(13.0)));
+                    count(ui, &details.reviews);
+                    return;
+                }
+                collection_note(ui, &details.reviews, tr("No reviews yet."));
+                for (i, r) in details.reviews.items.iter().enumerate() {
+                    if i > 0 {
+                        pages::divider(ui);
+                    }
+                    let reference = if r.id == 0 { tr("review action").into() } else { trf!("review #{number}", number = r.id) };
+                    ui.horizontal_wrapped(|ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+                        ui.label(RichText::new(&r.author).strong());
+                        ui.label(RichText::new(&r.state).size(12.0).color(MUTED()));
+                        ui.label(RichText::new(format!("{} · {reference}", r.date)).size(12.0).color(FAINT()));
+                    });
+                    match &r.commit {
+                        // The commit this review was made on, which need not be today's head.
+                        Some(commit) => {
+                            chip(ui, &commit[..12.min(commit.len())], TEXT()).on_hover_text(commit);
+                        }
+                        None => pages::note(ui, tr("No commit reported")),
+                    }
+                    if !r.body.is_empty() {
+                        ui.add(Label::new(&r.body).wrap());
+                    }
+                }
+            });
         }
         _ => checks_tab(ui, s, &details, widgets, out),
     }
@@ -635,44 +651,80 @@ pub(crate) fn pull_check_state(c: &ForgePullCheck) -> ForgeCheckState {
         _ => ForgeCheckState::Skipped,
     }
 }
-fn collection_note<T>(ui: &mut Ui, c: &ForgePullCollection<T>) {
+/// Why a list is empty, unavailable or cut short. `empty` names what is missing.
+fn collection_note<T>(ui: &mut Ui, c: &ForgePullCollection<T>, empty: &str) {
     if let Some(e) = c.error {
-        ui.colored_label(
-            AMBER(),
-            trf!("Unavailable: {code} — {guidance}", code = e.code(), guidance = e.guidance()),
-        );
+        ui.add(Label::new(RichText::new(trf!("Unavailable: {code} — {guidance}", code = e.code(), guidance = e.guidance())).size(12.5).color(AMBER())).wrap());
     } else if c.items.is_empty() {
-        ui.colored_label(
-            MUTED(),
-            tr("No entries returned. This does not mean checks passed or approval is granted."),
-        );
+        pages::note(ui, empty);
     }
     if c.limited {
-        ui.colored_label(
-            AMBER(),
-            tr("Partial preview (up to 200 entries). Open the provider for the complete list."),
-        );
+        ui.add(Label::new(RichText::new(tr("Partial preview (up to 200 entries). Open the provider for the complete list.")).size(12.5).color(AMBER())).wrap());
     }
 }
-fn comments(ui: &mut Ui, comments: &ForgePullCollection<ForgePullComment>) {
-    collection_note(ui, comments);
-    for c in &comments.items {
-        ui.strong(trf!("{author} · comment #{number}", author = c.author, number = c.id));
-        ui.colored_label(MUTED(), &c.date);
-        if let Some(path) = &c.path {
-            ui.label(format!(
-                "{path} · {}{}",
-                c.line
-                    .map(|x| trf!("line {x}", x))
-                    .unwrap_or_else(|| tr("outdated or file comment").into()),
-                c.reply_to
-                    .map(|x| trf!(" · reply to #{x}", x))
-                    .unwrap_or_default()
-            ));
-        }
-        ui.label(&c.body);
-        ui.separator();
+/// A list's length beside its card title, when the list was read.
+fn count<T>(ui: &mut Ui, c: &ForgePullCollection<T>) {
+    if c.error.is_none() && !c.items.is_empty() {
+        ui.label(RichText::new(c.items.len().to_string()).size(12.5).color(FAINT()));
     }
+}
+/// One card of comments: the author and date on one line, the text under them and a
+/// hairline between comments. Inline comments also name their file and line.
+fn comments(ui: &mut Ui, title: &str, comments: &ForgePullCollection<ForgePullComment>, empty: &str) {
+    card(ui, |ui, header| {
+        if header {
+            ui.label(RichText::new(title).font(semibold(13.0)));
+            count(ui, comments);
+            return;
+        }
+        collection_note(ui, comments, empty);
+        for (i, c) in comments.items.iter().enumerate() {
+            if i > 0 {
+                pages::divider(ui);
+            }
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.label(RichText::new(&c.author).strong());
+                ui.label(RichText::new(&c.date).size(12.0).color(FAINT()));
+            });
+            if let Some(path) = &c.path {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.label(RichText::new(path).monospace().size(12.0).color(MUTED()));
+                    let line = c.line.map(|x| trf!("line {x}", x)).unwrap_or_else(|| tr("outdated or file comment").into());
+                    let reply = c.reply_to.map(|x| trf!(" · reply to #{x}", x)).unwrap_or_default();
+                    ui.label(RichText::new(format!("· {line}{reply}")).size(12.0).color(FAINT()));
+                });
+            }
+            ui.add(Label::new(&c.body).wrap());
+        }
+    });
+}
+/// A card with a header strip, like [`pages::titled_card`], for content whose header
+/// and body share state: `content` draws the header row (`true`), then the body.
+pub(super) fn card(ui: &mut Ui, mut content: impl FnMut(&mut Ui, bool)) {
+    Frame::new().stroke(Stroke::new(1.0, CARD_STROKE())).corner_radius(8).show(ui, |ui| {
+        ui.set_width(ui.available_width());
+        ui.spacing_mut().item_spacing.y = 0.0;
+        Frame::new()
+            .fill(CARD())
+            .corner_radius(CornerRadius { nw: 7, ne: 7, sw: 0, se: 0 })
+            .inner_margin(Margin::symmetric(12, 8))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    content(ui, true)
+                });
+            });
+        let top = ui.cursor().top();
+        ui.painter().hline(ui.max_rect().x_range(), top, Stroke::new(1.0, CARD_STROKE()));
+        Frame::new().inner_margin(Margin::symmetric(12, 10)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 6.0;
+            content(ui, false)
+        });
+    });
 }
 /// A branch name or commit ID on a raised fill.
 fn chip(ui: &mut Ui, text: &str, color: Color32) -> Response {

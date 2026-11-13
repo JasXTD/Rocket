@@ -28,6 +28,7 @@ pub fn validate_secret_scan_mib(mib: u64) -> Result<()> {
 pub enum SecretKind {
     AiApiKey,
     GithubToken,
+    AwsAccessKey,
     PrivateKey,
     Credential,
     EnvironmentFile,
@@ -38,6 +39,7 @@ impl SecretKind {
         match self {
             Self::AiApiKey => "ai_api_key_detected",
             Self::GithubToken => "github_token_detected",
+            Self::AwsAccessKey => "aws_access_key_detected",
             Self::PrivateKey => "private_key_detected",
             Self::Credential => "credential_detected",
             Self::EnvironmentFile => "environment_file_blocked",
@@ -48,6 +50,7 @@ impl SecretKind {
         match self {
             Self::AiApiKey => "a possible AI-provider API key",
             Self::GithubToken => "a GitHub token",
+            Self::AwsAccessKey => "an AWS access key",
             Self::PrivateKey => "a private key",
             Self::Credential => "a possible hardcoded credential",
             Self::EnvironmentFile => "an environment file",

@@ -455,7 +455,115 @@ pub(super) fn commits(
     }
 }
 
-/// People: one row a person, one column a folder, commits in the cells.
+/// People table metrics, in points: a person's column, a folder's row, the people row,
+/// and the room left of the folder column for a selection band to start in.
+const PERSON_WIDTH: f32 = 72.;
+const FOLDER_HEIGHT: f32 = 36.;
+const PEOPLE_HEIGHT: f32 = 64.;
+const INSET: f32 = 8.;
+
+/// "1 person · 91 commits": the people in the table and their commits. A person's
+/// total includes merges, which no cell counts.
+pub(super) fn people_counts(people: usize, commits: usize) -> String {
+    format!(
+        "{} · {}",
+        trn!(people, "{count} person", "{count} people", count = pages::number_text(people)),
+        trn!(commits, "{found} commit", "{found} commits", found = pages::number_text(commits)),
+    )
+}
+
+/// A cell's fill and ink: the larger its share of the largest cell, the stronger.
+fn shade(weight: usize, most: usize) -> (Color32, Color32) {
+    let share = weight as f32 / most as f32;
+    if share > 0.75 {
+        (BLUE(), ACCENT_INK())
+    } else if share > 0.3 {
+        (RAMP_3(), TEXT())
+    } else if share > 0.12 {
+        (RAMP_2(), TEXT())
+    } else {
+        (RAMP_1(), TEXT())
+    }
+}
+
+/// The key beside the title: what a cell counts, then 1, the four shades and the
+/// largest count.
+struct Key {
+    label: Arc<Galley>,
+    one: Arc<Galley>,
+    most: Arc<Galley>,
+    width: f32,
+}
+impl Key {
+    const SWATCH: Vec2 = vec2(16., 10.);
+    fn new(painter: &Painter, most: usize) -> Self {
+        let font = FontId::proportional(12.);
+        let label = painter.layout_no_wrap(tr("Commits in a cell").into(), font.clone(), HINT());
+        let one = painter.layout_no_wrap("1".into(), font.clone(), HINT());
+        let most = painter.layout_no_wrap(pages::number_text(most), font, HINT());
+        let width = label.size().x + one.size().x + most.size().x + 4. * Self::SWATCH.x + 3. * 2. + 3. * 7.;
+        Self { label, one, most, width }
+    }
+    /// Paints the key from `at`, the left end of its centre line.
+    fn paint(&self, painter: &Painter, at: Pos2) {
+        let mut x = at.x;
+        for galley in [&self.label, &self.one] {
+            painter.galley(pos2(x, at.y - galley.size().y / 2.), galley.clone(), HINT());
+            x += galley.size().x + 7.;
+        }
+        for color in [RAMP_1(), RAMP_2(), RAMP_3(), BLUE()] {
+            painter.rect_filled(Rect::from_min_size(pos2(x, at.y - Self::SWATCH.y / 2.), Self::SWATCH), 2., color);
+            x += Self::SWATCH.x + 2.;
+        }
+        painter.galley(pos2(x + 5., at.y - self.most.size().y / 2.), self.most.clone(), HINT());
+    }
+}
+
+/// One line of text in `font`, cut with … at `width`.
+fn single_line(text: String, font: FontId, color: Color32, width: f32) -> text::LayoutJob {
+    let mut job = text::LayoutJob::simple_singleline(text, font, color);
+    job.wrap = text::TextWrapping::truncate_at_width(width.max(1.));
+    job
+}
+
+/// A folder's row label: the parent path faint and the folder's own name in full
+/// colour, so crates/rocket-git says where rocket-git is. Files at the top of the
+/// repository read "top folder".
+fn folder_job(node: &MapNode, on: bool, width: f32) -> text::LayoutJob {
+    let path = node.path.as_ref().map(|p| label(p)).unwrap_or_else(|| label(&node.label));
+    let font = if on { semibold(13.) } else { FontId::proportional(13.) };
+    let mut job = text::LayoutJob::default();
+    if path == "/" {
+        job.append(tr("top folder"), 0., text::TextFormat::simple(font, if on { BLUE() } else { MUTED() }));
+    } else {
+        let (parent, name) = path.rsplit_once('/').unwrap_or(("", path.as_str()));
+        if !parent.is_empty() {
+            job.append(&format!("{parent}/"), 0., text::TextFormat::simple(FontId::proportional(13.), FAINT()));
+        }
+        job.append(name, 0., text::TextFormat::simple(font, if on { BLUE() } else { TEXT() }));
+    }
+    job.wrap = text::TextWrapping::truncate_at_width(width.max(1.));
+    job
+}
+
+/// A shadow along an edge that content scrolls under, fading away from `rect`'s left
+/// (`across`) or top side.
+fn fade(painter: &Painter, rect: Rect, color: Color32, across: bool) {
+    let clear = Color32::TRANSPARENT;
+    let mut mesh = epaint::Mesh::default();
+    mesh.colored_vertex(rect.left_top(), color);
+    mesh.colored_vertex(rect.right_top(), if across { clear } else { color });
+    mesh.colored_vertex(rect.right_bottom(), clear);
+    mesh.colored_vertex(rect.left_bottom(), if across { color } else { clear });
+    mesh.add_triangle(0, 1, 2);
+    mesh.add_triangle(0, 2, 3);
+    painter.add(mesh);
+}
+
+/// People: one row a folder, one column a person, their commits touching the folder in
+/// the cells. The folder column stays at the left while the table scrolls, and the
+/// people row at the top when there is room for rows under it; pointing at a cell
+/// lights its row and column.
 pub(super) fn grid(
     ui: &mut Ui,
     s: &mut MapPage,
@@ -484,116 +592,267 @@ pub(super) fn grid(
         *cells.entry((e.from, e.to)).or_default() += e.weight;
     }
     let most = cells.values().copied().max().unwrap_or(1).max(1);
-    const NAMES: f32 = 210.;
-    const CELL: Vec2 = vec2(46., 40.);
-    const HEAD: f32 = 120.;
-    let width = NAMES + areas.len() as f32 * CELL.x + 24.;
-    let height = 44. + HEAD + people.len() as f32 * CELL.y + 48.;
-    let mut child = ui.new_child(UiBuilder::new().max_rect(rect).layout(Layout::top_down(Align::Min)));
-    child.set_clip_rect(rect.intersect(ui.clip_rect()));
+
+    // The title and counts, then the key: on the same line when all three fit, else
+    // on a line of its own. In a narrow card the title and counts end in … instead of
+    // running past its edge.
+    let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
+    let left = rect.left() + 19.;
+    let top = rect.top() + 15.;
+    let room = rect.width() - 38.;
+    let title = painter.layout_job(single_line(tr("Commits touching each folder").into(), semibold(14.), TEXT(), room));
+    let commits: usize = people.iter().map(|&p| data.nodes[p].count).sum();
+    let counts_room = room - title.size().x - 12.;
+    let counts = (counts_room >= 40.).then(|| painter.layout_job(single_line(people_counts(people.len(), commits), FontId::proportional(12.), HINT(), counts_room)));
+    let key = Key::new(&painter, most);
+    let used = title.size().x + counts.as_ref().map_or(0., |c| 12. + c.size().x);
+    let one_line = used + 24. + key.width <= room;
+    let title_size = title.size();
+    painter.galley(pos2(left, top), title, TEXT());
+    if let Some(counts) = counts {
+        painter.galley(pos2(left + title_size.x + 12., top + 2.), counts, HINT());
+    }
+    let table_top = if one_line {
+        key.paint(&painter, pos2(rect.right() - 19. - key.width, top + title_size.y / 2.));
+        rect.top() + 51.
+    } else {
+        key.paint(&painter, pos2(left, top + title_size.y + 13.));
+        rect.top() + 73.
+    };
+
+    // The folder column is long enough for crates/rocket-integrations in a wide card.
+    let side = INSET + if rect.width() >= 800. { 248. } else { 180. };
+    let totals = people.len() > 1;
+    let content = vec2(side + people.len() as f32 * PERSON_WIDTH, PEOPLE_HEIGHT + 4. + areas.len() as f32 * FOLDER_HEIGHT);
+    let table = Rect::from_min_max(pos2(rect.left() + 11., table_top), pos2(rect.right() - 19., rect.bottom() - 6.));
+    let mut child = ui.new_child(UiBuilder::new().max_rect(table).layout(Layout::top_down(Align::Min)));
+    child.set_clip_rect(table.intersect(ui.clip_rect()));
+    // egui's own scroll fades would wash over the fixed people row and folder column;
+    // their edges get the shadows below instead.
+    child.spacing_mut().scroll.fade.strength = 0.;
+    // The node to select and, for a cell, the person and folder.
+    let mut picked: Option<(usize, Option<(usize, usize)>)> = None;
     let scroll = ScrollArea::both()
         .id_salt("map-grid")
         .auto_shrink([false, false])
         .show(&mut child, |ui| {
-            let (area, _) = ui.allocate_exact_size(vec2(width.max(ui.available_width()), height), Sense::hover());
-            let painter = ui.painter().clone();
-            let origin = area.left_top() + vec2(20., 16.);
-            painter.text(origin, Align2::LEFT_TOP, tr("Commits touching each folder"), semibold(14.), TEXT());
-            let commits: usize = people.iter().map(|&p| data.nodes[p].count).sum();
-            painter.text(
-                origin + vec2(232., 2.),
-                Align2::LEFT_TOP,
-                // A person's total includes merges, which no cell counts.
-                trf!("People {people} · commits {commits}", people = people.len(), commits = pages::number_text(commits)),
-                FontId::proportional(12.),
-                HINT(),
-            );
-            let grid = origin + vec2(NAMES - 20., 44. + HEAD);
-            let selected_area = s.cell.map(|(_, a)| a);
-            for (c, &a) in areas.iter().enumerate() {
-                let n = &data.nodes[a];
-                let full = n.path.as_ref().map(|p| label(p)).unwrap_or_else(|| label(&n.label));
-                let name = if full == "/" { tr("top folder").to_owned() } else { full.rsplit('/').next().unwrap_or(&full).to_owned() };
-                let on = selected_area == Some(a);
-                let anchor = grid + vec2(c as f32 * CELL.x + 14., -8.);
-                let galley = painter.layout_no_wrap(name, if on { semibold(12.) } else { FontId::proportional(12.) }, if on { BLUE() } else { MUTED() });
-                painter.add(epaint::TextShape::new(anchor, galley, MUTED()).with_angle(-0.9));
-                let head = Rect::from_min_size(grid + vec2(c as f32 * CELL.x, -HEAD + 10.), vec2(CELL.x - 4., HEAD - 14.));
-                let r = ui.interact(head, ui.id().with(("map-area", a)), Sense::click()).on_hover_text(&full);
-                register(ui, widgets, &format!("map-node-{a}"), &r);
-                if r.clicked() && !covered {
-                    s.selected = Some(a);
-                    s.cell = None;
-                    s.show_details = true;
-                }
+            let (area, _) = ui.allocate_exact_size(content.max(ui.available_size()), Sense::hover());
+            let view = ui.clip_rect();
+            let origin = area.min;
+            // The folder column sits at the view's left edge. The people row sits at its
+            // top while two folder rows fit under it; in a shorter view it scrolls with
+            // the rows, so every row can still be brought into view. Cells scroll under
+            // both and are clipped to what is left.
+            let pinned = view.height() >= PEOPLE_HEIGHT + 4. + 2. * FOLDER_HEIGHT;
+            let head_top = if pinned { view.top() } else { origin.y };
+            let body_top = if pinned { view.top() + PEOPLE_HEIGHT + 4. } else { view.top() };
+            let head_clip = Rect::from_min_max(pos2(view.left() + side, head_top), pos2(view.right(), head_top + PEOPLE_HEIGHT)).intersect(view);
+            let side_clip = Rect::from_min_max(pos2(view.left(), body_top), pos2(view.left() + side, view.bottom())).intersect(view);
+            let body_clip = Rect::from_min_max(pos2(view.left() + side, body_top), view.max).intersect(view);
+            let column_x = |c: usize| origin.x + side + c as f32 * PERSON_WIDTH;
+            let row_y = |r: usize| origin.y + PEOPLE_HEIGHT + 4. + r as f32 * FOLDER_HEIGHT;
+            let cell_rect = |c: usize, r: usize| Rect::from_min_size(pos2(column_x(c) + 2., row_y(r) + 3.), vec2(PERSON_WIDTH - 4., FOLDER_HEIGHT - 6.));
+            // Only what can be seen is laid out: a repository can have thousands of people.
+            let columns = {
+                let last = (((view.right() - origin.x - side) / PERSON_WIDTH).ceil().max(0.) as usize).min(people.len());
+                (((view.left() - origin.x) / PERSON_WIDTH).floor().max(0.) as usize).min(last)..last
+            };
+            let rows = {
+                let last = (((view.bottom() - origin.y - PEOPLE_HEIGHT - 4.) / FOLDER_HEIGHT).ceil().max(0.) as usize).min(areas.len());
+                (((body_top - origin.y - PEOPLE_HEIGHT - 4.) / FOLDER_HEIGHT).floor().max(0.) as usize).min(last)..last
+            };
+            let column_at = |x: f32| {
+                let c = ((x - origin.x - side) / PERSON_WIDTH).floor();
+                (c >= 0. && (c as usize) < people.len()).then_some(c as usize)
+            };
+            let row_at = |y: f32| {
+                let r = ((y - origin.y - PEOPLE_HEIGHT - 4.) / FOLDER_HEIGHT).floor();
+                (r >= 0. && (r as usize) < areas.len()).then_some(r as usize)
+            };
+            // What the pointer is over: nothing while the drawer covers the table, while
+            // something is dragged (a scroll bar, say) or over the scroll bars' strips.
+            let bars = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_outer_margin;
+            let mut free = view;
+            if content.y > view.height() {
+                free.max.x -= bars;
             }
-            for (row, &p) in people.iter().enumerate() {
-                let n = &data.nodes[p];
-                let y = grid.y + row as f32 * CELL.y;
-                let on = s.selected == Some(p) || s.cell.map(|(q, _)| q) == Some(p);
-                let names = Rect::from_min_size(pos2(origin.x, y), vec2(NAMES - 32., CELL.y - 4.));
-                let r = ui.interact(names, ui.id().with(("map-person", p)), Sense::click());
-                register(ui, widgets, &format!("map-node-{p}"), &r);
-                if r.clicked() && !covered {
-                    s.selected = Some(p);
-                    s.cell = None;
-                    s.show_details = true;
+            if content.x > view.width() {
+                free.max.y -= bars;
+            }
+            let pointer = if covered || ui.ctx().dragged_id().is_some() { None } else { ui.ctx().pointer_hover_pos().filter(|p| free.contains(*p)) };
+            let over = |clip: Rect| pointer.filter(|p| clip.contains(*p) && ui.rect_contains_pointer(clip));
+            let (mut hover_row, mut hover_column) = (None, None);
+            if let Some(p) = over(body_clip) {
+                if let (Some(r), Some(c)) = (row_at(p.y), column_at(p.x)) {
+                    (hover_row, hover_column) = (Some(r), Some(c));
                 }
-                if on || r.hovered() {
-                    painter.rect_filled(names, 6., if on { ACCENT_SOFT() } else { HOVER() });
-                }
-                let initials: String = label(&n.label).split_whitespace().filter_map(|w| w.chars().next()).take(2).collect();
-                let center = pos2(names.left() + 16., names.center().y);
-                painter.circle_filled(center, 12., AVATAR());
-                painter.text(center, Align2::CENTER_CENTER, initials.to_uppercase(), semibold(10.5), TEXT());
-                let galley = painter.layout_job(line_job(label(&n.label), 13., if on { BLUE() } else { TEXT() }, NAMES - 110.));
-                painter.galley(pos2(names.left() + 36., names.center().y - galley.size().y / 2.), galley, TEXT());
-                painter.text(pos2(names.right() - 4., names.center().y), Align2::RIGHT_CENTER, pages::number_text(n.count), FontId::proportional(12.), HINT());
-                for (c, &a) in areas.iter().enumerate() {
-                    let cell = Rect::from_min_size(pos2(grid.x + c as f32 * CELL.x, y), CELL - vec2(4., 4.));
-                    let weight = cells.get(&(p, a)).copied().unwrap_or(0);
-                    let chosen = s.cell == Some((p, a));
-                    if weight == 0 {
-                        painter.rect_filled(cell, 6., VIEW_RAISED().gamma_multiply(0.5));
+            } else if let Some(p) = over(head_clip) {
+                hover_column = column_at(p.x);
+            } else if let Some(p) = over(side_clip) {
+                hover_row = row_at(p.y);
+            }
+
+            // Clicks: a person heads a column, a folder starts a row, a cell is both.
+            // While the details drawer covers the table, none of them takes a click.
+            if !covered {
+                for c in columns.clone() {
+                    let p = people[c];
+                    let hit = Rect::from_min_size(pos2(column_x(c), head_top), vec2(PERSON_WIDTH, PEOPLE_HEIGHT)).intersect(head_clip);
+                    if !hit.is_positive() {
                         continue;
                     }
-                    let share = weight as f32 / most as f32;
-                    let (fill, ink) = if share > 0.75 {
-                        (BLUE(), ACCENT_INK())
-                    } else if share > 0.3 {
-                        (RAMP_3(), TEXT())
-                    } else if share > 0.12 {
-                        (RAMP_2(), TEXT())
-                    } else {
-                        (RAMP_1(), TEXT())
-                    };
-                    painter.rect_filled(cell, 6., fill);
-                    if chosen {
-                        painter.rect_stroke(cell.expand(3.), 8., Stroke::new(2., TEXT()), StrokeKind::Inside);
+                    let r = ui.interact(hit, ui.id().with(("map-person", p)), Sense::click()).on_hover_text(label(&data.nodes[p].label));
+                    register(ui, widgets, &format!("map-node-{p}"), &r);
+                    if r.clicked() {
+                        picked = Some((p, None));
                     }
-                    painter.text(cell.center(), Align2::CENTER_CENTER, pages::number_text(weight), semibold(12.5), ink);
-                    let r = ui.interact(cell, ui.id().with(("map-cell", p, a)), Sense::click());
-                    let full = data.nodes[a].path.as_ref().map(|x| label(x)).unwrap_or_default();
-                    let r = r.on_hover_text(trf!("{person} · {folder} · commits {count}", person = label(&n.label), folder = full, count = weight));
-                    register(ui, widgets, &format!("map-cell-{p}-{a}"), &r);
-                    if r.clicked() && !covered {
-                        s.cell = Some((p, a));
-                        s.selected = Some(p);
-                        s.show_details = true;
+                }
+                for r in rows.clone() {
+                    let a = areas[r];
+                    let hit = Rect::from_min_size(pos2(view.left(), row_y(r)), vec2(side, FOLDER_HEIGHT)).intersect(side_clip);
+                    if !hit.is_positive() {
+                        continue;
+                    }
+                    let mut response = ui.interact(hit, ui.id().with(("map-area", a)), Sense::click());
+                    if data.nodes[a].path.as_deref() != Some(b"/") {
+                        response = response.on_hover_text(details::area_name(&data, a));
+                    }
+                    register(ui, widgets, &format!("map-node-{a}"), &response);
+                    if response.clicked() {
+                        picked = Some((a, None));
+                    }
+                }
+                for r in rows.clone() {
+                    let a = areas[r];
+                    for c in columns.clone() {
+                        let p = people[c];
+                        let weight = cells.get(&(p, a)).copied().unwrap_or(0);
+                        let hit = cell_rect(c, r).intersect(body_clip);
+                        if weight == 0 || !hit.is_positive() {
+                            continue;
+                        }
+                        let response = ui.interact(hit, ui.id().with(("map-cell", p, a)), Sense::click()).on_hover_ui(|ui| {
+                            ui.label(format!(
+                                "{} · {} · {}",
+                                label(&data.nodes[p].label),
+                                details::area_name(&data, a),
+                                trn!(weight, "{found} commit", "{found} commits", found = pages::number_text(weight)),
+                            ));
+                        });
+                        register(ui, widgets, &format!("map-cell-{p}-{a}"), &response);
+                        if response.clicked() {
+                            picked = Some((p, Some((p, a))));
+                        }
                     }
                 }
             }
-            // A key for the shades, and where the folders come from.
-            let key = pos2(origin.x, grid.y + people.len() as f32 * CELL.y + 18.);
-            painter.text(key, Align2::LEFT_CENTER, "1", FontId::proportional(12.), HINT());
-            for (k, color) in [RAMP_1(), RAMP_2(), RAMP_3(), BLUE()].into_iter().enumerate() {
-                painter.rect_filled(Rect::from_min_size(key + vec2(14. + k as f32 * 26., -5.), vec2(26., 10.)), 0., color);
+
+            // Bands under the cells: the selected folder or person, then the pointed-at
+            // row and column.
+            let painter = ui.painter().clone();
+            let band = TEXT().gamma_multiply(0.05);
+            let right = origin.x + content.x;
+            let bottom = origin.y + content.y;
+            let selected_row = areas.iter().position(|&a| s.selected == Some(a));
+            let selected_column = if s.cell.is_none() { people.iter().position(|&p| s.selected == Some(p)) } else { None };
+            let rows_clip = Rect::from_min_max(pos2(view.left(), body_top), view.max).intersect(view);
+            for (row, fill) in [(selected_row, ACCENT_SOFT()), (hover_row, band)] {
+                if let Some(r) = row {
+                    let y = row_y(r);
+                    painter.with_clip_rect(rows_clip).rect_filled(Rect::from_min_max(pos2(view.left(), y + 1.), pos2(right, y + FOLDER_HEIGHT - 1.)), 6., fill);
+                }
             }
-            painter.text(key + vec2(126., 0.), Align2::LEFT_CENTER, trn!(most, "{n} commit", "{n} commits"), FontId::proportional(12.), HINT());
-            if areas.iter().any(|&a| data.nodes[a].path.as_ref().is_some_and(|p| p.contains(&b'/'))) {
-                painter.text(key + vec2(230., 0.), Align2::LEFT_CENTER, tr("A folder holding most changes is split into its subfolders"), FontId::proportional(12.), HINT());
+            let columns_clip = Rect::from_min_max(pos2(view.left() + side, view.top()), view.max).intersect(view);
+            for (column, fill) in [(selected_column, ACCENT_SOFT()), (hover_column, band)] {
+                if let Some(c) = column {
+                    let x = column_x(c);
+                    painter.with_clip_rect(columns_clip).rect_filled(Rect::from_min_max(pos2(x + 2., head_top), pos2(x + PERSON_WIDTH - 2., bottom + 2.)), 6., fill);
+                }
+            }
+
+            // Cells: an empty one is a faint box, a full one is shaded by its count.
+            let ink = painter.with_clip_rect(body_clip);
+            for r in rows.clone() {
+                let a = areas[r];
+                for c in columns.clone() {
+                    let p = people[c];
+                    let cell = cell_rect(c, r);
+                    let weight = cells.get(&(p, a)).copied().unwrap_or(0);
+                    if weight == 0 {
+                        ink.rect_filled(cell, 6., VIEW_RAISED().gamma_multiply(0.5));
+                        continue;
+                    }
+                    let (fill, text) = shade(weight, most);
+                    ink.rect_filled(cell, 6., fill);
+                    if s.cell == Some((p, a)) {
+                        ink.rect_stroke(cell.expand(3.), 8., Stroke::new(2., TEXT()), StrokeKind::Inside);
+                    } else if hover_row == Some(r) && hover_column == Some(c) {
+                        ink.rect_stroke(cell.expand(1.5), 7.5, Stroke::new(1.5, TEXT()), StrokeKind::Inside);
+                    }
+                    ink.text(cell.center(), Align2::CENTER_CENTER, pages::number_text(weight), semibold(12.5), text);
+                }
+            }
+
+            // The people row: initials, name and commits over each column.
+            let heads = painter.with_clip_rect(head_clip);
+            for c in columns.clone() {
+                let n = &data.nodes[people[c]];
+                let name = label(&n.label);
+                let x = column_x(c);
+                let on = s.selected == Some(people[c]);
+                let center = pos2(x + PERSON_WIDTH / 2., head_top + 17.);
+                heads.circle_filled(center, 12., AVATAR());
+                if on {
+                    heads.circle_stroke(center, 12.75, Stroke::new(1.5, BLUE()));
+                }
+                heads.text(center, Align2::CENTER_CENTER, details::initials(&name), semibold(10.5), TEXT());
+                let color = if on { BLUE() } else if hover_column == Some(c) { TEXT() } else { MUTED() };
+                let galley = heads.layout_job(single_line(name, if on { semibold(12.) } else { FontId::proportional(12.) }, color, PERSON_WIDTH - 6.));
+                heads.galley(pos2(x + (PERSON_WIDTH - galley.size().x) / 2., head_top + 32.), galley, color);
+                heads.text(pos2(x + PERSON_WIDTH / 2., head_top + 55.), Align2::CENTER_CENTER, pages::number_text(n.count), FontId::proportional(11.5), HINT());
+            }
+
+            // The folder column: icon, path and, with two or more people, commits.
+            let names = painter.with_clip_rect(side_clip);
+            for r in rows.clone() {
+                let a = areas[r];
+                let n = &data.nodes[a];
+                let y = row_y(r);
+                let on = s.selected == Some(a) || s.cell.map(|(_, b)| b) == Some(a);
+                icon(&names, Rect::from_min_size(pos2(view.left() + INSET, y + (FOLDER_HEIGHT - 14.) / 2.), vec2(14., 14.)), Icon::Folder, TEAL());
+                let mut room = side - INSET - 22. - 12.;
+                if totals {
+                    let total = names.layout_no_wrap(pages::number_text(n.count), FontId::proportional(12.), HINT());
+                    room -= total.size().x + 8.;
+                    names.galley(pos2(view.left() + side - 12. - total.size().x, y + (FOLDER_HEIGHT - total.size().y) / 2.), total, HINT());
+                }
+                let galley = names.layout_job(folder_job(n, on, room));
+                names.galley(pos2(view.left() + INSET + 22., y + (FOLDER_HEIGHT - galley.size().y) / 2.), galley, TEXT());
+            }
+
+            // Column captions, the line under the people row, and shadows where the
+            // table has scrolled under its fixed edges.
+            let corner = Rect::from_min_max(pos2(view.left(), head_top), pos2(view.left() + side, head_top + PEOPLE_HEIGHT)).intersect(view);
+            let captions = painter.with_clip_rect(corner);
+            captions.text(pos2(view.left() + INSET, head_top + PEOPLE_HEIGHT - 15.), Align2::LEFT_CENTER, tr("FOLDER"), semibold(10.5), FAINT());
+            if totals {
+                captions.text(pos2(view.left() + side - 12., head_top + PEOPLE_HEIGHT - 15.), Align2::RIGHT_CENTER, tr("COMMITS"), semibold(10.5), FAINT());
+            }
+            let edges = painter.with_clip_rect(view);
+            edges.hline(view.left()..=right.min(view.right()), head_top + PEOPLE_HEIGHT + 0.5, Stroke::new(1., CARD_LINE()));
+            let shadow = Color32::from_black_alpha(if ui.visuals().dark_mode { 90 } else { 36 });
+            if origin.x < view.left() - 0.5 {
+                fade(&edges, Rect::from_min_size(pos2(view.left() + side, view.top()), vec2(10., view.height())), shadow, true);
+            }
+            if pinned && origin.y < view.top() - 0.5 {
+                fade(&edges, Rect::from_min_size(pos2(view.left(), view.top() + PEOPLE_HEIGHT + 1.), vec2(view.width(), 8.)), shadow, false);
             }
         });
+    if let Some((node, cell)) = picked {
+        s.selected = Some(node);
+        s.cell = cell;
+        s.show_details = true;
+    }
     if !covered {
         register(ui, widgets, "map-canvas", &ui.interact(scroll.inner_rect, ui.id().with("map-grid-area"), Sense::hover()));
     }

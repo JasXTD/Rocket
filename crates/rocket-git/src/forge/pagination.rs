@@ -44,7 +44,14 @@ impl ForgeSession {
         // Preserve the query verbatim: Bitbucket cursors need not be page numbers.
         let endpoint = current.split('?').next().expect("request path");
         let expected = format!("{}{endpoint}?", self.config.api());
-        let query = url.strip_prefix(&expected).filter(|q| !q.is_empty());
+        let query = url
+            .strip_prefix(&expected)
+            .or_else(|| {
+                self.config.provider().is_github().then(|| {
+                    github_id_query(&self.config.api(), &format!("/repos/{}", repo.encoded()), endpoint, url)
+                })?
+            })
+            .filter(|q| !q.is_empty());
         if url.len() > 16 * 1024
             || !url.is_ascii()
             || url
@@ -69,6 +76,25 @@ impl ForgeSession {
             }),
         })
     }
+}
+
+/// GitHub's Link header names the repository by its numeric ID: a request to
+/// `/repos/octocat/Spoon-Knife/issues` is answered with
+/// `/repositories/1300192/issues?page=4` (docs: "Using pagination in the REST API").
+/// Accept that form for the same collection under the same API base, and take only
+/// its query: the next request keeps Rocket's own `/repos/{owner}/{repo}` path, so a
+/// link can never move the request to another repository.
+fn github_id_query<'a>(api: &str, scope: &str, endpoint: &str, url: &'a str) -> Option<&'a str> {
+    let collection = endpoint.strip_prefix(scope)?;
+    if !collection.starts_with('/') {
+        return None;
+    }
+    let tail = url.strip_prefix(api)?.strip_prefix("/repositories/")?;
+    let digits = tail.bytes().take_while(u8::is_ascii_digit).count();
+    if digits == 0 || digits > 20 {
+        return None;
+    }
+    tail[digits..].strip_prefix(collection)?.strip_prefix('?')
 }
 
 /// Distinguish an absent Link header from a terminal page with only prev/last.
@@ -152,5 +178,43 @@ mod tests {
                 Err(Error::Forge(ForgeFailure::InvalidPagination))
             ));
         }
+    }
+    #[test]
+    fn github_links_may_name_the_repository_by_id() {
+        let api = "https://api.github.com";
+        let scope = "/repos/octocat/Spoon-Knife";
+        let issues = "/repos/octocat/Spoon-Knife/issues";
+        // The documented example: the request path names the owner, the link the ID.
+        assert_eq!(
+            github_id_query(api, scope, issues, "https://api.github.com/repositories/1300192/issues?page=4"),
+            Some("page=4")
+        );
+        assert_eq!(
+            github_id_query(api, scope, "/repos/octocat/Spoon-Knife/pulls/42/commits",
+                "https://api.github.com/repositories/9/pulls/42/commits?per_page=50&page=2"),
+            Some("per_page=50&page=2")
+        );
+        for url in [
+            "https://api.github.com/repositories/1300192/pulls?page=2",
+            "https://api.github.com/repositories/1300192/issues/extra?page=2",
+            "https://api.github.com/repositories/1300192/issues",
+            "https://api.github.com/repositories/abc/issues?page=2",
+            "https://api.github.com/repositories//issues?page=2",
+            "https://api.github.com/repositories/123456789012345678901/issues?page=2",
+            "https://api.github.com.evil.test/repositories/1/issues?page=2",
+            "https://evil.test/repositories/1/issues?page=2",
+            "https://api.github.com/repos/other/repo/issues?page=2",
+        ] {
+            assert_eq!(github_id_query(api, scope, issues, url), None, "{url}");
+        }
+        // An endpoint outside the repository scope never takes this form.
+        assert_eq!(
+            github_id_query(api, scope, "/search/issues", "https://api.github.com/repositories/1/issues?page=2"),
+            None
+        );
+        assert_eq!(
+            github_id_query(api, scope, "/repos/octocat/Spoon-Knifeissues", "https://api.github.com/repositories/1issues?page=2"),
+            None
+        );
     }
 }

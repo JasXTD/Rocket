@@ -121,10 +121,14 @@
   "No commits in this period": "За этот период нет коммитов",
   "No match among these people": "Среди этих участников нет совпадений",
   "Commits touching each folder": "Коммиты, затрагивающие каждую папку",
-  "People {people} · commits {commits}": "Участники: {people} · коммиты: {commits}",
+  "{count} people": {
+    "one": "{count} участник",
+    "few": "{count} участника",
+    "many": "{count} участников"
+  },
+  "Commits in a cell": "Коммитов в ячейке",
+  "FOLDER": "ПАПКА",
   "top folder": "корневая папка",
-  "{person} · {folder} · commits {count}": "{person} · {folder} · коммиты: {count}",
-  "A folder holding most changes is split into its subfolders": "Папка с большинством изменений разбивается на подпапки",
   "Use a file name ending in .mmd.": "Используйте имя файла с расширением .mmd.",
   "Choose a folder with Browse, or type its full path.": "Выберите папку через «Обзор» или введите её полный путь.",
   "Saved {name}": "Сохранено: {name}",

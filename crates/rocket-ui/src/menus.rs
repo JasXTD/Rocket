@@ -655,7 +655,8 @@ impl Rocket {
                     self.activity_history.show();
                     self.external.open = false;
                 }
-                let benchmark = item_response(ui, tr("Repository Benchmark"), "", opened && !self.interaction_busy());
+                // Like View → Go to: the page opens any time, and its Run waits for other work.
+                let benchmark = item_response(ui, tr("Repository Benchmark"), "", opened);
                 self.frame_widgets.insert("benchmark-open".into(), (&benchmark).into());
                 if benchmark.clicked() {
                     self.activity_history.close();
@@ -882,8 +883,8 @@ impl Rocket {
         }
     }
     /// View → Go to: the sidebar's pages in its order, the current one ticked, for when
-    /// the sidebar is hidden or shows icons only. Same rules as the sidebar: views open
-    /// any time; pages wait while a write or a foreground load runs.
+    /// the sidebar is hidden or shows icons only. Same rules as the sidebar: views, pages
+    /// and extensions open any time; what a page or an extension changes waits for running work.
     fn go_to_menu(&mut self, ui: &mut Ui, intents: &mut Vec<Intent>) {
         use crate::pages::Page;
         enum To {
@@ -892,7 +893,6 @@ impl Rocket {
             Line,
         }
         let opened = self.tab().is_some();
-        let free = !self.interaction_busy();
         let backend = self.backend.is_some();
         let page = self.page();
         let current = self.tab().filter(|_| page.is_none()).map(|t| t.view);
@@ -928,7 +928,7 @@ impl Rocket {
                         continue;
                     }
                     To::View(view) => (current == Some(view), opened, Intent::View(view)),
-                    To::Page(p) => (page == Some(p), opened && free, Intent::Dialog(p.dialog_kind())),
+                    To::Page(p) => (page == Some(p), opened, Intent::Dialog(p.dialog_kind())),
                 };
                 let response = check_row(ui, label, checked, enabled);
                 pages::control(widgets, key, &response, ui.clip_rect());
@@ -939,7 +939,7 @@ impl Rocket {
             // Extensions need no repository.
             ui.separator();
             for entry in entries {
-                let response = check_row(ui, &entry.name, open.as_ref() == Some(&entry.id), backend && free);
+                let response = check_row(ui, &entry.name, open.as_ref() == Some(&entry.id), backend);
                 pages::control(widgets, format!("goto-ext-{}", entry.id), &response, ui.clip_rect());
                 if response.clicked() {
                     intents.push(Intent::Extension(entry.id));

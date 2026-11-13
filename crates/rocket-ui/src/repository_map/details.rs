@@ -195,14 +195,14 @@ fn pick(s: &MapPage, data: &RepositoryMap, kind: MapKind) -> Pick {
         _ => Pick::Empty,
     }
 }
-fn initials(name: &str) -> String {
+pub(super) fn initials(name: &str) -> String {
     name.split_whitespace()
         .filter_map(|w| w.chars().next())
         .take(2)
         .collect::<String>()
         .to_uppercase()
 }
-fn area_name(data: &RepositoryMap, a: usize) -> String {
+pub(super) fn area_name(data: &RepositoryMap, a: usize) -> String {
     match data.nodes[a].path.as_deref() {
         Some(b"/") => tr("the top folder").into(),
         Some(path) => label(path),

@@ -104,12 +104,17 @@ commits at a time; **Previous / Next** browse the rest without another Git read.
 
 ## People
 
-**Who works where** opens first: one row per person, one column per folder, and the
-number of their commits touching that folder in each cell; a stronger colour means
-more commits. A folder holding most of the changes is split into its subfolders so the
-columns stay useful. Select a cell to see that person's commits there and the files
-they changed in it; **Show commits** opens them in History, **Show folder** opens
-the folder in Code. Select a person or a folder for their totals.
+**Who works where** opens first: one row per folder, one column per person, and the
+number of the person's commits touching that folder in each cell; a stronger colour
+means more commits, and the key beside the title gives the range. A folder holding most
+of the changes is split into its subfolders, each shown with its path (for example
+`crates/rocket-git`), so the rows stay useful. With two or more people the folder column
+also gives each folder's commits, by everyone in the period. The folder column stays in
+place while the table scrolls, and so does the people row when there is room for rows
+under it; pointing at a cell lights its row and column. Select a cell to see
+that person's commits there and the files they changed in it; **Show commits** opens
+them in History, **Show folder** opens the folder in Code. Select a person or a folder
+for their totals.
 
 **All time**, **90 days** and **30 days** filter by author time within the loaded
 history. **Shared files** connects people who changed the same recorded paths;

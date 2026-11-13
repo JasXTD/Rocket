@@ -286,27 +286,58 @@ pub(super) fn azure(j: &Json, p: ForgeProvider) -> Result<Option<ForgeReviewThre
     }
     Ok(Some(t))
 }
-pub(super) fn gitea(j: &Json, review: u64) -> Result<ForgeReviewThread> {
-    let id = positive(j.u64("id"))?;
-    if j.u64("pull_request_review_id") != Some(review) {
-        return fail(ForgeFailure::InvalidResponse);
+/// Gitea shows the review comments on one line of one side of a file as a single
+/// conversation, replies included, and its resolution is the first comment's (the
+/// conversation template reads `index .comments 0`). Group the loaded comments the
+/// same way, with the oldest as the root that Resolve and Reopen act on. Gitea lists
+/// reviews oldest first, so the reviews read first hold the roots. A comment with no
+/// line on either side stays on its own.
+pub(super) fn gitea(rows: &[(Json, u64)]) -> Result<Vec<ForgeReviewThread>> {
+    type Line = Option<(String, bool, u64)>;
+    let mut groups: Vec<(Line, Vec<&Json>)> = Vec::new();
+    for (j, review) in rows {
+        positive(j.u64("id"))?;
+        if j.u64("pull_request_review_id") != Some(*review)
+            || !matches!(j.get("resolver"), Some(Json::Object(_) | Json::Null))
+        {
+            return fail(ForgeFailure::InvalidResponse);
+        }
+        let path = location(Some(j), &["path"])?;
+        // Gitea sets `position` for a new-side line and `original_position` for an
+        // old-side one, leaving the other 0.
+        let line = match (
+            j.u64("position").filter(|n| *n > 0),
+            j.u64("original_position").filter(|n| *n > 0),
+        ) {
+            (Some(line), _) => Some((path, false, line)),
+            (None, Some(line)) => Some((path, true, line)),
+            (None, None) => None,
+        };
+        match groups.iter_mut().find(|(key, _)| line.is_some() && *key == line) {
+            Some((_, comments)) => comments.push(j),
+            None => groups.push((line, vec![j])),
+        }
     }
-    let resolved = match j.get("resolver") {
-        Some(Json::Object(_)) => true,
-        Some(Json::Null) => false,
-        _ => return fail(ForgeFailure::InvalidResponse),
-    };
-    let mut t = base(
-        j,
-        id.to_string(),
-        location(Some(j), &["path"])?,
-        j.u64("position").filter(|n| *n > 0),
-        resolved,
-    )?;
-    t.outdated = t.line.is_none();
-    t.can_reply = false;
-    push(&mut t, j, ForgeProvider::Gitea, None)?;
-    Ok(t)
+    let mut out = Vec::new();
+    for (line, mut comments) in groups {
+        comments.sort_by_key(|j| j.u64("id"));
+        let root = comments[0];
+        let root_id = positive(root.u64("id"))?;
+        let mut t = base(
+            &Json::Array(comments.iter().map(|v| (*v).clone()).collect()),
+            root_id.to_string(),
+            location(Some(root), &["path"])?,
+            line.as_ref().map(|(_, _, n)| *n),
+            matches!(root.get("resolver"), Some(Json::Object(_))),
+        )?;
+        t.outdated = line.is_none();
+        t.can_reply = false;
+        for (i, comment) in comments.iter().enumerate() {
+            push(&mut t, comment, ForgeProvider::Gitea, (i > 0).then_some(root_id))?;
+        }
+        out.push(t);
+    }
+    Ok(out)
 }
 
 #[cfg(test)]
@@ -390,11 +421,49 @@ mod tests {
         let j = json(
             r#"{"id":8,"pull_request_review_id":90,"user":{"login":"author"},"body":"text","path":"資料.rs","position":2,"resolver":null}"#,
         );
-        let t = gitea(&j, 90).unwrap();
+        let t = gitea(&[(j.clone(), 90)]).unwrap().remove(0);
         assert!(!t.can_reply);
         assert!(t.can_resolve);
         assert!(allowed(&t, ForgeThreadAction::Reply).is_err());
-        assert!(gitea(&j, 91).is_err());
+        assert!(gitea(&[(j, 91)]).is_err());
+    }
+    #[test]
+    fn gitea_replies_join_the_conversation_their_first_comment_resolves() {
+        let row = |id: u64, review: u64, position: u64, original: u64, resolver: &str| {
+            (json(&format!(
+                r#"{{"id":{id},"pull_request_review_id":{review},"user":{{"login":"u{id}"}},"body":"c{id}","path":"src/lib.rs","position":{position},"original_position":{original},"resolver":{resolver}}}"#
+            )), review)
+        };
+        let someone = r#"{"login":"maintainer"}"#;
+        let threads = gitea(&[
+            // A reply listed before its root, a reply in a later review, and the root.
+            row(12, 90, 7, 0, someone),
+            row(15, 95, 7, 0, "null"),
+            row(8, 90, 7, 0, "null"),
+            // The same line number on the old side is another conversation.
+            row(20, 95, 0, 7, someone),
+            // Comments with no line stay on their own.
+            row(30, 95, 0, 0, "null"),
+            row(31, 95, 0, 0, "null"),
+        ])
+        .unwrap();
+        let shape: Vec<_> = threads
+            .iter()
+            .map(|t| (t.id.as_str(), t.line, t.resolved, t.outdated, t.comments.iter().map(|c| (c.id, c.reply_to)).collect::<Vec<_>>()))
+            .collect();
+        assert_eq!(shape, [
+            // Resolution is the root's: a resolved reply does not resolve the conversation.
+            ("8", Some(7), false, false, vec![(8, None), (12, Some(8)), (15, Some(8))]),
+            ("20", Some(7), true, false, vec![(20, None)]),
+            ("30", None, false, true, vec![(30, None)]),
+            ("31", None, false, true, vec![(31, None)]),
+        ]);
+        // A conversation's revision covers every comment in it.
+        let mut changed = vec![row(8, 90, 7, 0, "null"), row(12, 90, 7, 0, "null")];
+        let before = gitea(&changed).unwrap()[0].revision.clone();
+        changed[1] = row(12, 90, 7, 0, someone);
+        assert_ne!(gitea(&changed).unwrap()[0].revision, before);
+        assert!(gitea(&[row(8, 90, 7, 0, "1")]).is_err());
     }
     #[test]
     fn azure_nonstandard_resolution_cannot_be_silently_overwritten() {

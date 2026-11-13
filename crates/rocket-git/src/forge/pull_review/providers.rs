@@ -95,6 +95,13 @@ pub(super) fn identity(j: &Json, p: ForgeProvider) -> Option<String> {
         .filter(|v| !v.is_empty() && v.len() <= 512 && !v.chars().any(char::is_control))
         .map(str::to_owned)
 }
+/// Azure DevOps Server 2020 (REST 6.0) offers pull request statuses only as a preview:
+/// its reference sets the version to "6.0-preview.1", and plain 6.0 is refused. The
+/// statuses of 7.0 and 7.1 are generally available, as is everything else used here.
+fn azure_resource_version(version: &'static str, path: &str) -> &'static str {
+    let resource = path.split('?').next().unwrap_or(path);
+    if version == "6.0" && resource.ends_with("/statuses") { "6.0-preview.1" } else { version }
+}
 fn unavailable<T>() -> ForgePullCollection<T> {
     ForgePullCollection {
         error: Some(ForgeFailure::Unsupported),
@@ -255,7 +262,7 @@ impl ForgeSession {
             format!(
                 "{path}{}api-version={}",
                 if path.contains('?') { "&" } else { "?" },
-                self.config.azure_api_version()
+                azure_resource_version(self.config.azure_api_version(), path)
             )
         } else {
             path.into()
@@ -402,10 +409,19 @@ impl ForgeSession {
         };
         let source = branch(source)?;
         let target = branch(target)?;
-        let base = if merged {
+        let head = if p == ForgeProvider::Bitbucket {
+            self.cloud_commit(repo, need(head)?, c)?
+        } else {
+            need(head.and_then(oid))?
+        };
+        let base = if merged && p == ForgeProvider::Bitbucket {
+            match txt(j, &["destination", "commit", "hash"]) {
+                Some(hash) => self.cloud_commit(repo, hash, c)?,
+                None => self.branch_id(repo, &target, c)?,
+            }
+        } else if merged {
             match p {
                 ForgeProvider::GitLab => txt(j, &["diff_refs", "start_sha"]),
-                ForgeProvider::Bitbucket => txt(j, &["destination", "commit", "hash"]),
                 ForgeProvider::BitbucketServer => txt(j, &["toRef", "latestCommit"]),
                 ForgeProvider::Azure | ForgeProvider::AzureServer => {
                     txt(j, &["lastMergeTargetCommit", "commitId"])
@@ -448,7 +464,7 @@ impl ForgeSession {
             merged,
             mergeable,
             mergeable_state: merge_state.map(|s| bounded(s, 64)),
-            head: need(head.and_then(oid))?,
+            head,
             base: need(oid(&base))?,
             source,
             target,
@@ -866,7 +882,9 @@ impl ForgeSession {
                 })
             })
         } else if p == ForgeProvider::GitLab {
-            if j.u64("iid") != Some(current.number) {
+            // Community Edition's approval state has no iid: it "returns only approved,
+            // approved_by, user_can_approve, and user_has_approved".
+            if j.get("iid").is_some() && j.u64("iid") != Some(current.number) {
                 None
             } else {
                 j.get("approved_by")
@@ -1032,18 +1050,28 @@ impl ForgeSession {
             ),
             _ => return fail(ForgeFailure::Unsupported),
         };
-        let value = self
-            .request(
-                "hosting-merge-submit",
-                "merge_reviewed_head",
-                method,
-                &self.versioned(&endpoint),
-                Some(&payload),
-                true,
-                c,
-            )
-            .map_err(merge_error)?
-            .0;
+        let value = match self.request(
+            "hosting-merge-submit",
+            "merge_reviewed_head",
+            method,
+            &self.versioned(&endpoint),
+            Some(&payload),
+            true,
+            c,
+        ) {
+            // GitLab answers 401 when "this user does not have permission to accept
+            // this merge request", not only for a rejected token. Ask the account
+            // endpoint which it was, so a refused merge does not sign the user out.
+            Err(Error::Forge(ForgeFailure::Unauthorized)) if p == ForgeProvider::GitLab => {
+                let account = self.request("hosting-merge-submit", "verify_hosting_account", "GET", "/user", None, false, c);
+                return fail(if matches!(account, Err(Error::Forge(ForgeFailure::Unauthorized))) {
+                    ForgeFailure::Unauthorized
+                } else {
+                    ForgeFailure::Forbidden
+                });
+            }
+            result => result.map_err(merge_error)?.0,
+        };
         // Empty acknowledgments and queued Azure/Cloud merges are not proof of
         // completion. A scoped read must confirm both the PR and reviewed head.
         let raw = if p == ForgeProvider::Gitea {
@@ -1062,20 +1090,50 @@ impl ForgeSession {
         {
             return fail(ForgeFailure::PullMergeUnknown);
         }
-        let commit = match p {
-            ForgeProvider::GitLab => raw
-                .str("merge_commit_sha")
-                .or_else(|| raw.str("squash_commit_sha")),
-            ForgeProvider::Bitbucket => txt(&raw, &["merge_commit", "hash"]),
-            ForgeProvider::BitbucketServer => txt(&raw, &["properties", "mergeCommit", "id"]),
-            ForgeProvider::Azure | ForgeProvider::AzureServer => {
-                txt(&raw, &["lastMergeCommit", "commitId"])
+        let commit = if p == ForgeProvider::Bitbucket {
+            txt(&raw, &["merge_commit", "hash"]).and_then(|hash| self.cloud_commit(repo, hash, c).ok())
+        } else if p == ForgeProvider::GitLab
+            && raw.str("merge_commit_sha").is_none()
+            && raw.str("squash_commit_sha").is_none()
+        {
+            // A fast-forward merge creates no merge commit, so GitLab leaves both
+            // fields empty. Report the reviewed head only once the target branch is
+            // read and points at it.
+            self.branch_id(repo, &s.target, c).ok().filter(|tip| tip.eq_ignore_ascii_case(&s.head))
+        } else {
+            match p {
+                ForgeProvider::GitLab => raw
+                    .str("merge_commit_sha")
+                    .or_else(|| raw.str("squash_commit_sha")),
+                ForgeProvider::BitbucketServer => txt(&raw, &["properties", "mergeCommit", "id"]),
+                ForgeProvider::Azure | ForgeProvider::AzureServer => {
+                    txt(&raw, &["lastMergeCommit", "commitId"])
+                }
+                _ => raw.str("merge_commit_sha"),
             }
-            _ => raw.str("merge_commit_sha"),
+            .and_then(oid)
         }
-        .and_then(oid)
         .ok_or(Error::Forge(ForgeFailure::PullMergeUnknown))?;
         Ok(ForgePullMergeResult { commit })
+    }
+    /// Bitbucket Cloud's pull request object abbreviates its commits to 12
+    /// characters (`"hash": "d3022fc0ca3d"` in Atlassian's event payload docs).
+    /// Look the commit up in this repository and require the full ID to start
+    /// with the abbreviation; a full 40-character hash is used as it is.
+    fn cloud_commit(&self, repo: &ForgeRepository, hash: &str, c: &CancellationToken) -> Result<String> {
+        let short = hash.to_ascii_lowercase();
+        if !(7..=40).contains(&short.len()) || !short.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return fail(ForgeFailure::InvalidResponse);
+        }
+        if short.len() == 40 {
+            return Ok(short);
+        }
+        let path = format!("{}/commit/{short}", self.prefix(repo));
+        let j = self.request(READ, "read_pull_commits", "GET", &path, None, false, c)?.0;
+        j.str("hash")
+            .and_then(oid)
+            .filter(|full| full.starts_with(&short))
+            .ok_or(Error::Forge(ForgeFailure::InvalidResponse))
     }
 }
 fn provider_review(j: &Json, p: ForgeProvider) -> Option<ForgePullReview> {
@@ -1138,5 +1196,20 @@ fn merge_error(e: Error) -> Error {
         Error::Forge(ForgeFailure::OutcomeUnknown) => Error::Forge(ForgeFailure::PullMergeUnknown),
         Error::Forge(ForgeFailure::Rejected) => Error::Forge(ForgeFailure::PullMergeRejected),
         other => other,
+    }
+}
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+    #[test]
+    fn azure_server_2020_reads_pull_request_statuses_as_a_preview() {
+        let pr = "/team/_apis/git/repositories/web/pullrequests/7";
+        assert_eq!(azure_resource_version("6.0", &format!("{pr}/statuses?$top=50")), "6.0-preview.1");
+        for path in [pr.to_owned(), format!("{pr}/threads"), format!("{pr}/commits?$top=50"), format!("{pr}/iterations"), format!("{pr}/statuses/extra")] {
+            assert_eq!(azure_resource_version("6.0", &path), "6.0", "{path}");
+        }
+        for version in ["7.0", "7.1"] {
+            assert_eq!(azure_resource_version(version, &format!("{pr}/statuses?$top=50")), version);
+        }
     }
 }

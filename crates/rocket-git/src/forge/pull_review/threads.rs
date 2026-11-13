@@ -115,6 +115,15 @@ fn query_failure(response: &Json) -> Option<ForgeFailure> {
         _ => ForgeFailure::InvalidResponse,
     })
 }
+/// A review comment's REST ID from GraphQL's `fullDatabaseId`. `databaseId` is
+/// deprecated because it "does not support 64-bit signed integer identifiers", and
+/// GitHub's BigInt "is encoded as a string": accept plain decimal digits only.
+fn big_id(v: Option<&Json>) -> Option<u64> {
+    match v? {
+        Json::String(s) if !s.is_empty() && s.len() <= 20 && s.bytes().all(|b| b.is_ascii_digit()) => s.parse().ok(),
+        _ => None,
+    }
+}
 fn parse_thread(j: &Json) -> Result<ForgeReviewThread> {
     let id = required(j.str("id").filter(|s| node_id(s)))?.to_owned();
     let comments = required(j.get("comments"))?;
@@ -127,7 +136,7 @@ fn parse_thread(j: &Json) -> Result<ForgeReviewThread> {
     let mut out = Vec::new();
     let mut ids = HashSet::new();
     for row in rows {
-        let id = required(row.u64("databaseId").filter(|n| *n > 0))?;
+        let id = required(big_id(row.get("fullDatabaseId")).filter(|n| *n > 0))?;
         if !ids.insert(id) {
             return fail(ForgeFailure::InvalidResponse);
         }
@@ -141,7 +150,7 @@ fn parse_thread(j: &Json) -> Result<ForgeReviewThread> {
             date: required(string(row, "createdAt", 64))?,
             path: optional_string(row, "path", 8192),
             line: row.u64("line"),
-            reply_to: row.get("replyTo").and_then(|r| r.u64("databaseId")),
+            reply_to: row.get("replyTo").and_then(|r| big_id(r.get("fullDatabaseId"))),
         });
     }
     Ok(ForgeReviewThread {
@@ -172,7 +181,7 @@ impl ForgeSession {
             if number>i32::MAX as u64{return Err(invalid("Pull request number exceeds GraphQL's integer limit."));}
             let path=self.pull_scope(repo,number)?;let first=self.pull_summary(READ,&path,number,c)?;
             let(owner,name)=repo.path().split_once('/').ok_or_else(||invalid("Select a valid repository."))?;
-            const QUERY:&str="query RocketReviewThreads($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){nameWithOwner pullRequest(number:$number){number headRefOid baseRefOid reviewThreads(first:50){pageInfo{hasNextPage} nodes{id path startLine line isResolved isOutdated viewerCanResolve viewerCanUnresolve comments(first:20){pageInfo{hasNextPage} nodes{databaseId author{login} body createdAt path line replyTo{databaseId}}}}}}}}";
+            const QUERY:&str="query RocketReviewThreads($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){nameWithOwner pullRequest(number:$number){number headRefOid baseRefOid reviewThreads(first:50){pageInfo{hasNextPage} nodes{id path startLine line isResolved isOutdated viewerCanResolve viewerCanUnresolve comments(first:20){pageInfo{hasNextPage} nodes{fullDatabaseId author{login} body createdAt path line replyTo{fullDatabaseId}}}}}}}}";
             let payload=format!("{{\"query\":{},\"variables\":{{\"owner\":{},\"name\":{},\"number\":{number}}}}}",quote(QUERY),quote(owner),quote(name));
             let response=self.request(READ,"read_review_threads","POST","/graphql",Some(&payload),false,c)?.0;
             if let Some(failure)=query_failure(&response){return fail(failure);}
@@ -340,4 +349,26 @@ fn fingerprint(j: &Json) -> Result<String> {
     let mut bytes = Vec::new();
     write(j, &mut bytes)?;
     crate::sha256_bytes(&bytes)
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn thread(comments: &str) -> Result<ForgeReviewThread> {
+        parse_thread(&crate::hosting::json::parse(format!(
+            r#"{{"id":"PRRT_a","path":"src/lib.rs","startLine":null,"line":2,"isResolved":false,"isOutdated":false,"viewerCanResolve":true,"viewerCanUnresolve":false,"comments":{{"pageInfo":{{"hasNextPage":false}},"nodes":[{comments}]}}}}"#
+        ).as_bytes()).unwrap())
+    }
+    #[test]
+    fn review_comment_ids_are_64_bit_strings() {
+        // Past i32::MAX, which the deprecated Int databaseId cannot carry.
+        let t = thread(r#"{"fullDatabaseId":"3000000001","author":{"login":"a"},"body":"Root","createdAt":"2026-11-13T00:00:00Z","path":"src/lib.rs","line":2,"replyTo":null},{"fullDatabaseId":"3000000002","author":null,"body":"Reply","createdAt":"2026-11-13T00:01:00Z","path":"src/lib.rs","line":2,"replyTo":{"fullDatabaseId":"3000000001"}}"#).unwrap();
+        assert_eq!(t.comments.iter().map(|c| (c.id, c.reply_to)).collect::<Vec<_>>(), [(3000000001, None), (3000000002, Some(3000000001))]);
+        // The old field, a number, an empty or signed value, and a duplicate are refused.
+        for comment in [r#"{"databaseId":8}"#, r#"{"fullDatabaseId":8}"#, r#"{"fullDatabaseId":""}"#, r#"{"fullDatabaseId":"-8"}"#, r#"{"fullDatabaseId":"0"}"#] {
+            let row = comment.replace('}', r#","author":null,"body":"x","createdAt":"t","replyTo":null}"#);
+            assert!(thread(&row).is_err(), "{comment}");
+        }
+        let row = r#"{"fullDatabaseId":"9","author":null,"body":"x","createdAt":"t","replyTo":null}"#;
+        assert!(thread(&format!("{row},{row}")).is_err());
+    }
 }

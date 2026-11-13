@@ -745,11 +745,15 @@ pub(super) fn canvas(
             }
         }
     }
+    // A node picked here is not a People cell, so a cell picked earlier no longer
+    // decides what Details shows.
     if let Some(i) = toggled {
         s.toggle_group(i);
         s.selected = Some(i);
+        s.cell = None;
     } else if let Some(i) = picked {
         s.selected = Some(i);
+        s.cell = None;
         s.show_details = true;
         // Modules: the picked card moves to the middle, and the list shows it.
         if modules {

@@ -90,7 +90,7 @@ impl ForgeSession {
             ForgeProvider::Gitea => {
                 let (reviews, mut limited) =
                     self.thread_page(&format!("{path}/reviews?limit=50&page=1"), None, c)?;
-                let mut out = Vec::new();
+                let mut rows = Vec::new();
                 let mut seen = HashSet::new();
                 let mut reads = 0;
                 for review in &reviews {
@@ -112,15 +112,11 @@ impl ForgeSession {
                     let (comments, partial) =
                         self.thread_page(&format!("{path}/reviews/{id}/comments"), None, c)?;
                     limited |= partial;
-                    for comment in &comments {
-                        if out.len() == MAX_THREADS {
-                            limited = true;
-                            break;
-                        }
-                        out.push(parse::gitea(comment, id)?);
-                    }
+                    rows.extend(comments.into_iter().map(|comment| (comment, id)));
                 }
-                (out, limited)
+                // Replies join their conversation across reviews; the general cap
+                // below then keeps at most MAX_THREADS conversations.
+                (parse::gitea(&rows)?, limited)
             }
             _ => return fail(ForgeFailure::Unsupported),
         };
@@ -310,6 +306,11 @@ impl ForgeSession {
                 ForgeProvider::Azure | ForgeProvider::AzureServer => response.str("content"),
                 _ => response.str("body"),
             };
+            let same_text = if p == ForgeProvider::GitLab {
+                super::super::gitlab_saved_as(text, &preview.body)
+            } else {
+                text == Some(preview.body.as_str())
+            };
             // A successful-looking response must identify a newly created reply,
             // not echo an older comment already present in the reviewed thread.
             let id = response.u64("id").filter(|n| {
@@ -317,7 +318,7 @@ impl ForgeSession {
             });
             if !own
                 || id.is_none()
-                || text != Some(&preview.body)
+                || !same_text
                 || (p != ForgeProvider::GitLab && parent != Some(root))
             {
                 return fail(ForgeFailure::PullReviewUnknown);

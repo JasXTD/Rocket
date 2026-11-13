@@ -156,7 +156,7 @@
     "one": "{n} säkerhetsvarning att granska",
     "other": "{n} säkerhetsvarningar att granska"
   },
-  "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face och vanliga Google API-nycklar (även för Gemini).",
+  "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face och vanliga Google API-nycklar (även för Gemini).",
   "DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs.": "DeepSeek- och GLM / Z.ai-nycklar kontrolleras i tilldelningar som DEEPSEEK_API_KEY, ZAI_API_KEY eller api_key, utan att fånga vanliga hashvärden och punktseparerade ID:n.",
   "Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked.": "Matchar kända format, inte alla leverantörer eller framtida nyckelversioner. Platshållare tillåts; realistiska syntetiska nycklar blockeras.",
   "Advisory data is {age} days old. Update it in Scanner & data to check newer advisories.": "Säkerhetsdata är {age} dagar gamla. Uppdatera i Skanner och data för att kontrollera nyare varningar.",

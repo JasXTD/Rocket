@@ -121,10 +121,14 @@
   "No commits in this period": "За цей період немає комітів",
   "No match among these people": "Серед цих учасників немає збігів",
   "Commits touching each folder": "Коміти, що зачіпають кожну папку",
-  "People {people} · commits {commits}": "Учасники: {people} · коміти: {commits}",
+  "{count} people": {
+    "one": "{count} учасник",
+    "few": "{count} учасники",
+    "many": "{count} учасників"
+  },
+  "Commits in a cell": "Комітів у клітинці",
+  "FOLDER": "ПАПКА",
   "top folder": "коренева папка",
-  "{person} · {folder} · commits {count}": "{person} · {folder} · коміти: {count}",
-  "A folder holding most changes is split into its subfolders": "Папка з більшістю змін розбивається на підпапки",
   "Use a file name ending in .mmd.": "Використайте ім’я файлу з розширенням .mmd.",
   "Choose a folder with Browse, or type its full path.": "Виберіть папку через «Огляд» або введіть її повний шлях.",
   "Saved {name}": "Збережено: {name}",

@@ -153,7 +153,7 @@
   "No dependencies identified": "未识别到依赖项",
   "No known advisories found": "未发现已知安全公告",
   "{n} advisories need attention": "{n} 条安全公告需要处理",
-  "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI、Anthropic、Groq、xAI、OpenRouter、Hugging Face 和标准 Google API 密钥（Gemini 也使用）。",
+  "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI、Anthropic、Amazon Bedrock、Groq、xAI、OpenRouter、Hugging Face 和标准 Google API 密钥（Gemini 也使用）。",
   "DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs.": "在 DEEPSEEK_API_KEY、ZAI_API_KEY 或 api_key 等凭据赋值中检查 DeepSeek 和 GLM / Z.ai 密钥，避免误判普通哈希值和带点的 ID。",
   "Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked.": "匹配已知格式，不涵盖所有提供商或未来密钥版本。仍允许占位符；逼真的合成密钥仍会被阻止。",
   "Advisory data is {age} days old. Update it in Scanner & data to check newer advisories.": "安全公告数据已存在 {age} 天。请在“扫描器和数据”中更新，以检查较新的公告。",

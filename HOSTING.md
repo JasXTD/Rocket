@@ -60,7 +60,8 @@ for GitHub.com/GHES. The pending discussion extension is described below.
 GitLab sends one single-line discussion at a time using its exact base/head/start
 diff refs and both old/new paths for a rename. Select **Comment**, leave the
 separate review message empty, then preview and submit. Gitea sends up to 32
-single-line comments in one review, optionally with a message/vote. Its file
+single-line comments in one review, optionally with a message/vote; Request
+changes always needs a message, as Gitea refuses one without it. Its file
 metadata API has no patches: Rocket reads the fixed same-server PR diff endpoint
 (256 KiB maximum), matches validated old/new headers and parses only complete
 hunks (16 KiB/2,000 rows per file). Missing/binary/oversized/truncated patches are
@@ -94,6 +95,9 @@ instead of following the PR diff redirect. Comments use `from` for the old side
 or `to` for the new side. Its comment endpoint has no expected-commit condition:
 Rocket checks both tips before and after the POST, but cannot eliminate a race
 inside that request. An observed race requires inspection of the remote comment.
+Cloud's pull request object abbreviates its commits to 12 characters; Rocket looks
+each one up in the configured repository (`/commit/{hash}`) and uses it only when
+the full ID it returns starts with that abbreviation.
 
 Bitbucket Server/Data Center uses the effective diff's hashes, old/new paths,
 line type and side. Root, file, hunk, segment or line truncation disables affected
@@ -106,10 +110,12 @@ change-tracking ID. Up to eight files receive a preview using commit-pinned Item
 requests (`resolveLfs=false`). Each side is bounded to 128 KiB and 1,000 lines;
 the in-memory line comparison uses at most about 2 MiB. Patches are bounded to
 16 KiB and complete hunks. Binary, larger or additional files remain metadata
-only. No content is written into the checkout. Thread positions carry the selected
+only; Azure leaves `isBinary` out for text files, so only an explicit binary flag
+or NUL content marks a file binary. No content is written into the checkout. Thread positions carry the selected
 side, line, change-tracking ID and iteration comparison (common base to latest).
 Preview and submission recheck the iteration and file mapping. Server requests
-retain the selected 6.0/7.0/7.1 API version and collection scope.
+retain the selected 6.0/7.0/7.1 API version and collection scope; on 6.0, PR
+statuses use `6.0-preview.1`, the only version Server 2020 offers for them.
 
 All four adapters preserve local drafts on cancellation, stale versions and
 uncertain writes. They verify the returned author, text and anchor, never retry
@@ -131,8 +137,10 @@ Loopback tests verify Rocket's implementation, not real-server permissions or
 end-to-end acceptance against every deployed version.
 
 For GitHub, choose a changed line in **Files** and optionally set a first/last
-line on the same diff side and hunk. **Discussion → Load / refresh threads**
-shows up to 50 threads and 20 comments per thread.
+line on the same diff side and hunk. **Discussion → Load threads**
+shows up to 50 threads and 20 comments per thread. Comments are identified by
+GraphQL's 64-bit `fullDatabaseId` (the deprecated 32-bit `databaseId` is not used),
+which GitHub Enterprise Server has from 3.17 on.
 
 ### Discussion actions — pending next release
 
@@ -143,7 +151,7 @@ shows up to 50 threads and 20 comments per thread.
 | Bitbucket Cloud | Reply to the original comment | Comment resolution |
 | Bitbucket Server / Data Center | Reply to the original comment | Version-checked thread state; task severity is preserved |
 | Azure DevOps Services / Server | Reply inside the selected thread | Active ↔ Fixed; other server states are preserved |
-| Gitea | Use the provider website | Resolve / reopen review comments |
+| Gitea | Use the provider website | Resolve / reopen a conversation (its first comment) |
 
 Gitea's stable 1.26 API supports resolution but not a documented review-thread
 reply endpoint. Rocket leaves Reply disabled rather than guessing a route from
@@ -155,13 +163,17 @@ complete loaded thread again before sending, including comment edits hidden by
 display truncation. A changed thread, incomplete selected discussion or expired
 preview must be refreshed. Bitbucket Server records are read separately from the
 activity feed, with at most eight detailed thread reads per refresh. Gitea reads
-at most eight loaded reviews. Truncated results are marked incomplete; partial
+at most eight loaded reviews, oldest first, and groups the comments on one line of
+one side of a file into a conversation, as Gitea shows them; Resolve acts on its
+first comment, which holds Gitea's resolution. Truncated results are marked incomplete; partial
 Bitbucket Cloud pages cannot authorize a thread write. No continuation URL from
 a response is followed.
 
 After a non-GitHub write, Rocket reads back the selected discussion. Replies must
 match the authenticated account, exact submitted text and original parent; the
-new comment must appear in that discussion. Missing or cancelled readback remains
+new comment must appear in that discussion. GitLab saves notes without carriage
+returns or trailing whitespace, so its readback also accepts that saved form; a
+quick-action line changes the saved text and still leaves the outcome uncertain. Missing or cancelled readback remains
 an uncertain outcome. Resolution is confirmed only by the selected thread's state.
 The final check is not an atomic server-side precondition on every provider:
 a concurrent change after it remains possible. Existing cancellation and recovery
@@ -195,8 +207,13 @@ GitLab and Gitea receive the reviewed head; Bitbucket Server receives its PR
 version; Azure receives `lastMergeSourceCommit`. Bitbucket Cloud's merge endpoint
 has no documented expected-head condition. Both tips are rechecked, but that does
 not remove a race after the check. GitLab project policy determines its merge
-strategy; selecting merge does not override that policy. Only a confirmed merged
-response counts as success; asynchronous or unclear results require inspection.
+strategy; selecting merge does not override that policy. GitLab answers 401 when
+the account may not accept the merge request; Rocket then checks the account and
+reports a permission refusal, signing out only if the token itself is rejected.
+A fast-forward merge has no merge commit: Rocket reports the reviewed head once
+the target branch reads back pointing at it.
+Only a confirmed merged response counts as success; asynchronous or unclear
+results require inspection.
 Bitbucket Cloud may queue a merge when its target has an active merge queue;
 Rocket reports that unconfirmed outcome for inspection instead of retrying it.
 Rocket does not bypass policies, delete source branches or alter local files.
@@ -381,7 +398,7 @@ References: [GCM Bitbucket browser authentication](https://github.com/git-ecosys
 
 ### Lists and previews
 
-A matching HTTPS/SSH remote pre-fills the repository after connecting; otherwise enter it explicitly. Open, Closed/merged and All select the provider state. Load next page continues a bounded list (up to 100 pages). Text filtering is explicitly over loaded results. Azure work items belong to the whole project; their optional exact-state field supports project-specific state names. [Bitbucket retired its issue tracker in August 2026](https://community.atlassian.com/forums/discussion/3193882/announcing-sunset-of-bitbucket-issues-and-wikis).
+A matching HTTPS/SSH remote pre-fills the repository after connecting, including an HTTPS remote with a user name such as `https://username@bitbucket.org/…`; otherwise enter it explicitly. Open, Closed/merged and All select the provider state. Load next page continues a bounded list (up to 100 pages). Text filtering is explicitly over loaded results. Azure work items belong to the whole project; their optional exact-state field supports project-specific state names. [Bitbucket retired its issue tracker in August 2026](https://community.atlassian.com/forums/discussion/3193882/announcing-sunset-of-bitbucket-issues-and-wikis).
 
 New pull request accepts two already-pushed branches in the **same remote repository**, title and description. Review reads both remote branch IDs and shows the account, server, repository and direction. Create rechecks those IDs and refuses a stale/expired/already-submitted review. The review expires after two minutes. Branch changes are detected before submission; provider APIs do not offer an atomic compare-and-create guarantee. Rocket does not push, merge or modify the local checkout.
 
@@ -390,7 +407,9 @@ Cancelling a read retains earlier results. Cancelling after a create request may
 Pagination follows Bitbucket's returned continuation and GitHub/GitLab/Gitea
 Link headers, including short server-limited pages. Links must match the selected
 API origin, base path and exact collection; redirects and other destinations are
-refused. A cursor is tied to the account session, repository and filter that
+refused. GitHub's links name the repository by its numeric ID
+(`/repositories/{id}/…`); Rocket accepts that form for the same collection, takes
+only its query and keeps its own `/repos/{owner}/{repo}` path. A cursor is tied to the account session, repository and filter that
 created it. `hosting_invalid_pagination` means refresh the list; earlier results
 remain visible. Cancelling Load next page retains its cursor for an explicit retry.
 

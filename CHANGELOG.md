@@ -12,6 +12,22 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Secret protection recognizes JSON line breaks around JWK member separators, so
+  formatting a private key across lines cannot bypass commit or push checks.
+  Long whitespace runs remain cancellable; public keys still pass.
+- Secret protection blocks AWS access keys: key IDs starting with `AKIA`, `ASIA`,
+  `ABIA` or `ACCA` (new refusal code `aws_access_key_detected`), and secret keys or
+  session tokens under their AWS names (`secretAccessKey`, `AWS_SECRET_KEY`,
+  `aws_session_token`, any name ending in `secret_access_key`). It also blocks JSON
+  Web Key private keys, Google OAuth client secrets (`GOCSPX-`) and client secrets
+  under any name ending in `client_secret`, such as `OIDC_CLIENT_SECRET` or
+  `AZURE_CLIENT_SECRET`. Guard AI API keys blocks Amazon Bedrock API keys, long-term
+  (`ABSK`) and short-term (`bedrock-api-key-`). AWS's documentation examples still
+  pass (key IDs ending in `EXAMPLE`, secret keys ending in `EXAMPLEKEY`). A push
+  checks all history being published, so a repository whose older commits hold one
+  of these keys is now refused until the key is removed from that history. GitHub
+  Copilot signs in with GitHub tokens, which were already blocked; signed JWTs alone
+  are not blocked.
 - Map → Code has a third view, Modules: one Rust package's modules and which uses
   which, read from the committed `.rs` files as text (nothing is compiled or run).
   A list names every module, most used first or A to Z; the picture puts the chosen
@@ -20,11 +36,75 @@ keep detailed test evidence in `VALIDATION.md`.
   files no module is read from. Choose the package on the new button, or with Show
   modules in a package's Details. Rust only; macros and `cfg` are not expanded, other
   packages are not followed, and function calls are not shown.
+- Hosting fixes from a check against each host's API documentation. GitHub and
+  GitHub Enterprise lists and PR tabs with more than 50 entries load their next
+  pages: GitHub's page links name the repository by its numeric ID. Bitbucket Cloud
+  PR details, reviews, comments, threads and merges work with the 12-character
+  commit hashes its pull requests carry. GitLab no longer reports a saved comment or
+  reply as uncertain when GitLab trimmed its trailing whitespace, no longer signs
+  you out when it refuses a merge for lack of permission, and confirms approvals on
+  Community Edition. Azure DevOps Server 2020 shows PR checks again (statuses need
+  `6.0-preview.1`). Gitea reviews work on PRs with a team review request, and
+  Request changes asks for a message, which Gitea requires. HTTPS remotes with a
+  user name, such as `https://username@bitbucket.org/…`, match their host.
+- More hosting fixes from that check. Azure DevOps file previews and inline comments
+  work on text files, which Azure sends without an `isBinary` flag. GitHub review
+  threads read comment IDs from GraphQL's 64-bit `fullDatabaseId`, replacing the
+  deprecated 32-bit `databaseId` (GitHub Enterprise Server 3.17 or later). A GitLab
+  fast-forward merge is confirmed once the target branch points at the reviewed
+  head, instead of left uncertain. Gitea replies join their conversation, and
+  Resolve acts on its first comment, which holds Gitea's resolution.
+- A tidier pull request page. Merge is a compact card: the methods the host offers and
+  Review merge on one row, one status line under them, the reviewed head and base as
+  labels; closed PRs no longer show it. Discussion has a Conversation card and an
+  Inline review comments card (author and date on one line, the text under them) and
+  a Review threads card with Load threads in its header, a Resolved or Unresolved pill
+  on each thread and the reply box inside the thread you picked. Reviews uses the same
+  cards, and empty lists say what is missing. Saving a draft no longer shifts the page:
+  its status sits in the top bar.
+- Prevent History Index cleanup from following linked directories outside the
+  repository. Reads and removal use held directories; cleanup honors cancellation
+  and preserves unknown files, local changes and hard-link peer attributes. Agents
+  on macOS also refuse quarantine on enclosing folders and bundles, including
+  bundles without an `.app` suffix, at review and launch revalidation.
+- Map → People reads as a table: folders down the side with their path (such as
+  `crates/rocket-git`), people across the top, their commits in the cells. The
+  slanted folder names, the tall band above the grid and the note under it are
+  gone; the key sits beside the title and says what a cell counts, and the counts
+  read "1 person · 91 commits". The folder column, and the people row when there is
+  room under it, stay in place while the table scrolls; pointing at a cell lights
+  its row and column. A cell picked earlier no longer stays in Details after search
+  or Shared files picks someone else. Data, clicks and Details are otherwise
+  unchanged.
+- Release Unix repository write ownership explicitly before the next operation.
+  A concurrently starting child can no longer retain the previous operation's
+  lock and cause an intermittent "repository busy" error. Other writers remain
+  excluded, and Git's own locks are never removed by this release.
+- Keep the Repository sidebar links steady during refresh, history and diff
+  loading. Read-only navigation no longer dims with foreground reads; write
+  actions keep their existing safety checks.
+- Tags, Worktrees, Submodules, Git LFS and Insights no longer blink while Git
+  writes, such as on every stage, commit or fetch. Like views and the icon-only
+  sidebar, these pages and extension pages open at any time, also from View →
+  Go to, the command palette and View → Repository Benchmark. What a page or an
+  extension changes still waits for the running work.
+- The window no longer shifts by a point while a status message such as "Stage
+  completed" shows. Its × was taller than the status bar and pushed the bar down;
+  buttons in the bar now keep to its row.
+- Harden Agents' Unix executable snapshots: Linux checks effective execution
+  permission and `noexec` on the held source; macOS refuses quarantined sources
+  instead of dropping their protection. Recheck policy before launch while keeping
+  reviewed-byte binding and leaving Windows' held-file protection unchanged.
+- Bound commit-graph chain reads before allocation, including files that grow during
+  the read. Cancelled/timed-out index writes preserve locks and temporary files
+  whose ownership Rocket cannot prove; recovery guidance explains retained locks.
+  Insights rejects extreme author timestamps and malformed timezone offsets without
+  overflowing or wrapping calendar dates.
 - Speed up history in large repositories. When ordering the History list took more
   than a second and the repository has no commit index (Git's commit-graph), a line
   above the list says so and opens Speed up history; Repository → History & Recovery →
   Speed Up History opens it at any time. The dialog writes the index with Git, shows
-  the commits read so far and a Stop that leaves the repository as it was, and then
+  the commits read so far and a Stop that preserves commits and working files, and then
   the ordering time before and after as measured there. Opened again it shows the
   index's size, date and commit count, with Update and Remove. "Keep it up to date
   when Rocket fetches" adds the fetched commits after each fetch Rocket runs in that

@@ -568,8 +568,10 @@ even when `--repo` names a subdirectory. Use `--` before paths beginning with `-
 ### Secret protection
 
 CLI commits and pushes enable both local Secret protection and Guard AI API keys.
-Recognized AI-provider key formats use the fixed code `ai_api_key_detected`.
-Recognized GitHub tokens, private keys, likely credential assignments and `.env` paths cause exit
+Recognized AI-provider key formats, Amazon Bedrock keys included, use the fixed code
+`ai_api_key_detected`; AWS access-key IDs use `aws_access_key_detected`.
+Recognized GitHub tokens, AWS access keys, private keys (PEM and JSON Web Key), likely
+credential assignments and `.env` paths cause exit
 1 before the write process starts. The JSON error has a fixed detection `code`,
 sanitized `location`, optional `line`, `operation_started: false` and
 `retry_requires_changes: true`, plus corrective `guidance`. Normal push results

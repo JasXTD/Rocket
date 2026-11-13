@@ -115,10 +115,13 @@
   "No commits in this period": "Inga commits under denna period",
   "No match among these people": "Ingen träff bland dessa personer",
   "Commits touching each folder": "Commits som berör varje mapp",
-  "People {people} · commits {commits}": "Personer {people} · commits {commits}",
+  "{count} people": {
+    "one": "{count} person",
+    "other": "{count} personer"
+  },
+  "Commits in a cell": "Commits per cell",
+  "FOLDER": "MAPP",
   "top folder": "toppmapp",
-  "{person} · {folder} · commits {count}": "{person} · {folder} · commits {count}",
-  "A folder holding most changes is split into its subfolders": "En mapp med de flesta ändringarna delas upp i sina undermappar",
   "Use a file name ending in .mmd.": "Använd ett filnamn som slutar på .mmd.",
   "Choose a folder with Browse, or type its full path.": "Välj en mapp med Bläddra eller ange dess fullständiga sökväg.",
   "Saved {name}": "Sparade {name}",

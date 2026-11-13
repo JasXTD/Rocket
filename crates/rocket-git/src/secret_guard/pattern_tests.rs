@@ -7,6 +7,9 @@ mod variations;
 #[path = "sequence_tests.rs"]
 mod sequences;
 
+#[path = "cloud_key_tests.rs"]
+mod cloud_keys;
+
 #[test]
 fn short_marker_constants_are_not_literal_credentials() {
     for (tag, suffix) in [

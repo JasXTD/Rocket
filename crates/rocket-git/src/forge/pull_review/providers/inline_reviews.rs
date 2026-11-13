@@ -1,6 +1,28 @@
 //! GitLab discussions and Gitea review comments use different position contracts.
 use super::*;
 
+/// One row of Gitea's review list for the pending-review check: who wrote it and
+/// whether it is a pending draft. None for a row that can't be read safely.
+fn gitea_review_row(j: &Json) -> Option<(String, bool)> {
+    let state = j.str("state")?;
+    if !matches!(
+        state,
+        "PENDING" | "APPROVED" | "COMMENT" | "COMMENTED" | "REQUEST_CHANGES" | "CHANGES_REQUESTED" | "REQUEST_REVIEW"
+    ) {
+        return None;
+    }
+    // A review requested from a team has no user ("user": null, with "team" set).
+    // Only a pending review is a draft, and a draft always belongs to a user, so a
+    // team row can never be this account's.
+    let actor = match j.get("user") {
+        None | Some(Json::Null) if state != "PENDING" && j.get("team").is_some_and(|t| !matches!(t, Json::Null)) => {
+            String::new()
+        }
+        user => identity(user?, ForgeProvider::Gitea)?,
+    };
+    Some((actor, state == "PENDING"))
+}
+
 pub(super) fn attach_gitea_diff(
     files: &mut [ForgePullFile],
     diff: &str,
@@ -118,21 +140,7 @@ impl ForgeSession {
                 None,
                 "read_pending_reviews",
                 c,
-                |j| {
-                    let actor = identity(j.get("user")?, ForgeProvider::Gitea)?;
-                    let state = j.str("state")?;
-                    matches!(
-                        state,
-                        "PENDING"
-                            | "APPROVED"
-                            | "COMMENT"
-                            | "COMMENTED"
-                            | "REQUEST_CHANGES"
-                            | "CHANGES_REQUESTED"
-                            | "REQUEST_REVIEW"
-                    )
-                    .then(|| (actor, state == "PENDING"))
-                },
+                gitea_review_row,
             )?;
             if reviews.error.is_some() {
                 return fail(ForgeFailure::ReviewStateUnavailable);
@@ -317,6 +325,23 @@ mod tests {
     }
     fn diff(old: &str, new: &str, patch: &str) -> String {
         format!("diff --git a/ignored b/ignored\n--- {old}\n+++ {new}\n{patch}")
+    }
+    #[test]
+    fn gitea_team_review_requests_do_not_block_the_pending_review_check() {
+        let row = |s: &str| gitea_review_row(&crate::hosting::json::parse(s.as_bytes()).unwrap());
+        // Gitea stores a team request with no reviewer, so the list has "user": null.
+        assert_eq!(row(r#"{"id":3,"state":"REQUEST_REVIEW","user":null,"team":{"id":5,"name":"owners"}}"#), Some((String::new(), false)));
+        assert_eq!(row(r#"{"id":4,"state":"PENDING","user":{"login":"Me"}}"#), Some(("Me".into(), true)));
+        assert_eq!(row(r#"{"id":5,"state":"APPROVED","user":{"login":"other"}}"#), Some(("other".into(), false)));
+        // A draft is always somebody's, and a row with neither user nor team is unknown.
+        for unreadable in [
+            r#"{"id":6,"state":"PENDING","user":null,"team":{"id":5}}"#,
+            r#"{"id":7,"state":"REQUEST_REVIEW","user":null,"team":null}"#,
+            r#"{"id":8,"state":"REQUEST_REVIEW"}"#,
+            r#"{"id":9,"state":"SOMETHING_NEW","user":{"login":"other"}}"#,
+        ] {
+            assert_eq!(row(unreadable), None, "{unreadable}");
+        }
     }
     #[test]
     fn gitea_diff_verifies_unicode_rename_headers_before_enabling_lines() {

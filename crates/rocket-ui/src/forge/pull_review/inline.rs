@@ -95,7 +95,7 @@ pub(super) fn files(
     widgets: &mut HashMap<String, UiControl>,
     busy: bool,
 ) {
-    collection_note(ui, &details.files);
+    collection_note(ui, &details.files, tr("No changed files returned."));
     let edit = !busy
         && s.pull.preview.is_none()
         && s.pull.merge.preview.is_none()

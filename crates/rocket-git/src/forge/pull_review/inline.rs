@@ -237,7 +237,7 @@ pub(super) fn gitlab_payload(c: &ForgeInlineComment) -> Result<String> {
 pub(super) fn gitlab_matches(j: &Json, c: &ForgeInlineComment) -> bool {
     let Some(p) = j.get("position") else { return false };
     let Some(r) = &c.anchor.refs else { return false };
-    j.str("body") == Some(&c.body) && p.str("position_type") == Some("text")
+    gitlab_saved_as(j.str("body"), &c.body) && p.str("position_type") == Some("text")
         && p.str("base_sha") == Some(&r.base) && p.str("head_sha") == Some(&r.head)
         && p.str("start_sha") == Some(&r.start) && p.str("old_path") == Some(&c.anchor.old_path)
         && p.str("new_path") == Some(&c.path) && p.u64("old_line") == c.anchor.old && p.u64("new_line") == c.anchor.new
@@ -403,6 +403,41 @@ mod tests {
         ] {
             assert!(parse_lines(patch).is_none(), "{patch}");
         }
+    }
+    #[test]
+    fn gitlab_inline_readback_accepts_the_text_gitlab_saves() {
+        let (base, head, start) = ("a".repeat(40), "b".repeat(40), "c".repeat(40));
+        let config = ForgeConfig::new(ForgeProvider::GitLab, "https://gitlab.com").unwrap();
+        let comment = ForgeInlineComment {
+            repository: ForgeRepository::new(config, "team/repo").unwrap(),
+            session: 1,
+            number: 7,
+            head: head.clone(),
+            base: base.clone(),
+            path: "src/lib.rs".into(),
+            line: 3,
+            start: 3,
+            side: ForgeDiffSide::Right,
+            body: "Looks good\r\nthanks  \n".into(),
+            anchor: Anchor {
+                old_path: "src/lib.rs".into(),
+                old: None,
+                new: Some(3),
+                refs: Some(DiffRefs { base: base.clone(), head: head.clone(), start: start.clone() }),
+                provider: None,
+                revision: None,
+            },
+        };
+        let note = |body: &str, new_line: u64| {
+            crate::hosting::json::parse(format!(
+                r#"{{"body":{},"position":{{"position_type":"text","base_sha":"{base}","head_sha":"{head}","start_sha":"{start}","old_path":"src/lib.rs","new_path":"src/lib.rs","old_line":null,"new_line":{new_line}}}}}"#,
+                quote(body)
+            ).as_bytes()).unwrap()
+        };
+        assert!(gitlab_matches(&note("Looks good\nthanks", 3), &comment));
+        assert!(gitlab_matches(&note("Looks good\r\nthanks  \n", 3), &comment));
+        assert!(!gitlab_matches(&note("Looks good", 3), &comment));
+        assert!(!gitlab_matches(&note("Looks good\nthanks", 4), &comment));
     }
     #[test]
     fn path_display_cannot_change_the_comment_destination() {

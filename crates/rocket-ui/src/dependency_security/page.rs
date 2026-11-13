@@ -148,7 +148,7 @@ impl Rocket {
             preferences::card_note(ui, |ui| {
                 let response = CollapsingHeader::new(crate::i18n::tr("Supported key formats"))
                     .id_salt("security-ai-key-coverage").show(ui, |ui| {
-                    help(ui, crate::i18n::tr("OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini)."));
+                    help(ui, crate::i18n::tr("OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini)."));
                     help(ui, crate::i18n::tr("DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs."));
                     help(ui, crate::i18n::tr("Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked."));
                 });

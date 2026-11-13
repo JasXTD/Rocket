@@ -5,7 +5,7 @@ use std::{
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
-struct Fixture(PathBuf);
+pub(super) struct Fixture(pub(super) PathBuf);
 fn fixture_base() -> PathBuf {
     // File-lock/rename semantics must be exercised on a native Unix filesystem,
     // even when the source lives on WSL's Windows mount.
@@ -19,7 +19,7 @@ fn fixture_base() -> PathBuf {
     }
 }
 impl Fixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let base = fixture_base();
         fs::create_dir_all(&base).unwrap();

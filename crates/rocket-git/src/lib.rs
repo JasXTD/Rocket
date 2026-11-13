@@ -9,6 +9,10 @@
 mod test_fixture_root;
 
 mod auto_fetch;
+#[cfg(unix)]
+mod agent_executable;
+#[cfg(unix)]
+pub use agent_executable::check_agent_executable_source;
 mod process_privilege;
 /// Refuse elevated/high-integrity Windows hosts, including an unverifiable token.
 /// Call before reading startup state or preparing any child process. Normal UAC-

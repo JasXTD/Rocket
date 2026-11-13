@@ -668,6 +668,327 @@ fn translated_map_zoom_controls_keep_their_complete_labels() {
     }
 }
 
+/// A People map: people with these commit totals, then folders with these paths and
+/// totals, and `weight(person, folder)` commits in each cell (0 for none). People are
+/// nodes 0.., the folders follow them in the order given.
+fn people_map(people: &[usize], folders: &[(&str, usize)], weight: impl Fn(usize, usize) -> usize) -> RepositoryMap {
+    let node = |kind, label: String, path: Option<String>, count| MapNode {
+        key: label.clone().into_bytes(),
+        label: label.into_bytes(),
+        detail: Vec::new(),
+        kind,
+        path: path.map(String::into_bytes),
+        commit: None,
+        count,
+        files: 1,
+        evidence: Vec::new(),
+        refs: Vec::new(),
+        time: 0,
+    };
+    let mut d = RepositoryMap { kind: MapKind::People, ..Default::default() };
+    for (p, &count) in people.iter().enumerate() {
+        d.nodes.push(node(MapNodeKind::Person, format!("Person {p}"), None, count));
+    }
+    for &(path, count) in folders {
+        d.nodes.push(node(MapNodeKind::Area, path.to_owned(), Some(path.to_owned()), count));
+    }
+    for p in 0..people.len() {
+        for a in 0..folders.len() {
+            let weight = weight(p, a);
+            if weight > 0 {
+                d.links.push(MapLink { from: p, to: people.len() + a, kind: MapLinkKind::Changes, weight, evidence: vec![] });
+            }
+        }
+    }
+    d
+}
+
+/// Two people, the second with more commits, and three folders out of their commit
+/// order: docs, crates/core and the top folder are nodes 2, 3 and 4.
+fn two_people() -> MapPage {
+    let weights = [[1, 3, 0], [2, 7, 2]];
+    let mut s = MapPage {
+        data: Some(Arc::new(people_map(&[4, 9], &[("docs", 3), ("crates/core", 10), ("/", 2)], |p, a| weights[p][a]))),
+        show_details: false,
+        ..Default::default()
+    };
+    s.rebuild();
+    s
+}
+
+/// What one frame of the People table registered for MCP, how many shapes it painted
+/// and the text it painted.
+struct GridFrame {
+    controls: HashMap<String, UiControl>,
+    shapes: usize,
+    texts: Vec<String>,
+}
+impl GridFrame {
+    fn rect(&self, id: &str) -> Rect {
+        self.controls.get(id).unwrap_or_else(|| panic!("{id} missing: {:?}", self.controls.keys())).rect
+    }
+    fn painted(&self, text: &str) -> bool {
+        self.texts.iter().any(|t| t == text)
+    }
+}
+
+fn grid_frame(ctx: &Context, s: &mut MapPage, rect: Rect, events: Vec<Event>, time: f64) -> GridFrame {
+    grid_frame_covered(ctx, s, rect, false, events, time)
+}
+
+fn grid_frame_covered(ctx: &Context, s: &mut MapPage, rect: Rect, covered: bool, events: Vec<Event>, time: f64) -> GridFrame {
+    fn texts(shape: &Shape, out: &mut Vec<String>) {
+        match shape {
+            Shape::Text(text) => out.push(text.galley.text().to_owned()),
+            Shape::Vec(shapes) => shapes.iter().for_each(|shape| texts(shape, out)),
+            _ => {}
+        }
+    }
+    let mut controls = HashMap::new();
+    let mut output = ctx.run_ui(RawInput { screen_rect: Some(rect), events, time: Some(time), ..Default::default() }, |ui| {
+        lists::grid(ui, s, rect, covered, &mut controls);
+    });
+    output.textures_delta.clear();
+    let mut painted = Vec::new();
+    for clipped in &output.shapes {
+        texts(&clipped.shape, &mut painted);
+    }
+    GridFrame { controls, shapes: output.shapes.len(), texts: painted }
+}
+
+/// Clicks at `at`, as a pointer press and release in one frame, then draws one more.
+fn click_events(at: Pos2) -> Vec<Event> {
+    let press = |pressed| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
+    vec![Event::PointerMoved(at), press(true), press(false)]
+}
+
+/// Scrolls with the wheel over `at` and lets egui's smoothing finish.
+fn scroll_grid(ctx: &Context, s: &mut MapPage, rect: Rect, at: Pos2, delta: Vec2, time: &mut f64) -> GridFrame {
+    let wheel = Event::MouseWheel { unit: MouseWheelUnit::Point, delta, phase: TouchPhase::Move, modifiers: Modifiers::NONE };
+    *time += 0.2;
+    let mut frame = grid_frame(ctx, s, rect, vec![Event::PointerMoved(at), wheel], *time);
+    for _ in 0..30 {
+        *time += 0.2;
+        frame = grid_frame(ctx, s, rect, vec![], *time);
+    }
+    frame
+}
+
+#[test]
+fn people_table_puts_folders_down_the_side_and_people_across_the_top() {
+    // The grid once slanted folder names over the columns and listed people down the
+    // side. Both run by commits here, which is not their order in the map.
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        let ctx = Context::default();
+        crate::style::install(&ctx);
+        let mut s = two_people();
+        for width in [880., 756.] {
+            let rect = Rect::from_min_size(Pos2::ZERO, vec2(width, 600.));
+            grid_frame(&ctx, &mut s, rect, vec![], 0.);
+            let frame = grid_frame(&ctx, &mut s, rect, vec![], 0.1);
+            // Folders run down the side, most commits first, in a column wide enough
+            // for a long path in a wide card.
+            let folders = [frame.rect("map-node-3"), frame.rect("map-node-2"), frame.rect("map-node-4")];
+            for pair in folders.windows(2) {
+                assert_eq!(pair[0].left(), pair[1].left());
+                assert!(pair[0].bottom() <= pair[1].top() + 0.5, "{folders:?}");
+            }
+            assert_eq!(folders[0].width(), if width >= 800. { 256. } else { 188. });
+            // People run across the top, most commits first.
+            let people = [frame.rect("map-node-1"), frame.rect("map-node-0")];
+            assert_eq!(people[0].top(), people[1].top());
+            assert!(people[0].right() <= people[1].left() + 0.5, "{people:?}");
+            assert!(people[0].bottom() <= folders[0].top() && people[0].left() >= folders[0].right(), "{people:?} {folders:?}");
+            // A cell sits under its person and beside its folder; an empty pair has none.
+            for (id, person, folder) in [
+                ("map-cell-1-3", people[0], folders[0]),
+                ("map-cell-0-3", people[1], folders[0]),
+                ("map-cell-1-2", people[0], folders[1]),
+                ("map-cell-0-2", people[1], folders[1]),
+                ("map-cell-1-4", people[0], folders[2]),
+            ] {
+                let cell = frame.rect(id);
+                assert!(person.x_range().contains(cell.center().x) && folder.y_range().contains(cell.center().y), "{id}: {cell:?}");
+            }
+            assert!(!frame.controls.contains_key("map-cell-0-4"));
+            for (id, c) in &frame.controls {
+                assert!(rect.contains_rect(c.rect), "{id}: {:?}", c.rect);
+            }
+            // The captions, the counts, the key, the top folder's name and, with two
+            // people, each folder's commits.
+            for text in ["FOLDER", "COMMITS", "2 people · 13 commits", "Commits in a cell", "top folder", "10"] {
+                assert!(frame.painted(text), "{text} is not painted: {:?}", frame.texts);
+            }
+            // Under the details drawer nothing in the table takes a click.
+            let covered = grid_frame_covered(&ctx, &mut s, rect, true, vec![], 0.2);
+            assert!(covered.controls.is_empty(), "{:?}", covered.controls.keys());
+        }
+        // With one person a commits column would repeat the cells, so there is none.
+        let mut one = MapPage { data: Some(Arc::new(people_map(&[5], &[("docs", 5)], |_, _| 5))), ..Default::default() };
+        one.rebuild();
+        let rect = Rect::from_min_size(Pos2::ZERO, vec2(880., 600.));
+        grid_frame(&ctx, &mut one, rect, vec![], 0.3);
+        let frame = grid_frame(&ctx, &mut one, rect, vec![], 0.4);
+        assert!(frame.painted("1 person · 5 commits") && !frame.painted("COMMITS"), "{:?}", frame.texts);
+    });
+}
+
+#[test]
+fn people_table_clicks_pick_a_cell_a_folder_or_a_person() {
+    let ctx = Context::default();
+    crate::style::install(&ctx);
+    let mut s = two_people();
+    let rect = Rect::from_min_size(Pos2::ZERO, vec2(880., 600.));
+    grid_frame(&ctx, &mut s, rect, vec![], 0.);
+    let frame = grid_frame(&ctx, &mut s, rect, vec![], 0.1);
+    let mut time = 0.1;
+    for (id, picked) in [
+        // A cell picks its person and folder and opens Details; a folder or a person
+        // picks just that.
+        ("map-cell-0-3", (Some(0), Some((0, 3)))),
+        ("map-node-2", (Some(2), None)),
+        ("map-node-1", (Some(1), None)),
+    ] {
+        time += 0.5;
+        grid_frame(&ctx, &mut s, rect, click_events(frame.rect(id).center()), time);
+        time += 0.1;
+        grid_frame(&ctx, &mut s, rect, vec![], time);
+        assert_eq!((s.selected, s.cell), picked, "{id}");
+        assert!(s.show_details, "{id}");
+    }
+}
+
+#[test]
+fn people_table_keeps_names_in_place_while_the_cells_scroll() {
+    // Forty people and twenty folders, with commits everywhere: only what shows is
+    // painted, and after scrolling right and down the people row and the folder column
+    // stay where they were while the cells move under them.
+    let ctx = Context::default();
+    crate::style::install(&ctx);
+    let people: Vec<usize> = (0..40).map(|p| 1000 - p).collect();
+    let paths: Vec<String> = (0..20).map(|a| format!("folder-{a}")).collect();
+    let folders: Vec<(&str, usize)> = paths.iter().enumerate().map(|(a, p)| (p.as_str(), 1000 - a)).collect();
+    let mut s = MapPage { data: Some(Arc::new(people_map(&people, &folders, |p, a| 1 + (p + a) % 5))), ..Default::default() };
+    s.rebuild();
+    let rect = Rect::from_min_size(Pos2::ZERO, vec2(700., 420.));
+    grid_frame(&ctx, &mut s, rect, vec![], 0.);
+    let before = grid_frame(&ctx, &mut s, rect, vec![], 0.1);
+    // About 7 columns by 9 rows show; painting all 800 cells would take more than
+    // 1,600 shapes.
+    assert!(before.shapes < 600, "{} shapes painted", before.shapes);
+    let person = before.rect("map-node-0");
+    let folder = before.rect("map-node-40");
+    let mut time = 0.1;
+    let after = scroll_grid(&ctx, &mut s, rect, pos2(500., 300.), vec2(-400., -260.), &mut time);
+    assert!(!after.controls.contains_key("map-node-0") && !after.controls.contains_key("map-node-40"), "the first person and folder scrolled away");
+    let mut shown = (0, 0);
+    for (id, c) in &after.controls {
+        let Some(n) = id.strip_prefix("map-node-").and_then(|n| n.parse::<usize>().ok()) else { continue };
+        if n < 40 {
+            shown.0 += 1;
+            assert_eq!(c.rect.top(), person.top(), "{id} left the people row");
+        } else {
+            shown.1 += 1;
+            assert_eq!(c.rect.left(), folder.left(), "{id} left the folder column");
+        }
+    }
+    assert!(shown.0 > 0 && shown.1 > 0, "{shown:?}");
+    for (id, c) in after.controls.iter().filter(|(id, _)| id.starts_with("map-cell-")) {
+        assert!(c.rect.top() >= person.bottom() && c.rect.left() >= folder.right(), "{id} is under a fixed edge: {:?}", c.rect);
+        assert!(rect.contains_rect(c.rect), "{id}: {:?}", c.rect);
+    }
+}
+
+#[test]
+fn people_table_in_a_short_card_scrolls_its_people_row_away_to_reach_every_folder() {
+    // A card too short for two folder rows under a fixed people row: the people row
+    // scrolls with the rows, so the last folder can still be brought fully into view.
+    let ctx = Context::default();
+    crate::style::install(&ctx);
+    let paths: Vec<String> = (0..10).map(|a| format!("folder-{a}")).collect();
+    let folders: Vec<(&str, usize)> = paths.iter().enumerate().map(|(a, p)| (p.as_str(), 100 - a)).collect();
+    let mut s = MapPage { data: Some(Arc::new(people_map(&[9, 8], &folders, |_, _| 1))), ..Default::default() };
+    s.rebuild();
+    let rect = Rect::from_min_size(Pos2::ZERO, vec2(880., 150.));
+    grid_frame(&ctx, &mut s, rect, vec![], 0.);
+    let before = grid_frame(&ctx, &mut s, rect, vec![], 0.1);
+    assert!(before.controls.contains_key("map-node-0"), "{:?}", before.controls.keys());
+    let mut time = 0.1;
+    let after = scroll_grid(&ctx, &mut s, rect, pos2(500., 120.), vec2(0., -400.), &mut time);
+    assert!(!after.controls.contains_key("map-node-0"), "the people row scrolled away with the rows");
+    assert_eq!(after.rect("map-node-11").height(), 36., "the last folder shows in full");
+}
+
+#[test]
+fn people_table_key_takes_its_own_line_in_a_narrow_card() {
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        let ctx = Context::default();
+        crate::style::install(&ctx);
+        let mut s = two_people();
+        let mut first_row = Vec::new();
+        for width in [880., 480.] {
+            let rect = Rect::from_min_size(Pos2::ZERO, vec2(width, 600.));
+            grid_frame(&ctx, &mut s, rect, vec![], 0.);
+            let frame = grid_frame(&ctx, &mut s, rect, vec![], 0.1);
+            assert!(frame.painted("Commits in a cell"), "{:?}", frame.texts);
+            first_row.push(frame.rect("map-node-3").top());
+        }
+        // Title, counts and key fit on one line at 880 points; at 480 the key moves to
+        // a line of its own and the table starts one line lower.
+        assert_eq!(first_row[1] - first_row[0], 22., "{first_row:?}");
+    });
+}
+
+#[test]
+fn a_people_cell_is_dropped_when_another_node_is_picked() {
+    // Search picking another person, or a click in Shared files, once left the cell
+    // in place, and Details went on showing that cell.
+    let mut s = two_people();
+    s.selected = Some(0);
+    s.cell = Some((0, 3));
+    s.query = "Person 1".into();
+    s.rebuild();
+    assert_eq!((s.selected, s.cell), (Some(1), None));
+    // While its person stays picked, the cell stays.
+    s.cell = Some((1, 3));
+    s.query = "Person".into();
+    s.rebuild();
+    assert_eq!((s.selected, s.cell), (Some(1), Some((1, 3))));
+
+    let ctx = Context::default();
+    crate::style::install(&ctx);
+    let mut map = people_map(&[4, 9], &[("docs", 3)], |_, _| 1);
+    map.links.push(MapLink { from: 0, to: 1, kind: MapLinkKind::SharedFiles, weight: 1, evidence: vec![] });
+    let mut s = MapPage { data: Some(Arc::new(map)), alternate: true, fit: true, ..Default::default() };
+    s.rebuild();
+    s.selected = Some(0);
+    s.cell = Some((0, 2));
+    let rect = Rect::from_min_size(Pos2::ZERO, vec2(880., 600.));
+    let frame = |s: &mut MapPage, events: Vec<Event>, time: f64| {
+        let mut controls = HashMap::new();
+        ctx.run_ui(RawInput { screen_rect: Some(rect), events, time: Some(time), ..Default::default() }, |ui| {
+            drawing::canvas(ui, s, rect, false, &mut controls);
+        })
+        .drop_without_applying_deltas();
+        controls
+    };
+    frame(&mut s, vec![], 0.);
+    let controls = frame(&mut s, vec![], 0.1);
+    let at = controls.get("map-node-1").unwrap_or_else(|| panic!("{:?}", controls.keys())).rect.center();
+    frame(&mut s, click_events(at), 0.6);
+    frame(&mut s, vec![], 0.7);
+    assert_eq!((s.selected, s.cell), (Some(1), None));
+}
+
+#[test]
+fn people_counts_say_person_or_people() {
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        assert_eq!(lists::people_counts(1, 91), "1 person · 91 commits");
+        assert_eq!(lists::people_counts(1, 1), "1 person · 1 commit");
+        assert_eq!(lists::people_counts(2, 1422), "2 people · 1,422 commits");
+    });
+}
+
 // ---- Code → Modules -----------------------------------------------------------
 
 /// A Modules read: a package, its crate root and modules (path, parent, lines), and
@@ -1080,10 +1401,4 @@ fn modules_list_keeps_the_picked_row_in_view() {
         let controls = frame(&mut s, vec![]);
         assert!(controls.contains_key(&format!("map-module-{far}")), "a module picked elsewhere is scrolled into the list's view");
     });
-}
-
-/// Clicks at `at`, as a pointer press and release in one frame, then draws one more.
-fn click_events(at: Pos2) -> Vec<Event> {
-    let press = |pressed| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
-    vec![Event::PointerMoved(at), press(true), press(false)]
 }

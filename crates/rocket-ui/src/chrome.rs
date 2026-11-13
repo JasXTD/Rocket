@@ -647,7 +647,11 @@ impl Rocket {
 
     fn statusbar(&mut self, ui: &mut Ui) {
         let mut dismiss_notice = false;
+        // Controls keep to the bar's 20-point row. With the app's 5-point button padding a
+        // plain button, such as a status message's ×, was 26 points tall, taller than the
+        // bar, which then moved down a point while the message showed.
         ui.spacing_mut().interact_size.y = 20.0;
+        ui.spacing_mut().button_padding.y = 1.0;
         ui.horizontal_centered(|ui| {
             ui.spacing_mut().item_spacing.x = 8.0;
             if let Some(preview) = self.tab().and_then(|t| t.preview.as_deref()).filter(|p| !p.ready()) {
@@ -1410,9 +1414,6 @@ impl Rocket {
         let blocked = self.blocking_dialog();
         let writable = self.can_write();
         let idle = self.write.is_none();
-        // Background refresh and saving must not disable navigation to a page; a
-        // write or a foreground load still does.
-        let free = !self.interaction_busy();
         let page = self.page();
         let Some(tab) = self.tabs.get_mut(self.active) else {
             return;
@@ -1817,7 +1818,10 @@ impl Rocket {
                             ] {
                                 if key == "view-tags" && tab.worktree_view.hide_tags { continue; }
                                 if preview && preview_hides(key) { continue; }
-                                let response = ui.add_enabled_ui(free || matches!(target, Target::View(_)), |ui| leaf_row(ui, label, image, 0, None, selected)).inner;
+                                // Pages open at any time, as views and the icon rail do, so these
+                                // rows never dim while Git reads or writes. A page's own changes
+                                // wait for the running write, and Rocket's reads take no Git locks.
+                                let response = leaf_row(ui, label, image, 0, None, selected);
                                 if selected {
                                     ui.painter().rect_filled(Rect::from_min_size(response.rect.left_top() + vec2(-8.0, 6.0), vec2(3.0, response.rect.height() - 12.0)), 1.5, BLUE());
                                 }
@@ -1838,7 +1842,8 @@ impl Rocket {
                                 for entry in entries.into_iter().filter(|_| !preview) {
                                     let selected = page == Some(Page::Integrations)
                                         && self.integrations.open_entry().is_some_and(|e| e.id == entry.id);
-                                    let response = ui.add_enabled_ui(free, |ui| extension_row(ui, &entry, selected)).inner;
+                                    // Opening runs nothing; its commands check the repository first.
+                                    let response = extension_row(ui, &entry, selected);
                                     if selected && self.integrations.take_reveal() {
                                         // Only as far as it takes: a clicked row stays under the pointer.
                                         response.scroll_to_me(None);
@@ -3188,6 +3193,259 @@ mod tests {
                     );
                 }
                 app.tabs[0].refresh.take().unwrap().cancel();
+            },
+        );
+    }
+
+    #[test]
+    fn repository_links_do_not_flicker_during_foreground_reads() {
+        common::isolated(
+            "ROCKET_CHROME_UI_CASE",
+            "chrome::tests::repository_links_do_not_flicker_during_foreground_reads",
+            || {
+                fn pending<T: Send + 'static>() -> rocket_git::ReadTask<T> {
+                    rocket_git::ReadTask::spawn(|cancel| {
+                        while !cancel.is_cancelled() {
+                            thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(rocket_git::Error::Cancelled)
+                    }).unwrap()
+                }
+                let fixture = common::Fixture::new();
+                fixture.write("file 文", "first");
+                fixture.commit("first");
+                let ctx = Context::default();
+                let mut app = Rocket::with_log_directory(&ctx, vec![fixture.repository.clone()], fixture.root.join("logs"));
+                let deadline = Instant::now() + Duration::from_secs(40);
+                while app.busy() {
+                    app.poll(&ctx);
+                    assert!(Instant::now() < deadline, "initial repository load");
+                    thread::sleep(Duration::from_millis(10));
+                }
+                app.auto_refresh = false;
+                app.sidebar_labels = true;
+                app.sidebar_labels_narrow = true;
+                for section in &mut app.tabs[0].worktree_view.sections[..3] { *section = false; }
+                app.tabs[0].worktree_view.sections[3] = true;
+                let keys = ["view-tags", "view-worktrees", "view-submodules", "view-lfs", "view-filehistory", "view-statistics"];
+                for width in [1480.0, 780.0] {
+                    let render = |app: &mut Rocket| {
+                        app.frame_widgets.clear();
+                        let mut output = ctx.run_ui(RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(width, 920.0))),
+                            ..Default::default()
+                        }, |ui| app.shell(ui, &mut Vec::new()));
+                        let rows: Vec<_> = keys.iter().map(|key| {
+                            let row = app.frame_widgets.get(*key).unwrap_or_else(|| panic!("{key} is not visible"));
+                            let shapes: Vec<_> = output.shapes.iter()
+                                .filter(|s| row.rect.contains_rect(s.shape.visual_bounding_rect()))
+                                .cloned().collect();
+                            assert!(!shapes.is_empty(), "{key} must actually be painted");
+                            (row.rect, row.enabled, shapes)
+                        }).collect();
+                        output.textures_delta.clear();
+                        rows
+                    };
+                    render(&mut app);
+                    let before = render(&mut app);
+                    assert!(before.iter().all(|row| row.1));
+                    for read in ["refresh", "more", "diff"] {
+                        match read {
+                            "refresh" => { app.tabs[0].refresh = Some(pending()); app.tabs[0].background_refresh = false; }
+                            "more" => app.tabs[0].more = Some(pending()),
+                            "diff" => app.tabs[0].diff = Some(pending()),
+                            _ => unreachable!(),
+                        }
+                        assert!(app.interaction_busy(), "the regression needs a live {read}");
+                        if read == "refresh" { assert!(!app.can_write_repository(), "read navigation must not enable writes"); }
+                        let during = render(&mut app);
+                        for (i, key) in keys.iter().enumerate() {
+                            assert!(during[i].1, "{key} dimmed during {read} at width {width}");
+                            assert_eq!(before[i], during[i], "{key} paint/layout changed during {read} at width {width}");
+                        }
+                        app.tabs[0].refresh = None;
+                        app.tabs[0].more = None;
+                        app.tabs[0].diff = None;
+                        assert_eq!(render(&mut app), before, "finishing {read} changed static navigation");
+                    }
+                }
+            },
+        );
+    }
+
+    /// Staging and unstaging are short writes; the page links must not blink for them,
+    /// and a page opened during one must neither block input nor lose the write.
+    #[test]
+    fn repository_links_stay_enabled_during_writes() {
+        common::isolated(
+            "ROCKET_CHROME_UI_CASE",
+            "chrome::tests::repository_links_stay_enabled_during_writes",
+            || {
+                use crate::{app::{DialogKind, Intent}, backend::Action, pages::Page};
+                let fixture = common::Fixture::new();
+                fixture.write("file 文", "first");
+                fixture.commit("first");
+                fixture.write("file 文", "second");
+                let ctx = Context::default();
+                let mut app = Rocket::with_log_directory(&ctx, vec![fixture.repository.clone()], fixture.root.join("logs"));
+                let settle = |app: &mut Rocket, what: &str| {
+                    let deadline = Instant::now() + Duration::from_secs(40);
+                    while app.busy() {
+                        app.poll(&ctx);
+                        assert!(Instant::now() < deadline, "{what} did not finish");
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                };
+                settle(&mut app, "initial repository load");
+                app.auto_refresh = false;
+                app.sidebar_labels = true;
+                app.sidebar_labels_narrow = true;
+                for section in &mut app.tabs[0].worktree_view.sections[..3] { *section = false; }
+                app.tabs[0].worktree_view.sections[3] = true;
+                let owner = app.tabs[0].id;
+                let keys = ["view-tags", "view-worktrees", "view-submodules", "view-lfs", "view-filehistory", "view-statistics"];
+                for (width, write, staged) in [(1480.0, Action::StageAll, true), (780.0, Action::UnstageAll, false)] {
+                    let render = |app: &mut Rocket| {
+                        app.frame_widgets.clear();
+                        let mut output = ctx.run_ui(RawInput {
+                            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(width, 920.0))),
+                            ..Default::default()
+                        }, |ui| app.shell(ui, &mut Vec::new()));
+                        let rows: Vec<_> = keys.iter().map(|key| {
+                            let row = app.frame_widgets.get(*key).unwrap_or_else(|| panic!("{key} is not visible"));
+                            let shapes: Vec<_> = output.shapes.iter()
+                                .filter(|s| row.rect.contains_rect(s.shape.visual_bounding_rect()))
+                                .cloned().collect();
+                            assert!(!shapes.is_empty(), "{key} must actually be painted");
+                            (row.rect, row.enabled, shapes)
+                        }).collect();
+                        output.textures_delta.clear();
+                        rows
+                    };
+                    render(&mut app);
+                    let before = render(&mut app);
+                    assert!(before.iter().all(|row| row.1));
+                    let label = format!("{write:?}");
+                    app.execute(owner, write);
+                    // Its worker may finish at once, but `write` stays set until poll()
+                    // takes the result, so these frames are drawn while the write runs.
+                    assert!(app.write.is_some(), "{label} did not start");
+                    assert!(!app.can_write_repository(), "a page's own changes must wait for {label}");
+                    let during = render(&mut app);
+                    for (i, key) in keys.iter().enumerate() {
+                        assert!(during[i].1, "{key} dimmed during {label} at width {width}");
+                        assert_eq!(before[i], during[i], "{key} paint/layout changed during {label} at width {width}");
+                    }
+                    app.dispatch(Intent::Dialog(DialogKind::Tags));
+                    assert_eq!(app.page(), Some(Page::Tags), "Tags did not open during {label}");
+                    assert!(!app.blocking_dialog(), "Tags opened during {label} must only browse");
+                    settle(&mut app, &label);
+                    assert_eq!(app.page(), Some(Page::Tags), "finishing {label} closed the page opened during it");
+                    let index = fixture.run(&["diff", "--cached", "--name-only"]);
+                    assert_eq!(!index.is_empty(), staged, "{label} did not land with Tags open");
+                    // Closing the page swaps the content area back; like the first frames
+                    // above, egui settles the panel sizes in one frame. The write's status
+                    // message stays, and must not move anything either.
+                    assert!(app.notice.is_some(), "{label} left no status message");
+                    app.close_browsing_page();
+                    render(&mut app);
+                    assert_eq!(render(&mut app), before, "finishing {label} changed static navigation");
+                }
+            },
+        );
+    }
+
+    /// The other ways to these pages follow the sidebar: the command palette, View →
+    /// Repository Benchmark and View → Go to keep them available while a write runs.
+    #[test]
+    fn page_entries_stay_enabled_during_writes() {
+        common::isolated(
+            "ROCKET_CHROME_UI_CASE",
+            "chrome::tests::page_entries_stay_enabled_during_writes",
+            || {
+                use crate::backend::Action;
+                let fixture = common::Fixture::new();
+                fixture.write("file", "first");
+                fixture.commit("first");
+                fixture.write("file", "second");
+                let ctx = Context::default();
+                let mut app = Rocket::with_log_directory(&ctx, vec![fixture.repository.clone()], fixture.root.join("logs"));
+                let settle = |app: &mut Rocket| {
+                    let deadline = Instant::now() + Duration::from_secs(40);
+                    while app.busy() {
+                        app.poll(&ctx);
+                        assert!(Instant::now() < deadline, "repository work did not finish");
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                };
+                settle(&mut app);
+                app.auto_refresh = false;
+                let owner = app.tabs[0].id;
+                app.execute(owner, Action::StageAll);
+                // Frames drawn without poll() keep the write running, as in the test above.
+                assert!(app.write.is_some(), "the check needs a running write");
+                let palette = app.palette_rows("Repository");
+                for page in ["Tags", "Worktrees", "Submodules", "Git LFS", "Insights"] {
+                    let row = palette.iter().find(|(label, ..)| label == page).unwrap_or_else(|| panic!("the palette has no {page}"));
+                    assert_eq!(row.2, "", "the palette holds back {page} during a write");
+                }
+                draw(&ctx, &mut app);
+                click(&ctx, &mut app, "menu-view");
+                draw(&ctx, &mut app);
+                assert!(app.frame_widgets["benchmark-open"].enabled, "View → Repository Benchmark is disabled during a write");
+                // Pointing at Go to opens it.
+                let at = app.frame_widgets["view-goto"].rect.center();
+                for _ in 0..2 {
+                    draw_with(&ctx, &mut app, vec![Event::PointerMoved(at)]);
+                }
+                for id in ["goto-tags", "goto-worktrees", "goto-submodules", "goto-lfs", "goto-statistics", "goto-benchmark"] {
+                    assert!(app.frame_widgets.get(id).is_some_and(|c| c.enabled), "View → Go to disables {id} during a write");
+                }
+                assert!(app.write.is_some(), "the menus were read while the write ran");
+                settle(&mut app);
+            },
+        );
+    }
+
+    /// A status message and its × fit the status bar. Taller, they pushed the bar down a
+    /// point, so the sidebar's foot and the bar's own controls moved while it showed.
+    #[test]
+    fn status_message_keeps_the_layout_still() {
+        common::isolated(
+            "ROCKET_CHROME_UI_CASE",
+            "chrome::tests::status_message_keeps_the_layout_still",
+            || {
+                let fixture = common::Fixture::new();
+                fixture.write("file", "first");
+                fixture.commit("first");
+                let ctx = Context::default();
+                let mut app = Rocket::with_log_directory(&ctx, vec![fixture.repository.clone()], fixture.root.join("logs"));
+                let deadline = Instant::now() + Duration::from_secs(40);
+                while app.busy() {
+                    app.poll(&ctx);
+                    assert!(Instant::now() < deadline, "initial repository load");
+                    thread::sleep(Duration::from_millis(10));
+                }
+                app.auto_refresh = false;
+                // Every published control along the bottom edge, after the panels settle.
+                let edge = |app: &mut Rocket| {
+                    draw(&ctx, app);
+                    draw(&ctx, app);
+                    let mut controls: Vec<_> = app.frame_widgets.iter()
+                        .filter(|(_, c)| c.rect.bottom() > 840.0)
+                        .map(|(key, c)| (key.clone(), c.rect))
+                        .collect();
+                    controls.sort_by(|a, b| a.0.cmp(&b.0));
+                    controls
+                };
+                let quiet = edge(&mut app);
+                for key in ["sidebar-labels", "toolbar-mcp", "dependency-status"] {
+                    assert!(quiet.iter().any(|(k, _)| k == key), "{key} is not drawn at the bottom");
+                }
+                app.notice = Some("Stage completed".into());
+                assert_eq!(edge(&mut app), quiet, "a status message moved the layout");
+                app.notice = None;
+                assert_eq!(edge(&mut app), quiet, "dismissing a status message moved the layout");
             },
         );
     }

@@ -157,7 +157,7 @@
     "few": "{n} вразливості потребують уваги",
     "many": "{n} вразливостей потребують уваги"
   },
-  "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face і стандартні ключі Google API (також для Gemini).",
+  "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face і стандартні ключі Google API (також для Gemini).",
   "DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs.": "Ключі DeepSeek і GLM / Z.ai перевіряються у присвоєннях DEEPSEEK_API_KEY, ZAI_API_KEY або api_key, оминаючи звичайні хеші та ідентифікатори з крапками.",
   "Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked.": "Розпізнає відомі формати, але не всіх постачальників і майбутні версії. Заповнювачі дозволені; реалістичні штучні ключі блокуються.",
   "Advisory data is {age} days old. Update it in Scanner & data to check newer advisories.": "Даним про вразливості {age} дн. Оновіть їх у «Сканер і дані» для перевірки нових вразливостей.",

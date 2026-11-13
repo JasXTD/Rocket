@@ -635,6 +635,85 @@ fn commit_message_prose_references_can_commit_amend_and_push() {
 }
 
 #[test]
+fn jwk_json_whitespace_refuses_staged_messages_and_history_without_leaks() {
+    isolated(
+        "ROCKET_SECRET",
+        "jwk_json_whitespace_refuses_staged_messages_and_history_without_leaks",
+        || {
+            // Synthetic material assembled at runtime; no real key or network.
+            let material = ["Q3x7A9b2N6f0L8p4R5v1", "W2s7T9a6D0c8Kq4Zr8Xw2Pm"].concat();
+            for format in ["sha1", "sha256"] {
+                let (f, remote) = base(format);
+                let log = DiagnosticLog::open(f.root.join("logs")).unwrap();
+                let repo = f.git.with_log(log.clone()).open(&f.repository, &c()).unwrap();
+                // Public material with the same formatting must remain usable.
+                let public = format!("{{\"kty\"\r\n:\t\n\"EC\",\"x\"\n:\r\"{material}\"}}\n");
+                f.write("public.json", &public);
+                repo.stage_all(&c()).unwrap().result.unwrap();
+                repo.commit("Public key metadata", &c()).unwrap().result.unwrap();
+                repo.push("origin", "main", "main", PushOptions { set_upstream: false }, &c()).unwrap().result.unwrap();
+                let safe_head = String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap();
+                let before_refs = refs(&f, &remote);
+                let before_objects = f.run_at(&remote, &["count-objects", "-v"]);
+                let source = format!("{{\n\"kty\"\r\n:\n\"EC\",\n\"d\"\n:\r\n\"{material}\"\n}}");
+                let file = "資料/signing-key.json";
+                let bytes = if format == "sha256" { utf16_fixture(&source, false) } else { source.as_bytes().to_vec() };
+                f.write(file, &bytes);
+                f.write("local-note.md", "untracked local changes\n");
+                repo.stage(&[RepoPath::new(file.as_bytes().to_vec()).unwrap()], &c()).unwrap().result.unwrap();
+                let index = fs::read(f.repository.join(".git/index")).unwrap();
+                let report = repo.commit("Review new configuration", &c()).unwrap();
+                blocked(report.result.as_ref().unwrap_err(), "private_key_detected");
+                assert!(!format!("{:?}", report.result).contains(&material));
+                assert_eq!(f.run(&["rev-parse", "HEAD"]), safe_head.as_bytes());
+                assert_eq!(fs::read(f.repository.join(".git/index")).unwrap(), index);
+                assert_eq!(fs::read(f.repository.join(file)).unwrap(), bytes);
+
+                // A clean tree must also refuse a multiline key in its message.
+                f.run(&["reset", "--hard", safe_head.trim()]);
+                let index = fs::read(f.repository.join(".git/index")).unwrap();
+                let report = repo.commit(&source, &c()).unwrap();
+                blocked(report.result.as_ref().unwrap_err(), "private_key_detected");
+                assert!(!format!("{:?}", report.result).contains(&material));
+                assert_eq!(f.run(&["rev-parse", "HEAD"]), safe_head.as_bytes());
+                assert_eq!(fs::read(f.repository.join(".git/index")).unwrap(), index);
+
+                // Seed only this disposable repo's history using raw Git. A clean
+                // descendant must not conceal earlier private key material.
+                f.write(file, &bytes);
+                f.run(&["add", "--", file]);
+                f.run(&["commit", "-m", "Synthetic private key fixture"]);
+                f.run(&["rm", "--", file]);
+                f.run(&["commit", "-m", "Clean descendant"]);
+                let head = f.run(&["rev-parse", "HEAD"]);
+                let index = fs::read(f.repository.join(".git/index")).unwrap();
+                let report = repo.push("origin", "main", "main", PushOptions { set_upstream: false }, &c()).unwrap();
+                blocked(report.result.as_ref().unwrap_err(), "private_key_detected");
+                assert_eq!(report.remote_outcome, PushRemoteOutcome::NotAttempted);
+                assert_eq!(refs(&f, &remote), before_refs);
+                assert_eq!(f.run_at(&remote, &["count-objects", "-v"]), before_objects);
+                assert_eq!(f.run(&["rev-parse", "HEAD"]), head);
+                assert_eq!(fs::read(f.repository.join(".git/index")).unwrap(), index);
+                assert_eq!(fs::read(f.repository.join("local-note.md")).unwrap(), b"untracked local changes\n");
+                drop(repo);
+                drop(log);
+                let mut refusal_logged = false;
+                for entry in fs::read_dir(f.root.join("logs")).unwrap() {
+                    let path = entry.unwrap().path();
+                    if path.is_file() {
+                        let text = fs::read_to_string(path).unwrap();
+                        refusal_logged |= text.contains("private_key_detected");
+                        assert!(!text.contains(&material));
+                        assert!(!text.contains("signing-key.json"));
+                    }
+                }
+                assert!(refusal_logged);
+            }
+        },
+    );
+}
+
+#[test]
 fn real_secret_shapes_in_messages_refuse_commits_and_historical_pushes() {
     isolated(
         "ROCKET_SECRET",
@@ -648,6 +727,9 @@ fn real_secret_shapes_in_messages_refuse_commits_and_historical_pushes() {
                 let random = "n6F0dL8pR2vW4sT9aQ3x";
                 let hash = "0123456789abcdef0123456789abcdef01234567";
                 let key_body = "Q3x7A9b2N6f0L8p4R5v1W2s7T9a6D0c8";
+                let aws_body = "Q7ZK2M4R6T3V5X7N";
+                let jwk_private = "Q3x7A9b2N6f0L8p4R5v1W2s7T9a6D0c8Kq4Zr8Xw2Pm";
+                let google_body = "Q3x7A9b2N6f0L8p4R5v1W2s7T9a6";
                 let cases = [
                     (
                         format!("Fix token: {} ownership", token()),
@@ -707,6 +789,28 @@ fn real_secret_shapes_in_messages_refuse_commits_and_historical_pushes() {
                         ),
                         "private_key_detected",
                         key_body.to_owned(),
+                    ),
+                    (
+                        format!("Deploy with AKIA{aws_body}"),
+                        "aws_access_key_detected",
+                        aws_body.to_owned(),
+                    ),
+                    (
+                        format!(
+                            "Signing key:\n{{\"kty\":\"EC\",\"crv\":\"P-256\",\"d\":\"{jwk_private}\"}}"
+                        ),
+                        "private_key_detected",
+                        jwk_private.to_owned(),
+                    ),
+                    (
+                        format!("OAuth client: GOCSPX-{google_body}"),
+                        "credential_detected",
+                        google_body.to_owned(),
+                    ),
+                    (
+                        format!("OIDC_CLIENT_SECRET={random}"),
+                        "credential_detected",
+                        random.to_owned(),
                     ),
                 ];
                 for (message, code, sentinel) in cases {

@@ -6,9 +6,28 @@ fn c() -> CancellationToken {
     CancellationToken::new()
 }
 
+fn base64(bytes: &[u8]) -> String {
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut text = String::new();
+    for group in bytes.chunks(3) {
+        let n = group.iter().fold(0u32, |n, b| n << 8 | u32::from(*b)) << (8 * (3 - group.len()));
+        for index in 0..4 {
+            text.push(if index <= group.len() {
+                alphabet[(n >> (18 - 6 * index) & 63) as usize] as char
+            } else {
+                '='
+            });
+        }
+    }
+    text
+}
+
 // Generated, deliberately recognizable fixtures; never contact an AI provider.
 fn keys() -> Vec<String> {
     let hex = "0123456789abcdef";
+    // An Amazon Bedrock long-term key encodes user-at-account:secret.
+    let secret = base64(&"Ab9Cd7Ef5Gh3Ij1Kl0Mn".repeat(3).as_bytes()[..44]);
+    let identity = format!("BedrockAPIKey-k3z9-at-{}:{secret}", "123456789012");
     vec![
         format!(
             "sk-{}T3BlbkFJ{}",
@@ -16,6 +35,7 @@ fn keys() -> Vec<String> {
         ),
         format!("sk-{}", hex.repeat(2)),
         format!("{}.{}", hex.repeat(2), "Ab9Cd7Ef5Gh3Ij1K"),
+        format!("ABSK{}", base64(identity.as_bytes())),
     ]
 }
 

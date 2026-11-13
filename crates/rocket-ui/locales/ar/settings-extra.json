@@ -160,7 +160,7 @@
     "many": "{n} تنبيهًا يحتاج إلى مراجعة",
     "other": "{n} تنبيه يحتاج إلى مراجعة"
   },
-  "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI وAnthropic وGroq وxAI وOpenRouter وHugging Face ومفاتيح Google API القياسية (يستخدمها Gemini أيضًا).",
+  "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI وAnthropic وAmazon Bedrock وGroq وxAI وOpenRouter وHugging Face ومفاتيح Google API القياسية (يستخدمها Gemini أيضًا).",
   "DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs.": "تُفحص مفاتيح DeepSeek وGLM / Z.ai في تعيينات مثل DEEPSEEK_API_KEY أو ZAI_API_KEY أو api_key، مع تجنب التجزئات العادية والمعرّفات المنقّطة.",
   "Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked.": "يطابق التنسيقات المعروفة، وليس كل مزوّد أو إصدار مفتاح مستقبلي. العناصر النائبة مسموحة؛ المفاتيح الاصطناعية الواقعية تظل محظورة.",
   "Advisory data is {age} days old. Update it in Scanner & data to check newer advisories.": "عمر بيانات التنبيهات {age} يومًا. حدّثها في الفاحص والبيانات لفحص التنبيهات الأحدث.",

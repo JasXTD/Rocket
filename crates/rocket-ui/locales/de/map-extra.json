@@ -115,10 +115,13 @@
   "No commits in this period": "Keine Commits in diesem Zeitraum",
   "No match among these people": "Kein Treffer unter diesen Personen",
   "Commits touching each folder": "Commits, die jeden Ordner betreffen",
-  "People {people} · commits {commits}": "Personen {people} · Commits {commits}",
+  "{count} people": {
+    "one": "{count} Person",
+    "other": "{count} Personen"
+  },
+  "Commits in a cell": "Commits je Zelle",
+  "FOLDER": "ORDNER",
   "top folder": "oberster Ordner",
-  "{person} · {folder} · commits {count}": "{person} · {folder} · Commits {count}",
-  "A folder holding most changes is split into its subfolders": "Ein Ordner mit den meisten Änderungen wird in seine Unterordner aufgeteilt",
   "Use a file name ending in .mmd.": "Einen Dateinamen mit der Endung .mmd verwenden.",
   "Choose a folder with Browse, or type its full path.": "Einen Ordner mit Durchsuchen wählen oder seinen vollständigen Pfad eingeben.",
   "Saved {name}": "{name} gespeichert",

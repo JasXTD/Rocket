@@ -217,6 +217,12 @@ fn tally(output: &[u8], since: Option<i64>, limit: usize) -> Result<CommitActivi
         if since.is_some_and(|s| seconds < s) {
             continue;
         }
+        // Git permits dates well outside the calendar used by Insights. Validate
+        // before any bucketing/casts, including an offset that crosses a boundary.
+        const CIVIL_SECONDS: std::ops::RangeInclusive<i64> = -62_135_596_800..=253_402_300_799;
+        let local = seconds.checked_add(i64::from(offset) * 60)
+            .filter(|local| CIVIL_SECONDS.contains(&seconds) && CIVIL_SECONDS.contains(local))
+            .ok_or_else(|| Error::parse("commit-activity", "author date is outside supported years 1 through 9999"))?;
         activity.commits += 1;
         if record[1]
             .split(|b| *b == b' ')
@@ -242,7 +248,6 @@ fn tally(output: &[u8], since: Option<i64>, limit: usize) -> Result<CommitActivi
                 commits: 0,
             })
             .commits += 1;
-        let local = seconds + i64::from(offset) * 60;
         let days = local.div_euclid(86_400);
         *months.entry(year_month(days)).or_default() += 1;
         // 1970-01-01 was a Thursday; Monday is 0.
@@ -275,7 +280,8 @@ fn zone_minutes(zone: &str) -> Option<i32> {
         return None;
     }
     let value: i32 = digits.parse().ok()?;
-    Some(sign * (value / 100 * 60 + value % 100))
+    (value / 100 < 24 && value % 100 < 60)
+        .then_some(sign * (value / 100 * 60 + value % 100))
 }
 
 /// The day, counted from 1970-01-01, of a civil date (Howard Hinnant's algorithm, the
@@ -430,6 +436,34 @@ fn node(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn activity_rejects_extreme_dates_and_invalid_timezones_without_panicking() {
+        for date in [
+            "9223372036854775807 +0100",
+            "-9223372036854775808 -0100",
+            "9223372036854775807 +0000",
+            "253402300800 +0000",
+            "-62135596801 +0000",
+            "253402300799 +0001",
+            "-62135596800 -0001",
+            "1705307400 +1260",
+            "1705307400 -2400",
+        ] {
+            let record = format!("{date}\0\0test@example.invalid\0Test\0");
+            assert!(tally(record.as_bytes(), None, 1).is_err(), "{date}");
+        }
+        for (date, month) in [
+            ("-62135596800 +0000", (1, 1, 1)),
+            ("253402300799 +0000", (9999, 12, 1)),
+            ("-1 +0000", (1969, 12, 1)),
+        ] {
+            let record = format!("{date}\0\0test@example.invalid\0Test\0");
+            let activity = tally(record.as_bytes(), None, 1).unwrap();
+            assert_eq!(activity.months, [month]);
+            assert_eq!(activity.commits, 1);
+        }
+    }
+
     #[test]
     fn activity_groups_authors_and_buckets_by_local_time() {
         // Newest first: Bob's merge (Sunday 12:00 +09:00), Alice as "Alice A."

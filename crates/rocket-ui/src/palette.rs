@@ -615,11 +615,13 @@ impl Rocket {
                 }),
             );
         }
+        // Tags, Worktrees, Submodules, Git LFS and Insights open at any time, as in the
+        // sidebar; what they change waits for running work.
         list.extend([
-            entry("Repository", Icon::Tag, "Tags", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Tags))),
-            entry("Repository", Icon::Worktree, "Worktrees", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Worktrees))),
-            entry("Repository", Icon::Modules, "Submodules", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Submodules))),
-            entry("Repository", Icon::Database, "Git LFS", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Lfs))),
+            entry("Repository", Icon::Tag, "Tags", "", "", go(Intent::Dialog(DialogKind::Tags))),
+            entry("Repository", Icon::Worktree, "Worktrees", "", "", go(Intent::Dialog(DialogKind::Worktrees))),
+            entry("Repository", Icon::Modules, "Submodules", "", "", go(Intent::Dialog(DialogKind::Submodules))),
+            entry("Repository", Icon::Database, "Git LFS", "", "", go(Intent::Dialog(DialogKind::Lfs))),
             entry("Repository", Icon::Branch, "Branch workflows & cleanup", "", unmet(&[write]), go(Intent::Dialog(DialogKind::Workflows))),
             entry("Repository", Icon::Refresh, "Reflog & recovery", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Recovery))),
             entry("Repository", Icon::File, "File backups & restore", "", unmet(&[free]), go(Intent::Dialog(DialogKind::FileEdit(None)))),
@@ -632,7 +634,7 @@ impl Rocket {
             entry("Repository", Icon::File, "Export patch", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Patch(crate::patches::Mode::Export)))),
             entry("Repository", Icon::Commit, "Import commit series", "", unmet(&[write, free]), go(Intent::Dialog(DialogKind::MailImport(MailImportAction::Start)))),
             entry("Repository", Icon::File, "Export commit series", "", unmet(&[free]), go(Intent::ExportSeries(None))),
-            entry("Repository", Icon::Activity, "Insights", "", unmet(&[free]), go(Intent::Dialog(DialogKind::Statistics))),
+            entry("Repository", Icon::Activity, "Insights", "", "", go(Intent::Dialog(DialogKind::Statistics))),
             entry("Repository", Icon::Remote, "Hosting", "", "", go(Intent::Dialog(DialogKind::Hosting))),
             entry("Repository", Icon::Remote, "GitHub repositories & notifications", "", "", go(Intent::Dialog(DialogKind::GitHub))),
             entry("Repository", Icon::Remote, "Add remote", "", unmet(&[idle]), go(Intent::Dialog(DialogKind::AddRemote))),

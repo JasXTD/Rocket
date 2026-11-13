@@ -220,7 +220,8 @@ impl ForgeRepository {
     /// Infer the repository only when the remote matches this selected server.
     /// SSH aliases are intentionally left for explicit profile selection.
     pub fn from_remote(config: ForgeConfig, remote: &[u8]) -> Option<Self> {
-        let remote = std::str::from_utf8(remote).ok()?;
+        let remote = without_https_userinfo(std::str::from_utf8(remote).ok()?);
+        let remote = remote.as_ref();
         if config.provider() == ForgeProvider::AzureServer { return azure_server::repository_from_remote(config, remote); }
         let prefix = format!("{}/", config.server());
         let path = if let Some(path) = remote.strip_prefix(&prefix) {
@@ -270,7 +271,7 @@ impl ForgeRepository {
                 return Some(repo);
             }
         }
-        let value = std::str::from_utf8(remote).ok()?;
+        let value = without_https_userinfo(std::str::from_utf8(remote).ok()?);
         let rest = value.strip_prefix("https://dev.azure.com/")
             .or_else(|| value.strip_prefix("git@ssh.dev.azure.com:v3/"))?;
         let org = rest.split('/').next()?;
@@ -340,6 +341,18 @@ impl ForgeRepository {
             };
         }
         format!("{prefix}/{p}/{suffix}/{number}")
+    }
+}
+/// The clone URLs hosts hand out often carry a user name: Bitbucket's
+/// `https://username@bitbucket.org/…` and Azure DevOps's `https://org@dev.azure.com/…`.
+/// Only the repository path is inferred from a remote, so drop an HTTPS authority's
+/// user information (up to its last `@`); the host must still match the server.
+fn without_https_userinfo(remote: &str) -> std::borrow::Cow<'_, str> {
+    let Some(rest) = remote.strip_prefix("https://") else { return remote.into() };
+    let authority = rest.split('/').next().unwrap_or(rest);
+    match authority.rfind('@') {
+        Some(at) => format!("https://{}", &rest[at + 1..]).into(),
+        None => remote.into(),
     }
 }
 pub(super) fn decode(s: &str) -> Option<String> {
@@ -500,6 +513,30 @@ mod remote_tests {
         assert!(c.with_fixture(12345).is_err());
         assert!(ForgeConfig::new(ForgeProvider::GitLab, "https://gitlab.com").unwrap().with_github_account_check().is_err());
         assert!(ForgeConfig::new(ForgeProvider::GitHub, "https://github.com").unwrap().with_fixture(12345).unwrap().with_github_account_check().is_err());
+    }
+    #[test]
+    fn https_remotes_with_a_user_name_match_their_server() {
+        let bitbucket = ForgeConfig::new(ForgeProvider::Bitbucket, "https://bitbucket.org").unwrap();
+        // Atlassian's clone command: git clone https://username@bitbucket.org/...
+        for url in ["https://username@bitbucket.org/teamsinspace/documentation-tests.git", "https://user:secret@bitbucket.org/teamsinspace/documentation-tests.git"] {
+            assert_eq!(ForgeRepository::from_remote(bitbucket.clone(), url.as_bytes()).unwrap().path(), "teamsinspace/documentation-tests");
+        }
+        for url in [
+            "https://bitbucket.org@evil.example/teamsinspace/repo.git",
+            "https://user@bitbucket.org.evil.example/teamsinspace/repo.git",
+            "https://user@evil.example@bitbucket.org.evil.example/teamsinspace/repo.git",
+            "https://user@/teamsinspace/repo.git",
+        ] {
+            assert!(ForgeRepository::from_remote(bitbucket.clone(), url.as_bytes()).is_none(), "{url}");
+        }
+        let azure = ForgeConfig::new(ForgeProvider::Azure, "https://dev.azure.com/fabrikam").unwrap();
+        let url = "https://fabrikam@dev.azure.com/fabrikam/Fabrikam/_git/web";
+        assert_eq!(ForgeRepository::from_remote(azure, url.as_bytes()).unwrap().path(), "Fabrikam/web");
+        let known = ForgeRepository::from_known_remote(url.as_bytes()).unwrap();
+        assert_eq!((known.config().server(), known.path()), ("https://dev.azure.com/fabrikam", "Fabrikam/web"));
+        assert_eq!(ForgeRepository::from_known_remote(b"https://username@bitbucket.org/ws/repo.git").unwrap().path(), "ws/repo");
+        let gitlab = ForgeConfig::new(ForgeProvider::GitLab, "https://gitlab.example").unwrap();
+        assert_eq!(ForgeRepository::from_remote(gitlab, b"https://oauth2@gitlab.example/team/sub/repo.git").unwrap().path(), "team/sub/repo");
     }
     #[test]
     fn remotes_require_the_selected_server_and_preserve_nested_unicode() {

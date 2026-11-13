@@ -479,7 +479,8 @@ impl ForgeSession {
             if details.session != self.id { return fail(ForgeFailure::PullReviewStale); }
             providers::validate_review(self.config.provider(),action,body,comments)?;
             inline::validate_comments(details, comments, body.len())?;
-            if body.len() > 64 * 1024 || body.contains('\0') || (action != ForgeReviewAction::Approve && details.review_message_supported(action) && body.trim().is_empty() && comments.is_empty()) { return Err(invalid("This review action requires a message of at most 64 KiB without NUL.")); }
+            let comments_stand_in = comments_replace_message(self.config.provider(), action, !comments.is_empty());
+            if body.len() > 64 * 1024 || body.contains('\0') || (action != ForgeReviewAction::Approve && details.review_message_supported(action) && body.trim().is_empty() && !comments_stand_in) { return Err(invalid("This review action requires a message of at most 64 KiB without NUL.")); }
             let current = self.current_pull(PREVIEW, &details.repository, details.summary.number, c)?;
             if !same_revision(&details.summary, &current) { return fail(ForgeFailure::PullChanged); }
             self.review_allowed(&current, action)?;
@@ -586,6 +587,25 @@ fn same_revision(a: &ForgePullSummary, b: &ForgePullSummary) -> bool {
 fn oid(s: &str) -> Option<String> {
     (s.len() == 40 && s.bytes().all(|b| b.is_ascii_hexdigit())).then(|| s.to_ascii_lowercase())
 }
+/// GitLab saves a note without carriage returns or trailing whitespace (Notes API,
+/// "Note body normalization"), so a read back is compared with that text. Lines with
+/// quick actions are run and removed too; those still read back differently and
+/// stay an uncertain result.
+fn gitlab_saved_body(body: &str) -> String {
+    body.replace('\r', "")
+        .trim_end_matches(|c: char| c.is_ascii_whitespace() || c == '\x0b')
+        .to_owned()
+}
+/// Whether GitLab returned the note text that was sent, as sent or as GitLab saves it.
+fn gitlab_saved_as(returned: Option<&str>, sent: &str) -> bool {
+    returned.is_some_and(|text| text == sent || text == gitlab_saved_body(sent))
+}
+/// Whether inline comments may stand in for a review's own message. Gitea refuses
+/// Request changes without one even when comments come with it ("review event
+/// REQUEST_CHANGES requires a body"), and accepts a review of only comments.
+fn comments_replace_message(p: ForgeProvider, action: ForgeReviewAction, has_comments: bool) -> bool {
+    has_comments && !(p == ForgeProvider::Gitea && action == ForgeReviewAction::RequestChanges)
+}
 fn string(j: &Json, k: &str, max: usize) -> Option<String> {
     j.str(k)
         .filter(|s| s.len() <= max)
@@ -655,4 +675,34 @@ fn review(j: &Json) -> Option<ForgePullReview> {
         commit: j.str("commit_id").and_then(oid),
         date: string(j, "submitted_at", 64).unwrap_or_default(),
     })
+}
+#[cfg(test)]
+mod saved_text_tests {
+    use super::*;
+    #[test]
+    fn gitlab_compares_with_the_text_it_saves() {
+        // Notes API, "Note body normalization": carriage returns and trailing
+        // whitespace, including trailing newlines, are removed before saving.
+        assert_eq!(gitlab_saved_body("Line one\r\nLine two  \r\n\n"), "Line one\nLine two");
+        assert_eq!(gitlab_saved_body("  indented\tstays\t\x0b \n"), "  indented\tstays");
+        assert_eq!(gitlab_saved_body("界 unchanged"), "界 unchanged");
+        // Only ASCII whitespace goes: a trailing no-break space is text.
+        assert_eq!(gitlab_saved_body("kept\u{a0}"), "kept\u{a0}");
+        // Either form confirms the write; other text, or none, does not.
+        assert!(gitlab_saved_as(Some("Fix it\nplease"), "Fix it\r\nplease \n"));
+        assert!(gitlab_saved_as(Some("Fix it\r\nplease \n"), "Fix it\r\nplease \n"));
+        assert!(!gitlab_saved_as(Some("Fix it"), "Fix it\r\nplease \n"));
+        assert!(!gitlab_saved_as(None, "Fix it"));
+    }
+    #[test]
+    fn gitea_request_changes_always_needs_a_message() {
+        let (comment, changes) = (ForgeReviewAction::Comment, ForgeReviewAction::RequestChanges);
+        assert!(!comments_replace_message(ForgeProvider::Gitea, changes, true));
+        assert!(comments_replace_message(ForgeProvider::Gitea, comment, true));
+        // Unchanged elsewhere, and nothing stands in without comments.
+        assert!(comments_replace_message(ForgeProvider::GitHub, changes, true));
+        for action in [comment, changes, ForgeReviewAction::Approve] {
+            assert!(!comments_replace_message(ForgeProvider::Gitea, action, false));
+        }
+    }
 }

@@ -457,13 +457,25 @@ are shared with general Secret protection. Matching is offline: Rocket never
 submits a candidate to an AI provider to determine whether it works.
 
 Distinctive complete formats are recognized for OpenAI legacy/project/service/
-admin keys, Anthropic API/admin keys, Groq, xAI, OpenRouter, Hugging Face and
-standard Google `AIza` API keys (also used by Gemini). Prefix, alphabet, payload
+admin keys, Anthropic API/admin keys, Groq, xAI, OpenRouter, Hugging Face,
+standard Google `AIza` API keys (also used by Gemini) and Amazon Bedrock API
+keys. Prefix, alphabet, payload
 length, marker and boundary checks prevent matching a prefix alone or a slice of
 a larger identifier. Low-variation repeated filler is ignored. Ordinary environment
 references and placeholders are not treated as complete keys; realistic synthetic
 keys intentionally remain blocked, even in tests, comments or examples. UTF-8 and
 UTF-16 text use the same checks. There is no project-name or test-file allowlist.
+
+Amazon Bedrock long-term keys are `ABSK` followed by base64. Rocket decodes it
+locally and requires `<IAM user name>-at-<12-digit account ID>:<secret>`, where the
+secret is itself complete base64. Console keys belong to a `BedrockAPIKey-…` user,
+but any IAM user can hold one, so the name is not used. Short-term keys are
+`bedrock-api-key-` followed by base64 of a presigned URL; the decoded URL must ask
+for `Action=CallWithBearerToken` and carry a SigV4 `X-Amz-Signature`. They expire
+within 12 hours but are still refused. Both need complete base64, so the published
+prefixes alone, elided examples and truncated keys pass. Their usual variable,
+`AWS_BEARER_TOKEN_BEDROCK`, is not a general credential name: with this guard off,
+a Bedrock key is caught only when assigned to a name such as `api_key`.
 
 DeepSeek and GLM/Z.ai do not have equally distinctive public fingerprints. This
 guard therefore checks their conservative shapes only in credential assignments,
@@ -485,8 +497,11 @@ Format evidence: [OpenAI key safety](https://help.openai.com/en/articles/5112595
 [GLM HTTP authentication](https://docs.bigmodel.cn/cn/guide/develop/http/introduction),
 [xAI authentication](https://docs.x.ai/developers/rest-api-reference/management/auth),
 [Hugging Face tokens](https://huggingface.co/docs/hub/security-tokens),
-[Google API keys](https://aistudio.google.com/docs/api-key) and
-[OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication).
+[Google API keys](https://aistudio.google.com/docs/api-key),
+[OpenRouter authentication](https://openrouter.ai/docs/api_reference/authentication) and
+[Amazon Bedrock API keys](https://docs.aws.amazon.com/bedrock/latest/userguide/api-keys.html);
+the decoded long-term key structure is from
+[Wiz's analysis](https://www.wiz.io/blog/a-new-type-of-long-lived-key-on-aws-bedrock-api-keys).
 Published detector rules from [Gitleaks](https://github.com/gitleaks/gitleaks/tree/master/cmd/generate/config/rules)
 and [TruffleHog](https://github.com/trufflesecurity/trufflehog/tree/main/pkg/detectors)
 were used as format references, not installed or copied as dependencies.
@@ -519,8 +534,9 @@ policy applies to historical commit bodies on push; files, filenames and commit
 headers keep the stricter content rules. A hash-like or type-like unprefixed secret
 in that ambiguous prose form cannot be reliably distinguished from a reference.
 
-Detection covers current prefixed GitHub token families, PEM private-key material
-and conservative credential assignments, locally without contacting a provider.
+Detection covers current prefixed GitHub token families, AWS access-key IDs,
+Google OAuth client secrets, PEM and JSON Web Key private-key material and
+conservative credential assignments, locally without contacting a provider.
 Generic assignments require a credential-like literal with sufficient character
 variation; names such as `token` or `password` alone are not evidence. Ordinary
 type/variable references, UI labels and template references are ignored. This
@@ -598,6 +614,35 @@ Refusals include a fixed reason, sanitized location and corrective guidance, nev
 the matching value. Diagnostic logs retain only fixed failure codes. CLI JSON
 includes `operation_started: false` and `retry_requires_changes: true`; refused
 normal pushes report `remote_outcome: "not_attempted"`.
+
+AWS access-key IDs are refused on their own, with the code `aws_access_key_detected`:
+`AKIA` (long-term), `ASIA` (temporary STS), `ABIA` (STS service bearer token) or
+`ACCA` (context-specific credential) followed by 16 uppercase letters or digits, as a
+whole word. An ID cannot sign requests without its secret, but it is how pasted key
+pairs, credentials files and STS responses show up, so logs and fixtures holding
+real IDs are refused too. IDs ending in `EXAMPLE` (AWS's documentation examples,
+such as `AKIAIOSFODNN7EXAMPLE`) and repeated filler such as `AKIAXXXXXXXXXXXXXXXX`
+pass. AWS secret keys have no prefix and are checked as credential assignments
+named `aws_secret_access_key`, `secretAccessKey`, any other name ending in
+`secret_access_key`, `AWS_SECRET_KEY` or `aws_session_token`; values ending in
+`EXAMPLEKEY` (AWS's documentation examples) pass. OAuth and OpenID Connect client
+secrets are checked under any name ending in `client_secret` (`OIDC_CLIENT_SECRET`,
+`AZURE_CLIENT_SECRET`, `googleClientSecret`), and Google OAuth client secrets
+(`GOCSPX-` and 28 characters) anywhere. A JSON Web Key is refused as a private key
+when a `kty` of `RSA`, `EC` or `OKP` lies within 16 KiB of a `d` value of at least
+40 characters, or `oct` of a `k` of at least 22, in JSON, escaped JSON, JavaScript
+or Python objects or YAML; public keys (`n`/`e`, `x`/`y`) pass. Spaces, tabs, CR and
+LF are accepted around member separators. Whitespace lookahead is allocation-free
+and checks cancellation/deadlines every 64 KiB; exceeding the scan's existing
+limits refuses the operation rather than accepting a partial check. GitHub Actions
+OpenID Connect stores no key, so there is nothing to find. Signed JWTs (ID and
+access tokens) are not refused on their own, because they usually expire within an
+hour and test tokens are common in authentication code; a JWT assigned to a
+credential name such as `token` still is. GitHub Copilot signs in with GitHub OAuth,
+app or fine-grained tokens (`gho_`, `ghu_`, `github_pat_`), which the GitHub-token
+rule covers. A push checks all history being published, so a repository whose older
+commits hold one of these keys is refused until the key is removed from that
+history; revoke the key as well.
 
 The scanner refuses incomplete checks, missing objects or limits: 100,000 objects,
 128 MiB per object, a configurable total raw-object budget (default **256 MiB**),
@@ -1089,6 +1134,18 @@ source ACLs are not inherited. Unsafe storage ancestors and linked source files
 are refused. Original executable paths are still rechecked before starting,
 including the transition from setup to the agent, so updates require new review.
 
+Snapshot preparation checks execution policy on the opened source before and after
+copying and again at launch revalidation. Linux uses `faccessat2` with effective
+credentials and the held descriptor, enforcing ACLs and `noexec`; unsupported
+kernels or failed policy checks refuse launch. macOS refuses any source or enclosing
+directory with a `com.apple.quarantine` attribute, without parsing an approval bit
+or clearing it. The check walks directories by descriptor from the held source's
+current vnode path and checks the final file identity. It includes bundles without
+an `.app` suffix and runs again after copying and immediately before launch.
+This deliberately also refuses quarantined files approved elsewhere by macOS:
+Rocket cannot transfer that approval merely by copying bytes. These checks do not
+claim to sandbox agents or reproduce every platform's code-signing policy.
+
 The terminal worker holds the snapshot/lock across asynchronous creation and
 process cleanup, even when the review is closed. Partial and released snapshots
 are removed using only their owned file and empty directory; no recursive delete
@@ -1098,6 +1155,18 @@ that can alter Rocket itself or its private memory/storage. It does not sandbox
 agents or verify interpreters' scripts, dynamic dependencies, configuration or
 other loaded resources. Unix resource lookup relative to the actual executable
 can change; see [Agents](docs/Agents.md) for that compatibility boundary.
+
+## History Index filesystem boundary
+
+History Index reads and removal open the repository's common Git directory and
+its `objects/info/commit-graphs` descendants without following links or reparse
+points. Unix operations enumerate, open and unlink names relative to held directory
+descriptors; replacing a parent pathname cannot redirect deletion. Windows holds
+the directory chain against replacement/reparse edits and deletes each checked leaf through
+its handle, including read-only files without changing attributes on hard-linked
+peers. Only `commit-graph`, `commit-graph-chain` and SHA-1/SHA-256 `graph-*.graph`
+layer names are eligible; unknown entries stay. Cleanup never recurses. Errors
+and cancellation are reported, and Git's locks and unowned temporary files stay.
 
 ## GitHub Actions build boundary
 

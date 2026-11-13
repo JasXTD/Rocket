@@ -14,6 +14,40 @@ fn generated(length: usize, alphabet: &[u8]) -> String {
 const LETTERS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const ALNUM: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 const HEX: &[u8] = b"0123456789abcdef";
+const DIGITS: &[u8] = b"0123456789";
+const UPPER: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+fn base64(bytes: &[u8]) -> String {
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut text = String::new();
+    for group in bytes.chunks(3) {
+        let n = group.iter().fold(0u32, |n, b| n << 8 | u32::from(*b)) << (8 * (3 - group.len()));
+        for index in 0..4 {
+            text.push(if index <= group.len() {
+                alphabet[(n >> (18 - 6 * index) & 63) as usize] as char
+            } else {
+                '='
+            });
+        }
+    }
+    text
+}
+/// `<IAM user>-at-<account>:<base64 of 44 bytes>`, as a long-term key encodes it.
+fn bedrock_long_term(user: &str) -> String {
+    let secret = base64(generated(44, ALNUM).as_bytes());
+    let identity = format!("{user}-at-{}:{secret}", generated(12, DIGITS));
+    format!("ABSK{}", base64(identity.as_bytes()))
+}
+fn bedrock_short_term(action: &str, signature: &str) -> String {
+    let url = format!(
+        "bedrock.amazonaws.com/?Action={action}&X-Amz-Algorithm=AWS4-HMAC-SHA256\
+         &X-Amz-Credential=ASIA{}%2F20261114%2Fus-east-1%2Fbedrock%2Faws4_request\
+         &X-Amz-Date=20261114T020000Z&X-Amz-Expires=43200&X-Amz-Security-Token={}\
+         &X-Amz-Signature={signature}&X-Amz-SignedHeaders=host&Version=1",
+        generated(16, UPPER),
+        generated(600, ALNUM),
+    );
+    format!("bedrock-api-key-{}", base64(url.as_bytes()))
+}
 fn provider_keys() -> Vec<String> {
     let mut keys = vec![
         format!(
@@ -41,6 +75,19 @@ fn provider_keys() -> Vec<String> {
     for prefix in ["sk-ant-api03-", "sk-ant-api01-", "sk-ant-admin01-"] {
         keys.push(format!("{prefix}{}AA", generated(93, ALNUM)));
     }
+    // Amazon Bedrock: console and named IAM users (a second key adds +1; a
+    // name may contain -at-), padded and unpadded, plus a short-term key.
+    for user in [
+        "BedrockAPIKey-k3z9",
+        "deploy.bot@example.com+1",
+        "ci-at-home",
+    ] {
+        keys.push(bedrock_long_term(user));
+    }
+    keys.push(bedrock_short_term(
+        "CallWithBearerToken",
+        &generated(64, HEX),
+    ));
     keys
 }
 fn encode(text: &str, encoding: usize) -> Vec<u8> {
@@ -161,6 +208,8 @@ fn ai_placeholders_references_identifiers_and_wrong_shapes_do_not_match() {
         "hf_",
         "AIza",
         "sk-or-v1-",
+        "ABSK",
+        "bedrock-api-key-",
     ] {
         cases.push(format!("{prefix}..."));
         cases.push(format!("{prefix}YOUR_API_KEY"));
@@ -242,4 +291,52 @@ fn ai_scan_is_cancellable_and_matches_across_chunk_boundaries() {
     .unwrap_err();
     assert!(matches!(error, crate::Error::Cancelled));
     assert_eq!(checks, 4);
+}
+
+#[test]
+fn bedrock_keys_need_the_ai_guard_and_their_complete_structure() {
+    let long_term = bedrock_long_term("BedrockAPIKey-k3z9");
+    let short_term = bedrock_short_term("CallWithBearerToken", &generated(64, HEX));
+    for key in [&long_term, &short_term] {
+        for source in [
+            format!("AWS_BEARER_TOKEN_BEDROCK={key}"),
+            format!("export AWS_BEARER_TOKEN_BEDROCK=\"{key}\""),
+            format!("setx AWS_BEARER_TOKEN_BEDROCK {key}"),
+        ] {
+            assert_eq!(
+                detected(source.as_bytes(), false, false, true),
+                Some(SecretKind::AiApiKey)
+            );
+            // Not a general credential name: these keys belong to the AI guard.
+            assert_eq!(detected(source.as_bytes(), false, true, false), None);
+        }
+    }
+    let identity = |text: &str| format!("ABSK{}", base64(text.as_bytes()));
+    let secret = base64(generated(44, ALNUM).as_bytes());
+    for lookalike in [
+        // Not the user-at-account:secret structure, or a damaged part of it.
+        identity(&generated(95, ALNUM)),
+        identity(&format!("BedrockAPIKey-k3z9-at-1234567890:{secret}")),
+        identity(&format!("BedrockAPIKey-k3z9-at-123456789012-{secret}")),
+        identity(&format!(
+            "BedrockAPIKey-k3z9-at-123456789012:{}",
+            base64(b"short")
+        )),
+        identity(&format!(
+            "BedrockAPIKey-k3z9-at-123456789012:{secret} trailing"
+        )),
+        identity(&format!("bad user!-at-123456789012:{secret}")),
+        // Documentation shapes: the published prefixes with elided keys.
+        "ABSKQmVkcm9ja0FQSUtleS...".into(),
+        "bedrock-api-key-YmVkcm9jay5hbWF6b25hd3MuY29t...".into(),
+        // Presigned URLs for another action, or without a signature.
+        bedrock_short_term("ListFoundationModels", &generated(64, HEX)),
+        bedrock_short_term("CallWithBearerToken", "unsigned"),
+    ] {
+        assert_eq!(
+            detected(lookalike.as_bytes(), false, false, true),
+            None,
+            "{lookalike}"
+        );
+    }
 }

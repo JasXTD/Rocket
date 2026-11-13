@@ -35,7 +35,7 @@ Operations that change a repository open a review first. The dialog shows what w
 - Modules reads the committed Rust files as text: use lines, paths into the package and `mod` declarations, including `#[path]`. Names a `use …::*` line brings in are matched by name. Macros and `cfg` are not expanded, other packages are not followed, and which function calls which is not shown. Nothing is compiled or run.
 - Details, beside the map or as a drawer in a narrow window, says what the selection is and what it connects to. Show folders opens a package's folder, Commits here shows the commits that touched a folder or file, and a row in its lists selects that item.
 - History opens on Branches & merges: the main line of the revision, each merged branch on one line, and runs of plain commits folded into a count. With All branches, branches ahead of the main line show above it. Every commit lists them all with their lanes. Path and Leave out narrow History and People to a literal path, or leave out what a commit or branch already has.
-- People opens on Who works where: a row per person, a column per folder, and their commits touching it in each cell. A folder holding most of the changes is split into its subfolders. All time, 90 days and 30 days filter by author time. Shared files joins people who changed the same files. Counts use recorded authors and the snapshot's .mailmap; they describe overlapping work, not productivity or collaboration.
+- People opens on Who works where: a row per folder, a column per person, and each person's commits touching the folder in its cell. A folder holding most of the changes is split into its subfolders, each shown with its path. The folder column, and the people row when there is room under it, stay in place while the table scrolls. All time, 90 days and 30 days filter by author time. Shared files joins people who changed the same files. Counts use recorded authors and the snapshot's .mailmap; they describe overlapping work, not productivity or collaboration.
 - Search finds names, paths, authors and commit IDs. In Packages, Folders, Modules and Shared files, drag to pan, scroll or use + and − to zoom, Fit shows everything and Focus centres the selection; Connected only keeps the selection and what it connects to. Stop and read errors keep the previous snapshot.
 - Export as Mermaid shows the text of what the map shows. Copy copies it; Save writes a new .mmd file to the folder you choose and never replaces a file. It holds names and paths only, never file contents.
 - History reads the newest 500 commits; Load older adds more, up to 2,000. A map holds up to 4,096 nodes and draws up to 240 cards at once. When a map is partial it says so: narrow the scope or search.
@@ -537,7 +537,7 @@ Push branches together publishes several branches in one atomic push: every sele
 
 - In a large repository, Git spends most of a History refresh putting the commits in order. Git can keep an index of the commits (its commit-graph) that makes this several times faster. Rocket offers it above the History list when ordering took more than a second and the repository has none. Repository → History & Recovery → Speed Up History opens it at any time.
 - Writing the index adds files under .git/objects/info and nothing else: commits, branches, working files and remotes stay as they are. Git reads the index by itself from then on, in Rocket and on the command line. It takes about 60 bytes for each commit.
-- Git reads every commit once to write it, which takes seconds in most repositories and longer in very large ones. Stop ends the write and leaves the repository as it was.
+- Git reads every commit once to write it, which takes seconds in most repositories and longer in very large ones. Stop ends Rocket's write and preserves commits and working files. Rocket keeps Git locks and temporary graph files because an external Git writer may own them. If a later attempt reports an interrupted-writer lock, first confirm no Git process is still writing; only then remove the named commit-graph lock. Do not delete unrelated Git locks. A fetch-setting change made before Stop remains saved.
 - Commits made or fetched later are not in the index until it is updated. Git still shows them; only that part goes without the speed-up. Keep it up to date when Rocket fetches adds the fetched commits after each fetch Rocket runs in this repository, and Update index adds what is missing on request. The choice is stored in the repository's own config as rocket.commitGraphOnFetch.
 - Remove index deletes those files again. Git writes no index for a shallow clone, and reads none while the repository has replaced or grafted commits or its core.commitGraph setting is off; the dialog says so instead of writing one.
 - The × on the notice hides it for that repository. The menu entry stays.
@@ -612,7 +612,7 @@ methods are shown in the preview; server policy is always authoritative.
 
 GitHub.com and Enterprise also support multiline inline comments and discussion
 thread replies, resolution and reopening. Select the first and last line in the
-same hunk/side, or open Discussion → Load / refresh threads. A changed commit
+same hunk/side, or open Discussion → Load threads. A changed commit
 or thread requires a new preview. A reply draft must be sent or explicitly
 discarded before switching to a resolution action.
 
@@ -667,7 +667,7 @@ the result. An error saving recovery data blocks sending the request.
   32 comments as one review. These drafts are stored locally, not as server-side
   pending reviews. Refresh never relocates a stale comment; review its saved text
   and re-select the location.
-- Merge on provider offers GitHub merge commit, squash and rebase. Submit/discard review
+- Merge offers GitHub merge commit, squash and rebase. Submit/discard review
   drafts first, then Review merge. Confirm the target and commit IDs. Rocket
   rechecks permission, method and clean mergeability and sends the reviewed head
   condition. The base can still change after its final check. Local files stay
@@ -845,14 +845,14 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 ### Secret protection
 
 - Edit → Preferences → Security → Secret protection is on by default. You can turn it off and back on; Rocket remembers your choice for this profile. An amber warning appears while protection is off.
-- Rocket checks staged content before explicit commits and checks reachable history before pushes. Recognized GitHub tokens, private keys, likely credential literals and .env files cause a refusal with a location and instructions. Deleting a secret only from the newest commit does not remove it from history.
+- Rocket checks staged content before explicit commits and checks reachable history before pushes. Recognized GitHub tokens, AWS access keys, private keys (including JSON Web Keys), OAuth client secrets, likely credential literals and .env files cause a refusal with a location and instructions. AWS's documentation example keys are allowed. Deleting a secret only from the newest commit does not remove it from history.
 - Use placeholder-only .env.example, .env.sample or .env.template files. Keep real secrets outside Git. Revoke credentials that have already been exposed.
 - MCP cannot change this preference. This guard covers Rocket operations; raw Git and custom shell commands are outside it. Detection is bounded and cannot recognize every secret or encoding. An incomplete scan also refuses the write.
 - **Total scan budget** on the same page defaults to **256 MiB**. Enter a positive whole number of MiB and select **Apply**, or reset to the default. This counts uncompressed objects, including unchanged staged content for a commit and reachable older history for a push; it is not the compressed upload size. Raising it can take longer. The separate 128 MiB per-object cap, time limit and cancellation remain active. Changes apply to future scans and are saved for this desktop profile; the CLI uses its own 256 MiB default.
 
 ### Guard AI API keys
 
-- **Guard AI API keys** is a separate switch in Edit → Preferences → Security, on by default. It checks supported OpenAI, Anthropic, DeepSeek, GLM/Z.ai, Google, Groq, xAI, OpenRouter and Hugging Face key shapes locally, without contacting providers. DeepSeek and GLM/Z.ai shapes require a credential assignment because ordinary IDs can look similar. Unknown formats can be missed.
+- **Guard AI API keys** is a separate switch in Edit → Preferences → Security, on by default. It checks supported OpenAI, Anthropic, Amazon Bedrock, DeepSeek, GLM/Z.ai, Google, Groq, xAI, OpenRouter and Hugging Face key shapes locally, without contacting providers. DeepSeek and GLM/Z.ai shapes require a credential assignment because ordinary IDs can look similar. Unknown formats can be missed.
 - The two guards are independent: switching off Secret protection leaves the AI guard on, and switching off the AI guard leaves general credential checks on. Both inspect outgoing history. Only the user in the normal desktop app can change them; MCP cannot. The CLI always enables both.
 
 ### Dependency advisories

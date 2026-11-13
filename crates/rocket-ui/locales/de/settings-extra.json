@@ -156,7 +156,7 @@
     "one": "{n} Sicherheitsmeldung prüfen",
     "other": "{n} Sicherheitsmeldungen prüfen"
   },
-  "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI, Anthropic, Groq, xAI, OpenRouter, Hugging Face und Standard-Google-API-Schlüssel (auch für Gemini).",
+  "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face and standard Google API keys (also used by Gemini).": "OpenAI, Anthropic, Amazon Bedrock, Groq, xAI, OpenRouter, Hugging Face und Standard-Google-API-Schlüssel (auch für Gemini).",
   "DeepSeek and GLM / Z.ai keys are checked in credential assignments such as DEEPSEEK_API_KEY, ZAI_API_KEY or api_key, avoiding ordinary hashes and dotted IDs.": "DeepSeek- und GLM-/Z.ai-Schlüssel werden in Zuweisungen wie DEEPSEEK_API_KEY, ZAI_API_KEY oder api_key geprüft, ohne gewöhnliche Hashes und IDs mit Punkten zu erfassen.",
   "Matches known formats, not every provider or future key version. Placeholders remain allowed; realistic synthetic keys are still blocked.": "Erkennt bekannte Formate, nicht jeden Anbieter oder künftige Schlüsselversionen. Platzhalter bleiben erlaubt; realistische künstliche Schlüssel werden blockiert.",
   "Advisory data is {age} days old. Update it in Scanner & data to check newer advisories.": "Die Sicherheitsmeldungen sind {age} Tage alt. Unter Scanner und Daten aktualisieren, um neuere Meldungen zu prüfen.",
