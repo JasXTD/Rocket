@@ -4,13 +4,17 @@
 //! It holds nothing the commits do not, so writing, updating or removing it changes
 //! no commit, branch or file.
 use crate::{runner::args, *};
+mod storage;
+use storage::Directory;
 use std::{
     fs,
     io::{Read, Seek, SeekFrom},
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::mpsc::SyncSender,
     time::SystemTime,
 };
+#[cfg(test)]
+use std::path::Path;
 
 /// Rocket's own setting in the repository's config file: add fetched commits to
 /// the index after every fetch Rocket runs there.
@@ -81,20 +85,48 @@ pub struct HistoryIndexReport {
 
 /// Where Git keeps the index in this repository's own object store.
 struct Layout {
+    root: PathBuf,
     info: PathBuf,
 }
 
+struct OpenLayout {
+    info: Option<Directory>,
+    chain: Option<Directory>,
+}
+
+fn storage_error(error: std::io::Error) -> Error {
+    Error::io("access commit index safely (normal directories and files required; no links or junctions)", error)
+}
+
 impl Layout {
+    fn open(&self) -> Result<OpenLayout> {
+        let mut current = Some(Directory::open(&self.root).map_err(storage_error)?);
+        let relative = self.info.strip_prefix(&self.root)
+            .map_err(|_| Error::parse("read commit index", "index directory escaped its root"))?;
+        for part in relative.components() {
+            let std::path::Component::Normal(name) = part else {
+                return Err(Error::parse("read commit index", "invalid index directory"));
+            };
+            current = current.map(|folder| folder.child(name)).transpose().map_err(storage_error)?.flatten();
+        }
+        let chain = current.as_ref().map(|folder| folder.child("commit-graphs".as_ref()))
+            .transpose().map_err(storage_error)?.flatten();
+        Ok(OpenLayout { info: current, chain })
+    }
+    #[cfg(test)]
     fn single(&self) -> PathBuf {
         self.info.join("commit-graph")
     }
+    #[cfg(test)]
     fn chain_folder(&self) -> PathBuf {
         self.info.join("commit-graphs")
     }
+    #[cfg(test)]
     fn chain(&self) -> PathBuf {
         self.chain_folder().join("commit-graph-chain")
     }
     /// The lock Git holds while it writes a single file, and the one for a chain.
+    #[cfg(test)]
     fn locks(&self) -> [PathBuf; 2] {
         [
             self.info.join("commit-graph.lock"),
@@ -103,15 +135,20 @@ impl Layout {
     }
     /// The files Git reads, in its own order of preference: the single file when
     /// there is one, otherwise the layers its chain file names.
-    fn layers(&self) -> Result<Vec<PathBuf>> {
-        if is_file(&self.single())? {
-            return Ok(vec![self.single()]);
+    fn layers(&self) -> Result<Vec<fs::File>> {
+        self.open()?.layers()
+    }
+}
+
+impl OpenLayout {
+    fn layers(&self) -> Result<Vec<fs::File>> {
+        let Some(info) = &self.info else { return Ok(Vec::new()); };
+        if let Some(single) = info.file("commit-graph".as_ref()).map_err(storage_error)? {
+            return Ok(vec![single]);
         }
-        let chain = match read_chain(&self.chain()) {
-            Ok(chain) => chain,
-            Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(error) => return Err(error),
-        };
+        let Some(folder) = &self.chain else { return Ok(Vec::new()); };
+        let Some(chain) = folder.file("commit-graph-chain".as_ref()).map_err(storage_error)? else { return Ok(Vec::new()); };
+        let chain = read_chain_file(chain)?;
         let mut layers = Vec::new();
         for (number, name) in chain.split(|byte| *byte == b'\n').filter(|name| !name.is_empty()).enumerate() {
             if number == MAX_LAYERS {
@@ -124,33 +161,64 @@ impl Layout {
             let Some(name) = name else {
                 return Ok(Vec::new());
             };
-            let layer = self.chain_folder().join(format!("graph-{name}.graph"));
-            if is_file(&layer)? {
+            if let Some(layer) = folder.file(format!("graph-{name}.graph").as_ref()).map_err(storage_error)? {
                 layers.push(layer);
             }
         }
         Ok(layers)
     }
+    fn ensure_unlocked(&self) -> Result<()> {
+        for (directory, name) in [(&self.info, "commit-graph.lock"), (&self.chain, "commit-graph-chain.lock")] {
+            if let Some(directory) = directory
+                && directory.file(name.as_ref()).map_err(storage_error)?.is_some()
+            {
+                return Err(Error::Unsupported(format!(
+                    "Another Git process is writing this repository's commit index, or one was interrupted. If no Git is running, inspect {name} in objects/info or objects/info/commit-graphs in the repository's common Git directory before trying again. Rocket left the lock in place."
+                )));
+            }
+        }
+        Ok(())
+    }
+    fn remove(mut self, cancel: &CancellationToken) -> Result<()> {
+        self.ensure_unlocked()?;
+        cancel.check()?;
+        let Some(info) = &self.info else { return Ok(()); };
+        info.remove_file("commit-graph".as_ref()).map_err(storage_error)?;
+        if let Some(folder) = self.chain.take() {
+            folder.remove_file("commit-graph-chain".as_ref()).map_err(storage_error)?;
+            for name in folder.entries().map_err(storage_error)? {
+                cancel.check()?;
+                let name = name.map_err(storage_error)?;
+                // Only Git's actual layer filenames. Unknown files stay intact.
+                if name.to_str().and_then(|name| name.strip_prefix("graph-")?.strip_suffix(".graph"))
+                    .is_some_and(|id| matches!(id.len(), 40 | 64) && id.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                {
+                    folder.remove_file(&name).map_err(storage_error)?;
+                }
+            }
+            // Windows pins the folder until here. Removing an empty child does
+            // not recurse or follow a substituted link on either platform.
+            drop(folder);
+            cancel.check()?;
+            match info.remove_empty_child("commit-graphs".as_ref()) {
+                Ok(()) => {},
+                Err(error) if matches!(error.kind(), std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty) => {},
+                Err(error) => return Err(storage_error(error)),
+            }
+        }
+        Ok(())
+    }
 }
 
+#[cfg(all(test, unix))]
 fn read_chain(path: &Path) -> Result<Vec<u8>> {
-    let mut options = fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        // Refuse links and don't block on a FIFO substituted at the path.
-        #[cfg(target_os = "linux")]
-        options.custom_flags(0x20000 | 0x800); // O_NOFOLLOW | O_NONBLOCK
-        #[cfg(target_os = "macos")]
-        options.custom_flags(0x100 | 0x4);
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
-    }
-    let file = options.open(path).map_err(|e| Error::io("read commit index", e))?;
+    let parent = Directory::open(path.parent().unwrap()).map_err(storage_error)?;
+    let file = parent.file(path.file_name().unwrap()).map_err(storage_error)?
+        .ok_or_else(|| Error::parse("read commit index", "missing chain"))?;
+    read_chain_file(file)
+}
+
+fn read_chain_file(file: fs::File) -> Result<Vec<u8>> {
     let meta = file.metadata().map_err(|e| Error::io("inspect commit index chain", e))?;
     #[cfg(windows)]
     {
@@ -175,39 +243,14 @@ fn read_chain_bytes(reader: impl Read) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn is_file(path: &Path) -> Result<bool> {
-    match fs::symlink_metadata(path) {
-        Ok(meta) => Ok(meta.is_file()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(Error::io("inspect commit index", error)),
-    }
-}
-
-/// Remove one of Git's index files. Git writes them read-only, which Windows
-/// refuses to delete until the attribute is cleared.
-// Clearing it widens a file's permissions elsewhere; this arm exists on Windows only.
-#[cfg_attr(windows, allow(clippy::permissions_set_readonly_false))]
+#[cfg(test)]
 fn remove(path: &Path) -> std::io::Result<()> {
-    match fs::remove_file(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        #[cfg(windows)]
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-            let mut permissions = fs::symlink_metadata(path)?.permissions();
-            if !permissions.readonly() {
-                return Err(error);
-            }
-            permissions.set_readonly(false);
-            fs::set_permissions(path, permissions)?;
-            fs::remove_file(path)
-        }
-        other => other,
-    }
+    Directory::open(path.parent().unwrap())?.remove_file(path.file_name().unwrap())
 }
 
 /// How many commits one index file holds: the last entry of its fanout table.
 /// `None` for anything but the version 1 layout Git writes today.
-fn layer_commits(path: &Path) -> Option<u64> {
-    let mut file = fs::File::open(path).ok()?;
+fn layer_commits(mut file: &fs::File) -> Option<u64> {
     let mut header = [0u8; 8];
     file.read_exact(&mut header).ok()?;
     if &header[..4] != b"CGPH" || header[4] != 1 {
@@ -230,27 +273,15 @@ fn layer_commits(path: &Path) -> Option<u64> {
 
 /// This is only a preflight check, not proof of ownership of any later lock.
 /// External Git processes do not participate in Rocket's repository write gate.
+#[cfg(test)]
 fn ensure_unlocked(layout: &Layout) -> Result<()> {
-    for lock in layout.locks() {
-        match fs::symlink_metadata(&lock) {
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(Error::io("inspect commit index lock", error)),
-            Ok(_) => {}
-        }
-        // Named from the common Git directory (also correct for linked worktrees).
-        let inside = Path::new("objects").join("info")
-            .join(lock.strip_prefix(&layout.info).unwrap_or(&lock));
-        return Err(Error::Unsupported(format!(
-            "Another Git process is writing this repository's commit index, or one was interrupted. If no Git is running, delete {} in the repository's common Git directory and try again.",
-            inside.display()
-        )));
-    }
-    Ok(())
+    layout.open()?.ensure_unlocked()
 }
 
 impl Repository {
     fn index_layout(&self) -> Layout {
         Layout {
+            root: self.info().common_dir.clone(),
             info: self.info().common_dir.join("objects").join("info"),
         }
     }
@@ -273,7 +304,7 @@ impl Repository {
             written: None,
         };
         for layer in &layers {
-            let meta = fs::metadata(layer).map_err(|e| Error::io("inspect commit index", e))?;
+            let meta = layer.metadata().map_err(|e| Error::io("inspect commit index", e))?;
             file.bytes += meta.len();
             file.written = file.written.max(meta.modified().ok());
             file.commits = file
@@ -369,6 +400,10 @@ impl Repository {
             .runner
             .observe("write_result", change.label(), || match change {
                 HistoryIndexChange::Write { on_fetch, commits } => {
+                    // Validate before changing the setting. These read/delete
+                    // pins must be released before Git opens directories for
+                    // writes; the Git subprocess manages its own filesystem I/O.
+                    drop(self.index_layout().open()?);
                     match self.index_unused(cancel)? {
                         Some(HistoryIndexUnused::Shallow) => return Err(Error::Unsupported(
                             "Git keeps no commit index for a shallow clone.".into(),
@@ -410,11 +445,13 @@ impl Repository {
         cancel: &CancellationToken,
     ) -> Result<()> {
         let layout = self.index_layout();
-        ensure_unlocked(&layout)?;
+        let directories = layout.open()?;
+        directories.ensure_unlocked()?;
         let mut arguments = args(&["commit-graph", "write", "--reachable", "--progress"]);
-        if !layout.layers()?.is_empty() {
+        if !directories.layers()?.is_empty() {
             arguments.push("--split".into());
         }
+        drop(directories);
         // Never unlink locks or tmp_graph_* after stopping Git: their appearance
         // since preflight cannot prove our child created them. Keep cancellation
         // typed, and let the next attempt explain any interrupted-writer lock.
@@ -428,26 +465,7 @@ impl Repository {
 
     /// Caller holds the write permit.
     fn remove_index(&self, cancel: &CancellationToken) -> Result<()> {
-        let layout = self.index_layout();
-        // A lock means Git is writing the index right now.
-        ensure_unlocked(&layout)?;
-        cancel.check()?;
-        // The chain file goes before its layers: without it Git reads none of them.
-        let mut files = vec![layout.single(), layout.chain()];
-        if let Ok(entries) = fs::read_dir(layout.chain_folder()) {
-            files.extend(entries.filter_map(|entry| {
-                let entry = entry.ok()?;
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
-                (name.starts_with("graph-") && name.ends_with(".graph")).then(|| entry.path())
-            }));
-        }
-        for file in files {
-            remove(&file).map_err(|e| Error::io("remove commit index", e))?;
-        }
-        // Only an empty folder goes; anything Rocket does not know stays.
-        let _ = fs::remove_dir(layout.chain_folder());
-        Ok(())
+        self.index_layout().open()?.remove(cancel)
     }
 
     /// Caller holds the write permit.
@@ -486,10 +504,91 @@ impl Repository {
 mod tests {
     use super::*;
 
+    #[cfg(windows)]
+    #[test]
+    fn held_directory_refuses_reparse_mutation_access() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let root = std::env::temp_dir().canonicalize().unwrap()
+            .join(format!("rocket-index-reparse-write-{}", std::process::id()));
+        let directory = root.join("common");
+        fs::create_dir_all(&directory).unwrap();
+        let write_handle = || fs::OpenOptions::new().write(true).share_mode(7)
+            .custom_flags(0x0200_0000).open(&directory);
+        drop(write_handle().expect("the fixture owner can open this directory for writes"));
+        let pinned = Directory::open(&directory).unwrap();
+        assert_eq!(write_handle().unwrap_err().raw_os_error(), Some(32), "the pin must deny a write-capable reparse mutation handle");
+        let moved = root.with_extension("moved");
+        let rename = fs::rename(&root, &moved);
+        drop(pinned);
+        if rename.is_ok() { fs::rename(&moved, &root).unwrap(); }
+        drop(write_handle().expect("the sharing restriction ends with the pin"));
+        fs::remove_dir(directory).unwrap();
+        fs::remove_dir(root).unwrap();
+        assert!(rename.is_err(), "an ancestor of the pinned directory must not be replaceable");
+    }
+
+    #[test]
+    fn replaced_parent_cannot_redirect_open_index_cleanup() {
+        let root = std::env::temp_dir().canonicalize().unwrap()
+            .join(format!("rocket-index-parent-swap-{}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        for parent in ["info", "info/commit-graphs"] {
+            let directory = root.join("common");
+            let layout = Layout { root: directory.clone(), info: directory.join("info") };
+            fs::create_dir_all(layout.chain_folder()).unwrap();
+            let name = format!("graph-{}.graph", "d".repeat(40));
+            fs::write(layout.chain_folder().join(&name), b"original graph").unwrap();
+            let outside = root.join("outside");
+            fs::create_dir(&outside).unwrap();
+            fs::write(outside.join(&name), b"outside canary").unwrap();
+            let opened = layout.open().unwrap();
+            let source = directory.join(parent);
+            let moved = root.join("moved");
+            let rename = fs::rename(&source, &moved);
+            #[cfg(windows)]
+            {
+                assert!(rename.is_err(), "the pinned parent must not be replaceable");
+                opened.remove(&CancellationToken::new()).unwrap();
+            }
+            #[cfg(unix)]
+            {
+                rename.unwrap();
+                std::os::unix::fs::symlink(&outside, &source).unwrap();
+                // Cleanup is anchored to the original directory. Removing its
+                // now-substituted empty-folder name may refuse the link instead.
+                let _ = opened.remove(&CancellationToken::new());
+                assert!(!moved.join(if parent == "info" { format!("commit-graphs/{name}") } else { name.clone() }).exists());
+                fs::remove_file(&source).unwrap();
+                fs::remove_dir_all(&moved).unwrap();
+            }
+            assert_eq!(fs::read(outside.join(&name)).unwrap(), b"outside canary");
+            fs::remove_dir_all(&directory).unwrap();
+            fs::remove_dir_all(&outside).unwrap();
+        }
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn cancellation_after_open_preserves_index_files() {
+        let root = std::env::temp_dir().canonicalize().unwrap()
+            .join(format!("rocket-index-open-cancel-{}", std::process::id()));
+        let layout = Layout { root: root.clone(), info: root.clone() };
+        fs::create_dir_all(layout.chain_folder()).unwrap();
+        fs::write(layout.single(), b"single").unwrap();
+        fs::write(layout.chain(), b"chain").unwrap();
+        let opened = layout.open().unwrap();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        assert!(matches!(opened.remove(&cancel), Err(Error::Cancelled)));
+        assert_eq!(fs::read(layout.single()).unwrap(), b"single");
+        assert_eq!(fs::read(layout.chain()).unwrap(), b"chain");
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn oversized_chain_is_rejected_before_parsing() {
-        let folder = std::env::temp_dir().join(format!("rocket-history-chain-size-{}", std::process::id()));
-        let layout = Layout { info: folder };
+        let folder = std::env::temp_dir().canonicalize().unwrap().join(format!("rocket-history-chain-size-{}", std::process::id()));
+        let layout = Layout { root: folder.clone(), info: folder };
         fs::create_dir_all(layout.chain_folder()).unwrap();
         // Just beyond the largest supported SHA-256 chain: enough to expose the
         // missing read bound without making the failing test allocate a huge file.
@@ -519,8 +618,8 @@ mod tests {
 
     #[test]
     fn chain_accepts_both_hash_sizes_and_counts_missing_layers_too() {
-        let folder = std::env::temp_dir().join(format!("rocket-history-chain-layers-{}", std::process::id()));
-        let layout = Layout { info: folder };
+        let folder = std::env::temp_dir().canonicalize().unwrap().join(format!("rocket-history-chain-layers-{}", std::process::id()));
+        let layout = Layout { root: folder.clone(), info: folder };
         fs::create_dir_all(layout.chain_folder()).unwrap();
         for width in [40, 64] {
             let names: Vec<_> = (0..MAX_LAYERS).map(|n| format!("{n:0width$x}")).collect();
@@ -549,7 +648,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn chain_refuses_links_and_non_regular_files() {
-        let folder = std::env::temp_dir().join(format!("rocket-history-chain-kind-{}", std::process::id()));
+        let folder = std::env::temp_dir().canonicalize().unwrap().join(format!("rocket-history-chain-kind-{}", std::process::id()));
         fs::create_dir(&folder).unwrap();
         let target = folder.join("target");
         let link = folder.join("chain");
@@ -580,27 +679,27 @@ mod tests {
         bytes.extend([0u8; 255 * 4]);
         bytes.extend(70_000u32.to_be_bytes());
         fs::write(&path, &bytes).unwrap();
-        assert_eq!(layer_commits(&path), Some(70_000));
+        assert_eq!(layer_commits(&fs::File::open(&path).unwrap()), Some(70_000));
         for (at, byte) in [(0, b'X'), (4, 2)] {
             let mut other = bytes.clone();
             other[at] = byte;
             fs::write(&path, &other).unwrap();
-            assert_eq!(layer_commits(&path), None);
+            assert_eq!(layer_commits(&fs::File::open(&path).unwrap()), None);
         }
         fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
-        assert_eq!(layer_commits(&path), None);
+        assert_eq!(layer_commits(&fs::File::open(&path).unwrap()), None);
         let mut missing = bytes.clone();
         missing[20..24].copy_from_slice(b"XXXX");
         fs::write(&path, &missing).unwrap();
-        assert_eq!(layer_commits(&path), None);
+        assert_eq!(layer_commits(&fs::File::open(&path).unwrap()), None);
         fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]
     fn preflight_preserves_external_locks_and_temporary_layers() {
         let folder =
-            std::env::temp_dir().join(format!("rocket-history-index-stop-{}", std::process::id()));
-        let layout = Layout { info: folder.clone() };
+            std::env::temp_dir().canonicalize().unwrap().join(format!("rocket-history-index-stop-{}", std::process::id()));
+        let layout = Layout { root: folder.clone(), info: folder.clone() };
         fs::create_dir_all(layout.chain_folder()).unwrap();
         let read_only = |path: &Path| {
             fs::write(path, b"x").unwrap();

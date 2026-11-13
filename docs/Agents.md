@@ -59,8 +59,10 @@ A forced application/OS crash can leave a private temporary copy behind.
 Before copying and again before launch, Rocket checks the opened source's execution
 policy. Linux uses the kernel's effective-permission check, including ACLs and
 `noexec` mounts (Linux 5.8 or newer); an unavailable check refuses launch. macOS
-refuses files carrying `com.apple.quarantine`, including empty or previously
-approved-looking values. Choose a trusted installed executable without quarantine
+refuses files or enclosing folders/bundles carrying `com.apple.quarantine`, including
+empty or previously approved-looking values. This includes code bundles without
+an `.app` suffix; a clean leaf executable cannot discard its enclosing bundle's
+protection through Rocket's temporary copy. Choose a trusted installed executable without quarantine
 metadata. Rocket does not clear quarantine, grant a Gatekeeper exception or treat
 a copied signature as proof of approval. This conservative restriction also applies
 to quarantined executables macOS may otherwise have approved. Permissions and

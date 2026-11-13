@@ -1092,8 +1092,11 @@ including the transition from setup to the agent, so updates require new review.
 Snapshot preparation checks execution policy on the opened source before and after
 copying and again at launch revalidation. Linux uses `faccessat2` with effective
 credentials and the held descriptor, enforcing ACLs and `noexec`; unsupported
-kernels or failed policy checks refuse launch. macOS refuses any source with a
-`com.apple.quarantine` attribute, without parsing an approval bit or clearing it.
+kernels or failed policy checks refuse launch. macOS refuses any source or enclosing
+directory with a `com.apple.quarantine` attribute, without parsing an approval bit
+or clearing it. The check walks directories by descriptor from the held source's
+current vnode path and checks the final file identity. It includes bundles without
+an `.app` suffix and runs again after copying and immediately before launch.
 This deliberately also refuses quarantined files approved elsewhere by macOS:
 Rocket cannot transfer that approval merely by copying bytes. These checks do not
 claim to sandbox agents or reproduce every platform's code-signing policy.
@@ -1107,6 +1110,18 @@ that can alter Rocket itself or its private memory/storage. It does not sandbox
 agents or verify interpreters' scripts, dynamic dependencies, configuration or
 other loaded resources. Unix resource lookup relative to the actual executable
 can change; see [Agents](docs/Agents.md) for that compatibility boundary.
+
+## History Index filesystem boundary
+
+History Index reads and removal open the repository's common Git directory and
+its `objects/info/commit-graphs` descendants without following links or reparse
+points. Unix operations enumerate, open and unlink names relative to held directory
+descriptors; replacing a parent pathname cannot redirect deletion. Windows holds
+the directory chain against replacement/reparse edits and deletes each checked leaf through
+its handle, including read-only files without changing attributes on hard-linked
+peers. Only `commit-graph`, `commit-graph-chain` and SHA-1/SHA-256 `graph-*.graph`
+layer names are eligible; unknown entries stay. Cleanup never recurses. Errors
+and cancellation are reported, and Git's locks and unowned temporary files stay.
 
 ## GitHub Actions build boundary
 

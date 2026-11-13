@@ -50,10 +50,16 @@ stage=statistics-units
 cargo_run test "${common[@]}" -p rocket-git --lib statistics::tests:: -- --nocapture 2>&1 | tee "$out/statistics-units.log"
 stage=history-integration
 cargo_run test "${common[@]}" -p rocket-git --test history_index -- --nocapture 2>&1 | tee "$out/history-integration.log"
+stage=history-security
+cargo_run test "${common[@]}" -p rocket-git --test history_index_security -- --nocapture 2>&1 | tee "$out/history-security.log"
 stage=statistics-integration
 cargo_run test "${common[@]}" -p rocket-git --test statistics -- --nocapture 2>&1 | tee "$out/statistics-integration.log"
 stage=agents-runtime
 cargo_run test "${common[@]}" -p rocket-ui --lib agents::runtime:: -- --test-threads=1 --nocapture 2>&1 | tee "$out/agents-runtime.log"
+stage=gatekeeper-probe
+ROCKET_MACOS_DISPOSABLE_GATEKEEPER_TEST=1 cargo_run test "${common[@]}" -p rocket-ui --lib \
+    agents::runtime::program::tests::bundle_quarantine_native_gatekeeper_probe \
+    -- --exact --ignored --test-threads=1 --nocapture 2>&1 | tee "$out/gatekeeper-probe.log"
 stage=verify-results
 node tools/macos/verify-security-followups.cjs "$out"
 stage=complete

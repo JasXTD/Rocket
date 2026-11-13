@@ -367,6 +367,122 @@ mod tests {
         root.empty();
     }
 
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn enclosing_quarantine_blocks_review_recheck_and_launch_without_changing_metadata() {
+        for bundle_name in ["Agent.app", "Agent.framework", "Runtime without suffix 文"] {
+            let root = Directory::new();
+            let bundle = root.0.join(bundle_name);
+            let contents = bundle.join("Contents/MacOS");
+            fs::create_dir_all(&contents).unwrap();
+            let source = contents.join("agent 工具");
+            fs::copy("/bin/echo", &source).unwrap();
+            fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).unwrap();
+            let before = fs::read(&source).unwrap();
+            let command = Command { program: source.to_str().unwrap().into(), arguments: String::new() };
+            let program = Program::inspect(&command, &CancellationToken::new()).unwrap();
+            let snapshot = program.launch_path().to_owned();
+            for marker in ["0083;00000000;Rocket security test;", "0041;00000000;approved-looking;", ""] {
+                let set = std::process::Command::new("/usr/bin/xattr")
+                    .args(["-w", "com.apple.quarantine", marker]).arg(&bundle).output().unwrap();
+                assert!(set.status.success(), "{}", String::from_utf8_lossy(&set.stderr));
+                let leaf = std::process::Command::new("/usr/bin/xattr")
+                    .args(["-p", "com.apple.quarantine"]).arg(&source).output().unwrap();
+                assert!(!leaf.status.success(), "fixture must quarantine only the enclosing bundle");
+                for result in [program.recheck(&CancellationToken::new()), program.check_launch_policy(), Program::inspect(&command, &CancellationToken::new()).map(|_| ())] {
+                    let error = result.unwrap_err().to_string();
+                    assert!(error.contains("quarantine") && error.contains("enclosing"), "{error}");
+                }
+                let read = std::process::Command::new("/usr/bin/xattr")
+                    .args(["-p", "com.apple.quarantine"]).arg(&bundle).output().unwrap();
+                assert!(read.status.success());
+                assert_eq!(String::from_utf8(read.stdout).unwrap().trim_end(), marker);
+            }
+            // A same-bytes replacement at the reviewed pathname must not conceal
+            // quarantine attached to the original, still-held bundle.
+            let moved = root.0.join("moved bundle");
+            fs::rename(&bundle, &moved).unwrap();
+            fs::create_dir_all(&contents).unwrap();
+            fs::write(&source, &before).unwrap();
+            fs::set_permissions(&source, fs::Permissions::from_mode(0o700)).unwrap();
+            assert!(program.recheck(&CancellationToken::new()).unwrap_err().to_string().contains("quarantine"));
+            assert!(program.check_launch_policy().unwrap_err().to_string().contains("quarantine"));
+            assert_eq!(fs::read(moved.join("Contents/MacOS/agent 工具")).unwrap(), before);
+            drop(program);
+            assert!(!snapshot.exists());
+            fs::remove_dir_all(bundle).unwrap();
+            fs::remove_dir_all(moved).unwrap();
+            root.empty();
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "native Gatekeeper diagnostic; requires a disposable Mac test environment"]
+    fn bundle_quarantine_native_gatekeeper_probe() {
+        use std::{os::unix::process::ExitStatusExt, process::Stdio, time::{Duration, Instant}};
+        assert_eq!(std::env::var("ROCKET_MACOS_DISPOSABLE_GATEKEEPER_TEST").as_deref(), Ok("1"));
+        let root = Directory::new();
+        let bundle = root.0.join("Policy probe 文.app");
+        let contents = bundle.join("Contents/MacOS");
+        fs::create_dir_all(&contents).unwrap();
+        let source = contents.join("probe");
+        let code = root.0.join("probe.c");
+        fs::write(&code, b"int main(void) { return 42; }\n").unwrap();
+        let identifier = format!("dev.rocket.security.probe.{}.{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos());
+        fs::write(bundle.join("Contents/Info.plist"), format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?><plist version=\"1.0\"><dict><key>CFBundleIdentifier</key><string>{identifier}</string><key>CFBundleExecutable</key><string>probe</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>")).unwrap();
+        let built = std::process::Command::new("/usr/bin/clang").arg(&code).arg("-o").arg(&source).output().unwrap();
+        assert!(built.status.success(), "{}", String::from_utf8_lossy(&built.stderr));
+        let before = fs::read(&source).unwrap();
+        let run = || -> (&'static str, Option<i32>) {
+            let mut child = match std::process::Command::new(&source)
+                .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
+                Ok(child) => child,
+                Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => return ("blocked", None),
+                Err(error) => panic!("native fixture could not start: {error}"),
+            };
+            let deadline = Instant::now() + Duration::from_secs(10);
+            loop {
+                if let Some(status) = child.try_wait().unwrap() {
+                    let result = if status.code() == Some(42) { "allowed" }
+                        else if status.signal() == Some(9) { "blocked" }
+                        else { "unexpected_exit" };
+                    return (result, status.code());
+                }
+                if Instant::now() >= deadline {
+                    child.kill().unwrap(); child.wait().unwrap();
+                    return ("timed_out", None);
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        };
+        assert_eq!(run(), ("allowed", Some(42)), "unquarantined fixture must run first");
+        let command = Command { program: source.to_str().unwrap().into(), arguments: String::new() };
+        let program = Program::inspect(&command, &CancellationToken::new()).unwrap();
+        let set = std::process::Command::new("/usr/bin/xattr")
+            .args(["-w", "com.apple.quarantine", "0083;00000000;Rocket security test;"])
+            .arg(&bundle).output().unwrap();
+        assert!(set.status.success());
+        let leaf = std::process::Command::new("/usr/bin/xattr").args(["-p", "com.apple.quarantine"]).arg(&source).output().unwrap();
+        assert!(!leaf.status.success(), "only the bundle must carry quarantine");
+        let (direct, _) = run();
+        // Gatekeeper behavior depends on native OS policy/cache. Record whether
+        // its block was actually reproduced; a timeout is never called a block.
+        // Rocket must refuse this context independently, even if macOS allows it.
+        assert_ne!(direct, "unexpected_exit");
+        for result in [program.check_launch_policy(), program.recheck(&CancellationToken::new()), Program::inspect(&command, &CancellationToken::new()).map(|_| ())] {
+            assert!(result.unwrap_err().to_string().contains("quarantine"));
+        }
+        assert_eq!(fs::read(&source).unwrap(), before);
+        let retained = std::process::Command::new("/usr/bin/xattr").args(["-p", "com.apple.quarantine"]).arg(&bundle).output().unwrap();
+        assert!(retained.status.success());
+        println!("ROCKET_GATEKEEPER_BUNDLE_PROBE={{\"baseline_exit\":42,\"direct_execution\":\"{direct}\",\"bundle_only_quarantine\":true,\"rocket_refused\":true,\"metadata_retained\":true}}");
+        drop(program);
+        fs::remove_dir_all(&bundle).unwrap();
+        fs::remove_file(code).unwrap();
+        root.empty();
+    }
+
     #[test]
     fn native_snapshot_preserves_arguments_and_worktree_and_stop_releases_it() {
         use std::{
