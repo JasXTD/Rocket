@@ -396,12 +396,23 @@ Official comparison sources:
 
 ## Roadmap
 
-Rocket has one maintainer, so this is a to-do list, not a schedule.
+Updated **2026-11-14**. Rocket has one maintainer, so this is a to-do list, not a
+schedule. Checked items are implemented on `main`; they are not in the **0.92.3
+downloads** yet. See [Unreleased](CHANGELOG.md#unreleased) for the changes.
 
 **Next release**
 
-- [ ] Ship what is already in a source build: Insights, Map → Modules, Speed up history
-  and the Agents updates.
+- [x] Insights with PR drilldowns, trends, author filters and CSV/JSON export.
+- [x] Map → Modules, People refinements and readable package-detail buttons, plus
+  Speed up history for large repositories.
+- [x] Agents: Copilot CLI, conversation resume, attention status and guided integration.
+- [x] Insights translations and catalog corrections; language review remains open below.
+- [x] Secret protection and History Index security fixes, hosting adapter corrections,
+  PR discussion layout improvements and stable repository navigation while loading.
+- [ ] Finish integrating the UI/dependency upgrade, with affected regression checks.
+- [ ] Verify the latest security fixes natively on Apple Silicon and Intel macOS.
+- [ ] Rebuild and verify Windows, Linux and both Mac packages, then publish the next
+  release with checksums and release notes.
 
 **Linux**
 
@@ -413,9 +424,11 @@ Rocket has one maintainer, so this is a to-do list, not a schedule.
 
 **macOS**
 
-- [ ] **Full native Mac support:** test on a real Mac, then Developer ID signing,
-  notarization and in-app updates. This waits until there is a Mac to test on; today's
-  Apple Silicon and Intel builds are previews checked on GitHub's Mac runners.
+- [ ] Test the Apple Silicon and Intel previews on physical Macs, including keyboard/IME,
+  Retina display, terminal and desktop integration.
+- [ ] Sign with Developer ID, notarize and validate in-app updates and rollback using
+  signed release packages. Update support is implemented; ad-hoc previews refuse
+  in-app installation. Signing requires an Apple Developer identity that is not available yet.
 
 **Windows**
 
@@ -430,9 +443,10 @@ Rocket has one maintainer, so this is a to-do list, not a schedule.
 
 **Languages and the command line**
 
-- [ ] Take the ten translations out of preview once their wording has been reviewed. Help
-  with a language you speak is welcome.
-- [ ] Cover more of the desktop in `rocket-cli` and the localhost MCP service.
+- [ ] Review wording and compact-window layouts across the ten preview translations
+  before removing the Preview label. Help with a language you speak is welcome.
+- [ ] Cover more of the desktop in `rocket-cli` and the localhost MCP service, keeping
+  the same previews, cancellation and recovery safeguards.
 
 ### Ask for a feature
 
