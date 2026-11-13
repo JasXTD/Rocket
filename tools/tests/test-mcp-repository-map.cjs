@@ -67,6 +67,8 @@ async function run(){try{
  const ui=nodes.find(n=>n.label==='界面'),core=nodes.find(n=>n.label==='engine');assert(ui&&core);assert(map().data.links.some(e=>e.from===ui.index&&e.to===core.index&&e.kind==='DependsOn'));
  assert(nodes.some(n=>n.path===FILE));assert(!nodes.some(n=>n.path==='PRIVATE_UNTRACKED'));await capture('code-packages-wide');
  await click('map-node-'+ui.index);assert.equal(map().selected,ui.index);await capture('code-package-details');
+ // A button that runs out of row starts the next one; it once broke its label ("Comm / its / here") into a tall narrow button.
+ {const height=c=>c.rect[3]-c.rect[1],line=height(control('map-fit'));for(const id of ['map-show-folders','map-show-modules','map-history'])assert(control(id)&&height(control(id))<=line+1,id+' breaks its label: '+JSON.stringify(control(id)));}
  assert(control('map-details-scroll'),'wide maps keep the details card');assert(control('map-link-0'),'the package card lists what it uses');
  await click('map-show-folders');assert(!map().alternate);assert.equal(map().selected,ui.index);assert(!map().collapsed.includes(map().data.nodes[ui.index].label));await capture('code-folders-from-package');
  // Folders: a file counts on its folder's card; search selects that folder.

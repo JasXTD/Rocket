@@ -668,6 +668,53 @@ fn translated_map_zoom_controls_keep_their_complete_labels() {
     }
 }
 
+#[test]
+fn package_details_buttons_keep_their_labels_on_one_line() {
+    // Show folders, Show modules and Commits here share one row in the details card.
+    // The third once got only what the first two left of the row and broke its label
+    // into "Comm / its / here" instead of moving to the next row.
+    let mut d = data(3);
+    d.nodes[0].kind = MapNodeKind::Crate;
+    let d = Arc::new(d);
+    for language in crate::i18n::Language::ALL {
+        crate::i18n::scoped(language, || {
+            let ctx = Context::default();
+            crate::style::install(&ctx);
+            ctx.set_fonts(crate::fonts::definitions());
+            let mut s = MapPage { data: Some(d.clone()), selected: Some(0), alternate: true, ..Default::default() };
+            s.rebuild();
+            // The card beside the map, and a narrow window's drawer.
+            for width in [DETAILS_WIDTH, 200.] {
+                let panel = Rect::from_min_size(Pos2::ZERO, vec2(width, 600.));
+                let mut controls = HashMap::new();
+                let mut needed = HashMap::new();
+                for _ in 0..3 {
+                    controls.clear();
+                    ctx.run_ui(RawInput { screen_rect: Some(panel), ..Default::default() }, |ui| {
+                        for (id, label) in [
+                            ("map-show-folders", crate::i18n::tr("Show folders")),
+                            ("map-show-modules", tr("Show modules")),
+                            ("map-history", tr("Commits here")),
+                        ] {
+                            let text = WidgetText::from(label).into_galley(ui, Some(TextWrapMode::Extend), f32::INFINITY, TextStyle::Button);
+                            let padding = ui.spacing().button_padding;
+                            let one_line = (text.size().y + 2. * padding.y).max(ui.spacing().interact_size.y);
+                            needed.insert(id, (label, vec2(text.size().x + 2. * padding.x, one_line)));
+                        }
+                        details::card(ui, &mut s, MapKind::Code, panel, false, &mut Vec::new(), &mut controls);
+                    })
+                    .drop_without_applying_deltas();
+                }
+                for (id, (label, size)) in &needed {
+                    let r = controls.get(*id).unwrap_or_else(|| panic!("{language:?} at {width}: {id} missing")).rect;
+                    assert!(r.width() + 1. >= size.x, "{language:?} at {width}: {id} squeezes {label:?} into {r:?}, needs {size:?}");
+                    assert!(r.height() <= size.y + 1., "{language:?} at {width}: {id} breaks {label:?} over lines: {r:?}, needs {size:?}");
+                }
+            }
+        });
+    }
+}
+
 /// A People map: people with these commit totals, then folders with these paths and
 /// totals, and `weight(person, folder)` commits in each cell (0 for none). People are
 /// nodes 0.., the folders follow them in the order given.

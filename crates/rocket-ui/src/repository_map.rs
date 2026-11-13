@@ -647,6 +647,12 @@ fn button(
     text: &str,
     enabled: bool,
 ) -> bool {
+    // The scope below gets only what is left of the row, and egui breaks the label to
+    // fit it there ("Comm / its / here") instead of moving the button on. In a wrapping
+    // row, start the next row first.
+    if ui.layout().is_horizontal() && ui.layout().main_wrap() {
+        room(ui, pages::button_width(ui, text, 0.));
+    }
     // Paging and scope rows appear/disappear before other controls. Keep the
     // interaction ID independent of their allocation order, including while a
     // pointer press is in flight.
