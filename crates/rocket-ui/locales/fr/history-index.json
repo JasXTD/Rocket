@@ -21,7 +21,7 @@
   "Writing the index": "Écriture de l'index",
   "{done} of {total} commits": "{done} commits sur {total}",
   "Stopping leaves the repository as it was.": "L'arrêt laisse le dépôt tel qu'il était.",
-  "Stopped. The repository is as it was.": "Arrêté. Le dépôt est tel qu'il était.",
+  "Stopped. Commits and working files are unchanged. Git locks and temporary index files are kept; retry only after the writer has exited.": "Arrêté. Les commits et les fichiers de travail sont inchangés. Les verrous Git et les fichiers d’index temporaires sont conservés ; ne réessayez qu’une fois le processus d’écriture terminé.",
   "Ordering history": "Tri de l'historique",
   "Measured on this repository": "Mesuré sur ce dépôt",
   "Index written, {size}": "Index écrit, {size}",

@@ -21,7 +21,7 @@
   "Writing the index": "인덱스 쓰는 중",
   "{done} of {total} commits": "커밋 {total}개 중 {done}개",
   "Stopping leaves the repository as it was.": "중지해도 리포지토리는 그대로입니다.",
-  "Stopped. The repository is as it was.": "중지했습니다. 리포지토리는 그대로입니다.",
+  "Stopped. Commits and working files are unchanged. Git locks and temporary index files are kept; retry only after the writer has exited.": "중지했습니다. 커밋과 작업 파일은 변경되지 않았습니다. Git 잠금과 임시 인덱스 파일은 유지됩니다. 쓰는 프로세스가 종료된 후에만 다시 시도하세요.",
   "Ordering history": "기록 정렬",
   "Measured on this repository": "이 리포지토리에서 측정",
   "Index written, {size}": "인덱스 작성됨, {size}",

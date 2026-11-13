@@ -21,7 +21,7 @@
   "Writing the index": "Запись индекса",
   "{done} of {total} commits": "{done} из {total} коммитов",
   "Stopping leaves the repository as it was.": "При остановке репозиторий останется как был.",
-  "Stopped. The repository is as it was.": "Остановлено. Репозиторий остался как был.",
+  "Stopped. Commits and working files are unchanged. Git locks and temporary index files are kept; retry only after the writer has exited.": "Остановлено. Коммиты и рабочие файлы не изменены. Блокировки Git и временные файлы индекса сохранены; повторяйте только после завершения записывающего процесса.",
   "Ordering history": "Упорядочение истории",
   "Measured on this repository": "Измерено в этом репозитории",
   "Index written, {size}": "Индекс записан, {size}",

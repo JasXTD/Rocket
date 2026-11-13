@@ -21,7 +21,7 @@
   "Writing the index": "Skriver indexet",
   "{done} of {total} commits": "{done} av {total} commits",
   "Stopping leaves the repository as it was.": "Om du stoppar lämnas repot som det var.",
-  "Stopped. The repository is as it was.": "Stoppad. Repot är som det var.",
+  "Stopped. Commits and working files are unchanged. Git locks and temporary index files are kept; retry only after the writer has exited.": "Stoppat. Commits och arbetsfiler är oförändrade. Git-lås och tillfälliga indexfiler behålls; försök igen först när den skrivande processen har avslutats.",
   "Ordering history": "Ordna historiken",
   "Measured on this repository": "Uppmätt i det här repot",
   "Index written, {size}": "Index skrivet, {size}",

@@ -360,7 +360,7 @@ macro_rules! files {
     };
 }
 const FILES: &[(Language, &str, &str)] =
-    files!["common", "menus", "chrome", "views", "diff", "preferences", "git-settings", "terminal", "commit-draft", "settings-extra", "dialogs-extra", "advanced-views", "advanced-workflows", "dialogs-more", "custom-command-extra", "workflow-ui", "map-extra", "actions-extra", "batch-extra", "recovery-extra", "commit-actions-extra", "hosting-extra", "agents", "history-index"];
+    files!["common", "menus", "chrome", "views", "diff", "preferences", "git-settings", "terminal", "commit-draft", "settings-extra", "dialogs-extra", "advanced-views", "advanced-workflows", "dialogs-more", "custom-command-extra", "workflow-ui", "map-extra", "actions-extra", "batch-extra", "recovery-extra", "commit-actions-extra", "hosting-extra", "agents", "history-index", "insights"];
 
 /// One catalog entry: a text, or a counted phrase's forms by CLDR category.
 #[derive(Clone, Debug)]

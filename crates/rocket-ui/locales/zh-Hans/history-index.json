@@ -21,7 +21,7 @@
   "Writing the index": "正在写入索引",
   "{done} of {total} commits": "{done} / {total} 个提交",
   "Stopping leaves the repository as it was.": "停止后仓库保持原样。",
-  "Stopped. The repository is as it was.": "已停止。仓库保持原样。",
+  "Stopped. Commits and working files are unchanged. Git locks and temporary index files are kept; retry only after the writer has exited.": "已停止。提交和工作文件未改变。Git 锁和临时索引文件会保留；请在写入进程退出后再重试。",
   "Ordering history": "排序历史",
   "Measured on this repository": "在此仓库测得",
   "Index written, {size}": "索引已写入，{size}",
