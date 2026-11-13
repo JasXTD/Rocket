@@ -158,16 +158,28 @@
   </div>
 </section>
 
-<section class="c" id="agents" aria-labelledby="h-agents">
+<section class="c wide" id="agents" aria-labelledby="h-agents">
   <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
-  <div><span class="ref mono">agents</span>
-    <h2 id="h-agents">Run coding agents side by side.</h2>
-    <p>Start Claude Code, Codex or your own command in parallel sessions, each in its own worktree and terminal. Rocket shows the base commit, the program and its arguments before anything starts, and Stop ends the whole process tree.</p>
-    <a class="lnk" href="https://github.com/JasXTD/Rocket/blob/main/docs/Agents.md">Read the session guide</a>
+  <div class="two">
+    <div><span class="ref mono">agents</span>
+      <h2 id="h-agents">Run coding agents side by side.</h2>
+      <p>Start Claude Code, Codex or your own command in parallel sessions, each in its own worktree and terminal. Rocket shows the base commit, the program and its arguments before anything starts, and Stop ends the whole process tree.</p>
+      <a class="lnk" href="https://github.com/JasXTD/Rocket/blob/main/docs/Agents.md">Read the session guide</a></div>
+    <div>
+      <ul class="ticks flush"><li>Your checkout's changes stay where they are; each session starts from the commit you pick</li><li>Saved sessions never start by themselves</li><li>Removing a worktree checks for uncommitted work and keeps the branch</li><li>Uses the tools you installed and their own logins. Worktrees separate files, not permissions</li></ul>
+      <p><span class="soon">Next release</span>A GitHub Copilot CLI preset. Sessions grouped by what needs you, with a badge when an agent asks for permission or finishes a turn. Resume conversation reopens the exact conversation, and Integrate merges an agent's committed work through the usual merge review.</p>
+      <p class="small">Pictured: the Agents tab from the next release. The sessions run a stand-in test program instead of an agent, and the changes in the worktree are scripted.</p>
+    </div>
   </div>
-  <div>
-    <ul class="ticks flush"><li>Your checkout's changes stay where they are; each session starts from the commit you pick</li><li>Saved sessions never start by themselves</li><li>Removing a worktree checks for uncommitted work and keeps the branch</li><li>Uses the tools you installed and their own logins. Worktrees separate files, not permissions</li></ul>
-    <p><span class="soon">Next release</span>A GitHub Copilot CLI preset. Sessions grouped by what needs you, with a badge when an agent asks for permission or finishes a turn. Resume conversation reopens the exact conversation, and Integrate merges an agent's committed work through the usual merge review.</p>
+  <div class="shot pair band">
+    <figure class="shot zoom" style="--zw: 238%; --zx: 0%; --zy: 0%; --ar: 5/4">
+      <img class="only-dark" src="media/agents-dark.webp" width="1384" height="762" loading="lazy" alt="The Changes tab of an agent session: three files changed in its worktree, and the diff of one that adds a --json option to a command.">
+      <img class="only-light" src="media/agents-light.webp" width="1384" height="762" loading="lazy" alt="The Changes tab of an agent session: three files changed in its worktree, and the diff of one that adds a --json option to a command.">
+    </figure>
+    <figure class="shot over narrow">
+      <img class="only-dark" src="media/agents-list-dark.webp" width="299" height="315" loading="lazy" alt="Three sessions in the Agents list: one under Needs you whose turn has finished, and two running.">
+      <img class="only-light" src="media/agents-list-light.webp" width="299" height="315" loading="lazy" alt="Three sessions in the Agents list: one under Needs you whose turn has finished, and two running.">
+    </figure>
   </div>
 </section>
 
@@ -190,6 +202,10 @@
   <div class="head"><span class="ref mono">map</span>
     <h2 id="h-insights">See how the repository fits together.</h2>
     <p>The Repository map and the activity pages only read. They don't change files or the staging area, and your local history is never uploaded. Copy or save what the map shows as Mermaid text.</p></div>
+  <figure class="shot zoom band" style="--zw: 310%; --zx: -33.9%; --zy: -19.3%; --ar: 2/3">
+    <img class="only-dark" src="media/map-dark.webp" width="1348" height="872" loading="lazy" alt="The Repository map's Code view of a demo workspace: six Cargo packages in layers, with orbit-transfer chosen and lines to the packages it uses and the ones that use it.">
+    <img class="only-light" src="media/map-light.webp" width="1348" height="872" loading="lazy" alt="The Repository map's Code view of a demo workspace: six Cargo packages in layers, with orbit-transfer chosen and lines to the packages it uses and the ones that use it.">
+  </figure>
   <div class="four">
     <div><h3>Code</h3><p>Cargo packages in layers, what each one uses, and the committed folder tree.</p></div>
     <div><h3>History</h3><p>Branches and merges along the main line, or every commit, narrowed by path.</p></div>
