@@ -305,10 +305,19 @@ the rest.
 | Commit messages | ✅ Claude Code, Codex | ✅ external AI agents | 💲 GitKraken AI | — |
 | Code review | ✅ branch reviews | ✅ external AI agents | GitKraken.dev (browser) | — |
 | Conflict resolution | ✅ reviewed suggestions | — | 💲 preview | — |
+| Parallel coding agents | ✅ Claude Code, Codex or a custom command, a worktree and terminal each; live status and resume *next release* | — | ✅ six agent CLIs, a worktree each, live status for four; 💲 for private repos | — |
 | **Hosting** | | | | |
 | Pull requests | ✅ list, create, inline review, merge | ✅ list, create | ✅ list/create; GitHub review/merge | GitHub PR indicators; create/open in browser |
 | CI status | ✅ commits, branches and PR heads; rerun where supported | — | ✅ on pull requests | — |
+| Pull request metrics | *Next release:* opened/merged trends, merge time, time to first review | — | 💲 GitKraken Insights, in the browser | — |
+| **Understanding a repository** | | | | |
+| Activity statistics | ✅ timeline, contributors, weekday/hour, file treemap | ✅ statistics, activity treemap | — | — |
+| Code and repository map | ✅ packages, folders, branches and people; Rust modules *next release* | — | Codemaps, early access only | — |
+| **Safety** | | | | |
+| Built-in secret check before commit and push | ✅ tokens, private keys, credentials, AI API keys | — | — | — |
+| Dependency advisories | ✅ offline OSV scan, optional check before push | — | — | — |
 | **Extras** | | | | |
+| Interface languages | ✅ English and 10 preview translations | — | — | ✅ English and 8 more, set in config |
 | Command-line interface | ✅ [`rocket-cli`](CLI.md), JSON output | [Open desktop from CLI](https://git-fork.com/blog/posts/fork-1.0.67/) | ✅ companion [`gk`, JSON output](https://help.gitkraken.com/cli/gk-cli-json-output/) | Interactive terminal UI |
 | Custom commands | ✅ contextual commands, input forms, JSON import/export | ✅ contextual commands and input forms | Agent launch/setup commands | ✅ YAML configuration and prompts |
 | Sandboxed UI extensions | ✅ Lua with native panels | — | — | — |
@@ -317,10 +326,17 @@ the rest.
 
 ✅ supported as described · 💲 paid plan · — not documented in the sources checked
 
-Updated for **Rocket 0.92.3 on 2026-11-11**. This compares documented capabilities,
-not speed, maturity or identical coverage. Features vary by platform, host and plan;
-AI providers may require a separate subscription. See [Platforms](#platforms) for
-Rocket's package requirements and preview status.
+Updated for **Rocket 0.92.3 on 2026-11-11**; the agents, pull request metrics,
+repository, safety and language rows were checked on 2026-11-14. *Next release* marks
+Rocket features that are in a source build but not in the 0.92.3 downloads. This
+compares documented capabilities, not speed, maturity or identical coverage. Features
+vary by platform, host and plan; AI providers may require a separate subscription. See
+[Platforms](#platforms) for Rocket's package requirements and preview status.
+
+GitKraken Insights is a separate product used at gitkraken.dev; GitKraken's pricing
+lists it with the Business plan. A secret scanner you install as a Git hook is a separate
+option; GitKraken documents its [hook support](https://help.gitkraken.com/gitkraken-desktop/githooks/).
+Rocket's map reads committed files on your computer and compiles nothing.
 
 Rocket's [hosting matrix](HOSTING.md) describes merge methods and review limits by
 provider. PR checks use the PR's head commit; Bitbucket Server/Data Center CI is not
@@ -335,10 +351,15 @@ Official comparison sources:
   [macOS release notes](https://git-fork.com/releasenotes).
 - **GitKraken:** [PRs and CI status](https://help.gitkraken.com/gitkraken-desktop/pull-requests/),
   [AI](https://help.gitkraken.com/gitkraken-desktop/gkd-gitkraken-ai/),
-  [custom agent commands](https://help.gitkraken.com/gitkraken-desktop/preferences/) and
+  [custom agent commands](https://help.gitkraken.com/gitkraken-desktop/preferences/),
+  [coding agents](https://help.gitkraken.com/gitkraken-desktop/agents/),
+  [Insights PR metrics](https://help.gitkraken.com/gk-insights/gk-insights-pr-metrics/),
+  [Codemaps](https://www.gitkraken.com/features/code-dependency-mapping),
+  [security controls](https://www.gitkraken.com/features/security-controls) and
   [pricing](https://www.gitkraken.com/pricing).
-- **Lazygit:** [features](https://github.com/jesseduffield/lazygit) and
-  [custom commands](https://github.com/jesseduffield/lazygit/blob/master/docs/Custom_Command_Keybindings.md).
+- **Lazygit:** [features](https://github.com/jesseduffield/lazygit),
+  [custom commands](https://github.com/jesseduffield/lazygit/blob/master/docs/Custom_Command_Keybindings.md)
+  and [interface language](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md).
 
 ## Current limits
 
