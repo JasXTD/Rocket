@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rocket: a native Git client for Windows, macOS and Linux</title>
-<meta name="description" content="A native Git client built in Rust, for Windows, macOS and Linux. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes and add your own features.">
+<meta name="description" content="A native Git client built in Rust, for Windows, macOS and Linux. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes, run coding agents side by side and add your own features.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://jasxtd.github.io/Rocket/">
 <meta property="og:type" content="website">
@@ -44,7 +44,7 @@
     <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
     <div class="tag mono"><b>HEAD</b> native Git client in Rust</div>
     <h1 id="hero-title">Review first.<span>Then launch.</span></h1>
-    <p class="lead">A native Git client built in Rust, for Windows, macOS and Linux. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes and add your own features.</p>
+    <p class="lead">A native Git client built in Rust, for Windows, macOS and Linux. An open-source alternative to Fork and GitKraken: review changes, manage branches, work with remotes, run coding agents side by side and add your own features.</p>
     <div class="cta"><a class="btn pri" href="get.html">Download Rocket</a><a class="btn" href="https://github.com/JasXTD/Rocket">View on GitHub<svg class="ext" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h7v7M13 3L4 12"></path></svg></a></div>
     <p class="meta">In development · Windows · macOS · Linux · MIT or Apache-2.0</p>
   </div>
@@ -79,7 +79,7 @@
     <div><h3>Reviews recheck</h3><p>Supported previews pin the selected commits, paths and settings. A change from outside Rocket can invalidate one before it runs.</p></div>
     <div><h3>Recovery data</h3><p>Supported destructive file operations keep recovery copies. History rewrites keep the original tips in recovery references.</p></div>
     <div><h3>Honest cancellation</h3><p>Stop doesn't undo finished work. Rocket refreshes or checks the result, and says when it's unsure.</p></div>
-    <div><h3>Secret checks</h3><p>Local checks can block recognized credentials in commits and pushes. Pattern detection has limits.</p></div>
+    <div><h3>Secret checks</h3><p>Local checks can block recognized credentials and AI API keys in commits and pushes, and an offline scan can check dependencies for advisories before a push. Pattern detection has limits.</p></div>
   </div>
 </section>
 
@@ -158,6 +158,19 @@
   </div>
 </section>
 
+<section class="c" id="agents" aria-labelledby="h-agents">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
+  <div><span class="ref mono">agents</span>
+    <h2 id="h-agents">Run coding agents side by side.</h2>
+    <p>Start Claude Code, Codex or your own command in parallel sessions, each in its own worktree and terminal. Rocket shows the base commit, the program and its arguments before anything starts, and Stop ends the whole process tree.</p>
+    <a class="lnk" href="https://github.com/JasXTD/Rocket/blob/main/docs/Agents.md">Read the session guide</a>
+  </div>
+  <div>
+    <ul class="ticks flush"><li>Your checkout's changes stay where they are; each session starts from the commit you pick</li><li>Saved sessions never start by themselves</li><li>Removing a worktree checks for uncommitted work and keeps the branch</li><li>Uses the tools you installed and their own logins. Worktrees separate files, not permissions</li></ul>
+    <p><span class="soon">Next release</span>A GitHub Copilot CLI preset. Sessions grouped by what needs you, with a badge when an agent asks for permission or finishes a turn. Resume conversation reopens the exact conversation, and Integrate merges an agent's committed work through the usual merge review.</p>
+  </div>
+</section>
+
 <section class="c" id="remotes" aria-labelledby="h-remotes">
   <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
   <div><span class="ref mono">origin/main</span>
@@ -167,9 +180,30 @@
   </div>
   <div>
     <ul class="hosts"><li>GitHub</li><li>GitHub Enterprise Server</li><li>GitLab</li><li>Gitea</li><li>Bitbucket Cloud</li><li>Bitbucket Server/Data Center</li><li>Azure DevOps Services</li><li>Azure DevOps Server</li></ul>
-    <p>Browse pull requests and supported issue lists, prepare reviewed PR or MR creation, and inspect details, available checks and reviews.</p>
+    <p>Browse pull requests and supported issue lists, and create a PR or MR after a review. Leave inline review comments, reply to and resolve discussions, and merge once the reviewed head and base are checked again. CI marks show on commits and branches, with an Actions page and Re-run failed jobs where the host supports it.</p>
     <p class="small">What each host can do differs. Live acceptance for hosts other than github.com is still unverified. <a href="https://github.com/JasXTD/Rocket/blob/main/HOSTING.md">Hosting details</a></p>
   </div>
+</section>
+
+<section class="c wide" id="insights" aria-labelledby="h-insights">
+  <div class="rail" aria-hidden="true"><i class="ln"></i><i class="dot"></i></div>
+  <div class="head"><span class="ref mono">map</span>
+    <h2 id="h-insights">See how the repository fits together.</h2>
+    <p>The Repository map and the activity pages only read. They don't change files or the staging area, and your local history is never uploaded. Copy or save what the map shows as Mermaid text.</p></div>
+  <div class="four">
+    <div><h3>Code</h3><p>Cargo packages in layers, what each one uses, and the committed folder tree.</p></div>
+    <div><h3>History</h3><p>Branches and merges along the main line, or every commit, narrowed by path.</p></div>
+    <div><h3>People</h3><p>Who changed which folders, and who worked on the same files.</p></div>
+    <div><h3>Activity</h3><p>A commit timeline, contributors, weekday and hour charts, and a treemap of the files that change most.</p></div>
+  </div>
+  <p class="small"><span class="soon">Next release</span>Statistics becomes Insights, and Code gains Modules.</p>
+  <div class="four">
+    <div><h3>Modules</h3><p>One Rust package's modules and which uses which, read from the committed files without compiling.</p></div>
+    <div><h3>Pull requests</h3><p>Opened, merged, median merge time and open age from your hosting account, with weekly trends against the previous period.</p></div>
+    <div><h3>Reviews</h3><p>Review requests still waiting, and the median time to a first review on GitHub, GitHub Enterprise Server and Gitea.</p></div>
+    <div><h3>Saved views</h3><p>Each repository keeps its filters. Export what you see as CSV or JSON after a review.</p></div>
+  </div>
+  <p class="small">Pull request numbers come from a loaded sample of up to 500 and name what's missing instead of estimating it. <a href="https://github.com/JasXTD/Rocket/blob/main/docs/Insights.md">How Insights counts</a></p>
 </section>
 
 <section class="c wide" id="themes" aria-labelledby="h-themes">
@@ -200,9 +234,12 @@
     <div><h3>Tags</h3><p>Inspect, publish and safely delete remote tags.</p></div>
     <div><h3>Recovery</h3><p>Inspect reflogs, find lost commits and recover them onto new branches.</p></div>
     <div><h3>Bisect</h3><p>Find the commit that introduced a problem, by hand or automated.</p></div>
+    <div><h3>Faster history<span class="soon">Next release</span></h3><p>Write Git's commit-graph on request, so History orders a large repository's commits several times faster.</p></div>
+    <div><h3>Many repositories</h3><p>Folders, nested workspaces and tabs. Scan a folder, see every status, then Fetch all or Pull all.</p></div>
+    <div><h3>Explore</h3><p>Search GitHub or paste an address, look around read-only, then keep or discard the clone.</p></div>
     <div><h3>Terminal</h3><p>PowerShell, Git Bash or Command Prompt on Windows, zsh on macOS, your login shell on Linux, or your own.</p></div>
     <div><h3>Command palette</h3><p>Ctrl+K finds commands, branches and views.</p></div>
-    <div><h3>Repository manager</h3><p>Saved repositories in folders, nested workspaces and tabs.</p></div>
+    <div><h3>Languages</h3><p>English and ten preview translations, picked from your system language or in Preferences.</p></div>
     <div><h3>Command line</h3><p><span class="mono inline">rocket-cli</span> calls the same backend, with structured JSON output.</p></div>
     <div><h3>Your tools</h3><p>External editor, diff and merge profiles, custom commands and your own shortcuts.</p></div>
   </div>
@@ -229,12 +266,16 @@ cd Rocket
   <div class="docs">
     <a href="https://github.com/JasXTD/Rocket/blob/main/docs/wiki/Home.md"><strong>Beginner wiki</strong><span>First commit, everyday work, remotes and recovery.</span></a>
     <a href="https://github.com/JasXTD/Rocket/blob/main/crates/rocket-ui/src/guide.md"><strong>User guide</strong><span>Desktop workflows and recovery.</span></a>
+    <a href="https://github.com/JasXTD/Rocket/blob/main/docs/Agents.md"><strong>Agents</strong><span>Sessions, worktrees, resume and integration.</span></a>
+    <a href="https://github.com/JasXTD/Rocket/blob/main/docs/wiki/Repository-map.md"><strong>Repository map</strong><span>Code, History and People views.</span></a>
+    <a href="https://github.com/JasXTD/Rocket/blob/main/docs/Insights.md"><strong>Insights</strong><span>Activity and pull request numbers, and what they count.</span></a>
     <a href="https://github.com/JasXTD/Rocket/blob/main/CLI.md"><strong>CLI reference</strong><span>Commands, JSON output and cancellation.</span></a>
     <a href="https://github.com/JasXTD/Rocket/blob/main/HOSTING.md"><strong>Hosting</strong><span>Accounts, providers and verification limits.</span></a>
     <a href="https://github.com/JasXTD/Rocket/blob/main/docs/wiki/Integrations.md"><strong>Extensions</strong><span>Install, enable and update extensions.</span></a>
     <a href="https://github.com/JasXTD/Rocket/blob/main/INTEGRATIONS.md"><strong>Extension API</strong><span>Write your own extension package.</span></a>
     <a href="https://github.com/JasXTD/Rocket/blob/main/SECURITY.md"><strong>Security</strong><span>Safeguards and known boundaries.</span></a>
-    <a href="https://github.com/JasXTD/Rocket/blob/main/CHANGELOG.md"><strong>Changelog</strong><span>Version history.</span></a>
+    <a href="https://github.com/JasXTD/Rocket/blob/main/CHANGELOG.md"><strong>Changelog</strong><span>Version history, and what's coming next.</span></a>
+    <a href="https://github.com/JasXTD/Rocket/blob/main/docs/releases/0.92.3.md"><strong>Release notes</strong><span>What 0.92.3 contains and how it was tested.</span></a>
   </div>
   <div class="lic" id="license"><span>Licensed under either <a href="https://github.com/JasXTD/Rocket/blob/main/LICENSE-APACHE">Apache-2.0</a> or <a href="https://github.com/JasXTD/Rocket/blob/main/LICENSE-MIT">MIT</a>, at your option.</span><span><a href="https://github.com/JasXTD/Rocket/blob/main/THIRD-PARTY-NOTICES.txt">Third-party notices</a> list bundled components.</span></div>
 </section>

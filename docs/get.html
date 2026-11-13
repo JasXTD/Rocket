@@ -116,7 +116,7 @@ open target/macos-stage1/Rocket-macos-x64-development/Rocket.app</pre>
         <tr><th scope="row">Git Credential Manager</th><td>For the supported browser sign-in flows.</td></tr>
         <tr><th scope="row">OpenSSH</th><td>For SSH keys and profiles.</td></tr>
         <tr><th scope="row">Git LFS 3.8.1+</th><td>Only for Git LFS operations.</td></tr>
-        <tr><th scope="row">Claude Code or Codex</th><td>Optional, for AI drafts, review and resolve.</td></tr>
+        <tr><th scope="row">Claude Code or Codex</th><td>Optional, for Agents, AI drafts, review and resolve. Install and sign in to them yourself.</td></tr>
       </tbody></table>
       <p>Moving a Windows or Linux build? Keep every file from <span class="mono inline">target/release</span> together.</p>
     </aside>
@@ -130,7 +130,8 @@ open target/macos-stage1/Rocket-macos-x64-development/Rocket.app</pre>
       <li>Live acceptance for hosts other than github.com is still unverified.</li>
       <li>Partial diff and stash actions support specific text and file cases.</li>
       <li>Jira has been tested against mock services, not a live server.</li>
-      <li>The AI conflict page has been tested with a stand-in program, not a real reply.</li>
+      <li>AI conflict proposals have been checked with a real reply through localhost MCP; the Claude Code and Codex paths are tested with stand-ins.</li>
+      <li>Agents run with your account's permissions. Worktrees separate files, not permissions.</li>
       <li>The CLI and localhost MCP expose subsets of the desktop workflows.</li>
     </ul>
   </section>

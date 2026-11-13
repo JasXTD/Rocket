@@ -50,6 +50,14 @@ also adds an Intel Mac preview, extends the ten preview translations and hosting
 discussions, and fixes executable-launch and credential-helper security issues.
 See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
 
+**Coming in the next release**, already in a source build: [**Insights**](docs/Insights.md)
+with pull request trends and review times, Rust **Modules** in the Repository map,
+**Speed up history** for large repositories, and Agents with a GitHub Copilot CLI preset,
+attention badges, exact-conversation resume and guided integration. Secret protection also
+learns AWS keys, JSON Web Key private keys and OAuth client secrets. Features below marked
+*Next release* aren't in the 0.92.3 downloads; [Unreleased](CHANGELOG.md#unreleased) has
+the full list.
+
 ## Features
 
 **Changes and review**
@@ -73,9 +81,9 @@ See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
 - Reflog recovery, **Undo Last Commit**, and manual or automatic **bisect**.
 - **Git Flow** feature, release and hotfix branches.
 - Tags, commit signing and signature checks, and **issue links** to Jira, Redmine or any tracker.
-- [**Repository map**](docs/wiki/Repository-map.md) and activity statistics.
-  The next build adds [**Insights**](docs/Insights.md), with bounded PR metrics,
-  author filters, PR drilldowns and reviewed CSV/JSON export.
+- *Next release:* **Speed up history** writes Git's commit-graph index on request, so
+  History orders a large repository's commits several times faster; it can stay current
+  after each fetch. Long file and branch lists draw only the rows on screen.
 
 <p align="center">
   <picture>
@@ -83,6 +91,18 @@ See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
     <img src="docs/media/history-dark.webp" width="760" alt="The Commits page with a branch graph across five branches, merges, and branch and remote labels.">
   </picture>
 </p>
+
+**Map and Insights**
+
+- [**Repository map**](docs/wiki/Repository-map.md) reads a pinned snapshot: **Code** draws
+  Cargo packages and the folder tree, **History** the branches and merges, and **People**
+  who changed which folders. Export what the map shows as Mermaid.
+- *Next release:* **Modules** in Map → Code shows one Rust package's modules and which
+  uses which, read from the committed files without compiling anything.
+- *Next release:* [**Insights**](docs/Insights.md) replaces Statistics: commit activity, a
+  file treemap and pull request numbers from your hosting account, with weekly trends
+  against the previous period, waiting review requests, time to first review, saved views
+  per repository and reviewed CSV/JSON export.
 
 **Conflicts and recovery**
 
@@ -106,8 +126,9 @@ See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
 - **Publish to GitHub** from a local repository.
 - Pull requests, issues and reviews on GitHub, GitHub Enterprise Server, GitLab, Bitbucket,
   Azure DevOps and Gitea ([what each supports](HOSTING.md)).
-- Inline review drafts with revision checks before submission; GitLab server-side
-  search for merge requests and issues. Non-GitHub adapters are tested with mock APIs.
+- Inline review drafts with revision checks before submission, and reviewed discussion
+  replies and resolution; GitLab server-side search for merge requests and issues.
+  Non-GitHub adapters are tested with mock APIs.
 - CI marks on commits and branches, an **Actions** page and **Re-run failed jobs**.
 - **SSH keys**: find, create, unlock and assign per repository, plus Direct key mode without
   ssh-agent.
@@ -120,16 +141,19 @@ See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
 - Worktrees (move, repair, prune), submodules, Git LFS (objects, tracking rules, locks) and
   ignore rules.
 
+**Agents**
+
+- Run parallel Claude Code, Codex or custom executable sessions, each in its own worktree
+  and terminal, after a review of the base commit, program and arguments. Stop, restart
+  and safe cleanup; saved sessions never start by themselves. [Session guide](docs/Agents.md).
+- *Next release:* a **GitHub Copilot CLI** preset; sessions grouped by what needs you, with
+  an attention badge when an agent asks for permission or finishes a turn; **Resume
+  conversation** reopens the exact conversation; and **Integrate** compares an agent's
+  committed work and merges it through Rocket's usual merge review.
+- Uses your installed tools and existing logins; worktrees separate files, not permissions.
+
 **AI, only when you ask**
 
-- **Agents**: run parallel Claude Code, Codex or custom executable
-  sessions in separate worktrees, with reviewed setup, interactive terminals,
-  Stop/restart and safe cleanup. Uses your installed tools and existing logins;
-  worktrees separate files, not permissions. [Session guide](docs/Agents.md).
-- **Pending next release:** a GitHub Copilot CLI preset for Agents, using your
-  separately installed native CLI and its own login; exact-conversation resume,
-  provider-reported attention/turn status, and guided review and local integration.
-  Integration preserves worktrees and uses the existing merge/recovery checks.
 - **AI drafts** for commit messages, **AI review** of a branch diff and **AI resolve** for
   conflicts.
 - Runs Claude Code or Codex on your computer, or a connected MCP agent. No AI API key is
@@ -154,7 +178,8 @@ See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
 **Safety**
 
 - **Secret protection** and **Guard AI API keys** block recognized secrets in commits and
-  pushes.
+  pushes. *Next release:* AWS access keys, JSON Web Key private keys, OAuth client secrets
+  and Amazon Bedrock API keys too.
 - **Dependency advisories**: offline OSV scans, with an optional check before push.
 - Reviews before writes, Stop on running operations, and recovery data for destructive steps.
 
@@ -337,6 +362,10 @@ Official comparison sources:
   services, without a live tenant. AI conflict proposals have also been checked with
   a real Astra response through localhost MCP using synthetic code; the separate
   Claude Code/Codex CLI provider paths still use stand-ins in acceptance tests.
+- **Map and Insights (next release):** Modules reads Rust packages only, without expanding
+  macros or `cfg`. Insights counts a loaded sample of up to 500 pull requests; time to
+  first review is measured on GitHub, GitHub Enterprise Server and Gitea only, and
+  missing data is named rather than estimated.
 - **Partial actions** (single lines, hunks) cover specific text cases; other files need a
   whole-file action. The CLI and MCP service cover a subset of the desktop.
 
@@ -357,6 +386,8 @@ Official comparison sources:
 
 - [Wiki](docs/wiki/Home.md): first commit, everyday work, remotes and recovery.
 - [User guide](crates/rocket-ui/src/guide.md): every desktop workflow in detail.
+- [Agents](docs/Agents.md), [Repository map](docs/wiki/Repository-map.md) and
+  [Insights](docs/Insights.md).
 - [CLI](CLI.md), [Hosting](HOSTING.md), [Extensions](docs/wiki/Integrations.md) and the
   [extension API](INTEGRATIONS.md).
 - [Security](SECURITY.md), [Dependencies](DEPENDENCIES.md) and the [Changelog](CHANGELOG.md).
