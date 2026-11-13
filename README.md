@@ -15,6 +15,7 @@
   <a href="#command-line-interface">CLI</a> ·
   <a href="#build-and-run">Build and run</a> ·
   <a href="#comparison">Comparison</a> ·
+  <a href="#roadmap">Roadmap</a> ·
   <a href="#contributing">Contributing</a> ·
   <a href="docs/wiki/Home.md">Wiki</a> ·
   <a href="crates/rocket-ui/src/guide.md">User guide</a> ·
@@ -390,6 +391,55 @@ Official comparison sources:
 - **Partial actions** (single lines, hunks) cover specific text cases; other files need a
   whole-file action. The CLI and MCP service cover a subset of the desktop.
 
+## Roadmap
+
+Rocket has one maintainer, so this is a to-do list, not a schedule.
+
+**Next release**
+
+- [ ] Ship what is already in a source build: Insights, Map → Modules, Speed up history
+  and the Agents updates.
+
+**Linux**
+
+- [ ] **Fedora and Arch Linux:** test Rocket there and list the packages each needs.
+- [ ] **More distributions**, such as Debian and openSUSE, and older releases: a portable
+  build that needs an older glibc than today's 2.43.
+- [ ] Run the remaining acceptance tests on Linux too: most localhost MCP runners and the
+  non-GitHub hosting tests still run on Windows only.
+
+**macOS**
+
+- [ ] **Full native Mac support:** test on a real Mac, then Developer ID signing,
+  notarization and in-app updates. This waits until there is a Mac to test on; today's
+  Apple Silicon and Intel builds are previews checked on GitHub's Mac runners.
+
+**Windows**
+
+- [ ] Test the portable package on a fresh Windows 11 install; testing so far has been on
+  Windows 10.
+
+**Hosting and integrations**
+
+- [ ] Check GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps and Gitea against
+  real accounts, not only local test servers.
+- [ ] Check the Jira extension against a live Jira site.
+
+**Languages and the command line**
+
+- [ ] Take the ten translations out of preview once their wording has been reviewed. Help
+  with a language you speak is welcome.
+- [ ] Cover more of the desktop in `rocket-cli` and the localhost MCP service.
+
+### Ask for a feature
+
+Missing something? Open a
+[feature request](https://github.com/JasXTD/Rocket/issues/new?template=feature_request.yml):
+say what you're trying to do and what gets in the way; a screenshot or an example from
+another tool helps. Ideas that fit Rocket can join this list. Found a bug? Use the
+[bug report](https://github.com/JasXTD/Rocket/issues/new?template=bug_report.yml).
+Report security problems privately, as [SECURITY.md](SECURITY.md) describes.
+
 ## Project structure
 
 | Folder | What it holds |
@@ -415,8 +465,9 @@ Official comparison sources:
 
 ## Contributing
 
-Bug reports, ideas and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md)
-first, and report security problems privately as [SECURITY.md](SECURITY.md) describes.
+Bug reports, ideas and pull requests are welcome; see [Ask for a feature](#ask-for-a-feature).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) first, and report security problems privately as
+[SECURITY.md](SECURITY.md) describes.
 
 ## Development credits
 
