@@ -6,10 +6,12 @@
 
 <p align="center">
   <strong>A native Git client built in Rust.</strong><br>
-  An open-source alternative to Fork and GitKraken for Windows, Linux and macOS.
+  An open-source alternative to Fork and GitKraken for Windows, Linux and macOS.<br>
+  <a href="https://jasxtd.github.io/Rocket/"><strong>jasxtd.github.io/Rocket</strong></a>
 </p>
 
 <p align="center">
+  <a href="https://jasxtd.github.io/Rocket/">Website</a> ·
   <a href="#features">Features</a> ·
   <a href="#platforms">Platforms</a> ·
   <a href="#command-line-interface">CLI</a> ·
@@ -43,7 +45,8 @@ guide.
 > [Download Rocket 0.92.3](https://github.com/JasXTD/Rocket/releases/tag/v0.92.3):
 > Windows x64, Linux x64 (glibc 2.43+) and macOS 15+ previews for Apple Silicon and Intel.
 > The Mac preview is not Developer-ID-signed or notarized.
-> [Build from source](#build-and-run) is also available.
+> Pick your package on the [download page](https://jasxtd.github.io/Rocket/get.html), or
+> [build from source](#build-and-run).
 
 **New in 0.92.3:** run parallel Claude Code, Codex or custom commands in the
 Agents workspace, with reviewed worktrees and separate terminals. This release
@@ -455,6 +458,8 @@ Report security problems privately, as [SECURITY.md](SECURITY.md) describes.
 
 ## Documentation
 
+- [Website](https://jasxtd.github.io/Rocket/): an overview with screenshots and a
+  30-second video.
 - [Wiki](docs/wiki/Home.md): first commit, everyday work, remotes and recovery.
 - [User guide](crates/rocket-ui/src/guide.md): every desktop workflow in detail.
 - [Agents](docs/Agents.md), [Repository map](docs/wiki/Repository-map.md) and
