@@ -185,6 +185,7 @@ fn shortcut_wheel_and_repeat_are_bounded_and_modifiers_are_exact() {
         delta: vec2(0.0, amount),
         modifiers: Modifiers::CTRL,
         phase: TouchPhase::Move,
+        source: MouseWheelSource::Unknown,
     };
     let mut input = raw(vec![wheel(20.0)]);
     state.filter(&mut input, &[Action::Sidebar], true);

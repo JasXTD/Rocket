@@ -103,7 +103,7 @@ impl Rocket {
         let mut refresh = false;
         let mut open = None;
         let mut copied = false;
-        Modal::new(Id::new("commit-link-review"))
+        Modal::new(Id::unique("commit-link-review"))
             .frame(crate::pages::modal_frame())
             .show(ctx, |ui| {
             use crate::{pages, style::*};

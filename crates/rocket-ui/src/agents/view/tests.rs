@@ -310,7 +310,7 @@ fn browse_chooses_a_program_and_keeps_it_for_the_next_session() {
                 wait_for(ctx, app, WIDE, "picker-row-0");
                 // The picker is above the dialog: the pointer reaches its rows.
                 let row = app.frame_widgets["picker-row-0"].rect.center();
-                assert_eq!(ctx.layer_id_at(row).map(|layer| layer.id), Some(Id::new("rocket-picker")));
+                assert_eq!(ctx.layer_id_at(row).map(|layer| layer.id), Some(Id::unique("rocket-picker")));
                 click(ctx, app, WIDE, "picker-row-0");
                 click(ctx, app, WIDE, "picker-choose");
                 assert!(app.picker.is_none(), "choosing closes the picker");

@@ -386,7 +386,7 @@ fn row(ui: &mut Ui, label: &str, content: impl FnOnce(&mut Ui)) {
 /// one has the accent outline and a check, an action tile a dashed one.
 fn tile(ui: &mut Ui, width: f32, name: &str, selected: bool, action: bool, draw: impl FnOnce(&Painter, Rect)) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(width, TILE), Sense::click());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, ui.is_enabled(), selected, name));
+    response.widget_info(|| WidgetInfo::selected(Role::RadioButton, ui.is_enabled(), selected, name));
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
         let thumb = Rect::from_min_size(rect.min, vec2(width, THUMB));
@@ -477,7 +477,7 @@ fn from_picture(ui: &mut Ui, selected: bool, colour: Color32) -> Response {
     let font = if selected { semibold(13.0) } else { FontId::proportional(13.0) };
     let galley = ui.painter().layout_no_wrap(name.into(), font, TEXT());
     let (rect, response) = ui.allocate_exact_size(vec2(galley.size().x + 40.0, CONTROL), Sense::click());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, ui.is_enabled(), selected, name));
+    response.widget_info(|| WidgetInfo::selected(Role::RadioButton, ui.is_enabled(), selected, name));
     let hot = response.hovered() || response.has_focus();
     let painter = ui.painter();
     let edge = if selected { BLUE() } else if hot { EDGE_HOT() } else { BORDER() };
@@ -490,7 +490,7 @@ fn from_picture(ui: &mut Ui, selected: bool, colour: Color32) -> Response {
 /// An accent swatch; the chosen one has a ring around it.
 fn swatch(ui: &mut Ui, name: &str, colour: Color32, selected: bool) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(22.0, 22.0), Sense::click());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, ui.is_enabled(), selected, name));
+    response.widget_info(|| WidgetInfo::selected(Role::RadioButton, ui.is_enabled(), selected, name));
     let painter = ui.painter();
     painter.circle_filled(rect.center(), 11.0, colour);
     if selected {

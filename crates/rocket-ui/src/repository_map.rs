@@ -658,7 +658,7 @@ fn button(
     // pointer press is in flight.
     let control_id = ui.make_persistent_id(("map-control", id));
     let r = ui
-        .scope_builder(UiBuilder::new().id(control_id), |ui| {
+        .scope_builder(UiBuilder::new().scope_id(control_id), |ui| {
             ui.add_enabled(enabled, Button::new(text))
         })
         .inner;
@@ -978,7 +978,7 @@ fn revision_picker(
 ) {
     let control_id = ui.make_persistent_id(("map-control", "map-revision-pick"));
     let r = ui
-        .scope_builder(UiBuilder::new().id(control_id), |ui| ui.add_sized([width, CONTROL], Button::new("")))
+        .scope_builder(UiBuilder::new().scope_id(control_id), |ui| ui.add_sized([width, CONTROL], Button::new("")))
         .inner
         .on_hover_text(tr("The commit, branch or tag to map"));
     let rect = r.rect;
@@ -1375,7 +1375,7 @@ fn body(
         let width = (canvas.width() - 40.).min(DETAILS_WIDTH);
         let panel = Rect::from_min_max(pos2(canvas.right() - width, canvas.top()), canvas.max);
         let backdrop = Rect::from_min_max(canvas.min, pos2(panel.left(), canvas.bottom()));
-        if ui.interact(backdrop, ui.id().with("map-backdrop"), Sense::click()).clicked() {
+        if ui.interact(backdrop, ui.scope_id().with("map-backdrop"), Sense::click()).clicked() {
             s.show_details = false;
         }
         details::card(ui, s, kind, panel, true, intents, widgets);

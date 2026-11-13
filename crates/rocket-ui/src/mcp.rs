@@ -376,7 +376,7 @@ impl Panel {
                             TextEdit::singleline(&mut self.port)
                                 .font(FontId::monospace(12.5))
                                 .char_limit(5)
-                                .vertical_align(Align::Center),
+                                .align(Align2::LEFT_CENTER),
                         );
                         pages::control(widgets, "mcp-port", &r, ui.clip_rect());
                     });
@@ -394,7 +394,7 @@ impl Panel {
                                     [width, CONTROL],
                                     TextEdit::singleline(&mut self.root)
                                         .font(FontId::monospace(12.0))
-                                        .vertical_align(Align::Center),
+                                        .align(Align2::LEFT_CENTER),
                                 )
                                 .on_hover_text(crate::i18n::tr("Only marked test repositories in this folder can be controlled."));
                             pages::control(widgets, "mcp-root", &r, ui.clip_rect());

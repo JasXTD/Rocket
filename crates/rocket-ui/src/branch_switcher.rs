@@ -399,7 +399,7 @@ fn draw_row(ui: &mut Ui, row: &Row, on: bool, enabled: bool) -> Response {
         .filter(|s| !s.is_empty())
         .collect::<Vec<_>>()
         .join(", ");
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, &spoken));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &spoken));
     response
 }
 
@@ -458,7 +458,7 @@ fn fold_row(ui: &mut Ui, count: usize, open: bool) -> Response {
     icon(&painter, Rect::from_center_size(pos2(rect.left() + 15.0, rect.center().y), vec2(12.0, 12.0)), chevron, MUTED());
     let label = format!("{} · {count}", tr("Remote branches"));
     painter.text(pos2(rect.left() + 30.0, rect.center().y), Align2::LEFT_CENTER, &label, FontId::proportional(13.0), MUTED());
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &label));
     response
 }
 

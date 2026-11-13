@@ -944,7 +944,7 @@ fn entry_row(
     job.wrap = text::TextWrapping::truncate_at_width(width);
     let detail = painter.layout_job(job);
     painter.galley(pos2(left, rect.bottom() - 13.0 - detail.size().y / 2.0), detail, HINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, what));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, what));
     response
 }
 
@@ -1169,7 +1169,7 @@ fn branch_pane(
         TextEdit::singleline(name)
             .desired_width(f32::INFINITY)
             .min_size(vec2(0.0, 30.0))
-            .vertical_align(Align::Center),
+            .align(Align2::LEFT_CENTER),
     );
     control(widgets, "dialog-recovery-name", &r, ui.clip_rect());
     if r.changed() {

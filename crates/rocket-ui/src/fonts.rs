@@ -418,11 +418,11 @@ mod tests {
                     FontFamily::Monospace,
                     FontFamily::Name("semibold".into()),
                 ] {
-                    let mut font = fonts.fonts.font(&family);
+                    let characters = fonts.characters(&family);
                     assert!(
                         "Rocket 0123"
                             .chars()
-                            .all(|c| font.characters().contains_key(&c))
+                            .all(|c| characters.contains_key(&c))
                     );
                 }
             });
@@ -448,8 +448,7 @@ mod tests {
                     // epaint's has_glyph compares face IDs with the replacement
                     // face, which also owns valid glyphs. Check the actual cmap
                     // coverage across this family's fallback chain instead.
-                    let mut font = fonts.fonts.font(&id.family);
-                    let characters = font.characters();
+                    let characters = fonts.characters(&id.family);
                     for text in ["简体中文 文件路径", "繁體中文 資料夾", "日本語 ひらがな カタカナ", "한국어 파일 변경"] {
                         for c in text.chars() {
                             assert!(characters.contains_key(&c), "Missing glyph {c:?} in {:?}", id.family);
@@ -472,12 +471,10 @@ mod tests {
             ui.ctx().fonts_mut(|fonts| {
                 for family in [FontFamily::Proportional, FontFamily::Monospace,
                     FontFamily::Name("semibold".into()), FontFamily::Name("terminal-wide".into())] {
-                    let mut font = fonts.fonts.font(&family);
-                    let characters = font.characters();
+                    let characters = fonts.characters(&family);
                     for c in "🦀🚀😀👍🏽👩💻👨👧👦🇲🇾".chars() {
                         assert!(characters.contains_key(&c), "Missing emoji {c:?} in {family:?}");
                     }
-                    drop(font);
                     for text in ["🦀", "👩🏽‍💻", "👨‍👩‍👧‍👦", "🇲🇾", "1️⃣", "❤️"] {
                         let galley = fonts.layout_no_wrap(text.into(), FontId::new(16.0, family.clone()), Color32::WHITE);
                         assert!(galley.size().is_finite() && galley.size().x > 0.0 && galley.size().y > 0.0);
@@ -517,8 +514,10 @@ mod tests {
             let m = &localized.font_data[bundled_cjk::MONOSPACE];
             assert_eq!((p.index, m.index), (proportional, mono));
             assert_eq!(localized.families, definitions.families, "locale keeps fallback precedence");
-            assert!(std::ptr::eq(p.font.as_ptr(), m.font.as_ptr()), "faces share immutable bytes");
-            assert!(std::ptr::eq(p.font.as_ptr(), definitions.font_data[bundled_cjk::PROPORTIONAL].font.as_ptr()));
+            // Where a face's file bytes start; egui 0.37 holds them behind a shared pointer.
+            let bytes = |data: &FontData| AsRef::<[u8]>::as_ref(&*data.font).as_ptr();
+            assert!(std::ptr::eq(bytes(p), bytes(m)), "faces share immutable bytes");
+            assert!(std::ptr::eq(bytes(p), bytes(&definitions.font_data[bundled_cjk::PROPORTIONAL])));
         }
         assert_eq!(definitions.font_data[bundled_cjk::PROPORTIONAL].index, 2, "changing a locale preserves the cached definition");
     }

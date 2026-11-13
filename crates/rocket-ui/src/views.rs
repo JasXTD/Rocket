@@ -341,7 +341,7 @@ fn activity_row(
     let has_details = !outcome.details.is_empty()
         || outcome.retained_workspace.is_some()
         || !outcome.raw_output.is_empty();
-    let fold = Id::new((
+    let fold = Id::unique((
         "activity-details",
         &activity.title,
         &outcome.summary,
@@ -372,7 +372,7 @@ fn activity_row(
         FontId::proportional(11.5),
         HINT(),
     );
-    ui.interact(when, ui.id().with("activity-when"), Sense::hover())
+    ui.interact(when, ui.scope_id().with("activity-when"), Sense::hover())
         .on_hover_text(format!("{} UTC", date(unix, 0)));
     pages::status_icon(
         ui.painter(),
@@ -388,10 +388,10 @@ fn activity_row(
     if has_details {
         let area = Rect::from_center_size(pos2(right - 13.0, rect.center().y), vec2(26.0, 26.0));
         let toggle = ui
-            .interact(area, ui.id().with("activity-toggle"), Sense::click())
+            .interact(area, ui.scope_id().with("activity-toggle"), Sense::click())
             .on_hover_text(if open { tr("Hide details") } else { tr("Details") });
         toggle.widget_info(|| {
-            WidgetInfo::selected(WidgetType::Button, true, open, if open { tr("Hide details") } else { tr("Details") })
+            WidgetInfo::selected(Role::Button, true, open, if open { tr("Hide details") } else { tr("Details") })
         });
         if toggle.hovered() || toggle.has_focus() {
             ui.painter().rect(
@@ -456,7 +456,7 @@ fn activity_row(
     );
     ui.interact(
         Rect::from_min_max(pos2(text_left, rect.top()), pos2(time_left, rect.bottom())),
-        ui.id().with("activity-summary"),
+        ui.scope_id().with("activity-summary"),
         Sense::hover(),
     )
     .on_hover_text(format!("{name}\n{}", outcome.summary));
@@ -648,7 +648,7 @@ fn start_card(
         StrokeKind::Inside,
     );
     painter.galley(chip_rect.center() - chip.size() / 2.0, chip, MUTED());
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, title));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, title));
     response.on_hover_text(format!("{title} ({shortcut})"))
 }
 
@@ -741,7 +741,7 @@ fn recent_row(ui: &mut Ui, path: &std::path::Path, head: Option<Option<&Head>>) 
         }
         hover = format!("{hover}\n{label}");
     }
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &name));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &name));
     response.on_hover_text(hover)
 }
 pub(crate) fn commits(
@@ -822,7 +822,7 @@ pub(crate) fn commits(
                     FAINT(),
                 );
                 selector.widget_info(|| {
-                    WidgetInfo::labeled(WidgetType::Button, true, trf!("History: {label}", label))
+                    WidgetInfo::labeled(Role::Button, true, trf!("History: {label}", label))
                 });
                 Popup::menu(&selector).show(|ui| {
                     let head = ui.button(tr("Current branch (HEAD)"));
@@ -961,7 +961,7 @@ pub(crate) fn commits(
         // sizes must not push the lower pane beyond the viewport.
         let maximum = (ui.available_height() - 180.0).max(110.0);
         let height = (ui.available_height() * 0.48).clamp(110.0, maximum);
-        let table = Panel::top(Id::new(("history", tab.id)))
+        let table = Panel::top(("history", tab.id))
             .default_size(height)
             .size_range(110.0..=maximum)
             .resizable(true)
@@ -999,7 +999,7 @@ fn commit_peek(
         tab.peek = None;
         return;
     };
-    let area = Area::new(Id::new(("commit-peek", tab.id)))
+    let area = Area::new(Id::unique(("commit-peek", tab.id)))
         .order(Order::Foreground)
         .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
         .show(ctx, |ui| {
@@ -1035,7 +1035,7 @@ fn commit_peek(
 }
 /// The stable id of a commit row, so keyboard focus can move to another row.
 fn commit_row_id(tab: u64, commit: &ObjectId) -> Id {
-    Id::new(("commit-row", tab, commit.as_str()))
+    Id::unique(("commit-row", tab, commit.as_str()))
 }
 /// Keys of the focused commit row, read before any row takes input: Up and Down
 /// select the neighbouring commit, Space toggles its details popup, Left and Right
@@ -1302,7 +1302,7 @@ pub(crate) fn query_field(
                         .frame(Frame::NONE)
                         .char_limit(1024)
                         .min_size(vec2(0.0, 22.0))
-                        .vertical_align(Align::Center)
+                        .align(Align2::LEFT_CENTER)
                         .hint_text(hint)
                         .desired_width((ui.available_width() - room).max(20.0)),
                 );
@@ -1358,7 +1358,7 @@ pub(crate) fn path_field(
                             .frame(Frame::NONE)
                             .char_limit(4096)
                             .min_size(vec2(0.0, 22.0))
-                            .vertical_align(Align::Center)
+                            .align(Align2::LEFT_CENTER)
                             .hint_text(tr("In path"))
                             .desired_width((ui.available_width() - room).max(20.0)),
                     )
@@ -1425,7 +1425,7 @@ fn search_kind_selector(
         FAINT(),
     );
     selector.widget_info(|| {
-        WidgetInfo::labeled(WidgetType::Button, true, trf!("Search in: {label}", label))
+        WidgetInfo::labeled(Role::Button, true, trf!("Search in: {label}", label))
     });
     let selector = selector.on_hover_text(tr("Choose what the commit search looks at"));
     Popup::menu(&selector).show(|ui| {
@@ -1837,7 +1837,7 @@ fn history_table(
                     let chips = branch_chips(here, &snapshot.remotes, compact);
                     let lane = LANES()[tab.graph.get(index).map_or(1, |r| r.color) % LANES().len()];
                     let limit = message_clip.right() - 70.0;
-                    let chip_id = |i: usize| Id::new(("commit-chip", tab.id, commit.id.as_str(), i));
+                    let chip_id = |i: usize| Id::unique(("commit-chip", tab.id, commit.id.as_str(), i));
                     let mut shown = 0;
                     for (i, chip) in chips.iter().enumerate().take(3) {
                         // Compact keeps room to count what doesn't fit.
@@ -1869,7 +1869,7 @@ fn history_table(
                     let pill = Rect::from_center_size(pos2(x + size.x / 2.0, rect.center().y), size);
                     let expand = ui.interact(
                         pill,
-                        Id::new(("commit-expand", tab.id, commit.id.as_str())),
+                        Id::unique(("commit-expand", tab.id, commit.id.as_str())),
                         Sense::click(),
                     );
                     message.rect_filled(pill, 10.0, if expand.hovered() { HOVER() } else { RAISED() });
@@ -1913,7 +1913,7 @@ fn history_table(
                     let center = pos2(rect.left() + message_end - 8.0 - 13.0, rect.center().y);
                     crate::ci_checks::paint_mark(&painter, center, state, tab.ci.faded);
                     let hit = Rect::from_center_size(center, vec2(22.0, 22.0));
-                    let mark = ui.interact(hit, Id::new(("ci-mark", tab.id, commit.id.as_str())), Sense::click());
+                    let mark = ui.interact(hit, Id::unique(("ci-mark", tab.id, commit.id.as_str())), Sense::click());
                     crate::pages::control(widgets, format!("ci-mark-{}", commit.id), &mark, ui.clip_rect());
                     if mark.on_hover_text(crate::ci_checks::mark_tip(state, tab.ci.host())).clicked() {
                         intents.push(Intent::CiChecks(commit.id.as_str().to_owned(), hit));
@@ -2113,7 +2113,7 @@ pub(crate) fn changes(
         return;
     };
     let maximum = (ui.available_width() * 0.5).clamp(260.0, 480.0);
-    let files = Panel::left(Id::new(("changes-files", tab.id)))
+    let files = Panel::left(("changes-files", tab.id))
         .default_size((ui.available_width() * 0.3).clamp(270.0, 360.0))
         .size_range(260.0..=maximum)
         .resizable(true)
@@ -2147,7 +2147,7 @@ pub(crate) fn changes(
                 change_viewport(ui, widgets, "changes-scroll", output.inner_rect);
             } else {
                 let area = commit_area(ui, tab, ui.available_height(), *commit_height);
-                let editor = Panel::bottom(Id::new(("commit-editor", tab.id)))
+                let editor = Panel::bottom(("commit-editor", tab.id))
                     .exact_size(area.height)
                     .resizable(false)
                     .frame(Frame::new().fill(VIEW_PANEL()).inner_margin(Margin { left: 12, right: 12, top: 0, bottom: 12 }))
@@ -2162,7 +2162,7 @@ pub(crate) fn changes(
                         );
                         // Everything but the description's lines, for the next frame's sizes.
                         let fixed = ui.min_rect().bottom() - top + 12.0 - viewport;
-                        let key = Id::new(("commit-fixed", tab.id));
+                        let key = Id::unique(("commit-fixed", tab.id));
                         if ui.ctx().data(|d| d.get_temp::<f32>(key)).is_none_or(|f| (f - fixed).abs() > 0.5) {
                             ui.ctx().data_mut(|d| d.insert_temp(key, fixed));
                             ui.ctx().request_repaint();
@@ -2260,7 +2260,7 @@ pub(crate) fn changes(
             && let Some(entry) = status.entries.iter().find(|e| e.path == path && e.kind == EntryKind::Unmerged) {
             // Binary files show as text conflicts until the editor reads them.
             let text = entry.submodule.is_none() && !matches!(entry.index, Change::Deleted) && !matches!(entry.worktree, Change::Deleted);
-            Panel::top(Id::new(("conflict-review",tab.id))).frame(Frame::new().fill(RED().gamma_multiply(0.08)).inner_margin(Margin::symmetric(14, 10))).show(ui, |ui| {
+            Panel::top(("conflict-review",tab.id)).frame(Frame::new().fill(RED().gamma_multiply(0.08)).inner_margin(Margin::symmetric(14, 10))).show(ui, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(tr("Conflict")).font(semibold(13.0)).color(RED()));
                     let r = ui.add_enabled(writable, Button::new(RichText::new(tr("Open conflict editor")).color(ACCENT_INK())).fill(BLUE()));
@@ -2354,7 +2354,7 @@ fn group_header(
     count: usize,
     action: Option<(&str, bool)>,
 ) -> (bool, Option<Response>) {
-    let id = Id::new(("changes-group", tab_id, label));
+    let id = Id::unique(("changes-group", tab_id, label));
     let mut expanded = ui.ctx().data_mut(|d| *d.get_persisted_mut_or(id, true));
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 32.0), Sense::hover());
     let action_width = action.map_or(0.0, |(text, _)| {
@@ -2375,7 +2375,7 @@ fn group_header(
     }
     toggle.widget_info(|| {
         WidgetInfo::labeled(
-            WidgetType::Button,
+            Role::Button,
             true,
             if expanded { trf!("Collapse {group}", group = label) } else { trf!("Expand {group}", group = label) },
         )
@@ -2427,7 +2427,7 @@ fn group_header(
             FontId::proportional(12.0),
             if active { BLUE() } else { FAINT() },
         );
-        response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, active, text));
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, active, text));
         response
     });
     (expanded, response)
@@ -2475,7 +2475,7 @@ fn change_groups(
     if !conflicts.is_empty() {
         let (expanded, _) = group_header(ui, tab.id, tr("Conflicts"), conflicts.len(), None);
         if expanded {
-            crate::long_list::rows(ui, Id::new(("change-rows", tab.id, "conflicts")), conflicts.len(), CHANGE_ROW, |ui, index| {
+            crate::long_list::rows(ui, Id::unique(("change-rows", tab.id, "conflicts")), conflicts.len(), CHANGE_ROW, |ui, index| {
                 change_row(ui, tab, ChangeRow { entry: conflicts[index], staged: false }, writable, intents, widgets, commands)
             });
         }
@@ -2499,7 +2499,7 @@ fn change_groups(
             if staged.is_empty() {
                 empty_hint(ui, tr("No files staged"));
             }
-            crate::long_list::rows(ui, Id::new(("change-rows", tab.id, "staged")), staged.len(), CHANGE_ROW, |ui, index| {
+            crate::long_list::rows(ui, Id::unique(("change-rows", tab.id, "staged")), staged.len(), CHANGE_ROW, |ui, index| {
                 change_row(ui, tab, ChangeRow { entry: staged[index], staged: true }, writable, intents, widgets, commands)
             });
         }
@@ -2529,7 +2529,7 @@ fn change_groups(
             if unstaged.is_empty() {
                 empty_hint(ui, tr("Working tree clean"));
             }
-            crate::long_list::rows(ui, Id::new(("change-rows", tab.id, "unstaged")), unstaged.len(), CHANGE_ROW, |ui, index| {
+            crate::long_list::rows(ui, Id::unique(("change-rows", tab.id, "unstaged")), unstaged.len(), CHANGE_ROW, |ui, index| {
                 change_row(ui, tab, ChangeRow { entry: unstaged[index], staged: false }, writable, intents, widgets, commands)
             });
         }
@@ -2603,7 +2603,7 @@ fn commit_area(ui: &Ui, tab: &Tab, pane: f32, saved: Option<f32>) -> CommitArea 
     let row = ui.text_style_height(&TextStyle::Body);
     // First frame: the handle, margins, a 38-point summary, the controls below the
     // description and its frame. Later frames use what was measured.
-    let fixed = ui.ctx().data(|d| d.get_temp::<f32>(Id::new(("commit-fixed", tab.id)))).unwrap_or(184.0);
+    let fixed = ui.ctx().data(|d| d.get_temp::<f32>(Id::unique(("commit-fixed", tab.id)))).unwrap_or(184.0);
     let (_, description) = split_draft(&tab.draft);
     // The description wraps inside the area's margins, its frame and a scroll bar.
     let wrap = (ui.available_width() - 46.0).max(40.0);
@@ -2612,7 +2612,7 @@ fn commit_area(ui: &Ui, tab: &Tab, pane: f32, saved: Option<f32>) -> CommitArea 
     let min = fixed + 2.0 * row;
     // The file list keeps room for its header and a few rows.
     let max = (pane - 150.0).max(min);
-    let dragging = ui.ctx().data(|d| d.get_temp::<f32>(Id::new(("commit-drag", tab.id))));
+    let dragging = ui.ctx().data(|d| d.get_temp::<f32>(Id::unique(("commit-drag", tab.id))));
     let height = match dragging.or(saved) {
         Some(height) => height.clamp(min, max),
         // Whole lines, so that when the pane limits the area its last line isn't cut.
@@ -2641,7 +2641,7 @@ fn commit_grip(
         if strong { MUTED() } else { BORDER() },
     );
     change_control(widgets, "commit-resize", &response);
-    let key = Id::new(("commit-drag", tab));
+    let key = Id::unique(("commit-drag", tab));
     if response.double_clicked() {
         ui.ctx().data_mut(|d| d.remove::<f32>(key));
         return Some(None);
@@ -2721,12 +2721,12 @@ fn commit_editor(
             widgets,
             |text| {
                 TextEdit::singleline(text)
-                    .id(Id::new(("commit-message", tab.id)))
+                    .id(Id::unique(("commit-message", tab.id)))
                     .interactive(!drafting)
                     .frame(Frame::NONE)
                     .font(semibold(14.0))
                     .hint_text(tr("Summary (required)"))
-                    .vertical_align(Align::Center)
+                    .align(Align2::LEFT_CENTER)
                     .min_size(vec2(width - 64.0, 36.0))
                     .desired_width(width - 64.0)
             },
@@ -2781,7 +2781,7 @@ fn commit_editor(
                         widgets,
                         |text| {
                             TextEdit::multiline(text)
-                                .id(Id::new(("commit-description", tab.id)))
+                                .id(Id::unique(("commit-description", tab.id)))
                                 .interactive(!drafting)
                                 .desired_width(f32::INFINITY)
                                 .desired_rows(rows)
@@ -2920,7 +2920,7 @@ fn commit_editor(
             FAINT().gamma_multiply(0.7)
         },
     ); }
-    button.widget_info(|| WidgetInfo::labeled(WidgetType::Button, main_enabled, &label));
+    button.widget_info(|| WidgetInfo::labeled(Role::Button, main_enabled, &label));
     change_control(widgets, if pushes { "commit-push" } else { "commit" }, &button);
     if button.clicked() {
         intents.push(if let Some(paused) = paused {
@@ -3114,7 +3114,7 @@ fn change_row(
             let r = ui
                 .interact(
                     button,
-                    Id::new(("change-action", tab.id, staged, &path_id, i)),
+                    Id::unique(("change-action", tab.id, staged, &path_id, i)),
                     Sense::click(),
                 )
                 .on_hover_text(hint);
@@ -3139,7 +3139,7 @@ fn change_row(
             } else {
                 icon(ui.painter(), button.shrink(6.0), image, color);
             }
-            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, hint));
+            r.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, hint));
             if r.clicked() && enabled {
                 action_clicked = true;
                 intents.push(Intent::Execute(tab.id, action));
@@ -3250,7 +3250,7 @@ pub(crate) fn branches(
         .enumerate()
         .filter(|(_, b)| b.kind == BranchKind::Remote)
         .collect();
-    let key = Id::new(("branches-selected", tab.id));
+    let key = Id::unique(("branches-selected", tab.id));
     let stored: Option<Vec<u8>> = ui.data(|d| d.get_temp(key));
     let selected = stored
         .and_then(|r| snapshot.branches.iter().find(|b| b.reference == r))
@@ -3295,7 +3295,7 @@ pub(crate) fn branches(
                         pages::caption(ui, &format!("{title} · {}", group.len()));
                         // A repository can have thousands of branches: build only the
                         // rows in or next to the visible area.
-                        crate::long_list::rows(ui, Id::new(("branch-rows", tab.id, key)), group.len(), BRANCH_ROW, |ui, row| {
+                        crate::long_list::rows(ui, Id::unique(("branch-rows", tab.id, key)), group.len(), BRANCH_ROW, |ui, row| {
                             let (index, branch) = group[row];
                             let current = selected.is_some_and(|s| s.reference == branch.reference);
                             let r = branch_row(ui, branch, current, ahead_behind);
@@ -3596,7 +3596,7 @@ pub(crate) fn remotes(
     let Some(snapshot) = &tab.snapshot else {
         return;
     };
-    let key = Id::new(("remotes-selected", tab.id));
+    let key = Id::unique(("remotes-selected", tab.id));
     let stored: Option<Vec<u8>> = ui.data(|d| d.get_temp(key));
     let selected = stored
         .and_then(|name| snapshot.remotes.iter().position(|r| r.name == name))

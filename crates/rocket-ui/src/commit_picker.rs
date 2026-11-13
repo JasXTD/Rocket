@@ -57,7 +57,7 @@ pub(crate) fn field(
                 .hint_text("Commit, branch or tag")
                 .desired_width((width - 42.0).max(80.0))
                 .min_size(vec2(0.0, 30.0))
-                .vertical_align(Align::Center),
+                .align(Align2::LEFT_CENTER),
         );
         pages::control(widgets, key, &r, ui.clip_rect());
         changed |= r.changed();
@@ -174,7 +174,7 @@ pub(crate) fn row(ui: &mut Ui, choice: &Choice, on: bool, enabled: bool) -> Resp
     job.wrap = text::TextWrapping::truncate_at_width((right - rect.left() - 20.0).max(20.0));
     let galley = painter.layout_job(job);
     painter.galley(pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0), galley, TEXT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::RadioButton, enabled, on, &choice.subject));
+    response.widget_info(|| WidgetInfo::selected(Role::RadioButton, enabled, on, &choice.subject));
     response
 }
 

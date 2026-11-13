@@ -811,7 +811,7 @@ fn click_events(at: Pos2) -> Vec<Event> {
 
 /// Scrolls with the wheel over `at` and lets egui's smoothing finish.
 fn scroll_grid(ctx: &Context, s: &mut MapPage, rect: Rect, at: Pos2, delta: Vec2, time: &mut f64) -> GridFrame {
-    let wheel = Event::MouseWheel { unit: MouseWheelUnit::Point, delta, phase: TouchPhase::Move, modifiers: Modifiers::NONE };
+    let wheel = Event::MouseWheel { unit: MouseWheelUnit::Point, delta, phase: TouchPhase::Move, source: MouseWheelSource::Unknown, modifiers: Modifiers::NONE };
     *time += 0.2;
     let mut frame = grid_frame(ctx, s, rect, vec![Event::PointerMoved(at), wheel], *time);
     for _ in 0..30 {

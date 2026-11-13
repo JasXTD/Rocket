@@ -867,7 +867,7 @@ fn primary_icon(ui: &mut Ui, image: Icon, label: &str, enabled: bool) -> Respons
     let ink = if enabled { ACCENT_INK() } else { ACCENT_INK().gamma_multiply(0.55) };
     icon(ui.painter(), Rect::from_center_size(pos2(rect.left() + 16.0, rect.center().y), vec2(13.0, 13.0)), image, ink);
     ui.painter().text(pos2(rect.left() + 28.0, rect.center().y), Align2::LEFT_CENTER, label, font, ink);
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     response
 }
 

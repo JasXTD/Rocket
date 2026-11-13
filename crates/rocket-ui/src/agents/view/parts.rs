@@ -164,7 +164,7 @@ pub(super) fn action(ui: &mut Ui, look: Look, image: Option<Icon>, busy: bool, l
     }
     ui.painter()
         .galley(pos2(left + lead, rect.center().y - text.size().y / 2.0), text, ink);
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     response
 }
 

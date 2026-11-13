@@ -417,7 +417,7 @@ impl State {
 fn bar(ui: &mut Ui, status: &str, color: Color32, spinning: bool, progress: &str) {
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 40.0), Sense::hover());
     response.widget_info(|| {
-        WidgetInfo::labeled(WidgetType::Label, true, crate::i18n::trf!("Timings: {status}, {progress}", status, progress))
+        WidgetInfo::labeled(Role::Label, true, crate::i18n::trf!("Timings: {status}, {progress}", status, progress))
     });
     ui.painter()
         .rect_filled(rect, CornerRadius { nw: 7, ne: 7, sw: 0, se: 0 }, CARD());
@@ -579,7 +579,7 @@ fn table(ui: &mut Ui, report: &Report, running: bool) {
             let shown = |cell: &Option<String>| cell.clone().unwrap_or_else(|| crate::i18n::tr("none yet").into());
             crate::i18n::trf!("{operation}: first {first}, repeat median {median}, range {range}", operation = operation.title(), first = shown(&cells[0]), median = shown(&cells[1]), range = shown(&cells[2]))
         };
-        response.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &summary));
+        response.widget_info(|| WidgetInfo::labeled(Role::Label, true, &summary));
         if index + 1 < Operation::ALL.len() {
             ui.painter()
                 .hline(row.x_range(), row.bottom() - 0.5, Stroke::new(1.0, ROW_LINE()));

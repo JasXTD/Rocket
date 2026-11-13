@@ -132,7 +132,7 @@ fn files(
     w: &mut Widgets,
     action: &mut Option<Action>,
 ) {
-    let focus_key = ui.id().with("revealed-selection");
+    let focus_key = ui.scope_id().with("revealed-selection");
     let focus = (
         s.owner.as_ref().map(|r| r.id),
         s.selected,

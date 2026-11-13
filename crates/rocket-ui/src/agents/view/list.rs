@@ -97,7 +97,7 @@ pub(super) fn switcher(ui: &mut Ui, state: &mut State, w: &mut Widgets) {
     if rest.width() > 40.0 {
         line(ui, rest, tr(provider), FontId::proportional(12.0), HINT());
     }
-    button.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, &name));
+    button.widget_info(|| WidgetInfo::labeled(Role::ComboBox, true, &name));
     let room = (ui.ctx().content_rect().bottom() - rect.bottom() - 80.0).clamp(140.0, 420.0);
     Popup::menu(&button)
         // Typing in the search field must not close the list.
@@ -223,7 +223,7 @@ fn heading(ui: &mut Ui, group: Group, count: usize, open: bool) -> Response {
         semibold(11.0),
         FAINT(),
     );
-    response.widget_info(|| WidgetInfo::selected(WidgetType::CollapsingHeader, true, open, label));
+    response.widget_info(|| WidgetInfo::selected(Role::DisclosureTriangle, true, open, label));
     response
 }
 
@@ -270,6 +270,6 @@ fn row(ui: &mut Ui, s: &Session, selected: bool) -> Response {
             HINT()
         },
     );
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, &s.record.name));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &s.record.name));
     response
 }

@@ -250,7 +250,7 @@ fn menu_row_lit(ui: &mut Ui, label: &str, right: &str, enabled: bool, open: bool
         enabled,
         Button::new("").frame(false).min_size(vec2(width, 30.0)),
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, label));
     let rect = response.rect;
     let lit = enabled && (open || response.hovered() || response.has_focus());
     if lit {
@@ -316,7 +316,7 @@ fn menu_title<R>(
 /// (egui's checkboxes and radios indent theirs) and marks the selection on the right.
 fn check_row(ui: &mut Ui, label: &str, checked: bool, enabled: bool) -> Response {
     let response = menu_row(ui, label, "", enabled);
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, checked, label));
+    response.widget_info(|| WidgetInfo::selected(Role::CheckBox, enabled, checked, label));
     if checked {
         let mark = Rect::from_center_size(
             pos2(response.rect.right() - 16.0, response.rect.center().y),
@@ -358,9 +358,11 @@ fn submenu(ui: &mut Ui, label: &str, enabled: bool, content: impl FnOnce(&mut Ui
 /// A submenu's row. It stays lit while the submenu shows, which egui reports only after
 /// the row, so the caller stores whether it showed under the returned id.
 fn submenu_row(ui: &mut Ui, label: &str, enabled: bool) -> (Response, Id) {
-    let open_id = ui.id().with(("submenu-open", label));
+    let open_id = ui.scope_id().with(("submenu-open", label));
     let was_open = enabled && ui.data(|d| d.get_temp::<bool>(open_id)).unwrap_or(false);
-    let response = menu_row_lit(ui, label, menu::SubMenuButton::RIGHT_ARROW, enabled, was_open);
+    // egui 0.37 paints its own submenu arrow as a triangle and dropped the glyph constant;
+    // Rocket's rows keep the glyph they have always shown.
+    let response = menu_row_lit(ui, label, "⏵", enabled, was_open);
     (response, open_id)
 }
 type Widgets = std::collections::HashMap<String, UiControl>;
@@ -416,7 +418,7 @@ fn extensions_menu(ui: &mut Ui, widgets: &mut Widgets, opened: bool, intents: &m
 }
 /// Where `menu_title` records whether its menu showed.
 fn menu_open_id(ui: &Ui, title: &str) -> Id {
-    ui.id().with(("menu-open", title))
+    ui.scope_id().with(("menu-open", title))
 }
 /// Whether the menu-bar menu `title` showed last frame.
 fn menu_was_open(ui: &Ui, title: &str) -> bool {
@@ -2019,7 +2021,7 @@ mod tests {
                 assert!(menu.bottom() <= short.y, "menu extends outside window: {menu:?}");
                 frame(&mut app, short, vec![
                     Event::PointerMoved(menu.center()),
-                    Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, -2000.0), phase: TouchPhase::Move, modifiers: Modifiers::NONE },
+                    Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, -2000.0), phase: TouchPhase::Move, source: eframe::egui::MouseWheelSource::Unknown, modifiers: Modifiers::NONE },
                 ]);
                 for _ in 0..12 {
                     frame(&mut app, short, vec![]);
@@ -2093,7 +2095,7 @@ mod tests {
                         .collect::<Vec<_>>()
                 };
                 let draft = |app: &Rocket| app.tab().unwrap().draft.clone();
-                let field = Id::new(("commit-message", app.tab().unwrap().id));
+                let field = Id::unique(("commit-message", app.tab().unwrap().id));
 
                 click(&mut app, "commit-message");
                 frame(&mut app, vec![Event::Text("Fix sign-in".into())]);

@@ -43,7 +43,7 @@ impl Probe {
         );
         self.capture = Some(name);
         self.captures += 1;
-        ctx.send_viewport_cmd(ViewportCommand::Screenshot(UserData::default()));
+        support::request_screenshot(ctx);
     }
     /// Click a published control through the real pointer path.
     fn click(&mut self, key: &str) {
@@ -101,12 +101,10 @@ impl App for Probe {
         );
         let ctx = ui.ctx().clone();
         self.app.ui(ui, frame);
-        for event in ctx.input(|i| i.events.clone()) {
-            if let Event::Screenshot { image, .. } = event
-                && let Some(name) = self.capture.take()
-            {
-                support::save_bmp(&self.output.join(format!("{name}.bmp")), &image).unwrap();
-            }
+        if let Some(image) = support::take_screenshot()
+            && let Some(name) = self.capture.take()
+        {
+            support::save_bmp(&self.output.join(format!("{name}.bmp")), &image).unwrap();
         }
         if self.app.busy() || self.capture.is_some() {
             self.steady = 0;

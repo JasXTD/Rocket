@@ -1197,7 +1197,7 @@ fn column(
                         let output = ui
                             .add_enabled_ui(editable, |ui| {
                                 TextEdit::multiline(&mut s.draft)
-                                    .id(Id::new(("conflict-result", id)))
+                                    .id(Id::unique(("conflict-result", id)))
                                     .code_editor()
                                     .frame(inset)
                                     .desired_width(ui.available_width().max(40.0))
@@ -1242,7 +1242,7 @@ fn column(
                             })
                         };
                         let output = TextEdit::multiline(&mut text)
-                            .id(Id::new(("conflict-side", id, index)))
+                            .id(Id::unique(("conflict-side", id, index)))
                             .code_editor()
                             .frame(inset)
                             .desired_width(ui.available_width().max(40.0))
@@ -1263,7 +1263,7 @@ fn column(
                 });
                 register(ui, widgets, key, o.inner_rect, true);
                 out.view = o.inner_rect;
-                actual = (o.state.offset.y, (o.content_size.y - o.inner_rect.height()).max(0.0));
+                actual = (o.state.clamped_offset().y, (o.content_size.y - o.inner_rect.height()).max(0.0));
             });
             if index == 1 {
                 rail(ui, s, id, body.response.rect.height(), row_height,
@@ -1314,7 +1314,7 @@ fn rail_hit(s: &State, rail: Rect, per_line: f32, pointer: Pos2) -> Option<(usiz
 fn rail(ui: &mut Ui, s: &mut State, id: u64, height: f32, row_height: f32, view: crate::overview::View, widgets: &mut HashMap<String, UiControl>) {
     let (rail, _) = ui.allocate_exact_size(vec2(crate::overview::WIDTH, height.max(24.0)), Sense::hover());
     s.overview_probe = crate::overview::Probe::new(&s.overview, view);
-    let overview = crate::overview::show(ui, rail, Id::new(("conflict-overview", id)), &s.overview, view,
+    let overview = crate::overview::show(ui, rail, Id::unique(("conflict-overview", id)), &s.overview, view,
         crate::i18n::tr("Amber: unresolved. Green: resolved in this draft. Click a conflict to select it; drag to scroll. Focus here for arrows, Page Up/Down, Home/End."));
     if let Some(o) = &overview {
         register(ui, widgets, "conflict-overview", o.response.rect, o.response.enabled());
@@ -1342,7 +1342,7 @@ fn rail(ui: &mut Ui, s: &mut State, id: u64, height: f32, row_height: f32, view:
         }
     }
     let fallback = (!small && overview.is_none()).then(|| {
-        ui.interact(rail, Id::new(("conflict-overview", id)), Sense::click())
+        ui.interact(rail, Id::unique(("conflict-overview", id)), Sense::click())
     });
     let response = overview.as_ref().map(|o| &o.response).or(fallback.as_ref());
     let mut jump = response.filter(|r| r.clicked()).and_then(|r| r.interact_pointer_pos())
@@ -1355,7 +1355,7 @@ fn rail(ui: &mut Ui, s: &mut State, id: u64, height: f32, row_height: f32, view:
             let (Item::Open(block), range) = &s.items[index] else { continue };
             let mark = rail_mark(s, rail, per_line, index);
             if overview.is_none() {
-                let r = ui.interact(mark, Id::new(("conflict-marker", id, block)), Sense::click())
+                let r = ui.interact(mark, Id::unique(("conflict-marker", id, block)), Sense::click())
                     .on_hover_text(crate::i18n::trf!("Conflict {number} · line {line}", number = index + 1, line = s.overview_spans[index].0 + 1));
                 if r.clicked() { jump = Some((*block, range.start)); }
             }
@@ -1468,7 +1468,7 @@ fn text_columns(
         // Two lines above for context, and never past where Result can scroll.
         let row_height = ui.text_style_height(&TextStyle::Monospace);
         s.shared_row = (line - 2.0).max(0.0).min(s.scroll_max[1] / row_height);
-        let edit_id = Id::new(("conflict-result", id));
+        let edit_id = Id::unique(("conflict-result", id));
         let mut state = TextEdit::load_state(ui.ctx(), edit_id).unwrap_or_default();
         state
             .cursor

@@ -1200,9 +1200,9 @@ impl Panel {
                             let rect = Rect::from_min_size(origin + vec2(0.0, tops[k]), vec2(width, heights[k]));
                             match item {
                                 Item::Header(session, label, count, open, group) => {
-                                    let response = ui.interact(rect, ui.id().with(("activity-group", k)), Sense::click());
+                                    let response = ui.interact(rect, ui.scope_id().with(("activity-group", k)), Sense::click());
                                     paint_group(ui, rect, label, *count, *open, response.hovered());
-                                    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, !searching, *open, label));
+                                    response.widget_info(|| WidgetInfo::selected(Role::Button, !searching, *open, label));
                                     let visible = rect.intersect(ui.clip_rect());
                                     if visible.is_positive() {
                                         widgets.insert(
@@ -1219,11 +1219,11 @@ impl Panel {
                                 }
                                 Item::Row(i) => {
                                     let e = &entries[*i];
-                                    let response = ui.interact(rect, ui.id().with(("activity-row", *i)), Sense::click());
+                                    let response = ui.interact(rect, ui.scope_id().with(("activity-row", *i)), Sense::click());
                                     let on = selected.as_deref() == Some(e.key().as_str());
                                     paint_entry(ui, rect, e, on, response.hovered());
                                     response.widget_info(|| {
-                                        WidgetInfo::selected(WidgetType::Button, true, on, format!("{} · {}", e.name, e.status.label()))
+                                        WidgetInfo::selected(Role::Button, true, on, format!("{} · {}", e.name, e.status.label()))
                                     });
                                     let visible = rect.intersect(ui.clip_rect());
                                     if visible.is_positive() {
@@ -1618,7 +1618,7 @@ pub(crate) fn chip(ui: &mut Ui, label: &str, count: Option<usize>, on: bool, hei
             )
         })
         .inner;
-    chip.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
+    chip.widget_info(|| WidgetInfo::selected(Role::CheckBox, true, on, label));
     chip
 }
 
@@ -2011,7 +2011,7 @@ fn steps_view(
                         FontId::proportional(12.0),
                         MUTED(),
                     );
-                    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, setup_open, crate::i18n::tr("Setup")));
+                    response.widget_info(|| WidgetInfo::selected(Role::Button, true, setup_open, crate::i18n::tr("Setup")));
                     widgets.insert("activity-setup".into(), (&response).into());
                     *toggle |= response.clicked();
                     continue;

@@ -438,7 +438,7 @@ pub(super) fn canvas(
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
     let canvas = ui.interact(
         rect,
-        ui.id().with("repository-map-canvas"),
+        ui.scope_id().with("repository-map-canvas"),
         if covered {
             Sense::hover()
         } else {
@@ -654,7 +654,7 @@ pub(super) fn canvas(
                     modules::More::Users => "map-module-more-users",
                     modules::More::Uses => "map-module-more-uses",
                 };
-                let response = ui.interact(hit, ui.id().with(id), Sense::click()).on_hover_text(tr("Show them all in Details"));
+                let response = ui.interact(hit, ui.scope_id().with(id), Sense::click()).on_hover_text(tr("Show them all in Details"));
                 register(ui, widgets, id, &response);
                 if response.clicked() {
                     opened = Some(side);
@@ -727,7 +727,7 @@ pub(super) fn canvas(
         if !covered && hit.width() > 20. && hit.height() > 18. {
             let hover = if modules { modules::hover(s, &data, i) } else { format!("{title}\n{detail}") };
             let response = ui
-                .interact(hit, ui.id().with(("map-node", i)), Sense::click())
+                .interact(hit, ui.scope_id().with(("map-node", i)), Sense::click())
                 .on_hover_text(hover);
             register(ui, widgets, &format!("map-node-{i}"), &response);
             if response.clicked() {
@@ -736,7 +736,7 @@ pub(super) fn canvas(
             if group {
                 let chevron = Rect::from_min_size(node.left_top(), vec2(26., CARD.y) * s.zoom).intersect(hit);
                 if chevron.width() > 8. {
-                    let r = ui.interact(chevron, ui.id().with(("map-toggle", i)), Sense::click());
+                    let r = ui.interact(chevron, ui.scope_id().with(("map-toggle", i)), Sense::click());
                     register(ui, widgets, &format!("map-toggle-{i}"), &r);
                     if r.clicked() {
                         toggled = Some(i);

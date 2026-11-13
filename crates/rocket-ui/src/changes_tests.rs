@@ -103,6 +103,7 @@ fn scroll_to(ctx: &Context, app: &mut Rocket, over: Pos2, key: &str) -> Rect {
                 delta: vec2(0.0, -3_000.0),
                 modifiers: Modifiers::NONE,
                 phase: TouchPhase::Move,
+                source: MouseWheelSource::Unknown,
             },
         ]
     };
@@ -223,7 +224,7 @@ fn long_branch_lists_reach_and_select_their_last_branch() {
                 .center();
             let rect = scroll_to(&ctx, &mut app, over, &key);
             click_at(&ctx, &mut app, rect.center());
-            let selected: Option<Vec<u8>> = ctx.data(|data| data.get_temp(Id::new(("branches-selected", app.tabs[0].id))));
+            let selected: Option<Vec<u8>> = ctx.data(|data| data.get_temp(Id::unique(("branches-selected", app.tabs[0].id))));
             assert_eq!(selected, Some(reference));
 
             // Sidebar: the last local branch opens its history.
@@ -478,6 +479,7 @@ fn measure_history_frames() {
                             delta: vec2(0.0, -700.0),
                             modifiers: Modifiers::NONE,
                             phase: TouchPhase::Move,
+                            source: MouseWheelSource::Unknown,
                         },
                     ]
                 });

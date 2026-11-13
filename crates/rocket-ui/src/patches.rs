@@ -685,7 +685,7 @@ fn file_row(ui: &mut Ui, letter: char, file: &crate::patch_diff::Shown, selected
     job.wrap = text::TextWrapping::truncate_at_width((right - rect.left() - 34.0).max(20.0));
     let galley = painter.layout_job(job);
     painter.galley(pos2(rect.left() + 26.0, rect.center().y - galley.size().y / 2.0), galley, TEXT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, &file.label));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &file.label));
     response
 }
 
@@ -718,7 +718,7 @@ fn import_body(
                 TextEdit::singleline(&mut s.path)
                     .desired_width(f32::INFINITY)
                     .min_size(vec2(0.0, 30.0))
-                    .vertical_align(Align::Center)
+                    .align(Align2::LEFT_CENTER)
                     .hint_text(crate::i18n::tr("Patch file path, or drop a patch file on the window")),
             );
             register(ui, widgets, "dialog-patch-path", &r);
@@ -823,7 +823,7 @@ fn export_body(
                     .hint_text(crate::i18n::tr("Commit, branch or tag"))
                     .desired_width(f32::INFINITY)
                     .min_size(vec2(0.0, 30.0))
-                    .vertical_align(Align::Center),
+                    .align(Align2::LEFT_CENTER),
             );
             register(ui, widgets, "dialog-patch-revision", &r);
             if r.changed() {
@@ -923,7 +923,7 @@ fn export_body(
                 TextEdit::singleline(&mut s.path)
                     .desired_width(width)
                     .min_size(vec2(0.0, 30.0))
-                    .vertical_align(Align::Center)
+                    .align(Align2::LEFT_CENTER)
                     .hint_text(if series { "C:\\Exports\\new-series" } else { "C:\\folder\\changes.patch" }),
             );
             register(ui, widgets, "dialog-patch-path", &r);
@@ -995,7 +995,7 @@ fn stash_body(
         TextEdit::singleline(&mut s.message)
             .desired_width(f32::INFINITY)
             .min_size(vec2(0.0, 30.0))
-            .vertical_align(Align::Center),
+            .align(Align2::LEFT_CENTER),
     );
     register(ui, widgets, "dialog-stash-message", &r);
     if r.changed() {

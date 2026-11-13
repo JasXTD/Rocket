@@ -276,7 +276,7 @@ pub(crate) fn render_node(ui: &mut Ui, n: &Node, panel: &mut Panel, enabled: boo
                     ui.painter().rect_filled(track, 3.0, RAISED());
                     let filled = Rect::from_min_size(track.min, vec2(track.width() * value, track.height()));
                     ui.painter().rect_filled(filled, 3.0, BLUE());
-                    response.widget_info(|| WidgetInfo::labeled(WidgetType::ProgressIndicator, true, &n.label));
+                    response.widget_info(|| WidgetInfo::labeled(Role::ProgressIndicator, true, &n.label));
                 });
             }
             _ => {}
@@ -349,7 +349,7 @@ fn split(ui: &mut Ui, n: &Node, panel: &mut Panel, enabled: bool) {
     }
     let index = panel.splits;
     panel.splits += 1;
-    let memory = Id::new(("extension-panel-tab", panel.prefix, index));
+    let memory = Id::unique(("extension-panel-tab", panel.prefix, index));
     let chosen = ui
         .data(|d| d.get_temp::<(Weak<Node>, usize)>(memory))
         .filter(|(view, _)| view.ptr_eq(&panel.view))
@@ -501,7 +501,7 @@ fn plain_cell(ui: &mut Ui, row: Rect, x: f32, room: f32, cell: &Cell, galley: Op
         None => {
             let color = cell.tone.as_deref().and_then(tone_color).unwrap_or(MUTED());
             let pill = pages::pill(&mut ui, &cell.text, color);
-            pill.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, &cell.text));
+            pill.widget_info(|| WidgetInfo::labeled(Role::Label, true, &cell.text));
         }
     }
 }
@@ -557,7 +557,7 @@ fn column_rows(ui: &mut Ui, n: &Node, panel: &mut Panel, enabled: bool) {
         }
         if clickable {
             let text = row.iter().map(|c| c.text.as_str()).collect::<Vec<_>>().join(" · ");
-            response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, &text));
+            response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &text));
             row_click(n, panel, i, &response, ui.clip_rect());
             if galleys.iter().flatten().any(|g| g.elided) {
                 response.on_hover_text(text);
@@ -595,7 +595,7 @@ fn two_line_rows(ui: &mut Ui, n: &Node, panel: &mut Panel, enabled: bool) {
             ui.painter().hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, ROW_LINE()));
         }
         let text = row.iter().map(|c| c.text.as_str()).collect::<Vec<_>>().join(" · ");
-        response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, &text));
+        response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, &text));
         row_click(n, panel, i, &response, ui.clip_rect());
     }
 }

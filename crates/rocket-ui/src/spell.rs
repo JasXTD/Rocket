@@ -470,7 +470,7 @@ mod tests {
             .collect();
         assert_eq!(ranges.len(), 1);
         assert_eq!(ranges[0], 8..13);
-        let field = Id::new("summary");
+        let field = Id::unique("summary");
         assert!(!spelling.target_at(field, text, 2));
         assert!(spelling.target_at(field, text, 10));
         ready(&mut spelling);

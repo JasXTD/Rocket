@@ -144,7 +144,7 @@ fn release_notes(ctx: &Context, widgets: &mut HashMap<String, UiControl>) -> pag
         if part != pages::Part::Body || versions.is_empty() {
             return;
         }
-        let chosen_id = Id::new("release-notes-version");
+        let chosen_id = Id::unique("release-notes-version");
         let mut chosen = ui.data(|d| d.get_temp::<usize>(chosen_id)).unwrap_or(0).min(versions.len() - 1);
         ui.horizontal_top(|ui| {
             ui.spacing_mut().item_spacing.x = 16.0;
@@ -231,7 +231,7 @@ fn version_row(ui: &mut Ui, v: &Version, selected: bool, current: bool) -> Respo
     job.wrap = text::TextWrapping::truncate_at_width(rect.width() - 20.0);
     let title = painter.layout_job(job);
     painter.galley(pos2(rect.left() + 10.0, rect.bottom() - 6.0 - title.size().y), title, HINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, &v.number));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, &v.number));
     response
 }
 

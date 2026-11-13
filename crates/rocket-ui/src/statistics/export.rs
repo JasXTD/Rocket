@@ -841,7 +841,7 @@ pub(super) fn dialog(
                                 TextEdit::singleline(&mut e.dir)
                                     .id_salt("insights-export-folder")
                                     .char_limit(4096)
-                                    .vertical_align(Align::Center),
+                                    .align(Align2::LEFT_CENTER),
                             );
                             pages::control(widgets, "insights-export-folder", &r, ui.clip_rect());
                         });
@@ -852,7 +852,7 @@ pub(super) fn dialog(
                             TextEdit::singleline(&mut e.name)
                                 .id_salt("insights-export-name")
                                 .char_limit(255)
-                                .vertical_align(Align::Center),
+                                .align(Align2::LEFT_CENTER),
                         );
                         pages::control(widgets, "insights-export-name", &r, ui.clip_rect());
                     });

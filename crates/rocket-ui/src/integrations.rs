@@ -1202,7 +1202,7 @@ fn edit(
             .id_salt(id)
             .password(password)
             .hint_text(hint)
-            .vertical_align(Align::Center)
+            .align(Align2::LEFT_CENTER)
             .char_limit(4096),
     );
     pages::control(widgets, id, &r, ui.clip_rect());

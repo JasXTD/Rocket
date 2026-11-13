@@ -92,6 +92,7 @@ fn click(ctx: &Context, app: &mut Rocket, size: Vec2, key: &str) {
                     unit: MouseWheelUnit::Point,
                     delta: vec2(0.0, direction),
                     phase: TouchPhase::Move,
+                    source: MouseWheelSource::Unknown,
                     modifiers: Modifiers::NONE,
                 },
             ],
@@ -136,7 +137,7 @@ fn overview_setup_navigation_and_empty_profile_actions_work_at_both_sizes() {
                 // pre-push row can leave the secret card above a compact viewport.
                 let scroll = app.frame_widgets["prefs-scroll"].rect;
                 for _ in 0..3 {
-                    frame(&ctx, &mut app, size, vec![Event::PointerMoved(scroll.center()), Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, 300.0), phase: TouchPhase::Move, modifiers: Modifiers::NONE }]);
+                    frame(&ctx, &mut app, size, vec![Event::PointerMoved(scroll.center()), Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, 300.0), phase: TouchPhase::Move, source: MouseWheelSource::Unknown, modifiers: Modifiers::NONE }]);
                 }
                 assert!(app.frame_widgets.contains_key("pref-secret-protection"));
             }

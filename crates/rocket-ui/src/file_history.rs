@@ -699,7 +699,7 @@ pub(crate) fn view(
                     TextEdit::singleline(&mut s.path_input)
                         .char_limit(4096)
                         .hint_text(crate::i18n::tr("Repository-relative path, e.g. src/main.rs"))
-                        .vertical_align(Align::Center),
+                        .align(Align2::LEFT_CENTER),
                 );
                 if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                     emit(intents, FileIntent::Load);
@@ -805,7 +805,7 @@ pub(crate) fn view(
     } else {
         pages::list_pane(
             ui,
-            Id::new(("file-history-list", tab.id)),
+            Id::unique(("file-history-list", tab.id)),
             300.0,
             220.0..=400.0,
             |ui| history_list(ui, s, intents, widgets, false, commands, &context),

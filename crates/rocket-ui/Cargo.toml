@@ -13,17 +13,25 @@ rocket-terminal = { path = "../rocket-terminal" }
 rocket-mcp-control = { path = "../rocket-mcp-control" }
 rocket-spell = { path = "../rocket-spell" }
 rocket-integrations = { path = "../rocket-integrations" }
-eframe = { version = "=0.36.2", default-features = false, features = ["default_fonts", "glow"] }
+eframe = { version = "=0.37.0", default-features = false, features = ["clipboard", "default_fonts", "glow"] }
+# eframe has no switch for the two outline emoji fonts that egui 0.37 moved out of
+# `default_fonts`; fonts.rs orders Rocket's fallbacks around them. `experimental` opens
+# egui's theme hook, which style.rs uses to keep text fields at their 0.36 padding and
+# height; it adds no crate.
+egui = { version = "=0.37.0", default-features = false, features = ["experimental", "monochrome_emoji_fonts"] }
 unicode-segmentation = "=1.13.3"
 serde_json = "=1.0.151"
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg", "bmp", "tga", "webp"] }
 
 # Linux windows need winit's X11 and Wayland backends. eframe's own x11/wayland features
 # would also lock its unused wgpu renderer, so these turn them on in the crates eframe
-# 0.36.2 uses (rocket-mcp gets them through rocket-ui). Move these three pins together
+# 0.37.0 uses (rocket-mcp gets them through rocket-ui). Wayland is turned on in winit
+# itself: egui-winit 0.37's `wayland` feature would also lock arboard's
+# wayland-data-control clipboard and eight more crates. Move these four pins together
 # with eframe's.
 [target.'cfg(target_os = "linux")'.dependencies]
-egui-winit = { version = "=0.36.2", default-features = false, features = ["x11", "wayland"] }
+egui-winit = { version = "=0.37.0", default-features = false, features = ["x11"] }
+winit = { version = "=0.30.13", default-features = false, features = ["wayland"] }
 glutin = { version = "=0.32.3", default-features = false, features = ["x11", "glx", "wayland"] }
 glutin-winit = { version = "=0.5.0", default-features = false, features = ["x11", "glx", "wayland"] }
 

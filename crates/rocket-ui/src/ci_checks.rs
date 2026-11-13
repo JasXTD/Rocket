@@ -448,7 +448,7 @@ pub(crate) fn list(ui: &mut Ui, checks: &[ForgeCheck], host: ForgeProvider, widg
         {
             let text = painter.layout_no_wrap(label.clone(), FontId::proportional(12.0), BLUE());
             let link_rect = Rect::from_min_size(pos2(rect.right() - 6.0 - link_width, rect.center().y - 11.0), vec2(link_width - 4.0, 22.0));
-            let r = ui.interact(link_rect, ui.id().with((prefix, "open", i)), Sense::click()).on_hover_text(match &link.external {
+            let r = ui.interact(link_rect, ui.scope_id().with((prefix, "open", i)), Sense::click()).on_hover_text(match &link.external {
                 Some(host) => crate::i18n::trf!("Opens {host} in your browser", host),
                 None => crate::i18n::tr("Opens this check on the host in your browser").into(),
             });
@@ -807,7 +807,7 @@ impl Rocket {
         let opened = p.opened;
         let live = self.forge.session.as_ref().is_some_and(|s| Arc::ptr_eq(s, &p.session));
         let widgets = &mut self.frame_widgets;
-        let area = Area::new(Id::new("ci-popover")).order(Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
+        let area = Area::new(Id::unique("ci-popover")).order(Order::Foreground).fixed_pos(pos).show(ctx, |ui| {
             pages::modal_frame().corner_radius(10).show(ui, |ui| {
                 ui.set_width(width);
                 ui.spacing_mut().item_spacing.y = 0.0;

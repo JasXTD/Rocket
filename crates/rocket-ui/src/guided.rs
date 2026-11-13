@@ -275,7 +275,7 @@ fn tile(ui: &mut Ui, width: f32, count: usize, label: &str, color: Color32) -> R
     let ink = if count == 0 { FAINT() } else { color };
     ui.painter().text(rect.left_top() + vec2(16.0, 12.0), Align2::LEFT_TOP, count.to_string(), semibold(26.0), ink);
     ui.painter().text(rect.left_bottom() + vec2(16.0, -12.0), Align2::LEFT_BOTTOM, label, FontId::proportional(12.0), HINT());
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("{count} {label}")));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, format!("{count} {label}")));
     response
 }
 /// A refresh is queued or running, so Summary's numbers may be out of date.

@@ -632,7 +632,7 @@ fn command_row(ui: &mut Ui, c: &CustomCommand, open: bool, changed: bool) -> Res
         if open { Icon::Chevron } else { Icon::ChevronRight },
         if open { BLUE() } else { FAINT() },
     );
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, open, display_name(c)));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, open, display_name(c)));
     response
 }
 
@@ -701,7 +701,7 @@ fn text_field(ui: &mut Ui, value: &mut String, width: f32, hint: &str) -> Respon
         [width.max(60.0), CONTROL],
         TextEdit::singleline(value)
             .char_limit(64)
-            .vertical_align(Align::Center)
+            .align(Align2::LEFT_CENTER)
             .hint_text(RichText::new(hint).color(FAINT()).italics()),
     )
 }
@@ -827,7 +827,7 @@ fn edit_panel(
                     }
                 });
                 let url = command.action == CommandAction::Url;
-                let id = Id::new(("custom-command-arguments", index));
+                let id = Id::unique(("custom-command-arguments", index));
                 form_row(ui, if url { crate::i18n::tr("Web link") } else { crate::i18n::tr("Program") }, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 8.0;
@@ -840,8 +840,8 @@ fn edit_panel(
                         let r = ui.add_sized(
                             [(ui.available_width() - buttons).max(80.0), CONTROL],
                             TextEdit::singleline(&mut command.program)
-                                .id(if url { id } else { Id::new(("command-program", index)) })
-                                .vertical_align(Align::Center)
+                                .id(if url { id } else { Id::unique(("command-program", index)) })
+                                .align(Align2::LEFT_CENTER)
                                 .font(TextStyle::Monospace)
                                 .hint_text(
                                     RichText::new(if url {
@@ -1184,7 +1184,7 @@ fn token_chip(ui: &mut Ui, token: &str) -> Response {
         galley,
         if hot { TEXT() } else { MUTED() },
     );
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, token));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, true, token));
     response
 }
 
@@ -1264,7 +1264,7 @@ fn inputs_table(ui: &mut Ui, command: &mut CustomCommand, widgets: &mut HashMap<
                                 let r = ui.add_sized(
                                     [widths[0], 24.0],
                                     TextEdit::singleline(&mut input.key)
-                                        .vertical_align(Align::Center)
+                                        .align(Align2::LEFT_CENTER)
                                         .char_limit(32)
                                         .font(TextStyle::Monospace),
                                 );
@@ -1273,7 +1273,7 @@ fn inputs_table(ui: &mut Ui, command: &mut CustomCommand, widgets: &mut HashMap<
                             cell(ui, widths[1], 26.0, |ui| {
                                 let r = ui.add_sized(
                                     [widths[1], 24.0],
-                                    TextEdit::singleline(&mut input.label).char_limit(64).vertical_align(Align::Center),
+                                    TextEdit::singleline(&mut input.label).char_limit(64).align(Align2::LEFT_CENTER),
                                 );
                                 control(widgets, id("label"), &r, ui.clip_rect());
                             });
@@ -1306,7 +1306,7 @@ fn inputs_table(ui: &mut Ui, command: &mut CustomCommand, widgets: &mut HashMap<
                                     }
                                 } else {
                                     let mut edit = TextEdit::singleline(&mut input.default_value)
-                                        .vertical_align(Align::Center)
+                                        .align(Align2::LEFT_CENTER)
                                         .char_limit(4096)
                                         .hint_text(crate::i18n::tr("Empty"));
                                     if input.kind != CommandInputKind::Text {
@@ -1321,7 +1321,7 @@ fn inputs_table(ui: &mut Ui, command: &mut CustomCommand, widgets: &mut HashMap<
                                     let r = ui.add_sized(
                                         [widths[4], 24.0],
                                         TextEdit::singleline(&mut input.checked_value)
-                                            .vertical_align(Align::Center)
+                                            .align(Align2::LEFT_CENTER)
                                             .char_limit(4096)
                                             .font(TextStyle::Monospace)
                                             .hint_text("--flag"),
@@ -1524,7 +1524,7 @@ fn path_row(
                 ui.add_sized(
                     [width, CONTROL],
                     TextEdit::singleline(path)
-                        .vertical_align(Align::Center)
+                        .align(Align2::LEFT_CENTER)
                         .font(TextStyle::Monospace)
                         .hint_text(hint),
                 )
@@ -1998,7 +1998,7 @@ pub(crate) fn form(
                                 _ => 0.0,
                             };
                             ui.spacing_mut().item_spacing.x = if kind == CommandInputKind::Branch { 4.0 } else { 8.0 };
-                            let mut edit = TextEdit::singleline(value).char_limit(4096).vertical_align(Align::Center);
+                            let mut edit = TextEdit::singleline(value).char_limit(4096).align(Align2::LEFT_CENTER);
                             if kind != CommandInputKind::Text {
                                 edit = edit.font(TextStyle::Monospace);
                             }
@@ -2487,6 +2487,7 @@ mod flow_tests {
                             unit: MouseWheelUnit::Point,
                             delta: vec2(0.0, -2000.0),
                             phase: TouchPhase::Move,
+                            source: eframe::egui::MouseWheelSource::Unknown,
                             modifiers: Modifiers::NONE,
                         },
                     ],

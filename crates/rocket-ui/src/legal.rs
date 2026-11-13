@@ -115,7 +115,7 @@ struct State {
 
 /// Opens Legal at Rocket's license with nothing chosen.
 pub(crate) fn reset(ctx: &Context) {
-    ctx.data_mut(|d| d.remove::<State>(Id::new(STATE)));
+    ctx.data_mut(|d| d.remove::<State>(Id::unique(STATE)));
 }
 
 /// Legal: Rocket's license, then what Rocket includes, each with its notice.
@@ -131,7 +131,7 @@ pub(crate) fn dialog(ctx: &Context, widgets: &mut HashMap<String, UiControl>) ->
         if part != pages::Part::Body {
             return;
         }
-        let id = Id::new(STATE);
+        let id = Id::unique(STATE);
         let mut s: State = ui.data(|d| d.get_temp(id)).unwrap_or_default();
         let all = notices();
         let count = |kind: &str| all.iter().filter(|n| n.kind == kind).count();
@@ -307,7 +307,7 @@ fn nav_row(ui: &mut Ui, title: &str, sub: &str, selected: bool) -> Response {
     let inner = rect.shrink2(vec2(10.0, 0.0));
     clipped_text(ui, Rect::from_min_max(inner.min, pos2(inner.right(), inner.top() + 24.0)), title, 13.0, TEXT());
     clipped_text(ui, Rect::from_min_max(pos2(inner.left(), inner.top() + 22.0), inner.max), sub, 12.0, HINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, title));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, title));
     response
 }
 
@@ -333,7 +333,7 @@ fn item_row(ui: &mut Ui, name: &str, version: &str, license: &str, selected: boo
     job.wrap = text::TextWrapping::truncate_at_width(name_width);
     let galley = painter.layout_job(job);
     painter.galley(pos2(inner.left(), inner.center().y - galley.size().y / 2.0), galley, TEXT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, selected, name));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, true, selected, name));
     response
 }
 

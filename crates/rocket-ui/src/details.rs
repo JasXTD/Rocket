@@ -33,7 +33,7 @@ pub(crate) fn commit_details(
         });
         return;
     };
-    Panel::top(Id::new(("commit-review-actions",tab.id))).frame(Frame::new().fill(VIEW_PANEL()).inner_margin(6)).show(ui,|ui| {
+    Panel::top(("commit-review-actions",tab.id)).frame(Frame::new().fill(VIEW_PANEL()).inner_margin(6)).show(ui,|ui| {
         ui.horizontal_wrapped(|ui| {
             // A preview's review window would outlive the preview and its downloads.
             let review=ui.add_enabled(!tab.is_preview(),Button::new(tr("Open review window"))).on_disabled_hover_text(tr("Keep this preview to open commits in their own window"));widgets.insert("commit-open-review".into(),(&review).into());
@@ -43,7 +43,7 @@ pub(crate) fn commit_details(
         });
     });
     if ui.available_width() >= 720.0 {
-        let meta = Panel::left(Id::new(("commit-meta", tab.id)))
+        let meta = Panel::left(("commit-meta", tab.id))
             .default_size(360.0)
             .size_range(260.0..=(ui.available_width() * 0.5).max(260.0))
             .resizable(true)
@@ -336,7 +336,7 @@ fn file_list(ui: &mut Ui, tab: &mut Tab, widgets: &mut HashMap<String, UiControl
         )
     });
     let (rect, header) = ui.allocate_exact_size(vec2(ui.available_width(), 34.0), Sense::click());
-    header.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tr("Files changed")));
+    header.widget_info(|| WidgetInfo::labeled(Role::Button, true, tr("Files changed")));
     widgets.insert("detail-files".into(), (&header).into());
     if header.clicked() {
         tab.detail_tab = DetailTab::Files;
@@ -399,7 +399,7 @@ fn file_list(ui: &mut Ui, tab: &mut Tab, widgets: &mut HashMap<String, UiControl
             ui.spacing_mut().item_spacing.y = 1.0;
             // A commit can change thousands of files: build only the rows in or next
             // to the visible area.
-            crate::long_list::rows(ui, Id::new(("detail-file-rows", tab.id)), patch.files.len(), FILE_ROW, |ui, i| {
+            crate::long_list::rows(ui, Id::unique(("detail-file-rows", tab.id)), patch.files.len(), FILE_ROW, |ui, i| {
                 let file = &patch.files[i];
                 let response = ui
                     .add(
@@ -461,7 +461,7 @@ fn file_list(ui: &mut Ui, tab: &mut Tab, widgets: &mut HashMap<String, UiControl
                     FontId::monospace(11.5),
                     RED(),
                 );
-                response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &file.label));
+                response.widget_info(|| WidgetInfo::labeled(Role::Button, true, &file.label));
                 if response.interact_rect.is_positive() {
                     widgets.insert(
                         format!("patch-file-{i}"),

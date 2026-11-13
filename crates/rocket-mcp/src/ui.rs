@@ -61,6 +61,31 @@ struct Capture {
     ticket: Ticket,
     id: u64,
 }
+/// Pictures egui has delivered, each under its capture id. egui 0.37 passes a screenshot
+/// to a callback, not to the window as an input event, so it waits here until the root
+/// frame collects it.
+type Shots = Arc<Mutex<Vec<(u64, Arc<ColorImage>)>>>;
+/// The command that takes capture `id`'s picture and wakes the root window, where
+/// captures are answered.
+fn screenshot(ctx: &Context, shots: &Shots, id: u64) -> ViewportCommand {
+    let (shots, repaint) = (shots.clone(), ctx.clone());
+    ViewportCommand::Screenshot(ScreenshotCallback::new(move |image| {
+        {
+            let mut shots = shots.lock().unwrap_or_else(|e| e.into_inner());
+            // A capture that was given up never collects its picture.
+            if shots.len() == 4 {
+                shots.remove(0);
+            }
+            shots.push((id, image));
+        }
+        repaint.request_repaint_of(ViewportId::ROOT);
+    }))
+}
+fn take_shot(shots: &Shots, id: u64) -> Option<Arc<ColorImage>> {
+    let mut shots = shots.lock().unwrap_or_else(|e| e.into_inner());
+    let at = shots.iter().position(|(shot, _)| *shot == id)?;
+    Some(shots.remove(at).1)
+}
 struct ReviewInput { request: Request, window:u64, phase:u8, point:Pos2 }
 pub struct Ui {
     pub app: Rocket,
@@ -78,6 +103,7 @@ pub struct Ui {
     waits: Vec<(Ticket, Instant)>,
     frame: Option<u64>,
     next_capture: u64,
+    shots: Shots,
     viewport: [f32; 2],
     /// Presentation actually used on the first native UI frame, retained for
     /// startup regression checks even when opening waits for Git to settle.
@@ -131,12 +157,9 @@ impl Ui {
         if let Some((id,capture))=self.review_capture.take() {
             let window=self.app.reviews.iter().find(|w|w.lock().unwrap_or_else(|e|e.into_inner()).id==id).cloned();
             let Some(window)=window else{capture.ticket.fail("Review closed before capture");return;};
-            let mut r=window.lock().unwrap_or_else(|e|e.into_inner());
+            let r=window.lock().unwrap_or_else(|e|e.into_inner());
             if r.closed || self.policy.repository(&r.tab.path).is_err() {capture.ticket.fail("Review capture outside active fixture scope");return;}
-            let image=r.screenshots.drain(..).find_map(|event|match event {
-                Event::Screenshot{image,user_data,..} if user_data.data.as_ref().and_then(|d|d.downcast_ref::<u64>())==Some(&capture.id)=>Some(image),_=>None,
-            });
-            if let Some(image)=image {
+            if let Some(image)=take_shot(&self.shots,capture.id) {
                 match capture::png(&image) {Ok(bytes)=>capture.ticket.result(json!({"content":[{"type":"image","mimeType":"image/png","data":capture::base64(&bytes)}],"isError":false})),Err(e)=>capture.ticket.fail(&e)}
             } else if capture.ticket.inactive() || Instant::now()>capture.ticket.deadline {capture.ticket.fail("Review screenshot expired");}
             else {ctx.request_repaint_of(r.viewport());self.review_capture=Some((id,capture));}
@@ -219,6 +242,7 @@ impl Ui {
             waits: vec![],
             frame: None,
             next_capture: 0,
+            shots: Shots::default(),
             viewport: [0.0, 0.0],
             first_presentation: None,
         }
@@ -1949,7 +1973,7 @@ impl Ui {
                         if self.review_capture.is_some(){request.ticket.fail("Review capture already pending");return;}
                         self.next_capture+=1;
                         self.review_capture=Some((id,Capture{ticket:request.ticket,id:self.next_capture}));
-                        ctx.send_viewport_cmd_to(viewport,ViewportCommand::Screenshot(UserData::new(self.next_capture)));
+                        ctx.send_viewport_cmd_to(viewport,screenshot(ctx,&self.shots,self.next_capture));
                     }
                     _ if request.args["target"]=="review-close" => {
                         if self.review_input.is_some()||self.review_close.is_some(){request.ticket.fail("Review input already pending");return;}
@@ -2203,6 +2227,7 @@ impl Ui {
                             unit: MouseWheelUnit::Point,
                             delta: vec2(0.0, direction * pixels),
                             phase: TouchPhase::Move,
+                            source: MouseWheelSource::Unknown,
                             modifiers: Modifiers::NONE,
                         },
                     ],
@@ -2228,7 +2253,7 @@ impl Ui {
                 match binding.trigger {
                     Trigger::Key(key) => for pressed in [true,false] { events.push(Event::Key {key,physical_key:None,pressed,repeat:false,modifiers}); },
                     Trigger::Mouse(button) => { events.push(Event::PointerMoved(pos)); for pressed in [true,false] { events.push(Event::PointerButton {pos,button,pressed,modifiers}); } },
-                    Trigger::Wheel(wheel) => { events.push(Event::PointerMoved(pos)); events.push(Event::MouseWheel { unit:MouseWheelUnit::Line, delta:match wheel { Wheel::Up=>vec2(0.0,1.0),Wheel::Down=>vec2(0.0,-1.0),Wheel::Left=>vec2(1.0,0.0),Wheel::Right=>vec2(-1.0,0.0) },modifiers,phase:TouchPhase::Move }); },
+                    Trigger::Wheel(wheel) => { events.push(Event::PointerMoved(pos)); events.push(Event::MouseWheel { unit:MouseWheelUnit::Line, delta:match wheel { Wheel::Up=>vec2(0.0,1.0),Wheel::Down=>vec2(0.0,-1.0),Wheel::Left=>vec2(1.0,0.0),Wheel::Right=>vec2(-1.0,0.0) },modifiers,phase:TouchPhase::Move,source:MouseWheelSource::Unknown }); },
                 }
                 events.push(Event::ModifiersChanged(Modifiers::NONE));
                 request.ticket.timing.mark(Phase::Input);
@@ -2574,9 +2599,7 @@ impl Ui {
                     ticket: request.ticket,
                     id: self.next_capture,
                 });
-                ctx.send_viewport_cmd(ViewportCommand::Screenshot(UserData::new(
-                    self.next_capture,
-                )));
+                ctx.send_viewport_cmd(screenshot(ctx, &self.shots, self.next_capture));
             }
             "rocket_logs" => match self.logs(
                 request.args["after_seq"].as_u64().unwrap_or(0),
@@ -2999,26 +3022,14 @@ impl App for Ui {
                 .ticket
                 .ok(json!({"input_applied":true,"state":self.state()}));
         }
-        for event in ctx.input(|i| i.events.clone()) {
-            if let Event::Screenshot {
-                image, user_data, ..
-            } = event
-                && self.capture.as_ref().is_some_and(|c| {
-                    user_data
-                        .data
-                        .as_ref()
-                        .and_then(|d| d.downcast_ref::<u64>())
-                        == Some(&c.id)
-                })
-            {
-                let capture = self.capture.take().unwrap();
-                if !self.scope_ok() {
-                    capture.ticket.fail("Capture refused outside fixture scope");
-                } else {
-                    match capture::png(&image) {
+        if let Some(image) = self.capture.as_ref().and_then(|c| take_shot(&self.shots, c.id)) {
+            let capture = self.capture.take().unwrap();
+            if !self.scope_ok() {
+                capture.ticket.fail("Capture refused outside fixture scope");
+            } else {
+                match capture::png(&image) {
                     Ok(bytes) => capture.ticket.result(json!({"content":[{"type":"image","mimeType":"image/png","data":capture::base64(&bytes)}],"isError":false})),
                     Err(error) => capture.ticket.fail(&error),
-                }
                 }
             }
         }

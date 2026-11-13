@@ -761,7 +761,7 @@ fn file_row(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, file: &std::p
         let width = (ui.available_width() - 104.0).max(80.0);
         let mut text = crate::views::display_path(file);
         ui.add_enabled_ui(false, |ui| {
-            ui.add_sized([width, CONTROL], TextEdit::singleline(&mut text).vertical_align(Align::Center));
+            ui.add_sized([width, CONTROL], TextEdit::singleline(&mut text).align(Align2::LEFT_CENTER));
         });
         let r = ui.add_sized([96.0, CONTROL], Button::new(crate::i18n::tr("Choose file")));
         pages::control(widgets, "int-review-choose", &r, ui.clip_rect());

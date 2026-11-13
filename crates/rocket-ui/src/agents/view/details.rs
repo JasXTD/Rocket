@@ -139,7 +139,7 @@ fn chips(ui: &mut Ui, args: &[String]) {
             galley,
             TEXT(),
         );
-        ui.interact(area, ui.id().with(("argument", i)), Sense::hover())
+        ui.interact(area, ui.scope_id().with(("argument", i)), Sense::hover())
             .on_hover_text(arg);
     }
 }

@@ -1436,7 +1436,7 @@ fn row(
     );
     response.widget_info(|| {
         WidgetInfo::selected(
-            WidgetType::Button,
+            Role::Button,
             enabled,
             selected,
             format!("#{} {}", item.number, item.title),

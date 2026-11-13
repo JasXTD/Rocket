@@ -554,7 +554,7 @@ pub(crate) fn view(
                     TextEdit::singleline(&mut s.revision)
                         .char_limit(4096)
                         .hint_text(crate::i18n::tr("Commit, branch or tag"))
-                        .vertical_align(Align::Center),
+                        .align(Align2::LEFT_CENTER),
                 );
                 register(ui, widgets, "tree-revision", &r);
                 let enter = r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
@@ -639,7 +639,7 @@ pub(crate) fn view(
     } else if results {
         pages::list_pane(
             ui,
-            Id::new(("tree-results", tab.id)),
+            Id::unique(("tree-results", tab.id)),
             430.0,
             280.0..=640.0,
             |ui| {
@@ -653,7 +653,7 @@ pub(crate) fn view(
     } else {
         pages::list_pane(
             ui,
-            Id::new(("tree-folders", tab.id)),
+            Id::unique(("tree-folders", tab.id)),
             285.0,
             190.0..=380.0,
             |ui| {

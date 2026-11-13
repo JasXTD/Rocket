@@ -547,7 +547,7 @@ pub(super) fn body(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, comp
         let galley = painter.layout(text, FontId::proportional(13.), MUTED(), (picture.width() - 48.).max(40.));
         painter.galley(picture.center() - galley.size() / 2., galley, MUTED());
         if !covered {
-            register(ui, widgets, "map-canvas", &ui.interact(picture, ui.id().with("map-modules-message"), Sense::hover()));
+            register(ui, widgets, "map-canvas", &ui.interact(picture, ui.scope_id().with("map-modules-message"), Sense::hover()));
         }
         return;
     }
@@ -655,7 +655,7 @@ fn list_panel(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units,
             let response = response.on_hover_text(format!("{}\n{}", name(data, row.node), trn!(count, "Used by {n} module", "Used by {n} modules")));
             register(ui, widgets, &format!("map-module-{}", row.node), &response);
             if row.folder {
-                let toggle = ui.interact(twisty.expand(4.).intersect(r), ui.id().with(("map-module-toggle", row.node)), Sense::click());
+                let toggle = ui.interact(twisty.expand(4.).intersect(r), ui.scope_id().with(("map-module-toggle", row.node)), Sense::click());
                 register(ui, widgets, &format!("map-module-toggle-{}", row.node), &toggle);
                 if toggle.clicked() && !covered {
                     pick = Some(Pick::Toggle(row.node));
@@ -721,7 +721,7 @@ pub(super) fn package_picker(ui: &mut Ui, s: &MapPage, packages: &[(String, Vec<
     room(ui, width);
     let control_id = ui.make_persistent_id(("map-control", "map-module-package"));
     let r = ui
-        .scope_builder(UiBuilder::new().id(control_id), |ui| ui.add_enabled(!packages.is_empty(), Button::new("").min_size(vec2(width, CONTROL))))
+        .scope_builder(UiBuilder::new().scope_id(control_id), |ui| ui.add_enabled(!packages.is_empty(), Button::new("").min_size(vec2(width, CONTROL))))
         .inner
         .on_hover_text(tr("The Rust package to map"));
     let painter = ui.painter();
@@ -855,7 +855,7 @@ pub(super) fn module_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: 
 
 /// Where a folded section keeps whether it is open, in egui's memory.
 fn section_key(id: &str) -> Id {
-    Id::new(("map-module-section", id))
+    Id::unique(("map-module-section", id))
 }
 /// A folded section heading; true while it is open.
 fn section(ui: &mut Ui, title: &str, count: usize, id: &str, open_at_first: bool, widgets: &mut HashMap<String, UiControl>) -> bool {

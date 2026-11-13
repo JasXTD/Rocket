@@ -173,7 +173,7 @@ pub(crate) fn notice(
         })
         .response
         .rect;
-    pages::control(widgets, "history-speed-notice", &ui.interact(strip, Id::new(("history-speed-notice", tab.id)), Sense::hover()), ui.clip_rect());
+    pages::control(widgets, "history-speed-notice", &ui.interact(strip, Id::unique(("history-speed-notice", tab.id)), Sense::hover()), ui.clip_rect());
     ui.painter().hline(strip.x_range(), strip.bottom() - 0.5, Stroke::new(1.0, BLUE().gamma_multiply(0.28)));
 }
 

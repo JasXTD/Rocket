@@ -1,4 +1,5 @@
 //! Native acceptance for the optional pre-push review; use disposable local repos only.
+mod support;
 use eframe::{App, Frame, egui::*};
 use rocket_ui::{
     app::{DialogKind, Intent, Rocket},
@@ -68,6 +69,7 @@ impl Probe {
                     unit: MouseWheelUnit::Point,
                     delta: vec2(0.0, direction),
                     phase: TouchPhase::Move,
+                    source: MouseWheelSource::Unknown,
                     modifiers: Modifiers::NONE,
                 },
             ]);
@@ -94,7 +96,7 @@ impl Probe {
     }
     fn capture(&mut self, ctx: &Context, name: &str) {
         self.capture = Some(format!("{}-{name}", self.mode));
-        ctx.send_viewport_cmd(ViewportCommand::Screenshot(UserData::default()));
+        support::request_screenshot(ctx);
     }
     fn push(&mut self) {
         self.app.execute(
@@ -146,20 +148,18 @@ impl App for Probe {
         );
         let ctx = ui.ctx().clone();
         self.app.ui(ui, frame);
-        for event in ctx.input(|i| i.events.clone()) {
-            if let Event::Screenshot { image, .. } = event
-                && let Some(name) = self.capture.take()
-            {
-                let bytes: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
-                image::save_buffer(
-                    self.output.join(format!("{name}.png")),
-                    &bytes,
-                    image.width() as u32,
-                    image.height() as u32,
-                    image::ColorType::Rgba8,
-                )
-                .unwrap();
-            }
+        if let Some(image) = support::take_screenshot()
+            && let Some(name) = self.capture.take()
+        {
+            let bytes: Vec<u8> = image.pixels.iter().flat_map(|p| p.to_array()).collect();
+            image::save_buffer(
+                self.output.join(format!("{name}.png")),
+                &bytes,
+                image.width() as u32,
+                image.height() as u32,
+                image::ColorType::Rgba8,
+            )
+            .unwrap();
         }
         if self.stage == 100 {
             if !self.app.busy() {

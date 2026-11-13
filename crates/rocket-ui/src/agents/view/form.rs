@@ -70,7 +70,7 @@ pub(super) fn present(program: &str) -> bool {
 
 /// Whether the dialog on screen shows its program, arguments and setup fields.
 fn open_id() -> Id {
-    Id::new("agents-program-fields-open")
+    Id::unique("agents-program-fields-open")
 }
 
 /// No dialog is open: the fields the last one opened are not carried into the next.
@@ -184,7 +184,7 @@ fn field(ui: &mut Ui, w: &mut Widgets, id: &str, label: &'static str, value: &mu
         } else {
             TextEdit::singleline(value)
                 .min_size(vec2(0.0, 30.0))
-                .vertical_align(Align::Center)
+                .align(Align2::LEFT_CENTER)
         };
         let r = ui.add(edit.desired_width(f32::INFINITY).id_salt(id));
         pages::control(w, id, &r, ui.clip_rect());
@@ -324,7 +324,7 @@ fn edit(ui: &mut Ui, w: &mut Widgets, f: &mut Form, chosen: Chosen, action: &mut
                 TextEdit::singleline(&mut f.record.command.program)
                     .desired_width((ui.available_width() - button - 8.0).max(160.0))
                     .min_size(vec2(0.0, 30.0))
-                    .vertical_align(Align::Center)
+                    .align(Align2::LEFT_CENTER)
                     .id_salt("agents-program"),
             );
             pages::control(w, "agents-program", &r, clip);

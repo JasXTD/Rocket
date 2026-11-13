@@ -877,7 +877,7 @@ fn form_modal(
 ) -> ModalResponse<()> {
     let width = (ctx.content_rect().width() - 48.0).clamp(360.0, 640.0);
     let height = (ctx.content_rect().height() - 220.0).max(120.0);
-    Modal::new(Id::new(id))
+    Modal::new(Id::unique(id))
         .backdrop_color(Color32::from_black_alpha(120))
         .frame(pages::modal_frame())
         .show(ctx, |ui| {

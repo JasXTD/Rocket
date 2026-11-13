@@ -202,7 +202,7 @@ fn plot(ui: &mut Ui, s: &pulls::State, widgets: &mut HashMap<String, UiControl>,
         .fold((0, 0), |(o, m), b| (o + b.opened, m + b.merged));
     response.widget_info(|| {
         WidgetInfo::labeled(
-            WidgetType::Other,
+            Role::Unknown,
             true,
             format!(
                 "{} · {}",

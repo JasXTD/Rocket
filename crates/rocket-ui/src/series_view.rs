@@ -171,7 +171,7 @@ fn row(ui: &mut Ui, i: usize, entry: &Row, selected: bool, enabled: bool) -> Res
     let meta = painter.layout_job(meta);
     painter.galley(pos2(left, top + 19.0), meta, HINT());
     painter.hline(rect.x_range(), rect.bottom() - 0.5, Stroke::new(1.0, ROW_LINE()));
-    response.widget_info(|| WidgetInfo::selected(WidgetType::SelectableLabel, enabled, selected, &entry.subject));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, &entry.subject));
     response
 }
 

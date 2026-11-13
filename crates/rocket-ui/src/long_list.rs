@@ -105,7 +105,7 @@ mod tests {
                         r.has_focus()
                     };
                     if virtual_rows {
-                        rows(ui, Id::new("long-list-test"), count, ROW, one);
+                        rows(ui, Id::unique("long-list-test"), count, ROW, one);
                     } else {
                         for index in 0..count {
                             ui.push_id(index, |ui| one(ui, index));
@@ -129,6 +129,7 @@ mod tests {
                 delta: vec2(0.0, delta),
                 modifiers: Modifiers::NONE,
                 phase: TouchPhase::Move,
+                source: MouseWheelSource::Unknown,
             },
         ]
     }

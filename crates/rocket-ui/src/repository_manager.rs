@@ -315,7 +315,7 @@ fn nav_row(ui: &mut Ui, image: Icon, label: &str, count: usize, indent: f32, sel
     job.wrap = text::TextWrapping::truncate_at_width((right - width - 8.0 - (left + 34.0)).max(0.0));
     let name = painter.layout_job(job);
     painter.galley(pos2(left + 34.0, rect.center().y - name.size().y / 2.0), name, color);
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, label));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, label));
     response
 }
 /// An empty sidebar section.
@@ -416,7 +416,7 @@ fn navigation(ui: &mut Ui, p: &mut Parts) {
                             pos2(r.rect.left() + indent - 2.0, r.rect.center().y),
                             vec2(18.0, 26.0),
                         );
-                        let t = ui.interact(rect, ui.id().with(("manager-toggle", id)), Sense::click());
+                        let t = ui.interact(rect, ui.scope_id().with(("manager-toggle", id)), Sense::click());
                         let tip = if collapsed { "Expand workspace" } else { "Collapse workspace" };
                         let ink = if ui.is_enabled() && t.hovered() { TEXT() } else { HINT() };
                         icon(
@@ -425,7 +425,7 @@ fn navigation(ui: &mut Ui, p: &mut Parts) {
                             if collapsed { Icon::ChevronRight } else { Icon::Chevron },
                             ink,
                         );
-                        t.widget_info(|| WidgetInfo::labeled(WidgetType::Button, ui.is_enabled(), tip));
+                        t.widget_info(|| WidgetInfo::labeled(Role::Button, ui.is_enabled(), tip));
                         let t = t.on_hover_text(tip);
                         pages::control(p.widgets, format!("manager-workspace-toggle-{id}"), &t, ui.clip_rect());
                         if t.clicked() {
@@ -594,7 +594,7 @@ fn repo_row(ui: &mut Ui, repo: &SavedRepository, tags: &[Pill], status: &Row, se
     job.wrap = text::TextWrapping::truncate_at_width((left + width - at).max(0.0));
     let second = ui.painter().layout_job(job);
     ui.painter().galley(pos2(at, line - second.size().y / 2.0), second, FAINT());
-    response.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, selected, &repo.name));
+    response.widget_info(|| WidgetInfo::selected(Role::Button, enabled, selected, &repo.name));
     response
 }
 /// A card body with nothing to list: an optional icon, the text centred, and actions under it
@@ -671,7 +671,7 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
                     .id_salt("manager-filter")
                     .hint_text("Filter by name or path")
                     .margin(Margin { left: 26, right: if typed { 24 } else { 8 }, top: 0, bottom: 0 })
-                    .vertical_align(Align::Center),
+                    .align(Align2::LEFT_CENTER),
             );
             pages::control(p.widgets, "manager-filter", &r, ui.clip_rect());
             icon(
@@ -682,7 +682,7 @@ fn repository_list(ui: &mut Ui, p: &mut Parts) {
             );
             if typed {
                 let x = Rect::from_center_size(pos2(r.rect.right() - 13.0, r.rect.center().y), vec2(18.0, 18.0));
-                let clear = ui.interact(x, ui.id().with("manager-filter-x"), Sense::click());
+                let clear = ui.interact(x, ui.scope_id().with("manager-filter-x"), Sense::click());
                 let ink = if clear.hovered() { TEXT() } else { HINT() };
                 icon(ui.painter(), Rect::from_center_size(x.center(), vec2(10.0, 10.0)), Icon::Close, ink);
                 if clear.on_hover_text("Clear filter").clicked() {
@@ -938,7 +938,7 @@ fn remove_tool(ui: &mut Ui, enabled: bool) -> Response {
     );
     ui.painter()
         .text(pos2(rect.left() + 28.0, rect.center().y), Align2::LEFT_CENTER, "Remove", font, ink);
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, "Remove"));
+    response.widget_info(|| WidgetInfo::labeled(Role::Button, enabled, "Remove"));
     response
 }
 /// A details row: the label in a fixed column and the value beside it, wrapping under itself.
@@ -1119,7 +1119,7 @@ fn result_card(ui: &mut Ui, p: &mut Parts, room: f32) -> f32 {
                         ui.painter().galley(pos2(x, rect.center().y - galley.size().y / 2.0), galley, *color);
                         // A reason cut short shows in full on hover.
                         if cut {
-                            ui.interact(rect, ui.id().with(("manager-result-row", name.as_str())), Sense::hover())
+                            ui.interact(rect, ui.scope_id().with(("manager-result-row", name.as_str())), Sense::hover())
                                 .on_hover_text(what.as_str());
                         }
                     }
@@ -1945,7 +1945,7 @@ impl Rocket {
                                     [width, CONTROL],
                                     TextEdit::singleline(&mut f.path)
                                         .id_salt("manager-path")
-                                        .vertical_align(Align::Center),
+                                        .align(Align2::LEFT_CENTER),
                                 );
                                 pages::control(widgets, "manager-path", &r, ui.clip_rect());
                                 let r = ui.add_sized([76.0, CONTROL], Button::new("Browse"));
@@ -2079,7 +2079,7 @@ fn name_row(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, name: &mut St
             [ui.available_width(), CONTROL],
             TextEdit::singleline(name)
                 .id_salt("manager-name")
-                .vertical_align(Align::Center),
+                .align(Align2::LEFT_CENTER),
         );
         pages::control(widgets, "manager-name", &r, ui.clip_rect());
     });

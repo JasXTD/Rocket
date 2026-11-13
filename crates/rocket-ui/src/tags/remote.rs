@@ -719,7 +719,7 @@ impl Rocket {
                                 TextEdit::singleline(&mut r.confirmation)
                                     .desired_width(f32::INFINITY)
                                     .min_size(vec2(0.0, 30.0))
-                                    .vertical_align(Align::Center),
+                                    .align(Align2::LEFT_CENTER),
                             );
                             control(widgets, "dialog-remote-tag-confirm", &b, ui.clip_rect());
                         }
