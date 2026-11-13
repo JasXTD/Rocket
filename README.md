@@ -42,25 +42,17 @@ open **Help → Setup Guide** in the app. **Ctrl+K** opens the command palette a
 guide.
 
 > [!NOTE]
-> [Download Rocket 0.92.3](https://github.com/JasXTD/Rocket/releases/tag/v0.92.3):
+> [Download Rocket 0.92.4](https://github.com/JasXTD/Rocket/releases/tag/v0.92.4):
 > Windows x64, Linux x64 (glibc 2.43+) and macOS 15+ previews for Apple Silicon and Intel.
 > The Mac preview is not Developer-ID-signed or notarized.
 > Pick your package on the [download page](https://jasxtd.github.io/Rocket/get.html), or
 > [build from source](#build-and-run).
 
-**New in 0.92.3:** run parallel Claude Code, Codex or custom commands in the
-Agents workspace, with reviewed worktrees and separate terminals. This release
-also adds an Intel Mac preview, extends the ten preview translations and hosting
-discussions, and fixes executable-launch and credential-helper security issues.
-See the [release notes](docs/releases/0.92.3.md) for scope and limitations.
-
-**Coming in the next release**, already in a source build: [**Insights**](docs/Insights.md)
-with pull request trends and review times, Rust **Modules** in the Repository map,
-**Speed up history** for large repositories, and Agents with a GitHub Copilot CLI preset,
-attention badges, exact-conversation resume and guided integration. Secret protection also
-learns AWS keys, JSON Web Key private keys and OAuth client secrets. Features below marked
-*Next release* aren't in the 0.92.3 downloads; [Unreleased](CHANGELOG.md#unreleased) has
-the full list.
+**New in 0.92.4:** [Insights](docs/Insights.md) with pull request trends, review
+timing and exports; Rust module maps; faster history; and Agents with Copilot CLI,
+conversation resume, attention status and guided integration. This release also
+fixes security boundaries, hosting adapters and loading/layout issues, and updates
+the UI framework. See the [release notes](docs/releases/0.92.4.md).
 
 ## Features
 
@@ -85,7 +77,7 @@ the full list.
 - Reflog recovery, **Undo Last Commit**, and manual or automatic **bisect**.
 - **Git Flow** feature, release and hotfix branches.
 - Tags, commit signing and signature checks, and **issue links** to Jira, Redmine or any tracker.
-- *Next release:* **Speed up history** writes Git's commit-graph index on request, so
+- **Speed up history** writes Git's commit-graph index on request, so
   History orders a large repository's commits several times faster; it can stay current
   after each fetch. Long file and branch lists draw only the rows on screen.
 
@@ -101,9 +93,9 @@ the full list.
 - [**Repository map**](docs/wiki/Repository-map.md) reads a pinned snapshot: **Code** draws
   Cargo packages and the folder tree, **History** the branches and merges, and **People**
   who changed which folders. Export what the map shows as Mermaid.
-- *Next release:* **Modules** in Map → Code shows one Rust package's modules and which
+- **Modules** in Map → Code shows one Rust package's modules and which
   uses which, read from the committed files without compiling anything.
-- *Next release:* [**Insights**](docs/Insights.md) replaces Statistics: commit activity, a
+- [**Insights**](docs/Insights.md) replaces Statistics: commit activity, a
   file treemap and pull request numbers from your hosting account, with weekly trends
   against the previous period, waiting review requests, time to first review, saved views
   per repository and reviewed CSV/JSON export.
@@ -150,7 +142,7 @@ the full list.
 - Run parallel Claude Code, Codex or custom executable sessions, each in its own worktree
   and terminal, after a review of the base commit, program and arguments. Stop, restart
   and safe cleanup; saved sessions never start by themselves. [Session guide](docs/Agents.md).
-- *Next release:* a **GitHub Copilot CLI** preset; sessions grouped by what needs you, with
+- A **GitHub Copilot CLI** preset; sessions grouped by what needs you, with
   an attention badge when an agent asks for permission or finishes a turn; **Resume
   conversation** reopens the exact conversation; and **Integrate** compares an agent's
   committed work and merges it through Rocket's usual merge review.
@@ -182,8 +174,8 @@ the full list.
 **Safety**
 
 - **Secret protection** and **Guard AI API keys** block recognized secrets in commits and
-  pushes. *Next release:* AWS access keys, JSON Web Key private keys, OAuth client secrets
-  and Amazon Bedrock API keys too.
+  pushes, including AWS access keys, JSON Web Key private keys, OAuth client secrets
+  and Amazon Bedrock API keys.
 - **Dependency advisories**: offline OSV scans, with an optional check before push.
 - Reviews before writes, Stop on running operations, and recovery data for destructive steps.
 
@@ -309,14 +301,14 @@ the rest.
 | Commit messages | ✅ Claude Code, Codex | ✅ external AI agents | 💲 GitKraken AI | — |
 | Code review | ✅ branch reviews | ✅ external AI agents | GitKraken.dev (browser) | — |
 | Conflict resolution | ✅ reviewed suggestions | — | 💲 preview | — |
-| Parallel coding agents | ✅ Claude Code, Codex or a custom command, a worktree and terminal each; live status and resume *next release* | — | ✅ six agent CLIs, a worktree each, live status for four; 💲 for private repos | — |
+| Parallel coding agents | ✅ Claude Code, Codex, Copilot CLI or a custom command, a worktree and terminal each; live status and resume | — | ✅ six agent CLIs, a worktree each, live status for four; 💲 for private repos | — |
 | **Hosting** | | | | |
 | Pull requests | ✅ list, create, inline review, merge | ✅ list, create | ✅ list/create; GitHub review/merge | GitHub PR indicators; create/open in browser |
 | CI status | ✅ commits, branches and PR heads; rerun where supported | — | ✅ on pull requests | — |
-| Pull request metrics | *Next release:* opened/merged trends, merge time, time to first review | — | 💲 GitKraken Insights, in the browser | — |
+| Pull request metrics | ✅ opened/merged trends, merge time, time to first review | — | 💲 GitKraken Insights, in the browser | — |
 | **Understanding a repository** | | | | |
 | Activity statistics | ✅ timeline, contributors, weekday/hour, file treemap | ✅ statistics, activity treemap | — | — |
-| Code and repository map | ✅ packages, folders, branches and people; Rust modules *next release* | — | Codemaps, early access only | — |
+| Code and repository map | ✅ packages, folders, branches and people; Rust modules | — | Codemaps, early access only | — |
 | **Safety** | | | | |
 | Built-in secret check before commit and push | ✅ tokens, private keys, credentials, AI API keys | — | — | — |
 | Dependency advisories | ✅ offline OSV scan, optional check before push | — | — | — |
@@ -330,9 +322,7 @@ the rest.
 
 ✅ supported as described · 💲 paid plan · — not documented in the sources checked
 
-Updated for **Rocket 0.92.3 on 2026-11-11**; the agents, pull request metrics,
-repository, safety and language rows were checked on 2026-11-14. *Next release* marks
-Rocket features that are in a source build but not in the 0.92.3 downloads. This
+Updated for **Rocket 0.92.4 on 2026-11-14**. This
 compares documented capabilities, not speed, maturity or identical coverage. Features
 vary by platform, host and plan; AI providers may require a separate subscription. See
 [Platforms](#platforms) for Rocket's package requirements and preview status.
@@ -387,7 +377,7 @@ Official comparison sources:
   services, without a live tenant. AI conflict proposals have also been checked with
   a real Astra response through localhost MCP using synthetic code; the separate
   Claude Code/Codex CLI provider paths still use stand-ins in acceptance tests.
-- **Map and Insights (next release):** Modules reads Rust packages only, without expanding
+- **Map and Insights:** Modules reads Rust packages only, without expanding
   macros or `cfg`. Insights counts a loaded sample of up to 500 pull requests; time to
   first review is measured on GitHub, GitHub Enterprise Server and Gitea only, and
   missing data is named rather than estimated.
@@ -397,10 +387,10 @@ Official comparison sources:
 ## Roadmap
 
 Updated **2026-11-14**. Rocket has one maintainer, so this is a to-do list, not a
-schedule. Checked items are implemented on `main`; they are not in the **0.92.3
-downloads** yet. See [Unreleased](CHANGELOG.md#unreleased) for the changes.
+schedule. The completed items below are included in **0.92.4**; package validation
+and platform limits are described in the [release notes](docs/releases/0.92.4.md).
 
-**Next release**
+**Completed in 0.92.4**
 
 - [x] Insights with PR drilldowns, trends, author filters and CSV/JSON export.
 - [x] Map → Modules, People refinements and readable package-detail buttons, plus
@@ -409,10 +399,8 @@ downloads** yet. See [Unreleased](CHANGELOG.md#unreleased) for the changes.
 - [x] Insights translations and catalog corrections; language review remains open below.
 - [x] Secret protection and History Index security fixes, hosting adapter corrections,
   PR discussion layout improvements and stable repository navigation while loading.
-- [ ] Finish integrating the UI/dependency upgrade, with affected regression checks.
-- [ ] Verify the latest security fixes natively on Apple Silicon and Intel macOS.
-- [ ] Rebuild and verify Windows, Linux and both Mac packages, then publish the next
-  release with checksums and release notes.
+- [x] Integrate the egui 0.37 UI upgrade and rustix security update while preserving
+  the newer Agents, Insights and Map layouts.
 
 **Linux**
 

@@ -6,7 +6,7 @@ Start here if Rocket's menus feel overwhelming. You can do ordinary Git work
 with just **Changes**, **Commits**, **Fetch**, **Pull** and **Push**. Open the
 advanced tools when you need a particular operation.
 
-These pages cover **Rocket 0.92.3**. Windows examples use Ctrl and File Explorer;
+These pages cover **Rocket 0.92.4**. Windows examples use Ctrl and File Explorer;
 on macOS, use the native menus and Command shortcuts where shown. Linux uses
 your installed Git and desktop shell. Press **F1** for the guide inside Rocket,
 or use the toolbar search to find a command without remembering its menu location.

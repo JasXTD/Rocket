@@ -3579,10 +3579,12 @@ mod tests {
                 assert_eq!(ctx.style_of(Theme::Dark).visuals.panel_fill, crate::style::Palette::CLAY_DARK.bg);
                 assert!(app.look.is_some(), "saved palette is already installed");
                 // egui applies a requested zoom when the first UI pass starts.
-                let _ = ctx.run_ui(RawInput::default(), |ui| {
+                let frame = ctx.run_ui(RawInput::default(), |ui| {
                     assert_eq!(ui.ctx().zoom_factor(), 1.25);
                     assert_eq!(ui.visuals().panel_fill, crate::style::Palette::CLAY_DARK.bg);
                 });
+                // This layout-only test has no GPU texture consumer.
+                frame.drop_without_applying_deltas();
                 // Input can arrive while Git is still loading. Finishing startup
                 // must not restore the old appearance over these explicit changes.
                 app.theme.choice = crate::theme::Choice::Ocean;

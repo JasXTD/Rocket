@@ -3,7 +3,7 @@ members = ["crates/rocket-git", "crates/rocket-ui", "crates/rocket-mcp", "crates
 resolver = "3"
 
 [workspace.package]
-version = "0.92.3"
+version = "0.92.4"
 edition = "2024"
 rust-version = "1.89"
 license = "MIT OR Apache-2.0"

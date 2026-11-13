@@ -404,7 +404,10 @@ mod tests {
         let crates: Vec<&Notice> = all.iter().filter(|n| n.kind == "crate").collect();
         assert!(crates.len() > 50, "{} crates", crates.len());
         let unix_fonts = PLATFORM.is_none_or(|p| p == "Linux" || p == "macOS");
-        assert_eq!(all.iter().filter(|n| n.kind == "font").count(), if unix_fonts { 6 } else { 4 });
+        assert_eq!(all.iter().filter(|n| n.kind == "font").count(), if unix_fonts { 7 } else { 5 });
+        let icons = every.iter().find(|n| n.name == "egui-icons (emoji-icon-font subset)").expect("egui icon font notice");
+        assert_eq!((icons.license.as_str(), icons.platforms.as_str()), ("MIT", "Windows, Linux, macOS"));
+        assert!(icons.text.contains("Permission is hereby granted"));
         let cjk = every.iter().find(|n| n.name == "Noto Sans CJK Regular").expect("CJK notice");
         assert_eq!((cjk.version.as_str(), cjk.license.as_str(), cjk.platforms.as_str()), ("2.004", "OFL-1.1", "Linux, macOS"));
         assert!(cjk.text.contains("SIL OPEN FONT LICENSE"));

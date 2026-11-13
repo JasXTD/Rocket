@@ -630,7 +630,10 @@ mod tests {
                 let id = review.viewport();
                 app.reviews.push(Arc::new(Mutex::new(review)));
                 let active = |app: &mut crate::app::Rocket| {
-                    ctx.run_ui(RawInput::default(), |ui| app.review_windows(ui.ctx())).viewport_output[&id].builder.active
+                    let output = ctx.run_ui(RawInput::default(), |ui| app.review_windows(ui.ctx()));
+                    let active = output.viewport_output[&id].builder.active;
+                    output.drop_without_applying_deltas();
+                    active
                 };
                 assert_eq!(active(&mut app), Some(true));
                 app.background_reviews = true;

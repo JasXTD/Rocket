@@ -659,7 +659,7 @@ mod tests {
         done.report.outcome = "complete";
         done.report.elapsed_ms = 5_700;
         let shown = painted(&mut done, true);
-        for text in ["Timings", "Complete", "9 of 9 reads · 5.7 s", "Full refresh", "first 200 commits", "866.2 ms", "731.2–1244.7 ms", "Copy summary"] {
+        for text in ["Timings", "Complete", "Reads: 9 / 9 · 5.7 s", "Full refresh", "first 200 commits", "866.2 ms", "731.2–1244.7 ms", "Copy summary"] {
             assert!(has(&shown, text), "{text} in {shown:?}");
         }
         assert!(
@@ -680,7 +680,7 @@ mod tests {
         }
         unborn.report.outcome = "complete";
         let shown = painted(&mut unborn, true);
-        assert!(has(&shown, "3 of 9 reads · 6 skipped · 0.0 s"), "{shown:?}");
+        assert!(has(&shown, "Reads: 3 / 9 · skipped: 6 · 0.0 s"), "{shown:?}");
         assert_eq!(shown.iter().filter(|t| *t == "Skipped · no commits yet").count(), 2, "{shown:?}");
         // While it runs: the pass and read in the bar, and no dash for reads still to come.
         let mut running = State {

@@ -23,8 +23,8 @@ for (const page of pages) {
     if (/^https?:/.test(value)) {
       if (value === GITHUB || value === GITHUB + '.git') continue;
       const release = GITHUB + '/releases/';
-      if (value === release + 'tag/v0.92.3' || value === release + 'download/v0.92.3/SHA256SUMS'
-        || /^Rocket-0\.92\.3-(?:windows-x64\.zip|linux-x64\.tar\.gz|macos-(?:arm64|x64)-preview\.zip)$/.test(value.startsWith(release+'download/v0.92.3/') ? value.slice((release+'download/v0.92.3/').length) : '')) {
+      if (value === release + 'tag/v0.92.4' || value === release + 'download/v0.92.4/SHA256SUMS'
+        || /^Rocket-0\.92\.4-(?:windows-x64\.zip|linux-x64\.tar\.gz|macos-(?:arm64|x64)-preview\.zip)$/.test(value.startsWith(release+'download/v0.92.4/') ? value.slice((release+'download/v0.92.4/').length) : '')) {
         seen.github++; continue;
       }
       if (value.startsWith(GITHUB + '/blob/main/')) {

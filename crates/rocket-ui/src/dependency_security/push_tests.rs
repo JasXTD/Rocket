@@ -403,6 +403,7 @@ fn pointer_push_preference_defaults_off_and_persists_independently() {
             app.show_preferences(crate::preferences::Page::Security);
             frame(&ctx, &mut app, vec2(1280.0, 860.0), vec![]);
             wait(&mut app, &ctx, settled);
+            crate::preferences::reveal_test_control(&ctx, &mut app, vec2(1280.0, 860.0), "pref-dependency-push", frame);
             click(&ctx, &mut app, "pref-dependency-push");
             assert!(app.dependencies.before_push);
             assert!(!app.dependencies.enabled);

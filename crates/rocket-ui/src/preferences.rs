@@ -1270,6 +1270,41 @@ impl Rocket {
     }
 }
 
+/// Reveal a preferences control using pointer scrolling, without assuming every
+/// card fits above the fold. Keep layout tests faithful to the visible MCP surface.
+#[cfg(test)]
+pub(crate) fn reveal_test_control<R>(
+    ctx: &Context,
+    app: &mut Rocket,
+    size: Vec2,
+    key: &str,
+    mut frame: impl FnMut(&Context, &mut Rocket, Vec2, Vec<Event>) -> R,
+) -> UiControl {
+    for step in 0..40 {
+        frame(ctx, app, size, vec![]);
+        if let Some(control) = app.frame_widgets.get(key).filter(|c| c.rect.height() >= 18.0) {
+            assert!(Rect::from_min_size(Pos2::ZERO, size).contains_rect(control.rect));
+            return *control;
+        }
+        let scroll = app.frame_widgets.get("prefs-scroll").expect("preferences scroll region").rect;
+        // Start from the top, then search downward in smaller-than-viewport steps.
+        let delta = if step == 0 { 10_000.0 } else { -120.0 };
+        frame(ctx, app, size, vec![
+            Event::PointerMoved(scroll.center()),
+            Event::MouseWheel {
+                unit: MouseWheelUnit::Point,
+                delta: vec2(0.0, delta),
+                modifiers: Modifiers::NONE,
+                phase: TouchPhase::Move,
+                source: MouseWheelSource::Unknown,
+            },
+        ]);
+        // Advance the renderer while egui consumes the wheel delta; no wall-clock sleep.
+        for _ in 0..30 { frame(ctx, app, size, vec![]); }
+    }
+    panic!("{key} could not be reached by scrolling preferences at {size:?}");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1644,7 +1679,7 @@ mod tests {
                         frame(&ctx, &mut app, vec![]);
                     }
                     for id in ids {
-                        assert!(app.frame_widgets.contains_key(*id), "{} shows {id}", page.label());
+                        reveal_test_control(&ctx, &mut app, vec2(1280.0, 860.0), id, |ctx, app, _, events| frame(ctx, app, events));
                     }
                     if page == Page::General {
                         assert!(!app.frame_widgets.contains_key("pref-secret-protection"));

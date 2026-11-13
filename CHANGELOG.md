@@ -10,7 +10,11 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
-## Unreleased
+## 0.92.4 — Insights, Agents and repository maps
+
+Repository insights, agent lifecycle improvements, Rust module maps, faster history
+views and security fixes. See [release notes](docs/releases/0.92.4.md) for packages,
+requirements and validation limits.
 
 - Secret protection recognizes JSON line breaks around JWK member separators, so
   formatting a private key across lines cannot bypass commit or push checks.

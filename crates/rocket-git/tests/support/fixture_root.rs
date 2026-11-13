@@ -6,19 +6,10 @@ pub fn base() -> PathBuf {
     let base = std::env::var_os("ROCKET_TEST_REPOSITORIES")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            #[cfg(unix)]
-            {
-                std::env::temp_dir()
-                    .join(format!("rocket-test-repositories-{}", std::process::id()))
-            }
-            #[cfg(not(unix))]
-            {
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .ancestors()
-                    .nth(2)
-                    .expect("crate is inside the workspace")
-                    .join("work/test-repositories")
-            }
+            // New-repository and worktree destinations must be outside any
+            // existing repository, including this source checkout on Windows.
+            std::env::temp_dir()
+                .join(format!("rocket-test-repositories-{}", std::process::id()))
         });
     assert!(base.is_absolute(), "test repository root must be absolute");
     std::fs::create_dir_all(&base).expect("create test repository root");

@@ -7,7 +7,7 @@ account, SSH key or MCP server for this walkthrough.
 
 ## Before opening Rocket
 
-Download a portable package from [Rocket Releases](https://github.com/JasXTD/Rocket/releases/tag/v0.92.3),
+Download a portable package from [Rocket Releases](https://github.com/JasXTD/Rocket/releases/tag/v0.92.4),
 verify its checksum, and extract it into a new folder. Windows packages include
 Git; Linux packages need glibc 2.43+ and installed Git. The Apple Silicon and Intel macOS
 15+ preview needs installed Git and is not Developer-ID-signed or notarized.
@@ -29,7 +29,7 @@ Choose a language by its own name. Changes apply immediately and are saved for t
 next launch. **Preview** means the translation is incomplete; untranslated text
 stays English. The dropdown initially shows the detected Windows/system language
 when supported, otherwise English. Select any listed language to override it.
-Repository files and commit messages are never translated. Rocket 0.92.3 makes
+Repository files and commit messages are never translated. Rocket 0.92.4 makes
 the selector available without a developer launch flag. General, Git, Terminal
 and AI draft settings are localized; some advanced screens still use English.
 

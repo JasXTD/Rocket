@@ -696,13 +696,7 @@ fn preferences_controls_render_at_supported_sizes_and_mcp_cannot_change_policy()
                     "pref-dependency-push",
                     "dependency-setup-open",
                 ] {
-                    for _ in 0..12 {
-                        if app.frame_widgets[key].rect.height() >= 18.0 { break; }
-                        let scroll = app.frame_widgets["prefs-scroll"].rect;
-                        let delta = if app.frame_widgets[key].rect.center().y < scroll.center().y { 150.0 } else { -150.0 };
-                        frame(&ctx, &mut app, size, vec![Event::PointerMoved(scroll.center()), Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, delta), phase: TouchPhase::Move, source: MouseWheelSource::Unknown, modifiers: Modifiers::NONE }]);
-                    }
-                    let control = &app.frame_widgets[key];
+                    let control = crate::preferences::reveal_test_control(&ctx, &mut app, size, key, frame);
                     assert!(
                         control.rect.width() > 10.0 && control.rect.height() > 10.0,
                         "{key} {size:?}"
@@ -712,7 +706,9 @@ fn preferences_controls_render_at_supported_sizes_and_mcp_cannot_change_policy()
             }
             app.dependencies.editable = false;
             frame(&ctx, &mut app, vec2(1280.0, 860.0), vec![]);
+            crate::preferences::reveal_test_control(&ctx, &mut app, vec2(1280.0, 860.0), "pref-dependency-warnings", frame);
             assert!(!app.frame_widgets["pref-dependency-warnings"].enabled);
+            crate::preferences::reveal_test_control(&ctx, &mut app, vec2(1280.0, 860.0), "pref-dependency-push", frame);
             assert!(!app.frame_widgets["pref-dependency-push"].enabled);
             app.dependencies.setup_page = true;
             frame(&ctx, &mut app, vec2(1280.0, 860.0), vec![]);

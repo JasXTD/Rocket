@@ -133,12 +133,7 @@ fn overview_setup_navigation_and_empty_profile_actions_work_at_both_sizes() {
                 assert!(app.dependencies.setup_page);
                 click(&ctx, &mut app, size, "security-overview");
                 assert!(!app.dependencies.setup_page);
-                // Overview retains its previous scroll position. The additional
-                // pre-push row can leave the secret card above a compact viewport.
-                let scroll = app.frame_widgets["prefs-scroll"].rect;
-                for _ in 0..3 {
-                    frame(&ctx, &mut app, size, vec![Event::PointerMoved(scroll.center()), Event::MouseWheel { unit: MouseWheelUnit::Point, delta: vec2(0.0, 300.0), phase: TouchPhase::Move, source: MouseWheelSource::Unknown, modifiers: Modifiers::NONE }]);
-                }
+                crate::preferences::reveal_test_control(&ctx, &mut app, size, "pref-secret-protection", frame);
                 assert!(app.frame_widgets.contains_key("pref-secret-protection"));
             }
             assert!(
@@ -209,6 +204,7 @@ fn overview_findings_expand_and_coverage_or_failures_never_look_clean() {
             );
             app.show_preferences(crate::preferences::Page::Security);
             frame(&ctx, &mut app, size, vec![]);
+            crate::preferences::reveal_test_control(&ctx, &mut app, size, "dependency-finding-0", frame);
             let text = frame(&ctx, &mut app, size, vec![]);
             assert!(
                 text.contains("1 advisory needs attention"),
@@ -218,6 +214,7 @@ fn overview_findings_expand_and_coverage_or_failures_never_look_clean() {
             assert!(text.contains("12 days old"));
             assert!(!app.frame_widgets.contains_key("dependency-advisory-0-0"));
             click(&ctx, &mut app, size, "dependency-finding-0");
+            crate::preferences::reveal_test_control(&ctx, &mut app, size, "dependency-advisory-0-0", frame);
             assert!(app.frame_widgets.contains_key("dependency-advisory-0-0"));
             report.findings.clear();
             report
@@ -228,6 +225,7 @@ fn overview_findings_expand_and_coverage_or_failures_never_look_clean() {
                 .get_mut(&owner)
                 .unwrap()
                 .cached = Some(cached(report));
+            crate::preferences::reveal_test_control(&ctx, &mut app, size, "dependencies-scan", frame);
             let text = frame(&ctx, &mut app, size, vec![]);
             assert!(text.contains("coverage limited"));
             assert!(!text.contains("No known advisories found"));
