@@ -1367,5 +1367,6 @@
   "@@ lines {start}–{end}": "@@ rader {start}–{end}",
   "Partly stashed": "Delvis stashad",
   "No line changes to show.": "Inga radändringar att visa.",
-  "Word highlights cancelled. Toggle Words to retry.": "Ordmarkering avbruten. Växla Ord för att försöka igen."
+  "Word highlights cancelled. Toggle Words to retry.": "Ordmarkering avbruten. Växla Ord för att försöka igen.",
+  "Read module map": "Läs modulkarta"
 }

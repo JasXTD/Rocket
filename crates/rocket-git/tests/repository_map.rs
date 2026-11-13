@@ -441,6 +441,142 @@ fn people_mailmap_shared_paths_period_and_renames() {
     );
 }
 
+fn modules(f: &Fixture, package: Option<&str>) -> Result<RepositoryMap> {
+    f.repo().repository_map(
+        &MapOptions {
+            kind: MapKind::Modules,
+            package: package.map(|p| p.as_bytes().to_vec()),
+            ..Default::default()
+        },
+        &token(),
+    )
+}
+
+#[test]
+fn committed_rust_modules_connections_and_unlinked_files() {
+    isolated(
+        "ROCKET_MAP_TEST",
+        "committed_rust_modules_connections_and_unlinked_files",
+        || {
+            let f = Fixture::new();
+            f.write("Cargo.toml", "[workspace]\nmembers=['crates/ui','crates/core']\n");
+            f.write("crates/ui/Cargo.toml", "[package]\nname='界面'\n");
+            f.write("crates/core/Cargo.toml", "[package]\nname='engine'\n");
+            f.write("crates/core/src/lib.rs", "pub fn run() {}\n");
+            f.write(
+                "crates/ui/src/lib.rs",
+                "mod app;\npub mod 検索;\n#[cfg(test)]\nmod tests;\n#[path = \"../../shared/common.rs\"]\nmod common;\npub use app::Rocket;\n",
+            );
+            f.write("crates/ui/src/app.rs", "pub struct Rocket;\nimpl Rocket { pub fn new() -> Self { Self } fn draw(&self) {} }\npub fn start() { crate::検索::find(); }\n");
+            f.write("crates/ui/src/検索.rs", "use crate::app::*;\npub fn find() { let _ = Rocket::new(); start(); common_name(); }\nfn common_name() { crate::common::helper(); }\n");
+            f.write("crates/ui/src/tests.rs", "use super::*;\n#[test]\nfn works() { let _ = Rocket; }\n");
+            f.write("crates/shared/common.rs", "pub fn helper() {}\n");
+            f.write("crates/ui/src/main.rs", "mod cli;\nfn main() { 界面::app::start(); }\n");
+            f.write("crates/ui/src/cli.rs", "pub fn args() {}\n");
+            f.write("crates/ui/src/bin/tool.rs", "fn main() {}\n");
+            f.write("crates/ui/src/stray.rs", "// never declared\n");
+            f.write("crates/ui/src/latin1.rs", [0xe9u8, 0x0a]);
+            f.commit("modules");
+            f.write("crates/ui/src/app.rs", "uncommitted local change\n");
+            f.write("crates/ui/src/untracked.rs", "fn private() {}\n");
+            let head = f.run(&["rev-parse", "HEAD"]);
+            let index = f.run(&["ls-files", "--stage", "-z"]);
+
+            // Without a package, the one with the most Rust files is read.
+            let map = modules(&f, None).unwrap();
+            assert_eq!(map.kind, MapKind::Modules);
+            assert_eq!(map.scope.package.as_deref(), Some(b"crates/ui".as_slice()));
+            let packages: Vec<(&[u8], usize)> = map
+                .nodes
+                .iter()
+                .filter(|n| n.kind == MapNodeKind::Crate)
+                .map(|n| (n.label.as_slice(), n.count))
+                .collect();
+            assert_eq!(packages, [(b"engine".as_slice(), 1), ("界面".as_bytes(), 9)]);
+            let details = map.modules.as_ref().unwrap();
+            assert_eq!(map.nodes[details.package].label, "界面".as_bytes());
+            let module = |name: &str| {
+                map.nodes
+                    .iter()
+                    .position(|n| n.kind == MapNodeKind::Module && n.key == format!("module:{name}").as_bytes())
+                    .unwrap_or_else(|| panic!("no module {name}"))
+            };
+            let root = details.root.unwrap();
+            assert_eq!(root, module(""));
+            assert_eq!(map.nodes[root].label, b"lib.rs");
+            assert_eq!(map.nodes[module("common")].path.as_deref(), Some(b"crates/shared/common.rs".as_slice()));
+            assert_eq!(map.nodes[module("tests")].detail, b"Test module");
+            // The committed file, not the working tree's change.
+            assert_eq!(map.nodes[module("app")].count, 3);
+            assert!(!map.nodes.iter().any(|n| n.path.as_deref() == Some(b"crates/ui/src/untracked.rs".as_slice())));
+            let uses = |from: &str, to: &str| {
+                map.links
+                    .iter()
+                    .find(|e| e.kind == MapLinkKind::DependsOn && e.from == module(from) && e.to == module(to))
+                    .map(|e| e.evidence.iter().map(|n| String::from_utf8_lossy(n).into_owned()).collect::<Vec<_>>())
+            };
+            assert_eq!(uses("", "app"), Some(vec!["Rocket".into()]));
+            assert_eq!(uses("app", "検索"), Some(vec!["find".into()]));
+            assert_eq!(uses("検索", "app"), Some(vec!["Rocket".into(), "start".into()]));
+            assert_eq!(uses("検索", "common"), Some(vec!["helper".into()]));
+            assert_eq!(uses("tests", "app"), Some(vec!["Rocket".into()]));
+            assert!(uses("app", "").is_none());
+            assert!(
+                map.links
+                    .iter()
+                    .any(|e| e.kind == MapLinkKind::Contains && e.from == root && e.to == module("検索"))
+            );
+            let outline: Vec<String> = details.outline[&module("app")]
+                .iter()
+                .map(|o| format!("{:?} {}", o.kind, String::from_utf8_lossy(&o.name)))
+                .collect();
+            assert_eq!(outline, ["Struct Rocket", "Impl Rocket", "Function start"]);
+            let unlinked: Vec<(String, UnlinkedReason)> = details
+                .unlinked
+                .iter()
+                .map(|(p, r)| (String::from_utf8_lossy(p).into_owned(), *r))
+                .collect();
+            assert_eq!(
+                unlinked,
+                [
+                    ("crates/ui/src/bin/tool.rs".into(), UnlinkedReason::Program),
+                    ("crates/ui/src/cli.rs".into(), UnlinkedReason::Program),
+                    ("crates/ui/src/latin1.rs".into(), UnlinkedReason::NotUtf8),
+                    ("crates/ui/src/main.rs".into(), UnlinkedReason::Program),
+                    ("crates/ui/src/stray.rs".into(), UnlinkedReason::NotDeclared),
+                ]
+            );
+
+            // A chosen package, and one the snapshot does not have.
+            let core = modules(&f, Some("crates/core")).unwrap();
+            assert_eq!(core.nodes.iter().filter(|n| n.kind == MapNodeKind::Module).count(), 1);
+            assert!(matches!(modules(&f, Some("crates/gone")), Err(Error::InvalidInput(_))));
+            let cancel = token();
+            cancel.cancel();
+            assert!(matches!(
+                f.repo().repository_map(&MapOptions { kind: MapKind::Modules, ..Default::default() }, &cancel),
+                Err(Error::Cancelled)
+            ));
+            // Reading changed nothing.
+            assert_eq!(f.run(&["rev-parse", "HEAD"]), head);
+            assert_eq!(f.run(&["ls-files", "--stage", "-z"]), index);
+            assert_eq!(std::fs::read(f.repository.join("crates/ui/src/app.rs")).unwrap(), b"uncommitted local change\n");
+        },
+    );
+}
+
+#[test]
+fn a_snapshot_without_rust_packages_has_no_modules() {
+    isolated("ROCKET_MAP_TEST", "a_snapshot_without_rust_packages_has_no_modules", || {
+        let f = Fixture::new();
+        f.write("README.md", "no packages");
+        f.write("Cargo.toml", "[workspace]\n");
+        f.commit("plain");
+        let map = modules(&f, None).unwrap();
+        assert!(map.nodes.is_empty() && map.modules.is_none());
+    });
+}
+
 #[test]
 fn empty_cancelled_and_bounded_code_maps() {
     isolated(

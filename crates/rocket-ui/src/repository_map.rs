@@ -20,6 +20,7 @@ mod details;
 mod drawing;
 mod export;
 mod lists;
+mod modules;
 mod navigation;
 #[cfg(test)]
 mod tests;
@@ -43,11 +44,18 @@ pub enum MapIntent {
     /// History of commits touching this literal path, searched for the text.
     Path(Vec<u8>, String),
     InspectCommit(ObjectId),
+    /// Code → Modules, for this package's folder (None keeps the one shown).
+    Modules(Option<Vec<u8>>),
+    /// Code → Packages (true) or Folders (false), from Modules.
+    CodeView(bool),
 }
 #[derive(Default)]
 pub struct State {
     pub kind: MapKind,
-    pub pages: [MapPage; 3],
+    /// Code, History, People and Code → Modules.
+    pub pages: [MapPage; 4],
+    /// Code shows Modules: the Code button returns to it.
+    pub modules: bool,
 }
 pub struct MapPage {
     pub revision: String,
@@ -88,9 +96,24 @@ pub struct MapPage {
     pub fit: bool,
     pub focus: bool,
     pub stale: bool,
+    /// Modules: the package's folder to read (None: the one with the most Rust files).
+    pub package: Option<Vec<u8>>,
+    /// Modules: the whole package is chosen instead of one module.
+    pub whole: bool,
+    /// Modules: the list is in name order instead of most used first.
+    pub by_name: bool,
+    /// Modules: list rows open to show the modules inside them.
+    pub expanded: HashSet<Vec<u8>>,
+    /// Modules: words over the picture's columns.
+    pub captions: Vec<modules::Caption>,
+    units: Option<Arc<modules::Units>>,
+    /// Modules: scroll the list to the chosen module on its next frame.
+    list_jump: bool,
     task: Option<ReadTask<RepositoryMap>>,
     load_refresh: u64,
-    filter_key: Option<(String, bool)>,
+    /// What the visible cards were last worked out for: search, the alternate view,
+    /// and for Modules the chosen module and Whole package.
+    filter_key: Option<(String, bool, Option<usize>, bool)>,
     last_canvas: Vec2,
     loaded_inputs: Option<(String, String, String, bool, Period)>,
     pending_inputs: Option<(String, String, String, bool, Period)>,
@@ -134,6 +157,13 @@ impl Default for MapPage {
             fit: true,
             focus: false,
             stale: false,
+            package: None,
+            whole: false,
+            by_name: false,
+            expanded: HashSet::new(),
+            captions: Vec::new(),
+            units: None,
+            list_jump: false,
             task: None,
             load_refresh: 0,
             filter_key: None,
@@ -155,12 +185,15 @@ pub struct FileGroup {
     pub about: String,
     /// Where the card sits at 100% zoom.
     pub at: Pos2,
+    /// Modules: the card counts the rest of this side of the picture instead.
+    pub more: Option<modules::More>,
 }
 fn index(kind: MapKind) -> usize {
     match kind {
         MapKind::Code => 0,
         MapKind::History => 1,
         MapKind::People => 2,
+        MapKind::Modules => 3,
     }
 }
 impl State {
@@ -193,8 +226,11 @@ impl MapPage {
                         .selected
                         .and_then(|i| self.data.as_ref()?.nodes.get(i))
                         .map(|n| n.key.clone());
+                    // Modules: what was chosen carries over only to the same package.
+                    let same_package = self.data.as_ref().is_some_and(|d| d.scope.package == data.scope.package);
+                    let modules = data.kind == MapKind::Modules;
                     self.selected =
-                        previous.and_then(|key| data.nodes.iter().position(|n| n.key == key));
+                        previous.clone().and_then(|key| data.nodes.iter().position(|n| n.key == key));
                     let first = self.data.is_none();
                     self.collapsed.retain(|key| {
                         data.nodes
@@ -239,6 +275,10 @@ impl MapPage {
                     }
                     if let Some(path) = self.pending_path.take() {
                         self.open_path(&path);
+                    }
+                    if modules {
+                        let was_whole = self.whole && same_package;
+                        self.start_modules(previous.filter(|_| same_package), was_whole);
                     }
                 }
                 Err(e) => self.error = Some(map_error(&e)),
@@ -302,6 +342,7 @@ impl MapPage {
             base: self.base.clone(),
             path,
             page_size: MAP_COMMITS,
+            package: if kind == MapKind::Modules { self.package.clone() } else { None },
         };
         let previous = more.then(|| self.data.clone().unwrap());
         match crate::read_task::spawn(ctx, move |cancel| {
@@ -347,6 +388,7 @@ impl MapPage {
                     kind == MapLinkKind::Changes
                 }
             }
+            Some(MapKind::Modules) => kind == MapLinkKind::DependsOn,
             _ => kind == MapLinkKind::Parent,
         }
     }
@@ -471,8 +513,40 @@ impl Rocket {
             MapIntent::Cancel => tab.map.page_mut().stop(),
             MapIntent::Switch(kind) => {
                 tab.map.page_mut().stop();
-                tab.map.kind = kind;
+                // Code returns to Modules when that is where it was left.
+                tab.map.kind = if kind == MapKind::Code && tab.map.modules { MapKind::Modules } else { kind };
                 load = tab.map.page().data.is_none() && !tab.map.page().running();
+            }
+            MapIntent::Modules(package) => {
+                let from_code = tab.map.kind == MapKind::Code;
+                tab.map.page_mut().stop();
+                let revision = tab.map.pages[index(MapKind::Code)].revision.clone();
+                tab.map.kind = MapKind::Modules;
+                tab.map.modules = true;
+                let p = tab.map.page_mut();
+                // Coming from Code, Modules maps the revision Code shows.
+                let moved = from_code && p.data.as_ref().is_some_and(|d| d.scope.revision != revision);
+                if from_code || p.data.is_none() && !p.running() {
+                    p.revision = revision;
+                }
+                // Another package than the one shown, or any package after a failed read.
+                let changed = package
+                    .as_ref()
+                    .is_some_and(|f| p.error.is_some() || p.data.as_ref().is_none_or(|d| d.scope.package.as_ref() != Some(f)));
+                if let Some(folder) = package {
+                    p.package = Some(folder);
+                }
+                load = changed || moved || p.data.is_none() && !p.running();
+            }
+            MapIntent::CodeView(packages) => {
+                tab.map.page_mut().stop();
+                tab.map.kind = MapKind::Code;
+                tab.map.modules = false;
+                let p = tab.map.page_mut();
+                p.alternate = packages;
+                p.filter_key = None;
+                p.fit = true;
+                load = p.data.is_none() && !p.running();
             }
             MapIntent::History(query) => {
                 tab.map.page_mut().stop();
@@ -494,6 +568,7 @@ impl Rocket {
             MapIntent::Code(path) => {
                 tab.map.page_mut().stop();
                 tab.map.kind = MapKind::Code;
+                tab.map.modules = false;
                 let p = tab.map.page_mut();
                 p.open_path(&path);
                 load = p.data.is_none() && !p.running();
@@ -636,7 +711,7 @@ fn short(id: &ObjectId) -> &str {
 }
 /// What the header says about the snapshot on screen.
 fn snapshot_line(s: &MapPage, kind: MapKind) -> String {
-    let what = if s.all_branches && kind != MapKind::Code {
+    let what = if s.all_branches && kind.reads_commits() {
         crate::i18n::tr("all branches").to_owned()
     } else {
         s.revision.clone()
@@ -655,10 +730,50 @@ fn snapshot_line(s: &MapPage, kind: MapKind) -> String {
     if let Some(tip) = &d.tip {
         line.push_str(&format!(" · {}", short(tip)));
     }
-    if kind != MapKind::Code {
+    if kind.reads_commits() {
         line.push_str(&format!(" · {}", trn!(d.scanned, "{n} commit", "{n} commits")));
     }
     line
+}
+
+/// What the Code page's Packages, Folders and Modules show, read from whichever page
+/// has the snapshot's packages: counts for the buttons and the packages for the
+/// Modules package button (name, folder, Rust files).
+struct CodeViews {
+    packages: usize,
+    folders: usize,
+    list: Vec<(String, Vec<u8>, Option<usize>)>,
+}
+fn code_views(state: &State) -> CodeViews {
+    let code = state.pages[index(MapKind::Code)].data.as_ref();
+    let count = |kind: &[MapNodeKind]| code.map_or(0, |d| d.nodes.iter().filter(|n| kind.contains(&n.kind)).count());
+    let mut list: Vec<(String, Vec<u8>, Option<usize>)> = state.pages[index(MapKind::Modules)]
+        .data
+        .as_ref()
+        .map(|d| {
+            d.nodes
+                .iter()
+                .filter(|n| n.kind == MapNodeKind::Crate)
+                .map(|n| (label(&n.label), n.path.clone().unwrap_or_default(), Some(n.count)))
+                .collect()
+        })
+        .unwrap_or_default();
+    if list.is_empty() {
+        // Before Modules has read anything, the packages Code found; their Rust files
+        // are not counted yet.
+        list = code.map_or_else(Vec::new, |d| {
+            d.nodes
+                .iter()
+                .filter(|n| n.kind == MapNodeKind::Crate)
+                .map(|n| (label(&n.label), modules::package_folder(n), None))
+                .collect()
+        });
+    }
+    CodeViews {
+        packages: count(&[MapNodeKind::Crate]),
+        folders: count(&[MapNodeKind::Directory, MapNodeKind::Crate]),
+        list,
+    }
 }
 
 pub(crate) fn view(
@@ -673,6 +788,7 @@ pub(crate) fn view(
     let kind = tab.map.kind;
     let branches = revision_choices(tab);
     let downloads = crate::preview_tab::downloads(tab);
+    let views = code_views(&tab.map);
     let s = tab.map.page_mut();
     s.rebuild();
     let line = snapshot_line(s, kind);
@@ -694,7 +810,7 @@ pub(crate) fn view(
             |ui| header_actions(ui, s, kind, compact, intents, widgets),
         );
     }
-    toolbar(ui, s, kind, compact, &branches, intents, widgets);
+    toolbar(ui, s, kind, compact, &branches, &views, intents, widgets);
     strips(ui, s, kind, intents, widgets);
     s.rebuild();
     body(ui, s, kind, compact, intents, widgets, downloads.as_ref());
@@ -733,14 +849,16 @@ fn header_actions(
     } else if button(ui, widgets, "map-load", crate::i18n::tr("Refresh"), !s.revision.trim().is_empty()) {
         emit(intents, MapIntent::Load);
     }
+    // Modules is a view of Code.
+    let shown = if kind == MapKind::Modules { MapKind::Code } else { kind };
     let items = [
-        (crate::i18n::tr("Code"), kind == MapKind::Code, "map-view-code"),
-        (crate::i18n::tr("History"), kind == MapKind::History, "map-view-history"),
-        (tr("People"), kind == MapKind::People, "map-view-people"),
+        (crate::i18n::tr("Code"), shown == MapKind::Code, "map-view-code"),
+        (crate::i18n::tr("History"), shown == MapKind::History, "map-view-history"),
+        (tr("People"), shown == MapKind::People, "map-view-people"),
     ];
     if let Some(i) = segments(ui, widgets, &items) {
         let next = [MapKind::Code, MapKind::History, MapKind::People][i];
-        if next != kind {
+        if next != shown {
             emit(intents, MapIntent::Switch(next));
         }
     }
@@ -749,12 +867,14 @@ fn header_actions(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn toolbar(
     ui: &mut Ui,
     s: &mut MapPage,
     kind: MapKind,
     compact: bool,
     branches: &[(String, bool)],
+    views: &CodeViews,
     intents: &mut Vec<Intent>,
     widgets: &mut HashMap<String, UiControl>,
 ) {
@@ -784,7 +904,7 @@ fn toolbar(
                         ui.spacing_mut().item_spacing = vec2(8., 8.);
                         // Controls move to the next row instead of breaking their labels.
                         ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
-                        controls(ui, s, kind, compact, intents, widgets);
+                        controls(ui, s, kind, compact, views, intents, widgets);
                     },
                 );
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
@@ -929,6 +1049,7 @@ fn controls(
     s: &mut MapPage,
     kind: MapKind,
     compact: bool,
+    views: &CodeViews,
     intents: &mut Vec<Intent>,
     widgets: &mut HashMap<String, UiControl>,
 ) {
@@ -936,6 +1057,7 @@ fn controls(
         MapKind::Code => tr("Find a package, folder or file"),
         MapKind::History => tr("Find a commit, author or branch"),
         MapKind::People => tr("Find a person or folder"),
+        MapKind::Modules => tr("Find a module"),
     };
     let search = if compact { 190. } else { 260. };
     room(ui, search);
@@ -949,29 +1071,33 @@ fn controls(
             s.query.clear();
         }
     }
-    let data = s.data.clone();
     match kind {
-        MapKind::Code => {
-            let crates = data
-                .as_ref()
-                .map_or(0, |d| d.nodes.iter().filter(|n| n.kind == MapNodeKind::Crate).count());
-            let folders = data.as_ref().map_or(0, |d| {
-                d.nodes
-                    .iter()
-                    .filter(|n| n.kind == MapNodeKind::Directory || n.kind == MapNodeKind::Crate)
-                    .count()
-            });
-            if crates > 0 {
-                let a = trf!("Packages {count}", count = crates);
-                let b = trf!("Folders {count}", count = folders);
-                if let Some(i) = segments(ui, widgets, &[(&a, s.alternate, "map-mode-packages"), (&b, !s.alternate, "map-mode-folders")]) {
-                    let alternate = i == 0;
-                    if alternate != s.alternate {
-                        s.alternate = alternate;
-                        s.filter_key = None;
-                        s.fit = true;
+        MapKind::Code | MapKind::Modules => {
+            let modules = kind == MapKind::Modules;
+            if views.packages > 0 || modules {
+                let a = trf!("Packages {count}", count = views.packages);
+                let b = trf!("Folders {count}", count = views.folders);
+                let items = [
+                    (a.as_str(), !modules && s.alternate, "map-mode-packages"),
+                    (b.as_str(), !modules && !s.alternate, "map-mode-folders"),
+                    (tr("Modules"), modules, "map-mode-modules"),
+                ];
+                match segments(ui, widgets, &items) {
+                    Some(2) if !modules => emit(intents, MapIntent::Modules(None)),
+                    Some(i @ (0 | 1)) if modules => emit(intents, MapIntent::CodeView(i == 0)),
+                    Some(i @ (0 | 1)) => {
+                        let alternate = i == 0;
+                        if alternate != s.alternate {
+                            s.alternate = alternate;
+                            s.filter_key = None;
+                            s.fit = true;
+                        }
                     }
+                    _ => {}
                 }
+            }
+            if modules {
+                modules::package_picker(ui, s, &views.list, intents, widgets);
             }
         }
         MapKind::History => {
@@ -1014,6 +1140,7 @@ fn controls(
             scope_chips(ui, s, compact, intents, widgets);
         }
     }
+    // Modules' picture already shows only what the chosen module connects to.
     let graph = matches!(
         (kind, s.alternate, s.condensed),
         (MapKind::Code, _, _) | (MapKind::People, true, _) | (MapKind::History, _, false)
@@ -1090,7 +1217,7 @@ fn strips(
         .show(ui, |ui| {
             ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 8.;
-            if s.show_scope && kind != MapKind::Code {
+            if s.show_scope && kind.reads_commits() {
                 ui.horizontal_wrapped(|ui| {
                     ui.label(RichText::new(crate::i18n::tr("Path")).color(HINT()));
                     let r = ui.add(
@@ -1136,7 +1263,7 @@ fn strips(
                 }
             }
             if let Some(d) = s.data.clone()
-                && kind != MapKind::Code
+                && kind.reads_commits()
                 && d.has_more
             {
                 let text = trn!(d.scanned, "Showing the newest {n} commit", "Showing the newest {n} commits");
@@ -1216,6 +1343,7 @@ fn body(
         MapKind::History if s.condensed => lists::topology(ui, s, content, covered, widgets),
         MapKind::History => lists::commits(ui, s, content, covered, widgets),
         MapKind::People if !s.alternate => lists::grid(ui, s, content, covered, widgets),
+        MapKind::Modules => modules::body(ui, s, content, covered, compact, intents, widgets),
         _ => drawing::canvas(ui, s, content, covered, widgets),
     }
     let downloading = s.running() && preview.is_some_and(|d| d.status.running);

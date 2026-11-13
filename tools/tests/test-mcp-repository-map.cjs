@@ -87,6 +87,7 @@ async function run(){try{
  await click('map-mode-shared');await capture('people-shared-files');await click('map-node-'+a.index);await click('map-history');assert.equal(map().kind,'History');assert.equal(map().query,'PRIVATE_林安');assert(map().visible.some(i=>map().data.nodes[i].label==='PRIVATE_STRUCTURE'));
  assert.deepEqual(snapshot(f),before);passed('Real committed Cargo edges, Unicode paths, pinned revision errors, merge parents, all branches, canonical authors, shared-file evidence and cross-view navigation; local changes preserved');
 
+
  for(const kind of ['history','people']){
   await click('map-view-'+kind);const tip=map().data.tip;await stable();await client.tool('rocket_click',{target:'map-load',expected_tab:state.active_tab});
   await until(s=>!s.input_pending&&map().running&&control('map-cancel')?.enabled,'In-flight '+kind+' read');
@@ -116,6 +117,30 @@ async function run(){try{
  kinds.git(['config','diff.external','false']);kinds.git(['config','filter.test.smudge','false']);kinds.git(['config','filter.test.required','true']);kinds.write('.gitattributes','* filter=test\n');const beforeKinds=snapshot(kinds);
  await open(kinds);assert(map().data.nodes.some(n=>n.path==='Cargo.toml'&&n.detail.includes('not followed')));assert(!map().data.nodes.some(n=>n.kind==='Crate'));assert(map().data.nodes.some(n=>n.path==='module'&&n.detail.includes('Submodule')));await click('map-view-history');assert(!map().error);await click('map-view-people');assert(!map().error);assert.deepEqual(snapshot(kinds),beforeKinds);
  passed('Committed symlinks and submodules remain references; configured filters/external diff are not executed; missing working files and index remain unchanged');
+
+ // Code → Modules: one Rust package's modules, read from committed files only.
+ const mods=fixture('PRIVATE_MODULES 模块');
+ mods.write('Cargo.toml',"[workspace]\nmembers=['crates/ui','crates/core']\n");mods.write('crates/ui/Cargo.toml',"[package]\nname='界面'\n");mods.write('crates/core/Cargo.toml',"[package]\nname='engine'\n");mods.write('crates/core/src/lib.rs','pub fn run() {}\n');
+ mods.write('crates/ui/src/lib.rs','mod app;\npub mod 検索;\n#[cfg(test)]\nmod tests;\n#[path = "../../shared/common.rs"]\nmod common;\npub use app::Rocket;\n');
+ mods.write('crates/ui/src/app.rs','pub struct Rocket;\nimpl Rocket { pub fn new() -> Self { Self } fn draw(&self) {} }\npub fn start() { crate::検索::find(); }\n');
+ mods.write('crates/ui/src/検索.rs','use crate::app::*;\npub fn find() { let _ = Rocket::new(); start(); crate::common::helper(); }\n');
+ mods.write('crates/ui/src/tests.rs','use super::*;\n');mods.write('crates/shared/common.rs','pub fn helper() {}\n');mods.write('crates/ui/src/main.rs','fn main() {}\n');mods.write('crates/ui/src/stray.rs','// PRIVATE_STRAY\n');
+ mods.commit('PRIVATE_MODULES');mods.write('crates/ui/src/app.rs','PRIVATE_UNCOMMITTED\n');mods.write('crates/ui/src/untracked.rs','fn private() {}\n');const beforeModules=snapshot(mods);
+ await open(mods);assert(map().alternate,'Code opens on Packages');assert(control('map-mode-modules'));await click('map-mode-modules');await until(s=>!map().running&&map().data?.kind==='Modules','modules read');
+ assert.equal(map().kind,'Modules');assert.equal(map().package,'crates/ui');assert.equal(map().code_shows_modules,true);assert(map().whole,'a small package starts on the whole package');
+ nodes=map().data.nodes;const mod=k=>nodes.find(n=>n.kind==='Module'&&n.label===k);const app=mod('app'),search=mod('検索'),common=mod('common');assert(app&&search&&common,'modules read');
+ assert.equal(common.path,'crates/shared/common.rs','#[path] outside src');assert(!nodes.some(n=>n.path==='crates/ui/src/untracked.rs'));assert(map().data.links.some(e=>e.kind==='DependsOn'&&e.from===search.index&&e.to===app.index));
+ assert.deepEqual(map().data.modules.unlinked.map(u=>[u.path,u.reason]),[['crates/ui/src/main.rs','Program'],['crates/ui/src/stray.rs','NotDeclared']]);
+ assert(control('map-module-whole')&&control('map-module-package')&&control('map-module-'+app.index));checkBounds();await capture('modules-whole-wide');
+ await click('map-module-'+app.index);assert(!map().whole);assert.equal(map().selected,app.index);assert(map().visible.includes(search.index));assert(map().captions.some(c=>c.what==='UsedBy'));
+ assert(control('map-module-section-outline'),'Details lists what the file declares');assert(control('map-outline-0'));checkBounds();await capture('modules-around-wide');
+ await click('map-node-'+search.index);assert.equal(map().selected,search.index);assert(map().visible.includes(common.index),'the chosen card moves to the middle');
+ await click('map-module-package');await click('map-module-package-0');await until(s=>!map().running&&map().package==='crates/core','other package');assert(map().data.nodes.some(n=>n.kind==='Module'&&n.label==='lib.rs'));
+ await click('map-mode-packages');assert.equal(map().kind,'Code');assert(map().alternate);const uiPackage=map().data.nodes.find(n=>n.label==='界面');await click('map-node-'+uiPackage.index);await click('map-show-modules');
+ await until(s=>!map().running&&map().package==='crates/ui','Show modules');assert.equal(map().kind,'Modules');await click('map-view-history');await click('map-view-code');assert.equal(map().kind,'Modules','Code returns to Modules');
+ await resize(780,620);assert(control('map-module-switcher'),'a narrow window folds the list into a button');checkBounds();await capture('modules-compact');await resize(1480,920);
+ await click('map-export');assert.equal(map().export.name,'rocket-modules.mmd');await client.tool('rocket_escape');await settle();assert(!map().export);
+ assert.deepEqual(snapshot(mods),beforeModules);passed('Code → Modules: committed module tree with #[path], connections, unlinked files, list, picture, package switch, Show modules, narrow switcher and export; local changes preserved');
  }
 
  const empty=fixture('PRIVATE_EMPTY',true);await open(empty);for(const kind of ['code','history','people']){await click('map-view-'+kind);assert.equal(map().data.nodes.length,0);assert(!map().running);await capture('empty-'+kind);}
@@ -126,7 +151,7 @@ async function run(){try{
  await open(longRepo);await click('map-view-history');const longNode=map().data.nodes.find(n=>n.commit===longCommit);assert(Buffer.byteLength(longNode.label)<=4096);assert(!longNode.label.includes('\ufffd'));assert(map().data.notes.some(n=>n.includes('shortened')));await capture('bounded-long-label-wide');await resize(780,620);await capture('bounded-long-label-compact');checkBounds();
  const big=fixture('PRIVATE_LARGE');const blob=big.git(['hash-object','-w','--stdin'],'PRIVATE_SMALL\n');let records='';for(let i=0;i<50000;i++)records+=`100644 blob ${blob}\tfile-${String(i).padStart(6,'0')}.rs\0`;
  const tree=big.git(['mktree','-z'],records),large=big.git(['commit-tree',tree],'PRIVATE_BIG_TREE');const beforeBig=snapshot(big);
- await open(big);await load(large);assert.equal(map().data.scanned,50000);assert.equal(map().data.node_count,4096);assert(map().data.limited);assert.equal(map().visible.length,0,'files have no cards of their own');assert.deepEqual(map().file_groups,[{folder:null,files:map().data.node_count}]);assert(map().zoom>=0.75);await capture('bounded-large-code');await click('map-fit');assert(map().zoom>=0.75&&map().zoom<=1);await capture('bounded-large-code-fit');
+ await open(big);await load(large);assert.equal(map().data.scanned,50000);assert.equal(map().data.node_count,4096);assert(map().data.limited);assert.equal(map().visible.length,0,'files have no cards of their own');assert.deepEqual(map().file_groups,[{folder:null,files:map().data.node_count,more:null}]);assert(map().zoom>=0.75);await capture('bounded-large-code');await click('map-fit');assert(map().zoom>=0.75&&map().zoom<=1);await capture('bounded-large-code-fit');
  if(edgesOnly){await load('PRIVATE_BAD_REVISION');assert(map().error?.includes('Check the revision'));assert.equal(map().data.tip,large);await load(large);}
  await stable();await client.tool('rocket_click',{target:'map-load',expected_tab:state.active_tab});await until(s=>!s.input_pending&&map().running&&control('map-cancel')?.enabled,'In-flight map read');
  // Exactly one Stop click; no retry conceals a missed cancellation.
@@ -140,7 +165,7 @@ async function run(){try{
  await closeWindow();await client.raw('POST','/shutdown');
  const recordsLog=fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).flatMap(n=>fs.readdirSync(path.join(root,n)).filter(f=>/^rocket(?:\.\d+)?\.jsonl$/.test(f)).flatMap(f=>fs.readFileSync(path.join(root,n,f),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));
  assert(recordsLog.length);assert(recordsLog.every(r=>r.dropped_before===0));const payload=JSON.stringify(recordsLog);for(const secret of ['PRIVATE_','検索',FILE,root,blob,...privateIds])assert(!payload.includes(secret),'Diagnostic payload leak');
- for(const op of ['map-code','map-history','map-people']){const starts=recordsLog.filter(r=>r.event==='request_start'&&r.operation===op);assert(starts.length,'Missing '+op);for(const start of starts)assert(recordsLog.some(r=>r.event==='request_end'&&r.session===start.session&&r.request===start.request),'Unpaired '+op);}
+ for(const op of ['map-code','map-history','map-people',...(edgesOnly?[]:['map-modules'])]){const starts=recordsLog.filter(r=>r.event==='request_start'&&r.operation===op);assert(starts.length,'Missing '+op);for(const start of starts)assert(recordsLog.some(r=>r.event==='request_end'&&r.session===start.session&&r.request===start.request),'Unpaired '+op);}
  for(const start of recordsLog.filter(r=>r.event==='step_start'&&r.operation?.startsWith('map-')))assert(recordsLog.some(r=>r.event==='step_end'&&r.step===start.step&&r.session===start.session&&r.request===start.request),'Unpaired step');
  for(const op of (edgesOnly?['map-code']:['map-code','map-history','map-people']))assert(recordsLog.some(r=>r.operation===op&&r.outcome==='cancelled'),'Missing cancellation log '+op);assert(recordsLog.some(r=>r.operation==='map-code'&&r.outcome==='git_error'));report.log_records=recordsLog.length;
  passed('Paired request/step logs with named map operations, error/cancellation outcomes, zero dropped events and no private payloads');report.passed=true;

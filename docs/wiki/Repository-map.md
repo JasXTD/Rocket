@@ -35,6 +35,40 @@ or otherwise unsupported Cargo declarations stay unlinked. Symlinks and submodul
 are listed as references; their targets are not traversed. Uncommitted and untracked
 files do not appear.
 
+### Modules
+
+**Modules** shows the modules of one Rust package and which module uses which. Choose
+the package on the button beside **Packages · Folders · Modules**, or **Show modules**
+in a package's Details. Without a choice it reads the package with the most Rust
+files.
+
+The list on the left names every module of the package with how many modules use it,
+most used first; **Most used** switches to A to Z. A module with modules inside it
+opens with its arrow, and search opens what holds a match. The picture puts the chosen
+module in the middle, the modules that use it on the left and the ones it uses on the
+right: eight a side, the rest counted on one card that opens them in Details. Point at a
+card to see the names it uses; choose it to move it to the middle. A module inside the
+chosen one counts as part of it; its parent shows as itself, and a module elsewhere
+shows as the module that holds it beside the chosen one.
+
+**Whole package**, for a package of 40 top-level modules or fewer, draws them all in
+layers, what a module uses below it, with modules that have no connection apart. Its
+Details give the folder, Rust files, modules and connections, the most used modules,
+and the files no module of the library is read from: `src/main.rs` beside a library
+and files in `src/bin` (their own program), files no `mod` names, files over 1 MiB,
+files past the read limits and files that are not UTF-8. A module's Details give its file and size, what it uses and
+what uses it, and **In this file**: what the file declares at its top level, public
+items first, each type with its functions counted. In a narrow window the list folds
+into a button above the picture.
+
+Modules reads the committed `.rs` files as text, up to 2,000 files of 1 MiB each and
+32 MiB in all. It follows `mod` declarations from `src/lib.rs` (or `src/main.rs`),
+including `#[path]` files elsewhere in the repository, and connects a module to another
+through `use` lines, paths starting `crate::`, `super::` or `self::`, and paths into its
+own modules. Names a `use …::*` line brings in are matched by name. Macros and `cfg` are
+not expanded, other packages are not followed, and which function calls which is not
+shown: that needs the compiler. Nothing is compiled or run.
+
 ## History
 
 **Branches & merges** opens first. It follows the revision's first parents as the
@@ -92,7 +126,7 @@ people; **Show commits** for a person is a name search, not an identity filter.
 
 ## Navigation, limits and stopping
 
-- In Packages, Folders and Shared files, drag to pan, scroll or use **+ / −** to
+- In Packages, Folders, Modules and Shared files, drag to pan, scroll or use **+ / −** to
   zoom, **Focus** to centre the selection and **Fit** to see everything. With the
   map focused, arrow keys pan and **F** fits.
 - **Connected only** keeps the selection and what it directly connects to.

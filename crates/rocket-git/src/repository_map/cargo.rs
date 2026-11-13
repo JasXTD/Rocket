@@ -110,7 +110,7 @@ fn dependency_entry(table: &str) -> bool {
         .iter()
         .any(|p| table.starts_with(p))
 }
-fn manifest(text: &str) -> (Option<String>, Vec<String>) {
+pub(super) fn manifest(text: &str) -> (Option<String>, Vec<String>) {
     let mut section = String::new();
     let mut name = None;
     let mut paths = Vec::new();
@@ -171,7 +171,7 @@ fn manifest(text: &str) -> (Option<String>, Vec<String>) {
     }
     (name, paths)
 }
-fn relative(base: &[u8], path: &[u8]) -> Option<Vec<u8>> {
+pub(super) fn relative(base: &[u8], path: &[u8]) -> Option<Vec<u8>> {
     if path.is_empty()
         || path.starts_with(b"/")
         || path.contains(&b'\\')

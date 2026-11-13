@@ -1367,5 +1367,6 @@
   "@@ lines {start}–{end}": "@@ Zeilen {start}–{end}",
   "Partly stashed": "Teilweise gestasht",
   "No line changes to show.": "Keine Zeilenänderungen anzuzeigen.",
-  "Word highlights cancelled. Toggle Words to retry.": "Worthervorhebung abgebrochen. Schalte Wörter aus und wieder ein, um es erneut zu versuchen."
+  "Word highlights cancelled. Toggle Words to retry.": "Worthervorhebung abgebrochen. Schalte Wörter aus und wieder ein, um es erneut zu versuchen.",
+  "Read module map": "Modulkarte lesen"
 }

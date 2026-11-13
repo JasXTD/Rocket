@@ -16,7 +16,7 @@ pub struct Export {
     /// What the text holds: nodes and the links between them, as shown.
     pub nodes: usize,
     pub links: usize,
-    /// "packages", "folders", "commits" or "nodes", for the dialog's subtitle.
+    /// "packages", "folders", "commits", "modules" or "nodes", for the dialog's subtitle.
     noun: &'static str,
     pub error: Option<String>,
     pub notice: Option<String>,
@@ -43,6 +43,7 @@ impl Export {
                 (MapKind::Code, false) => "folders",
                 (MapKind::History, _) => "commits",
                 (MapKind::People, _) => "nodes",
+                (MapKind::Modules, _) => "modules",
             },
             error: None,
             notice: None,
@@ -120,6 +121,7 @@ pub(super) fn default_name(kind: MapKind, alternate: bool) -> &'static str {
         (MapKind::Code, false) => "rocket-folders.mmd",
         (MapKind::History, _) => "rocket-history.mmd",
         (MapKind::People, _) => "rocket-people.mmd",
+        (MapKind::Modules, _) => "rocket-modules.mmd",
     }
 }
 fn save(path: &Path, text: &str, scope: Option<&Path>, cancel: &CancellationToken) -> Result<()> {
@@ -219,6 +221,7 @@ pub(super) fn dialog(
         "packages" => trf!("In view: packages {nodes} · links {links}", nodes = nodes, links = links),
         "folders" => trf!("In view: folders {nodes} · links {links}", nodes = nodes, links = links),
         "commits" => trf!("In view: commits {nodes} · links {links}", nodes = nodes, links = links),
+        "modules" => trf!("In view: modules {nodes} · links {links}", nodes = nodes, links = links),
         _ => trf!("In view: nodes {nodes} · links {links}", nodes = nodes, links = links),
     };
     let mut act = Act::default();

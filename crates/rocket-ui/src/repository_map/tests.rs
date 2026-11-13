@@ -499,7 +499,7 @@ fn translated_folder_captions_change_without_reloading_or_relaying_out() {
         assert_eq!(group.at, position);
         assert_eq!(group.files, 4);
     }
-    let few = FileGroup { folder: None, files: 1, about: "資料 🚀.rs".into(), at: Pos2::ZERO };
+    let few = FileGroup { folder: None, files: 1, about: "資料 🚀.rs".into(), at: Pos2::ZERO, more: None };
     for language in Language::ALL {
         assert_eq!(scoped(language, || drawing::group_about(&few, data)), "資料 🚀.rs");
     }
@@ -666,4 +666,424 @@ fn translated_map_zoom_controls_keep_their_complete_labels() {
             }
         });
     }
+}
+
+// ---- Code → Modules -----------------------------------------------------------
+
+/// A Modules read: a package, its crate root and modules (path, parent, lines), and
+/// connections between modules' files with the names they use.
+fn modules_map(modules: &[(&str, Option<usize>, usize)], uses: &[(usize, usize, &[&str])]) -> RepositoryMap {
+    let mut nodes = vec![MapNode {
+        key: b"package:crates/app".to_vec(),
+        label: b"app".to_vec(),
+        detail: b"Cargo package".to_vec(),
+        kind: MapNodeKind::Crate,
+        path: Some(b"crates/app".to_vec()),
+        commit: None,
+        count: modules.len(),
+        files: modules.len() + 1,
+        evidence: Vec::new(),
+        refs: Vec::new(),
+        time: 0,
+    }];
+    let mut links = Vec::new();
+    for (k, (path, parent, lines)) in modules.iter().enumerate() {
+        let label = if path.is_empty() { "lib.rs".to_owned() } else { path.rsplit("::").next().unwrap().to_owned() };
+        let file = if path.is_empty() { "crates/app/src/lib.rs".to_owned() } else { format!("crates/app/src/{}.rs", path.replace("::", "/")) };
+        nodes.push(MapNode {
+            key: format!("module:{path}").into_bytes(),
+            label: label.into_bytes(),
+            detail: if path.is_empty() { b"Crate root".to_vec() } else { b"Rust module".to_vec() },
+            kind: MapNodeKind::Module,
+            path: Some(file.into_bytes()),
+            commit: None,
+            count: *lines,
+            files: 1,
+            evidence: Vec::new(),
+            refs: Vec::new(),
+            time: 0,
+        });
+        if let Some(p) = parent {
+            links.push(MapLink { from: p + 1, to: k + 1, kind: MapLinkKind::Contains, weight: 1, evidence: vec![] });
+        }
+    }
+    for (from, to, names) in uses {
+        links.push(MapLink {
+            from: from + 1,
+            to: to + 1,
+            kind: MapLinkKind::DependsOn,
+            weight: names.len(),
+            evidence: names.iter().map(|n| n.as_bytes().to_vec()).collect(),
+        });
+    }
+    RepositoryMap {
+        kind: MapKind::Modules,
+        nodes,
+        links,
+        scope: MapOptions { kind: MapKind::Modules, package: Some(b"crates/app".to_vec()), ..Default::default() },
+        modules: Some(ModuleMap { package: 0, root: Some(1), ..Default::default() }),
+        ..Default::default()
+    }
+}
+/// The node of module `k` of `modules_map`.
+fn m(k: usize) -> usize {
+    k + 1
+}
+fn modules_page(data: RepositoryMap) -> MapPage {
+    let mut s = MapPage::default();
+    s.finish(Ok(data));
+    s.rebuild();
+    s
+}
+fn owned(list: &[(String, Option<usize>, usize)]) -> Vec<(&str, Option<usize>, usize)> {
+    list.iter().map(|(p, a, l)| (p.as_str(), *a, *l)).collect()
+}
+
+/// lib.rs; chosen with chosen::inner inside it; ten users; four modules it uses, one of
+/// them only from inside.
+fn around_fixture() -> RepositoryMap {
+    let mut modules: Vec<(String, Option<usize>, usize)> = vec![("".into(), None, 10), ("chosen".into(), Some(0), 100), ("chosen::inner".into(), Some(1), 50)];
+    for k in 0..10 {
+        modules.push((format!("user{k}"), Some(0), 5));
+    }
+    for name in ["style", "pages", "app", "x"] {
+        modules.push((name.into(), Some(0), 5));
+    }
+    let mut uses: Vec<(usize, usize, &[&str])> = (0..10).map(|k| (3 + k, 1, &["Picker"][..])).collect();
+    // user0 also uses a name from inside the chosen module.
+    uses.push((3, 2, &["scope_check"]));
+    uses.push((1, 13, &["icon", "Icon"]));
+    uses.push((1, 14, &["pages"]));
+    uses.push((1, 15, &["Rocket"]));
+    uses.push((2, 16, &["helper"]));
+    // The chosen module's own child is inside it, not beside it.
+    uses.push((1, 2, &["check"]));
+    modules_map(&owned(&modules), &uses)
+}
+/// A crate root with one more top-level module than can be drawn whole.
+fn large_fixture(uses: &[(usize, usize, &[&str])]) -> RepositoryMap {
+    let mut modules: Vec<(String, Option<usize>, usize)> = vec![("".into(), None, 1)];
+    for k in 0..=modules::WHOLE {
+        modules.push((format!("m{k:02}"), Some(0), 1));
+    }
+    modules_map(&owned(&modules), uses)
+}
+
+#[test]
+fn modules_around_one_module_put_users_left_and_what_it_uses_right() {
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        let mut s = modules_page(around_fixture());
+        // A package small enough to draw whole starts there.
+        assert!(s.whole && s.selected.is_none());
+        s.whole = false;
+        s.selected = Some(m(1));
+        s.rebuild();
+        let users: Vec<usize> = (3..13).map(m).collect();
+        let uses = [m(13), m(14), m(15), m(16)];
+        // Eight users are cards; the other two are counted on one card.
+        let shown_users: Vec<usize> = s.visible.iter().copied().filter(|i| users.contains(i)).collect();
+        assert_eq!(shown_users.len(), modules::SIDE);
+        assert!(shown_users.contains(&m(3)), "the user with the most names is shown");
+        let more = s.file_groups.iter().find(|g| g.more == Some(modules::More::Users)).expect("a card for the rest");
+        assert_eq!(more.files, 2);
+        for &u in &uses {
+            assert!(s.visible.contains(&u), "{u}");
+        }
+        assert!(!s.visible.contains(&m(2)), "a module inside the chosen one is not beside it");
+        let x = |i: usize| s.positions[i].x;
+        assert!(shown_users.iter().all(|&u| x(u) < x(m(1))));
+        assert!(uses.iter().all(|&u| x(u) > x(m(1))));
+        // Names from the module and from inside it come together on one connection.
+        let first = s.projected_links.iter().find(|e| e.from == m(3) && e.to == m(1)).unwrap();
+        assert_eq!(first.evidence, [b"Picker".to_vec(), b"scope_check".to_vec()]);
+        let to_x = s.projected_links.iter().find(|e| e.from == m(1) && e.to == m(16)).unwrap();
+        assert_eq!(to_x.evidence, [b"helper".to_vec()]);
+        let captions: Vec<(modules::CaptionKind, usize)> = s.captions.iter().map(|c| (c.what, c.count)).collect();
+        assert_eq!(captions, [(modules::CaptionKind::UsedBy, 10), (modules::CaptionKind::Uses, 4)]);
+        // The list counts users the same way.
+        let units = s.units().unwrap();
+        assert_eq!(units.used_by[&m(1)], 10);
+        assert_eq!(units.size(m(1)), (2, 150));
+        let data = s.data.clone().unwrap();
+        assert_eq!(modules::card_detail(&s, &data, m(3)), "Picker, scope_check");
+        assert_eq!(modules::card_detail(&s, &data, m(1)), "2 files · 150 lines");
+        assert!(modules::hover(&s, &data, m(13)).starts_with("chosen uses 2 names from style\n"));
+    });
+}
+
+#[test]
+fn modules_a_nested_module_sees_its_parent_and_siblings_by_their_paths() {
+    let data = modules_map(
+        &[("", None, 1), ("map", Some(0), 1), ("map::details", Some(1), 1), ("map::drawing", Some(1), 1), ("style", Some(0), 1), ("style::tokens", Some(4), 1)],
+        &[(2, 1, &["MapPage"]), (2, 3, &["CARD"]), (2, 5, &["TEXT"]), (1, 2, &["card"])],
+    );
+    let mut s = modules_page(data);
+    s.whole = false;
+    s.selected = Some(m(2));
+    s.rebuild();
+    let data = s.data.clone().unwrap();
+    let names: std::collections::BTreeSet<String> = s.visible.iter().map(|&i| modules::name(&data, i)).collect();
+    // Its parent as itself, a sibling by its path, another module's file by that module.
+    assert_eq!(names, ["map", "map::details", "map::drawing", "style"].into_iter().map(String::from).collect());
+    let users: Vec<usize> = s.projected_links.iter().filter(|e| e.to == m(2)).map(|e| e.from).collect();
+    assert_eq!(users, [m(1)]);
+    // map uses details and details uses map: map is drawn once, on the users' side,
+    // with a connection each way, so Export gets each card once.
+    let mut seen = s.visible.clone();
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), s.visible.len(), "{:?}", s.visible);
+    assert!(s.positions[m(1)].x < s.positions[m(2)].x);
+    assert!(s.projected_links.iter().any(|e| e.from == m(2) && e.to == m(1)));
+    assert!(map_mermaid(&data, &s.visible, &s.projected_links, &CancellationToken::new()).is_ok());
+}
+
+#[test]
+fn modules_whole_package_layers_users_above_what_they_use_and_sets_the_rest_apart() {
+    // a uses b, b uses c, a uses c; b and e use each other; d has no connection.
+    let data = modules_map(
+        &[("", None, 1), ("a", Some(0), 1), ("b", Some(0), 1), ("c", Some(0), 1), ("d", Some(0), 1), ("e", Some(0), 1)],
+        &[(1, 2, &["B"]), (2, 3, &["C"]), (1, 3, &["C"]), (2, 5, &["E"]), (5, 2, &["B"])],
+    );
+    let s = modules_page(data);
+    assert!(s.whole);
+    let y = |i: usize| s.positions[i].y;
+    assert!(y(m(1)) < y(m(2)) && y(m(2)) < y(m(3)), "{:?}", s.positions);
+    // A circle does not push cards down without end.
+    assert!(y(m(5)) <= y(m(3)) + drawing::CARD.y + 80., "{:?}", s.positions);
+    let bottom = [1, 2, 3, 5].iter().map(|&k| y(m(k))).fold(0f32, f32::max);
+    assert!(y(m(4)) > bottom, "a module with no connection sits apart");
+    assert_eq!(s.captions.iter().map(|c| (c.what, c.count)).collect::<Vec<_>>(), [(modules::CaptionKind::NotConnected, 1)]);
+    assert_eq!(s.projected_links.len(), 5);
+}
+
+#[test]
+fn modules_start_on_the_whole_package_or_the_most_used_module_and_keep_it_on_refresh() {
+    let small = around_fixture();
+    let mut s = modules_page(small.clone());
+    assert!(s.whole);
+    // A package too large to draw whole starts on its most used module.
+    let large = large_fixture(&[(1, 7, &["X"]), (2, 7, &["X"]), (3, 9, &["Y"])]);
+    let mut big = modules_page(large.clone());
+    assert!(!big.whole);
+    assert_eq!(big.selected, Some(m(7)));
+    big.selected = Some(m(9));
+    big.finish(Ok(large.clone()));
+    assert_eq!(big.selected, Some(m(9)), "a refresh keeps the chosen module");
+    // Another package starts again.
+    let mut other = large;
+    other.scope.package = Some(b"crates/other".to_vec());
+    big.finish(Ok(other));
+    assert_eq!(big.selected, Some(m(7)));
+    // The whole package stays chosen across a refresh of the same package.
+    s.finish(Ok(small));
+    assert!(s.whole);
+}
+
+#[test]
+fn modules_list_rows_search_open_what_holds_a_match_and_order_by_name() {
+    let data = modules_map(
+        &[("", None, 1), ("map", Some(0), 1), ("map::details", Some(1), 1), ("style", Some(0), 1), ("app", Some(0), 1)],
+        &[(1, 3, &["TEXT"]), (4, 3, &["TEXT"]), (4, 1, &["view"])],
+    );
+    let mut s = modules_page(data);
+    let units = s.units().unwrap();
+    let data = s.data.clone().unwrap();
+    let names = |rows: &[modules::Row]| rows.iter().map(|r| (modules::name(&data, r.node), r.depth)).collect::<Vec<_>>();
+    // Most used first: style (2), map (1), then app and the crate root (0), by name.
+    let rows = modules::rows(&data, &units, &s, "");
+    assert_eq!(names(&rows), [("style".into(), 0), ("map".into(), 0), ("app".into(), 0), ("lib.rs".into(), 0)]);
+    assert!(rows[1].folder && !rows[1].open);
+    assert!(!rows[3].folder, "the crate root holds every module, so it opens nothing");
+    // A search opens a module to show the match inside it.
+    let rows = modules::rows(&data, &units, &s, "details");
+    assert_eq!(names(&rows), [("map".into(), 0), ("map::details".into(), 1)]);
+    s.by_name = true;
+    let rows = modules::rows(&data, &units, &s, "");
+    assert_eq!(names(&rows)[0].0, "app");
+    // Search moves the picture to the first match.
+    s.whole = false;
+    s.selected = Some(m(3));
+    s.query = "app".into();
+    s.rebuild();
+    assert_eq!(s.selected, Some(m(4)));
+}
+
+/// Draws Modules' list and picture in `rect` and returns the controls.
+fn modules_frame(ctx: &Context, s: &mut MapPage, rect: Rect, compact: bool, events: Vec<Event>, time: f64) -> HashMap<String, UiControl> {
+    let mut controls = HashMap::new();
+    let mut intents = Vec::new();
+    let mut output = ctx.run_ui(RawInput { screen_rect: Some(rect), events, time: Some(time), ..Default::default() }, |ui| {
+        s.rebuild();
+        modules::body(ui, s, rect, false, compact, &mut intents, &mut controls);
+    });
+    output.textures_delta.clear();
+    controls
+}
+
+#[test]
+fn modules_list_and_picture_take_clicks_and_fold_into_a_button_when_narrow() {
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        let ctx = Context::default();
+        crate::style::install(&ctx);
+        let mut s = modules_page(around_fixture());
+        let rect = Rect::from_min_size(Pos2::ZERO, vec2(880., 632.));
+        modules_frame(&ctx, &mut s, rect, false, vec![], 0.);
+        let controls = modules_frame(&ctx, &mut s, rect, false, vec![], 0.1);
+        for (id, c) in &controls {
+            assert!(rect.contains_rect(c.rect), "{id}: {:?}", c.rect);
+        }
+        assert!(controls.contains_key("map-module-whole"));
+        // The whole package: every module of the crate root drawn.
+        assert!(controls.contains_key(&format!("map-node-{}", m(13))));
+        // A row puts its module in the middle; the rest of its users go on one card.
+        let row = controls[&format!("map-module-{}", m(1))].rect;
+        modules_frame(&ctx, &mut s, rect, false, click_events(row.center()), 0.2);
+        assert_eq!((s.whole, s.selected), (false, Some(m(1))));
+        modules_frame(&ctx, &mut s, rect, false, vec![], 0.3);
+        let controls = modules_frame(&ctx, &mut s, rect, false, vec![], 0.4);
+        assert!(controls.contains_key("map-module-more-users"), "{:?}", controls.keys());
+        // A card moves to the middle and the list follows it.
+        let card = controls[&format!("map-node-{}", m(13))].rect;
+        modules_frame(&ctx, &mut s, rect, false, click_events(card.center()), 0.5);
+        assert_eq!(s.selected, Some(m(13)));
+        modules_frame(&ctx, &mut s, rect, false, vec![], 0.6);
+        assert!(s.visible.contains(&m(1)), "chosen is now among style's users");
+        // A twisty opens a module without choosing it.
+        let controls = modules_frame(&ctx, &mut s, rect, false, vec![], 0.7);
+        let toggle = controls[&format!("map-module-toggle-{}", m(1))].rect;
+        modules_frame(&ctx, &mut s, rect, false, click_events(toggle.center()), 0.8);
+        assert!(s.expanded.contains(b"module:chosen".as_slice()));
+        assert_eq!(s.selected, Some(m(13)));
+        // Narrow: the list is a button over the picture.
+        let narrow = Rect::from_min_size(Pos2::ZERO, vec2(700., 400.));
+        modules_frame(&ctx, &mut s, narrow, true, vec![], 0.9);
+        let controls = modules_frame(&ctx, &mut s, narrow, true, vec![], 1.0);
+        assert!(controls.contains_key("map-module-switcher"));
+        assert!(!controls.contains_key(&format!("map-module-{}", m(1))));
+    });
+}
+
+#[test]
+fn modules_without_a_package_say_so_and_a_large_whole_package_asks_for_one_module() {
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        let ctx = Context::default();
+        crate::style::install(&ctx);
+        let rect = Rect::from_min_size(Pos2::ZERO, vec2(880., 600.));
+        let mut none = modules_page(RepositoryMap { kind: MapKind::Modules, ..Default::default() });
+        modules_frame(&ctx, &mut none, rect, false, vec![], 0.);
+        let controls = modules_frame(&ctx, &mut none, rect, false, vec![], 0.1);
+        assert!(controls.contains_key("map-modules-show-folders"));
+        let mut big = modules_page(large_fixture(&[]));
+        big.whole = true;
+        big.selected = None;
+        modules_frame(&ctx, &mut big, rect, false, vec![], 0.);
+        let controls = modules_frame(&ctx, &mut big, rect, false, vec![], 0.1);
+        assert!(controls.contains_key("map-module-whole"), "Whole package stays listed while chosen");
+        assert!(!controls.keys().any(|k| k.starts_with("map-node-")));
+        // Not chosen, it is still listed: a large package's facts are reached through it.
+        big.whole = false;
+        big.selected = Some(m(1));
+        modules_frame(&ctx, &mut big, rect, false, vec![], 0.2);
+        let controls = modules_frame(&ctx, &mut big, rect, false, vec![], 0.3);
+        assert!(controls.contains_key("map-module-whole"));
+    });
+}
+
+#[test]
+fn modules_used_by_counts_match_what_details_lists() {
+    // Counted in one pass for the list; Details walks the links for one module.
+    let nested = modules_map(
+        &[("", None, 1), ("map", Some(0), 1), ("map::details", Some(1), 1), ("map::drawing", Some(1), 1), ("style", Some(0), 1), ("style::tokens", Some(4), 1)],
+        &[(2, 1, &["MapPage"]), (2, 3, &["CARD"]), (2, 5, &["TEXT"]), (1, 2, &["card"]), (4, 0, &["Rocket"]), (5, 2, &["x"])],
+    );
+    for data in [around_fixture(), nested] {
+        let mut s = modules_page(data);
+        let units = s.units().unwrap();
+        let data = s.data.clone().unwrap();
+        for i in (0..data.nodes.len()).filter(|&i| data.nodes[i].kind == MapNodeKind::Module) {
+            assert_eq!(units.used_by[&i], units.neighbors(&data, i).0.len(), "{}", modules::name(&data, i));
+        }
+    }
+}
+
+#[test]
+fn modules_a_module_chosen_during_a_search_stays_chosen() {
+    let data = modules_map(
+        &[("", None, 1), ("map", Some(0), 1), ("map::details", Some(1), 1), ("style", Some(0), 1)],
+        &[(2, 1, &["MapPage"]), (1, 3, &["TEXT"])],
+    );
+    let mut s = modules_page(data);
+    s.whole = false;
+    s.selected = Some(m(3));
+    s.query = "details".into();
+    s.rebuild();
+    assert_eq!(s.selected, Some(m(2)), "a new search picks its first match");
+    // A neighbour card or a Details row picked while the search is on stays picked.
+    s.selected = Some(m(1));
+    s.rebuild();
+    assert_eq!(s.selected, Some(m(1)));
+    assert!(s.visible.contains(&m(1)));
+}
+
+#[test]
+fn modules_with_no_connection_wrap_into_rows() {
+    let mut modules: Vec<(String, Option<usize>, usize)> = vec![("".into(), None, 1), ("a".into(), Some(0), 1), ("b".into(), Some(0), 1)];
+    for k in 0..9 {
+        modules.push((format!("alone{k}"), Some(0), 1));
+    }
+    let s = modules_page(modules_map(&owned(&modules), &[(1, 2, &["B"])]));
+    assert!(s.whole);
+    let rows: std::collections::BTreeSet<i64> = (3..12).map(|k| s.positions[m(k)].y as i64).collect();
+    assert_eq!(rows.len(), 3, "nine modules, four a row");
+    assert!((3..12).all(|k| s.positions[m(k)].x < 4. * (drawing::CARD.x + 26.)));
+}
+
+#[test]
+fn modules_list_keeps_the_picked_row_in_view() {
+    // The list once ended up scrolled far below the module just picked from it.
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        let ctx = Context::default();
+        crate::style::install(&ctx);
+        let uses: Vec<(usize, usize, &[&str])> = (2..30).map(|k| (k, 1, &["X"][..])).collect();
+        let mut s = modules_page(large_fixture(&uses));
+        let rect = Rect::from_min_size(Pos2::ZERO, vec2(880., 632.));
+        let mut time = 0.;
+        let mut frame = |s: &mut MapPage, events: Vec<Event>| {
+            time += 0.1;
+            modules_frame(&ctx, s, rect, false, events, time)
+        };
+        frame(&mut s, vec![]);
+        frame(&mut s, vec![]);
+        // Another package's read, then this one again, as the package button does.
+        let mut other = large_fixture(&uses);
+        other.scope.package = Some(b"crates/other".to_vec());
+        s.finish(Ok(other));
+        frame(&mut s, vec![]);
+        s.finish(Ok(large_fixture(&uses)));
+        frame(&mut s, vec![]);
+        let controls = frame(&mut s, vec![]);
+        let pick = m(5);
+        let row = controls.get(&format!("map-module-{pick}")).unwrap_or_else(|| panic!("row {pick} not in view: {:?}", controls.keys())).rect;
+        frame(&mut s, click_events(row.center()));
+        assert_eq!(s.selected, Some(pick));
+        for _ in 0..3 {
+            frame(&mut s, vec![]);
+        }
+        let controls = frame(&mut s, vec![]);
+        assert!(controls.contains_key(&format!("map-module-{pick}")), "the picked row left the list's view");
+        // Picked on the picture, a module far down the list is scrolled into view.
+        let far = m(modules::WHOLE);
+        s.selected = Some(far);
+        s.list_jump = true;
+        frame(&mut s, vec![]);
+        let controls = frame(&mut s, vec![]);
+        assert!(controls.contains_key(&format!("map-module-{far}")), "a module picked elsewhere is scrolled into the list's view");
+    });
+}
+
+/// Clicks at `at`, as a pointer press and release in one frame, then draws one more.
+fn click_events(at: Pos2) -> Vec<Event> {
+    let press = |pressed| Event::PointerButton { pos: at, button: PointerButton::Primary, pressed, modifiers: Modifiers::NONE };
+    vec![Event::PointerMoved(at), press(true), press(false)]
 }

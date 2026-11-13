@@ -211,6 +211,7 @@ const READS: &[(&str, &str)] = &[
     ("map-code", crate::i18n::mark("Read code map")),
     ("map-export", crate::i18n::mark("Export Mermaid map")),
     ("map-history", crate::i18n::mark("Read history map")),
+    ("map-modules", crate::i18n::mark("Read module map")),
     ("map-people", crate::i18n::mark("Read people map")),
     ("image-preview", crate::i18n::mark("Read image")),
     ("image-difference", crate::i18n::mark("Compare images")),

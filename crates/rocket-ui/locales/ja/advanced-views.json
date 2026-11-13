@@ -1367,5 +1367,6 @@
   "@@ lines {start}–{end}": "@@ {start}–{end} 行",
   "Partly stashed": "一部をスタッシュ",
   "No line changes to show.": "表示する行の変更はありません。",
-  "Word highlights cancelled. Toggle Words to retry.": "単語の強調表示をキャンセルしました。「単語」を切り替えて再試行してください。"
+  "Word highlights cancelled. Toggle Words to retry.": "単語の強調表示をキャンセルしました。「単語」を切り替えて再試行してください。",
+  "Read module map": "モジュールマップを読み込む"
 }

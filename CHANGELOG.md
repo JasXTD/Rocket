@@ -12,6 +12,14 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Map → Code has a third view, Modules: one Rust package's modules and which uses
+  which, read from the committed `.rs` files as text (nothing is compiled or run).
+  A list names every module, most used first or A to Z; the picture puts the chosen
+  module between the modules that use it and the ones it uses, and a package of up to
+  40 modules can be drawn whole. Details show what a module's file declares and the
+  files no module is read from. Choose the package on the new button, or with Show
+  modules in a package's Details. Rust only; macros and `cfg` are not expanded, other
+  packages are not followed, and function calls are not shown.
 - Speed up history in large repositories. When ordering the History list took more
   than a second and the repository has no commit index (Git's commit-graph), a line
   above the list says so and opens Speed up history; Repository → History & Recovery →

@@ -16,6 +16,8 @@ enum Pick {
     Cell(usize, usize),
     /// Branches & merges: one line.
     Line(usize),
+    /// Modules: the whole package.
+    Package(usize),
 }
 enum Mark {
     Icon(Icon, Color32),
@@ -30,6 +32,8 @@ enum Act {
     Cell(usize, usize),
     /// Show this package among the packages.
     Package(usize),
+    /// Modules: put this module in the middle.
+    Module(usize),
 }
 
 pub(super) fn card(
@@ -87,6 +91,13 @@ pub(super) fn card(
                         Pick::Cell(p, a) => cell(ui, &data, p, a, &mut out),
                         Pick::Line(l) => line(ui, view, &data, l, &mut out),
                         Pick::Node(i) => node(ui, view, &data, i, &mut out),
+                        Pick::Package(_) => {
+                            let mut chosen = None;
+                            modules::package_details(ui, view, &data, &mut chosen, out.intents, out.widgets);
+                            if let Some(k) = chosen {
+                                *out.act = Some(Act::Module(k));
+                            }
+                        }
                     }
                     notes(ui, &data, out.widgets);
                 });
@@ -113,6 +124,11 @@ pub(super) fn card(
             s.filter_key = None;
             s.fit = true;
             s.focus = true;
+        }
+        Some(Act::Module(i)) => {
+            s.whole = false;
+            s.selected = Some(i);
+            s.list_jump = true;
         }
         None => {}
     }
@@ -168,6 +184,12 @@ fn pick(s: &MapPage, data: &RepositoryMap, kind: MapKind) -> Pick {
     {
         return Pick::Cell(p, a);
     }
+    if kind == MapKind::Modules
+        && s.whole
+        && let Some(p) = s.units.as_ref().and_then(|u| u.package)
+    {
+        return Pick::Package(p);
+    }
     match s.selected {
         Some(i) if i < n => Pick::Node(i),
         _ => Pick::Empty,
@@ -208,6 +230,7 @@ fn heading(s: &MapPage, data: &RepositoryMap, pick: &Pick) -> (Mark, String, Str
             ),
         },
         Pick::Node(i) => node_heading(s, data, i),
+        Pick::Package(p) => (Mark::Icon(Icon::Package, TEAL()), label(&data.nodes[p].label), tr("Cargo package · modules").into()),
     }
 }
 fn node_heading(s: &MapPage, data: &RepositoryMap, i: usize) -> (Mark, String, String) {
@@ -228,6 +251,15 @@ fn node_heading(s: &MapPage, data: &RepositoryMap, i: usize) -> (Mark, String, S
         }
         MapNodeKind::Commit if n.count > 1 => (Mark::Icon(Icon::Merge, BLUE()), name, tr("Merge commit").into()),
         MapNodeKind::Commit => (Mark::Icon(Icon::Commit, BLUE()), name, crate::i18n::tr("Commit").into()),
+        MapNodeKind::Module => {
+            let package = s.units.as_ref().and_then(|u| u.package).map(|p| label(&data.nodes[p].label)).unwrap_or_default();
+            let about = match n.detail.as_slice() {
+                b"Crate root" => trf!("Crate root · {package}", package = package),
+                b"Test module" => trf!("Test module · {package}", package = package),
+                _ => trf!("Module · {package}", package = package),
+            };
+            (Mark::Icon(Icon::Braces, TEAL()), modules::name(data, i), about)
+        }
     }
 }
 fn single(text: &str, font: FontId, color: Color32, width: f32) -> text::LayoutJob {
@@ -282,24 +314,24 @@ fn header(
     })
     .inner
 }
-fn fact(ui: &mut Ui, key: &str, value: &str) {
+pub(super) fn fact(ui: &mut Ui, key: &str, value: &str) {
     pages::key_value(ui, key, KEY, |ui| {
         ui.add(Label::new(RichText::new(value).color(TEXT())).wrap());
     });
 }
-fn fact_mono(ui: &mut Ui, key: &str, value: &str) {
+pub(super) fn fact_mono(ui: &mut Ui, key: &str, value: &str) {
     pages::key_value(ui, key, KEY, |ui| {
         ui.add(Label::new(RichText::new(value).monospace().size(12.5).color(TEXT())).wrap());
     });
 }
-fn actions(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
+pub(super) fn actions(ui: &mut Ui, content: impl FnOnce(&mut Ui)) {
     ui.add_space(4.);
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(8., 8.);
         content(ui);
     });
 }
-fn section(ui: &mut Ui, title: &str, count: usize) {
+pub(super) fn section(ui: &mut Ui, title: &str, count: usize) {
     ui.add_space(8.);
     let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), 18.), Sense::hover());
     ui.painter().text(rect.left_center(), Align2::LEFT_CENTER, title, semibold(11.), HINT());
@@ -313,7 +345,7 @@ fn section(ui: &mut Ui, title: &str, count: usize) {
 }
 /// One clickable row: icon, name, an optional figure on the right and a chevron.
 #[allow(clippy::too_many_arguments)]
-fn row(
+pub(super) fn row(
     ui: &mut Ui,
     widgets: &mut HashMap<String, UiControl>,
     id: &str,
@@ -362,7 +394,7 @@ fn row_link(ui: &mut Ui, out: &mut Out, image: Icon, tint: Color32, text: &str, 
     let id = out.link();
     row(ui, out.widgets, &id, image, tint, text, right, mono, hover)
 }
-fn more(ui: &mut Ui, shown: usize, total: usize) {
+pub(super) fn more(ui: &mut Ui, shown: usize, total: usize) {
     if total > shown {
         ui.label(RichText::new(trf!("{count} more", count = pages::number_text(total - shown))).size(12.).color(HINT()));
     }
@@ -407,6 +439,13 @@ fn node(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Out)
         MapNodeKind::Person => person(ui, s, data, i, out),
         MapNodeKind::Area => area(ui, data, i, out),
         MapNodeKind::Commit => commit(ui, s, data, i, out),
+        MapNodeKind::Module => {
+            let mut chosen = None;
+            modules::module_details(ui, s, data, i, &mut chosen, out.intents, out.widgets);
+            if let Some(k) = chosen {
+                *out.act = Some(Act::Module(k));
+            }
+        }
     }
 }
 
@@ -438,6 +477,9 @@ fn package(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut O
     actions(ui, |ui| {
         if button(ui, out.widgets, "map-show-folders", crate::i18n::tr("Show folders"), !path.is_empty()) {
             out.emit(MapIntent::Code(path.clone()));
+        }
+        if button(ui, out.widgets, "map-show-modules", tr("Show modules"), true) {
+            out.emit(MapIntent::Modules(Some(modules::package_folder(n))));
         }
         if button(ui, out.widgets, "map-history", tr("Commits here"), !path.is_empty()) {
             out.emit(MapIntent::Path(path.clone(), String::new()));

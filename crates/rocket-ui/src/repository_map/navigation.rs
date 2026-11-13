@@ -43,7 +43,11 @@ impl MapPage {
             .is_some_and(|d| d.kind == MapKind::Code && !self.alternate)
     }
     pub(super) fn rebuild(&mut self) {
-        let key = (self.query.clone(), self.alternate);
+        if self.data.as_ref().is_some_and(|d| d.kind == MapKind::Modules) {
+            modules::rebuild(self);
+            return;
+        }
+        let key = (self.query.clone(), self.alternate, None, false);
         if self.filter_key.as_ref() == Some(&key) {
             return;
         }
@@ -143,7 +147,7 @@ impl MapPage {
             if match data.kind {
                 MapKind::Code => self.alternate && n.kind != MapNodeKind::Crate,
                 MapKind::People => self.alternate && n.kind != MapNodeKind::Person,
-                MapKind::History => false,
+                MapKind::History | MapKind::Modules => false,
             } {
                 continue;
             }

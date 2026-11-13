@@ -5,6 +5,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 mod cargo;
 mod mermaid;
+mod modules;
+mod rust;
 pub use mermaid::map_mermaid;
 
 pub const MAP_COMMITS: usize = 500;
@@ -29,6 +31,8 @@ pub enum MapKind {
     Code,
     History,
     People,
+    /// One Rust package's modules and which uses which.
+    Modules,
 }
 impl MapKind {
     pub fn operation(self) -> &'static str {
@@ -36,7 +40,12 @@ impl MapKind {
             Self::Code => "map-code",
             Self::History => "map-history",
             Self::People => "map-people",
+            Self::Modules => "map-modules",
         }
+    }
+    /// History and People read commits; Code and Modules read one snapshot's files.
+    pub fn reads_commits(self) -> bool {
+        matches!(self, Self::History | Self::People)
     }
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50,6 +59,9 @@ pub struct MapOptions {
     /// Literal path filter, applied by Git before the commit limit.
     pub path: Option<RepoPath>,
     pub page_size: usize,
+    /// Modules: the Cargo package's folder (empty for the top folder). None reads the
+    /// package with the most Rust files; the result's scope names the one read.
+    pub package: Option<Vec<u8>>,
 }
 impl Default for MapOptions {
     fn default() -> Self {
@@ -61,6 +73,7 @@ impl Default for MapOptions {
             base: String::new(),
             path: None,
             page_size: MAP_COMMITS,
+            package: None,
         }
     }
 }
@@ -72,6 +85,8 @@ pub enum MapNodeKind {
     Commit,
     Person,
     Area,
+    /// A Rust module with a file of its own.
+    Module,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MapLinkKind {
@@ -121,6 +136,63 @@ pub struct RepositoryMap {
     pub has_more: bool,
     pub boundary_parents: usize,
     pub continuation: Option<MapContinuation>,
+    /// Modules: what the package's files declare, beyond nodes and links.
+    pub modules: Option<ModuleMap>,
+}
+/// A Modules read. Its nodes are the snapshot's Cargo packages, then the chosen
+/// package's modules; Contains links join a module to the modules it declares and
+/// DependsOn links join a module's file to the modules whose names it uses, with
+/// those names as evidence.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ModuleMap {
+    /// The package read, by node.
+    pub package: usize,
+    /// The crate root's node: `src/lib.rs`, or `src/main.rs` without a library.
+    pub root: Option<usize>,
+    /// What each module's own file declares at its top level, by node, in order.
+    pub outline: BTreeMap<usize, Vec<OutlineItem>>,
+    /// Rust files in the package's `src` that no module of the library is read from.
+    pub unlinked: Vec<(Vec<u8>, UnlinkedReason)>,
+    /// Paths into the package that were followed, and how many of those ended at a
+    /// module without finding the item they name (macros, `cfg` or generated code).
+    pub followed: usize,
+    pub unknown: usize,
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutlineItem {
+    pub kind: OutlineKind,
+    pub name: Vec<u8>,
+    /// `pub`, `pub(crate)` and the like, as written; empty when private.
+    pub visibility: Vec<u8>,
+    /// An `impl` block's trait, if it implements one.
+    pub of_trait: Option<Vec<u8>>,
+    /// An `impl` block's functions.
+    pub functions: usize,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutlineKind {
+    Function,
+    Struct,
+    Enum,
+    Union,
+    Trait,
+    Type,
+    Const,
+    Static,
+    Macro,
+    Impl,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnlinkedReason {
+    /// `src/main.rs` beside a library, a file in `src/bin`, or one they declare.
+    Program,
+    /// No module declaration names it.
+    NotDeclared,
+    /// Over the 1 MiB a file may have.
+    TooLarge,
+    /// Not read: past the 2,000 files or 32 MiB one read takes.
+    Limit,
+    NotUtf8,
 }
 /// Opaque continuation bound to this repository and immutable Git object IDs.
 #[derive(Clone, Debug)]
@@ -177,7 +249,7 @@ impl Repository {
         }
         let op = options.kind.operation();
         let head = self.head(cancel)?;
-        let branches = if options.kind != MapKind::Code {
+        let branches = if options.kind.reads_commits() {
             self.branches(cancel)?
         } else {
             Vec::new()
@@ -209,7 +281,7 @@ impl Repository {
             })?;
             Some(parse::oid(parse::line(&bytes), op)?)
         };
-        let mut tips = if options.all_branches && options.kind != MapKind::Code {
+        let mut tips = if options.all_branches && options.kind.reads_commits() {
             branches
                 .iter()
                 .map(|b| b.target.clone())
@@ -220,7 +292,7 @@ impl Repository {
         tips.extend(tip.iter().cloned());
         tips.sort_by(|a, b| a.as_str().cmp(b.as_str()));
         tips.dedup();
-        let base = if options.kind != MapKind::Code && !options.base.is_empty() {
+        let base = if options.kind.reads_commits() && !options.base.is_empty() {
             let bytes = self.map_read(&commit_revision_args(&options.base)?, Vec::new(), cancel)?;
             Some(parse::oid(parse::line(&bytes), op)?)
         } else {
@@ -283,6 +355,8 @@ impl Repository {
         }
         if options.kind == MapKind::Code {
             self.map_code(&mut map, cancel)?;
+        } else if options.kind == MapKind::Modules {
+            self.map_modules(&mut map, cancel)?;
         } else {
             let commits = self.runner.step(op, "read-commits", || {
                 self.map_commits(&mut map, &cursor, cancel)

@@ -1367,5 +1367,6 @@
   "@@ lines {start}–{end}": "@@ lignes {start}–{end}",
   "Partly stashed": "Partiellement remisé",
   "No line changes to show.": "Aucune modification de ligne à afficher.",
-  "Word highlights cancelled. Toggle Words to retry.": "Surlignage des mots annulé. Basculez Mots pour réessayer."
+  "Word highlights cancelled. Toggle Words to retry.": "Surlignage des mots annulé. Basculez Mots pour réessayer.",
+  "Read module map": "Lire la carte des modules"
 }

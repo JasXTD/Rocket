@@ -1367,5 +1367,6 @@
   "@@ lines {start}–{end}": "@@ строки {start}–{end}",
   "Partly stashed": "Частично спрятано",
   "No line changes to show.": "Нет изменений строк для отображения.",
-  "Word highlights cancelled. Toggle Words to retry.": "Подсветка слов отменена. Переключите «Слова», чтобы повторить."
+  "Word highlights cancelled. Toggle Words to retry.": "Подсветка слов отменена. Переключите «Слова», чтобы повторить.",
+  "Read module map": "Прочитать карту модулей"
 }

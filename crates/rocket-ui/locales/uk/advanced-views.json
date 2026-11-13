@@ -1367,5 +1367,6 @@
   "@@ lines {start}–{end}": "@@ рядки {start}–{end}",
   "Partly stashed": "Частково сховано",
   "No line changes to show.": "Немає змін рядків для показу.",
-  "Word highlights cancelled. Toggle Words to retry.": "Підсвічування слів скасовано. Перемкніть «Слова», щоб повторити."
+  "Word highlights cancelled. Toggle Words to retry.": "Підсвічування слів скасовано. Перемкніть «Слова», щоб повторити.",
+  "Read module map": "Прочитати карту модулів"
 }

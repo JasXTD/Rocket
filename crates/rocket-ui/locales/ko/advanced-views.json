@@ -1367,5 +1367,6 @@
   "@@ lines {start}–{end}": "@@ {start}–{end}줄",
   "Partly stashed": "일부 스태시됨",
   "No line changes to show.": "표시할 줄 변경이 없습니다.",
-  "Word highlights cancelled. Toggle Words to retry.": "단어 강조가 취소되었습니다. 단어 옵션을 전환하여 다시 시도하세요."
+  "Word highlights cancelled. Toggle Words to retry.": "단어 강조가 취소되었습니다. 단어 옵션을 전환하여 다시 시도하세요.",
+  "Read module map": "모듈 맵 읽기"
 }

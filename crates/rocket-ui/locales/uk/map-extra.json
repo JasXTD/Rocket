@@ -137,5 +137,93 @@
   "Copied the Mermaid text": "Текст Mermaid скопійовано",
   "Save in": "Зберегти в",
   "File name.mmd": "Ім’я файлу.mmd",
-  "Names and paths only, no file contents": "Лише імена та шляхи, без вмісту файлів"
+  "Names and paths only, no file contents": "Лише імена та шляхи, без вмісту файлів",
+  "No Rust package in this snapshot": "У цьому знімку немає пакетів Rust",
+  "Modules reads Rust packages.": "Вигляд «Модулі» читає пакети Rust.",
+  "This package has no src/lib.rs or src/main.rs": "У цьому пакеті немає ні src/lib.rs, ні src/main.rs",
+  "MODULES": "МОДУЛІ",
+  "A to Z": "Від А до Я",
+  "Most used": "Найуживаніші",
+  "Order the modules by how many use them, or by name": "Упорядкувати модулі за кількістю модулів, що їх використовують, або за назвою",
+  "Module": "Модуль",
+  "Whole package": "Увесь пакет",
+  "Every module of the package and how they connect": "Усі модулі пакета та їхні зв’язки",
+  "No module matches": "Немає відповідних модулів",
+  "test": "тест",
+  "Choose a module": "Вибрати модуль",
+  "most used first": "спочатку найуживаніші",
+  "The Rust package to map": "Пакет Rust для карти",
+  "No Rust files": "Немає файлів Rust",
+  "listed in Details": "перелічено у відомостях",
+  "NOT CONNECTED": "БЕЗ ЗВ’ЯЗКІВ",
+  "IN THIS FILE": "У ЦЬОМУ ФАЙЛІ",
+  "Modules": "Модулі",
+  "Links": "Зв’язки",
+  "MOST USED": "НАЙУЖИВАНІШІ",
+  "NOT LINKED": "НЕ ПІД’ЄДНАНІ",
+  "its own program": "окрема програма",
+  "not declared": "не оголошено",
+  "over 1 MiB": "понад 1 МіБ",
+  "not UTF-8": "не UTF-8",
+  "{count} modules are too many to draw at once. Choose one from the list": "Забагато модулів, щоб намалювати їх одразу: {count}. Виберіть один у списку",
+  "{count} modules, {order}": "Модулі: {count}, {order}",
+  "{found} lines": {
+    "one": "{found} рядок",
+    "few": "{found} рядки",
+    "many": "{found} рядків",
+    "other": "{found} рядка"
+  },
+  "Used by {n} modules": {
+    "one": "Використовується в {n} модулі",
+    "few": "Використовується в {n} модулях",
+    "many": "Використовується в {n} модулях",
+    "other": "Використовується в {n} модуля"
+  },
+  "{n} Rust files": {
+    "one": "{n} файл Rust",
+    "few": "{n} файли Rust",
+    "many": "{n} файлів Rust",
+    "other": "{n} файлу Rust"
+  },
+  "{user} uses {n} names from {module}": {
+    "one": "{user} використовує {n} назву з {module}",
+    "few": "{user} використовує {n} назви з {module}",
+    "many": "{user} використовує {n} назв з {module}",
+    "other": "{user} використовує {n} назви з {module}"
+  },
+  "{n} more modules": {
+    "one": "Ще {n} модуль",
+    "few": "Ще {n} модулі",
+    "many": "Ще {n} модулів",
+    "other": "Ще {n} модуля"
+  },
+  "{n} modules": {
+    "one": "{n} модуль",
+    "few": "{n} модулі",
+    "many": "{n} модулів",
+    "other": "{n} модуля"
+  },
+  "{n} functions": {
+    "one": "{n} функція",
+    "few": "{n} функції",
+    "many": "{n} функцій",
+    "other": "{n} функції"
+  },
+  "{n} files are not linked": {
+    "one": "{n} файл не під’єднано",
+    "few": "{n} файли не під’єднано",
+    "many": "{n} файлів не під’єднано",
+    "other": "{n} файлу не під’єднано"
+  },
+  "Cargo package · modules": "Пакет Cargo · модулі",
+  "Show modules": "Показати модулі",
+  "Crate root · {package}": "Корінь крейта · {package}",
+  "Test module · {package}": "Тестовий модуль · {package}",
+  "Module · {package}": "Модуль · {package}",
+  "Choose a module from the list": "Виберіть модуль у списку",
+  "Show them all in Details": "Показати всі у відомостях",
+  "Modules {modules} · links {links} · arrows point to what is used": "Модулі: {modules} · зв’язки: {links} · стрілки вказують на те, що використовується",
+  "Find a module": "Знайти модуль",
+  "In view: modules {nodes} · links {links}": "У вигляді: модулі {nodes} · зв’язки {links}",
+  "over the read limits": "понад ліміти читання"
 }

@@ -87,12 +87,12 @@ pub(super) fn layout(
         }
         MapKind::Code if alternate => packages(data, nodes, &mut positions),
         MapKind::Code => groups = folders(data, nodes, collapsed, &mut positions),
+        // Modules lays out its own picture (modules::rebuild).
+        MapKind::Modules => {}
     }
     (positions, groups)
 }
 
-/// Layers so that what a package uses sits below it: longest path from packages
-/// nothing uses. Within a layer, packages sit under the ones that use them.
 fn packages(data: &RepositoryMap, nodes: &[usize], positions: &mut [Pos2]) {
     let set: HashSet<usize> = nodes.iter().copied().collect();
     let edges: Vec<(usize, usize)> = data
@@ -101,8 +101,64 @@ fn packages(data: &RepositoryMap, nodes: &[usize], positions: &mut [Pos2]) {
         .filter(|e| e.kind == MapLinkKind::DependsOn && set.contains(&e.from) && set.contains(&e.to) && e.from != e.to)
         .map(|e| (e.from, e.to))
         .collect();
+    layers(data, nodes, &edges, positions);
+}
+
+/// Connections that close a circle (modules can use each other; packages cannot) are
+/// left out of the layering. Depth first from the biggest users, a connection back to
+/// a card still being walked closes one.
+fn without_circles(data: &RepositoryMap, nodes: &[usize], edges: &[(usize, usize)]) -> Vec<(usize, usize)> {
+    let mut out: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut net: HashMap<usize, i64> = HashMap::new();
+    for &(a, b) in edges {
+        out.entry(a).or_default().push(b);
+        *net.entry(a).or_default() += 1;
+        *net.entry(b).or_default() -= 1;
+    }
+    let name = |i: usize| label(&data.nodes[i].label).to_lowercase();
+    let mut order = nodes.to_vec();
+    order.sort_by(|a, b| net.get(b).copied().unwrap_or(0).cmp(&net.get(a).copied().unwrap_or(0)).then_with(|| name(*a).cmp(&name(*b))));
+    for list in out.values_mut() {
+        list.sort_by_key(|&i| name(i));
+    }
+    // 0: not reached, 1: on the walk, 2: done.
+    let mut state: HashMap<usize, u8> = HashMap::new();
+    let mut kept = Vec::new();
+    for &start in &order {
+        if state.contains_key(&start) {
+            continue;
+        }
+        let mut stack = vec![(start, 0usize)];
+        state.insert(start, 1);
+        while let Some(&mut (node, ref mut next)) = stack.last_mut() {
+            let targets = out.get(&node).map(Vec::as_slice).unwrap_or_default();
+            if let Some(&to) = targets.get(*next) {
+                *next += 1;
+                match state.get(&to) {
+                    Some(1) => {}
+                    Some(_) => kept.push((node, to)),
+                    None => {
+                        kept.push((node, to));
+                        state.insert(to, 1);
+                        stack.push((to, 0));
+                    }
+                }
+            } else {
+                state.insert(node, 2);
+                stack.pop();
+            }
+        }
+    }
+    kept
+}
+
+/// Layers so that what a card uses sits below it: longest path from cards nothing
+/// uses. Within a layer, cards sit under the ones that use them.
+pub(super) fn layers(data: &RepositoryMap, nodes: &[usize], edges: &[(usize, usize)], positions: &mut [Pos2]) {
+    let all = edges;
+    let edges = without_circles(data, nodes, edges);
     let mut layer: HashMap<usize, usize> = nodes.iter().map(|&i| (i, 0)).collect();
-    // Bounded relaxation: a cycle stops growing after the node count.
+    // Bounded relaxation over what is left, which no longer closes a circle.
     for _ in 0..nodes.len().min(64) {
         let mut changed = false;
         for &(user, used) in &edges {
@@ -124,9 +180,9 @@ fn packages(data: &RepositoryMap, nodes: &[usize], positions: &mut [Pos2]) {
     let mut order: HashMap<usize, f32> = HashMap::new();
     for row in layers.values_mut() {
         row.sort_by_key(|&i| name(i));
-        // Barycenter of the packages that use each one, from layers above.
+        // Barycenter of the cards that use each one, from layers above.
         let weight = |i: usize| {
-            let users: Vec<f32> = edges.iter().filter(|(_, used)| *used == i).filter_map(|(user, _)| order.get(user).copied()).collect();
+            let users: Vec<f32> = all.iter().filter(|(_, used)| *used == i).filter_map(|(user, _)| order.get(user).copied()).collect();
             if users.is_empty() {
                 f32::MAX
             } else {
@@ -246,6 +302,7 @@ fn folders(
                 files: files[i].0,
                 about: files[i].1.clone(),
                 at: pos2(x + FOLDER_COLUMN, y),
+                more: None,
             });
             ys.push(y);
         }
@@ -262,6 +319,7 @@ fn folders(
             files: top.0,
             about: about(&top),
             at: pos2(0., next * FOLDER_ROW),
+            more: None,
         });
     }
     groups
@@ -283,9 +341,13 @@ fn world_bounds(s: &MapPage) -> Rect {
     let cards = s.visible.iter().fold(Rect::NOTHING, |r, i| {
         r.union(Rect::from_min_size(s.positions[*i], CARD))
     });
-    s.file_groups
+    let groups = s
+        .file_groups
         .iter()
-        .fold(cards, |r, g| r.union(Rect::from_min_size(g.at, CARD)))
+        .fold(cards, |r, g| r.union(Rect::from_min_size(g.at, CARD)));
+    s.captions
+        .iter()
+        .fold(groups, |r, c| r.union(Rect::from_min_size(c.at, vec2(CARD.x, 18.))))
 }
 fn focus(s: &mut MapPage, rect: Rect) {
     if let Some(i) = s.selected.filter(|i| s.visible.contains(i)) {
@@ -344,6 +406,7 @@ pub(super) fn card_text(s: &MapPage, data: &RepositoryMap, i: usize) -> (Icon, C
             label(&n.label),
             n.commit.as_ref().map(|id| format!("{} · {}", short(id), label(&n.detail))).unwrap_or_default(),
         ),
+        MapNodeKind::Module => (Icon::Braces, TEAL(), modules::name(data, i), modules::card_detail(s, data, i)),
     }
 }
 fn arrow(painter: &Painter, end: Pos2, direction: Vec2, color: Color32) {
@@ -453,7 +516,9 @@ pub(super) fn canvas(
         return;
     };
     if s.visible.is_empty() && s.file_groups.is_empty() {
-        empty(&painter, rect, if !s.query.is_empty() {
+        empty(&painter, rect, if data.kind == MapKind::Modules {
+            tr("Choose a module from the list")
+        } else if !s.query.is_empty() {
             tr("No match. Search looks at names, paths, authors and commit IDs")
         } else if data.nodes.is_empty() {
             tr("Nothing committed in this scope")
@@ -462,7 +527,11 @@ pub(super) fn canvas(
         });
         return;
     }
-    let packages = data.kind == MapKind::Code && s.alternate;
+    let modules = data.kind == MapKind::Modules;
+    // Modules drawn whole read top to bottom like packages; around one module they
+    // read left to right.
+    let packages = data.kind == MapKind::Code && s.alternate || modules && s.whole;
+    let around = modules && !s.whole;
     let tree = data.kind == MapKind::Code && !s.alternate;
     let visible = s.visible.iter().copied().collect::<HashSet<_>>();
     let at = |i: usize| rect.min + s.pan + s.positions[i].to_vec2() * s.zoom;
@@ -529,15 +598,68 @@ pub(super) fn canvas(
             arrow(&painter, end, vec2(0., 1.), color);
             continue;
         }
+        if around {
+            // Between facing edges, the arrow at what is used: left to right, or back
+            // to a user on the left that the chosen module also uses.
+            let forward = a.x < b.x;
+            let start = a + vec2(if forward { card.x } else { 0. }, card.y / 2.);
+            let end = b + vec2(if forward { 0. } else { card.x }, card.y / 2.);
+            let mid = (start.x + end.x) / 2.;
+            curve(&painter, [start, pos2(mid, start.y), pos2(mid, end.y), end], Stroke::new(1.4, BLUE()), false);
+            arrow(&painter, end, vec2(if forward { 1. } else { -1. }, 0.), BLUE());
+            continue;
+        }
         let (start, end) = (a + card / 2., b + card / 2.);
         painter.line_segment([start, end], Stroke::new(1.2, color));
         arrow(&painter, end - (end - start).normalized() * card.y / 2., end - start, color);
     }
-    // Tree: a folder's own files, summed up on one card.
+    // Modules: the words over the columns.
+    for c in &s.captions {
+        if s.zoom >= 0.4 {
+            painter.text(rect.min + s.pan + c.at.to_vec2() * s.zoom, Align2::LEFT_TOP, modules::caption_text(c), semibold(11. * s.zoom.min(1.2)), HINT());
+        }
+    }
+    // Tree: a folder's own files, summed up on one card. Modules: the rest of a side.
+    let mut opened = None;
     for group in &s.file_groups {
         let (parent, count) = (group.folder, group.files);
         let r = Rect::from_min_size(rect.min + s.pan + group.at.to_vec2() * s.zoom, card);
         if !r.intersects(rect) {
+            continue;
+        }
+        if let Some(side) = group.more {
+            if let Some(p) = parent.filter(|p| visible.contains(p)) {
+                let (start, end) = match side {
+                    modules::More::Users => (r.right_center(), at(p) + vec2(0., card.y / 2.)),
+                    modules::More::Uses => (at(p) + vec2(card.x, card.y / 2.), r.left_center()),
+                };
+                let mid = (start.x + end.x) / 2.;
+                curve(&painter, [start, pos2(mid, start.y), pos2(mid, end.y), end], Stroke::new(1.2, BLUE()), true);
+                arrow(&painter, end, vec2(1., 0.), BLUE());
+            }
+            painter.rect_filled(r, 8. * s.zoom.min(1.), VIEW_RAISED().gamma_multiply(0.6));
+            let dash = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+            painter.extend(Shape::dashed_line(&dash, Stroke::new(1., BORDER()), 5., 3.));
+            let (title, line) = modules::more_text(group);
+            if s.zoom >= 0.4 {
+                let ink = painter.with_clip_rect(r.shrink(4.).intersect(rect));
+                ink.galley(r.left_top() + vec2(10., 8.) * s.zoom, ink.layout_job(title_job(title.clone(), s.zoom, r.width() - 20. * s.zoom)), MUTED());
+                if s.zoom > 0.7 {
+                    ink.galley(r.left_top() + vec2(10., 35.) * s.zoom, ink.layout_job(line_job(line, 11. * s.zoom, HINT(), r.width() - 20. * s.zoom)), HINT());
+                }
+            }
+            let hit = r.intersect(rect.shrink2(vec2(0., 36.)));
+            if !covered && hit.width() > 20. && hit.height() > 18. {
+                let id = match side {
+                    modules::More::Users => "map-module-more-users",
+                    modules::More::Uses => "map-module-more-uses",
+                };
+                let response = ui.interact(hit, ui.id().with(id), Sense::click()).on_hover_text(tr("Show them all in Details"));
+                register(ui, widgets, id, &response);
+                if response.clicked() {
+                    opened = Some(side);
+                }
+            }
             continue;
         }
         if let Some(p) = parent.filter(|p| visible.contains(p)) {
@@ -603,9 +725,10 @@ pub(super) fn canvas(
         }
         let hit = node.intersect(rect.shrink2(vec2(0., 36.)));
         if !covered && hit.width() > 20. && hit.height() > 18. {
+            let hover = if modules { modules::hover(s, &data, i) } else { format!("{title}\n{detail}") };
             let response = ui
                 .interact(hit, ui.id().with(("map-node", i)), Sense::click())
-                .on_hover_text(format!("{title}\n{detail}"));
+                .on_hover_text(hover);
             register(ui, widgets, &format!("map-node-{i}"), &response);
             if response.clicked() {
                 picked = Some(i);
@@ -627,6 +750,15 @@ pub(super) fn canvas(
         s.selected = Some(i);
     } else if let Some(i) = picked {
         s.selected = Some(i);
+        s.show_details = true;
+        // Modules: the picked card moves to the middle, and the list shows it.
+        if modules {
+            s.whole = false;
+            s.list_jump = true;
+        }
+    }
+    if let Some(side) = opened {
+        modules::open_section(ui.ctx(), side);
         s.show_details = true;
     }
     if covered {
@@ -686,6 +818,10 @@ fn legend(ui: &Ui, s: &MapPage, data: &RepositoryMap, rect: Rect, max_right: f32
         }
         MapKind::People => trf!("People {count} · lines join people who changed the same files", count = s.visible.len()),
         MapKind::History => trn!(s.visible.len(), "{n} commit", "{n} commits"),
+        MapKind::Modules => {
+            let (count, links) = s.units.as_ref().map_or((0, 0), |u| (u.top.len(), u.top_links));
+            trf!("Modules {modules} · links {links} · arrows point to what is used", modules = pages::number_text(count), links = pages::number_text(links))
+        }
     };
     let painter = ui.painter().with_clip_rect(rect);
     let galley = painter.layout_no_wrap(text, FontId::proportional(12.), MUTED());

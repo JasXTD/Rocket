@@ -47,7 +47,11 @@ pub fn map_mermaid(
     for &i in visible {
         cancel.check()?;
         let n = &map.nodes[i];
-        let mut title = n.label.clone();
+        // A module by its path in the crate, so `a::util` and `b::util` stay apart.
+        let mut title = match n.key.strip_prefix(b"module:") {
+            Some(path) if n.kind == MapNodeKind::Module && !path.is_empty() => path.to_vec(),
+            _ => n.label.clone(),
+        };
         if let Some(id) = &n.commit {
             title.extend_from_slice(format!(" · {}", &id.as_str()[..12]).as_bytes());
         }
@@ -60,6 +64,7 @@ pub fn map_mermaid(
         }
         let label = match e.kind {
             MapLinkKind::Contains => "contains",
+            MapLinkKind::DependsOn if map.kind == MapKind::Modules => "uses",
             MapLinkKind::DependsOn => "depends on",
             MapLinkKind::Parent => "parent",
             MapLinkKind::Changes => "changed",
@@ -129,6 +134,18 @@ mod tests {
         assert!(!text.contains("n1[\"") && !text.contains(" -->"));
         let text = map_mermaid(&map, &[0, 1], &edges, &CancellationToken::new()).unwrap();
         assert!(text.contains("n0 -->|contains| n1"));
+        // Modules are named by their path in the crate.
+        let modules = RepositoryMap {
+            kind: MapKind::Modules,
+            nodes: vec![
+                node(MapNodeKind::Module, b"module:a::util".to_vec(), b"util".to_vec(), vec![]),
+                node(MapNodeKind::Module, b"module:b::util".to_vec(), b"util".to_vec(), vec![]),
+            ],
+            ..Default::default()
+        };
+        let edges = vec![link(0, 1, MapLinkKind::DependsOn)];
+        let text = map_mermaid(&modules, &[0, 1], &edges, &CancellationToken::new()).unwrap();
+        assert!(text.contains("n0[\"a::util\"]") && text.contains("n1[\"b::util\"]") && text.contains("-->|uses|"), "{text}");
         let cancel = CancellationToken::new();
         cancel.cancel();
         assert!(matches!(

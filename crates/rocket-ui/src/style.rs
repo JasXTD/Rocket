@@ -344,6 +344,8 @@ pub enum Icon {
     Actions,
     /// A lightning bolt: Speed up history.
     Bolt,
+    /// Curly braces: a Rust module in the map.
+    Braces,
 }
 pub fn icon(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
     let p = |x: f32, y: f32| {
@@ -922,6 +924,26 @@ pub fn icon(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
                 vec![p(0.57, 0.08), p(0.2, 0.56), p(0.47, 0.56), p(0.41, 0.92), p(0.8, 0.42), p(0.52, 0.42)],
                 Stroke::new(1.3, color),
             ));
+        }
+        Icon::Braces => {
+            // Each brace: a short top, a point at the middle, a short bottom.
+            for side in [0., 1.] {
+                let x = |v: f32| if side == 0. { v } else { 1. - v };
+                painter.add(Shape::line(
+                    vec![
+                        p(x(0.4), 0.1),
+                        p(x(0.3), 0.13),
+                        p(x(0.28), 0.24),
+                        p(x(0.28), 0.4),
+                        p(x(0.14), 0.5),
+                        p(x(0.28), 0.6),
+                        p(x(0.28), 0.76),
+                        p(x(0.3), 0.87),
+                        p(x(0.4), 0.9),
+                    ],
+                    Stroke::new(1.25, color),
+                ));
+            }
         }
         Icon::Play => {
             painter.add(Shape::convex_polygon(

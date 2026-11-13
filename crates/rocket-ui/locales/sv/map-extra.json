@@ -131,5 +131,77 @@
   "Copied the Mermaid text": "Kopierade Mermaid-texten",
   "Save in": "Spara i",
   "File name.mmd": "Filnamn.mmd",
-  "Names and paths only, no file contents": "Bara namn och sökvägar, inget filinnehåll"
+  "Names and paths only, no file contents": "Bara namn och sökvägar, inget filinnehåll",
+  "No Rust package in this snapshot": "Inget Rust-paket i den här ögonblicksbilden",
+  "Modules reads Rust packages.": "Vyn Moduler läser Rust-paket.",
+  "This package has no src/lib.rs or src/main.rs": "Det här paketet har varken src/lib.rs eller src/main.rs",
+  "MODULES": "MODULER",
+  "A to Z": "A till Ö",
+  "Most used": "Mest använda",
+  "Order the modules by how many use them, or by name": "Ordna modulerna efter hur många som använder dem, eller efter namn",
+  "Module": "Modul",
+  "Whole package": "Hela paketet",
+  "Every module of the package and how they connect": "Alla moduler i paketet och hur de hänger ihop",
+  "No module matches": "Ingen modul matchar",
+  "test": "test",
+  "Choose a module": "Välj en modul",
+  "most used first": "mest använda först",
+  "The Rust package to map": "Rust-paketet att kartlägga",
+  "No Rust files": "Inga Rust-filer",
+  "listed in Details": "listas i Detaljer",
+  "NOT CONNECTED": "UTAN KOPPLING",
+  "IN THIS FILE": "I DEN HÄR FILEN",
+  "Modules": "Moduler",
+  "Links": "Länkar",
+  "MOST USED": "MEST ANVÄNDA",
+  "NOT LINKED": "INTE LÄNKADE",
+  "its own program": "eget program",
+  "not declared": "inte deklarerad",
+  "over 1 MiB": "över 1 MiB",
+  "not UTF-8": "inte UTF-8",
+  "{count} modules are too many to draw at once. Choose one from the list": "{count} moduler är för många för att rita samtidigt. Välj en i listan",
+  "{count} modules, {order}": "{count} moduler, {order}",
+  "{found} lines": {
+    "one": "{found} rad",
+    "other": "{found} rader"
+  },
+  "Used by {n} modules": {
+    "one": "Används av {n} modul",
+    "other": "Används av {n} moduler"
+  },
+  "{n} Rust files": {
+    "one": "{n} Rust-fil",
+    "other": "{n} Rust-filer"
+  },
+  "{user} uses {n} names from {module}": {
+    "one": "{user} använder {n} namn från {module}",
+    "other": "{user} använder {n} namn från {module}"
+  },
+  "{n} more modules": {
+    "one": "{n} modul till",
+    "other": "{n} moduler till"
+  },
+  "{n} modules": {
+    "one": "{n} modul",
+    "other": "{n} moduler"
+  },
+  "{n} functions": {
+    "one": "{n} funktion",
+    "other": "{n} funktioner"
+  },
+  "{n} files are not linked": {
+    "one": "{n} fil är inte länkad",
+    "other": "{n} filer är inte länkade"
+  },
+  "Cargo package · modules": "Cargo-paket · moduler",
+  "Show modules": "Visa moduler",
+  "Crate root · {package}": "Crate-rot · {package}",
+  "Test module · {package}": "Testmodul · {package}",
+  "Module · {package}": "Modul · {package}",
+  "Choose a module from the list": "Välj en modul i listan",
+  "Show them all in Details": "Visa alla i Detaljer",
+  "Modules {modules} · links {links} · arrows point to what is used": "Moduler {modules} · länkar {links} · pilar pekar på det som används",
+  "Find a module": "Hitta en modul",
+  "In view: modules {nodes} · links {links}": "I vyn: moduler {nodes} · länkar {links}",
+  "over the read limits": "över läsgränserna"
 }

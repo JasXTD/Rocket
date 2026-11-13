@@ -1367,5 +1367,6 @@
   "@@ lines {start}–{end}": "@@ الأسطر {start}–{end}",
   "Partly stashed": "مخزّن مؤقتًا جزئيًا",
   "No line changes to show.": "لا توجد تغييرات في الأسطر لعرضها.",
-  "Word highlights cancelled. Toggle Words to retry.": "أُلغيت تمييزات الكلمات. بدّل خيار الكلمات لإعادة المحاولة."
+  "Word highlights cancelled. Toggle Words to retry.": "أُلغيت تمييزات الكلمات. بدّل خيار الكلمات لإعادة المحاولة.",
+  "Read module map": "قراءة خريطة الوحدات"
 }

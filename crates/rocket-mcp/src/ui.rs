@@ -2149,7 +2149,7 @@ impl Ui {
                         | "tree-list-scroll"
                         | "files-results-scroll"
                         | "files-source-scroll"
-                        | "map-canvas" | "map-details-scroll" | "map-export-scroll"
+                        | "map-canvas" | "map-details-scroll" | "map-export-scroll" | "map-modules-list"
                         | "compare-files-scroll"
                         | "review-files-scroll" | "review-diff-scroll" | "review-findings-scroll" | "review-exact-scroll"
                         | "review-page-scroll"
@@ -3994,15 +3994,21 @@ fn repository_map_state(state:&rocket_ui::repository_map::State)->Value {
         "scanned":d.scanned,"limited":d.limited,"node_count":d.nodes.len(),"link_count":d.links.len(),"notes":d.notes,
         "has_more":d.has_more,"history_limit":d.history_limit,"boundary_parents":d.boundary_parents,
         "nodes":d.nodes.iter().enumerate().take(4096).map(|(i,n)|json!({"index":i,"kind":format!("{:?}",n.kind),"label":rocket_ui::tree::path_label(&n.label),"detail":rocket_ui::tree::path_label(&n.detail),"path":n.path.as_ref().map(|v|rocket_ui::tree::path_label(v)),"commit":n.commit.as_ref().map(|v|v.as_str()),"count":n.count,"files":n.files,"time":n.time,"evidence":n.evidence.iter().take(24).map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),"refs":n.refs.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>()})).collect::<Vec<_>>(),
-        "links":d.links.iter().take(12000).map(|e|json!({"from":e.from,"to":e.to,"kind":format!("{:?}",e.kind),"weight":e.weight})).collect::<Vec<_>>(),"links_limited":d.links.len()>12000
+        "links":d.links.iter().take(12000).map(|e|json!({"from":e.from,"to":e.to,"kind":format!("{:?}",e.kind),"weight":e.weight})).collect::<Vec<_>>(),"links_limited":d.links.len()>12000,
+        "package":d.scope.package.as_ref().map(|v|rocket_ui::tree::path_label(v)),
+        "modules":d.modules.as_ref().map(|m|json!({"package":m.package,"root":m.root,"followed":m.followed,"unknown":m.unknown,
+            "unlinked":m.unlinked.iter().map(|(p,r)|json!({"path":rocket_ui::tree::path_label(p),"reason":format!("{r:?}")})).collect::<Vec<_>>(),
+            "outline":m.outline.iter().map(|(i,o)|json!({"node":i,"items":o.len()})).collect::<Vec<_>>()}))
     }));
-    json!({"kind":format!("{:?}",state.kind),"running":p.running(),"cancelling":p.cancelling,
+    json!({"kind":format!("{:?}",state.kind),"code_shows_modules":state.modules,"running":p.running(),"cancelling":p.cancelling,
+        "package":p.package.as_ref().map(|v|rocket_ui::tree::path_label(v)),"whole":p.whole,"by_name":p.by_name,"expanded":p.expanded.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),
+        "captions":p.captions.iter().map(|c|json!({"what":format!("{:?}",c.what),"count":c.count})).collect::<Vec<_>>(),
         "revision":p.revision,"query":p.query,"all_branches":p.all_branches,"period":p.period.key(),"alternate":p.alternate,"condensed":p.condensed,"cell":p.cell,"line":p.line,
         "base":p.base,"path_scope":p.path_scope,"can_more":p.can_more(),"collapsed":p.collapsed.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),"neighbor_anchor":p.neighbor_anchor.as_ref().map(|v|rocket_ui::tree::path_label(v)),
         "projected_links":p.projected_links.iter().take(12000).map(|e|json!({"from":e.from,"to":e.to,"kind":format!("{:?}",e.kind),"weight":e.weight})).collect::<Vec<_>>(),
         "export":p.export.as_ref().map(|e|json!({"dir":e.dir,"name":e.name,"nodes":e.nodes,"links":e.links,"bytes":e.text.len(),"running":e.running(),"stopping":e.stopping,"error":e.error,"notice":e.notice})),
         "error":p.error,"notice":p.notice,"stale":p.stale,"selected":p.selected,"show_details":p.show_details,"zoom":p.zoom,
-        "visible":p.visible,"file_groups":p.file_groups.iter().map(|g|json!({"folder":g.folder,"files":g.files})).collect::<Vec<_>>(),"display_offset":p.display_offset,"view_total":p.view_total,"data":data})
+        "visible":p.visible,"file_groups":p.file_groups.iter().map(|g|json!({"folder":g.folder,"files":g.files,"more":g.more.map(|m|format!("{m:?}"))})).collect::<Vec<_>>(),"display_offset":p.display_offset,"view_total":p.view_total,"data":data})
 }
 
 fn force_push_state_value(s: &rocket_ui::force_push::DialogState) -> Value {

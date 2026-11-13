@@ -131,5 +131,77 @@
   "Copied the Mermaid text": "Mermaid-Text kopiert",
   "Save in": "Speichern in",
   "File name.mmd": "Dateiname.mmd",
-  "Names and paths only, no file contents": "Nur Namen und Pfade, keine Dateiinhalte"
+  "Names and paths only, no file contents": "Nur Namen und Pfade, keine Dateiinhalte",
+  "No Rust package in this snapshot": "Kein Rust-Paket in dieser Momentaufnahme",
+  "Modules reads Rust packages.": "Die Ansicht Module liest Rust-Pakete.",
+  "This package has no src/lib.rs or src/main.rs": "Dieses Paket hat weder src/lib.rs noch src/main.rs",
+  "MODULES": "MODULE",
+  "A to Z": "A bis Z",
+  "Most used": "Meistverwendet",
+  "Order the modules by how many use them, or by name": "Module danach ordnen, wie viele sie verwenden, oder nach Namen",
+  "Module": "Modul",
+  "Whole package": "Ganzes Paket",
+  "Every module of the package and how they connect": "Alle Module des Pakets und wie sie zusammenhängen",
+  "No module matches": "Kein passendes Modul",
+  "test": "Test",
+  "Choose a module": "Modul wählen",
+  "most used first": "meistverwendete zuerst",
+  "The Rust package to map": "Das darzustellende Rust-Paket",
+  "No Rust files": "Keine Rust-Dateien",
+  "listed in Details": "in Details aufgeführt",
+  "NOT CONNECTED": "OHNE VERBINDUNG",
+  "IN THIS FILE": "IN DIESER DATEI",
+  "Modules": "Module",
+  "Links": "Verbindungen",
+  "MOST USED": "MEISTVERWENDET",
+  "NOT LINKED": "NICHT VERKNÜPFT",
+  "its own program": "eigenes Programm",
+  "not declared": "nicht deklariert",
+  "over 1 MiB": "über 1 MiB",
+  "not UTF-8": "kein UTF-8",
+  "{count} modules are too many to draw at once. Choose one from the list": "{count} Module sind zu viele, um sie auf einmal zu zeichnen. Wählen Sie eines aus der Liste",
+  "{count} modules, {order}": "{count} Module, {order}",
+  "{found} lines": {
+    "one": "{found} Zeile",
+    "other": "{found} Zeilen"
+  },
+  "Used by {n} modules": {
+    "one": "Verwendet von {n} Modul",
+    "other": "Verwendet von {n} Modulen"
+  },
+  "{n} Rust files": {
+    "one": "{n} Rust-Datei",
+    "other": "{n} Rust-Dateien"
+  },
+  "{user} uses {n} names from {module}": {
+    "one": "{user} verwendet {n} Namen aus {module}",
+    "other": "{user} verwendet {n} Namen aus {module}"
+  },
+  "{n} more modules": {
+    "one": "{n} weiteres Modul",
+    "other": "{n} weitere Module"
+  },
+  "{n} modules": {
+    "one": "{n} Modul",
+    "other": "{n} Module"
+  },
+  "{n} functions": {
+    "one": "{n} Funktion",
+    "other": "{n} Funktionen"
+  },
+  "{n} files are not linked": {
+    "one": "{n} Datei ist nicht verknüpft",
+    "other": "{n} Dateien sind nicht verknüpft"
+  },
+  "Cargo package · modules": "Cargo-Paket · Module",
+  "Show modules": "Module anzeigen",
+  "Crate root · {package}": "Crate-Wurzel · {package}",
+  "Test module · {package}": "Testmodul · {package}",
+  "Module · {package}": "Modul · {package}",
+  "Choose a module from the list": "Wählen Sie ein Modul aus der Liste",
+  "Show them all in Details": "Alle in Details anzeigen",
+  "Modules {modules} · links {links} · arrows point to what is used": "Module {modules} · Verbindungen {links} · Pfeile zeigen auf das Verwendete",
+  "Find a module": "Modul suchen",
+  "In view: modules {nodes} · links {links}": "In der Ansicht: Module {nodes} · Verbindungen {links}",
+  "over the read limits": "über den Lesegrenzen"
 }

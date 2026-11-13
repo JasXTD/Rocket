@@ -134,6 +134,7 @@ pub use remote_management::{RemoteRenamePreview, RemoteRenameReport};
 mod repository;
 mod repository_map;
 pub use repository_map::{MapKind, MapOptions, MapNodeKind, MapLinkKind, MapNode, MapLink, MapContinuation, RepositoryMap, MAP_COMMITS, MAP_HISTORY_MAX, MAP_NODES, map_mermaid};
+pub use repository_map::{ModuleMap, OutlineItem, OutlineKind, UnlinkedReason};
 mod repository_summary;
 pub use repository_summary::{RepositorySummary, SummaryChanges, SummaryReads};
 mod review;
