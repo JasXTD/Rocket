@@ -1,5 +1,16 @@
 # Rocket development tools
 
+## Windows installer packaging
+
+`Package-Installer.ps1` wraps an existing verified Windows ZIP using the approved
+Inno Setup 6.7.3 compiler. It requires the ZIP's reviewed SHA-256, creates an exact
+file inventory, audits package contents and leaves the ZIP unchanged. It does not
+download, build Rocket or publish anything. See [Windows installer](../docs/Windows-installer.md)
+for paths, local-key comparison, recovery behavior and the focused native runner.
+Use `test-installer-payload.cjs` for the package audit and `test-inno-installer.cjs`
+for install/upgrade/uninstall with a separate test AppId. Reserve the shared
+build/MCP slot for the native runner.
+
 ## CLI hosting and GitLab/Gitea inline reviews
 
 `node tools/tests/test-cli-hosting.cjs` runs the built CLI against temporary repos

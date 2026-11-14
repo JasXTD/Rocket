@@ -213,11 +213,15 @@ translate or modify your repository.
 
 | Platform | Status |
 | --- | --- |
-| Windows x64 | Main platform, tested mostly on Windows 10. A portable ZIP with Git for Windows 2.56.0.windows.4, Git Credential Manager and Git LFS bundled; no installer or administrator access. |
+| Windows x64 | Main platform, tested mostly on Windows 10. A portable ZIP with Git for Windows 2.56.0.windows.4, Git Credential Manager and Git LFS bundled; runs without installation or administrator access. |
 | Linux x86_64 | Supported under X11 or Wayland; the portable package requires glibc 2.43+. Uses your system Git. Everyday Git work, the terminal, SSH, hosting, Lua extensions and app updates work. |
 | macOS 15+ on Apple Silicon or Intel | Preview, not yet notarized. Native menus, Keychain, system spelling, automatic refresh, a zsh terminal and Lua extensions. Uses your installed Git. |
 
 See [Current limits](#current-limits) for what still differs between platforms.
+
+An optional [Windows installer build](docs/Windows-installer.md) uses the same
+verified portable payload, with per-user shortcuts and guarded uninstall. It is
+prepared locally; the published portable ZIP remains available.
 
 ## Command-line interface
 

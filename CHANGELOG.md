@@ -10,6 +10,14 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased
+
+- Optional Windows Inno Setup packaging alongside the portable ZIP: per-user
+  installation, shortcuts, a separate updater-compatible app folder and guarded
+  uninstall. Packaging checks the exact verified payload for credential material.
+  Local install, upgrade, cancellation and uninstall acceptance passed; the new
+  installer artifact is not published yet.
+
 ## 0.92.4 — Insights, Agents and repository maps
 
 Repository insights, agent lifecycle improvements, Rust module maps, faster history
