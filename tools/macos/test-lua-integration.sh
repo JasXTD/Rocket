@@ -94,14 +94,10 @@ JS
   }
   trap collect_evidence EXIT
   node tools/tests/test-mcp-desktop.cjs
-  if [ "$mode" = release-package ]; then
-    # Observe Cocoa's first result without warming the spelling service, changing
-    # its answer or logging text. Preserve diagnostics even if acceptance fails.
-    xcrun clang -arch "$ROCKET_MAC_CLANG_ARCH" -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror -dynamiclib -framework AppKit tools/tests/macos-spelling-observer.m -o "$out/spelling-observer.dylib"
-    export ROCKET_SPELL_OBSERVER="$out/spelling-observer.dylib"
-  fi
-  node tools/tests/test-mcp-macos-package.cjs
+  # Full acceptance must use the ordinary process environment. Native spelling
+  # instrumentation belongs in the separate focused diagnostic runner.
   unset ROCKET_SPELL_OBSERVER
+  node tools/tests/test-mcp-macos-package.cjs
   if [ "$mode" = release-package ]; then
     # Qualify the changed Agents lifecycle against the actual extracted release.
     export ROCKET_AGENTS_EXE="$ROCKET_MCP_EXE"

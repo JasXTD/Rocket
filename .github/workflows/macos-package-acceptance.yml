@@ -1,0 +1,66 @@
+name: macOS retained package acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      architecture:
+        description: Architecture of the existing package
+        type: choice
+        options: [arm64, x64]
+        required: true
+      source_run:
+        description: This repository's completed package-build run ID
+        required: true
+      archive_sha256:
+        description: Independently reviewed portable archive SHA-256
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: rocket-retained-package-${{ inputs.architecture }}
+  cancel-in-progress: false
+
+jobs:
+  accept:
+    if: ${{ github.event.repository.private == false }}
+    runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-15' }}
+    timeout-minutes: 17
+    env:
+      ROCKET_REQUESTED_MAC_ARCH: ${{ inputs.architecture }}
+      ROCKET_SOURCE_RUN: ${{ inputs.source_run }}
+      ROCKET_ARCHIVE_SHA256: ${{ inputs.archive_sha256 }}
+    steps:
+      - name: Validate input shapes
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$ROCKET_REQUESTED_MAC_ARCH" in arm64|x64) ;; *) exit 2 ;; esac
+          [[ "$ROCKET_SOURCE_RUN" =~ ^[1-9][0-9]{0,15}$ ]] || exit 2
+          [[ "$ROCKET_ARCHIVE_SHA256" =~ ^[a-f0-9]{64}$ ]] || exit 2
+      - name: Check out reviewed acceptance code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify and test the unchanged package
+        timeout-minutes: 14
+        env:
+          ROCKET_READ_ARTIFACT_TOKEN: ${{ github.token }}
+          ROCKET_MACOS_SANDBOX_DISPOSABLE_USER: '1'
+        run: node tools/macos/test-retained-package.cjs
+      - name: Retain acceptance evidence
+        if: ${{ always() }}
+        timeout-minutes: 2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: retained-mac-${{ inputs.architecture }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/rocket-retained/*.json
+            ${{ runner.temp }}/rocket-retained/*.log
+            ${{ runner.temp }}/rocket-retained/evidence/*.json
+            ${{ runner.temp }}/rocket-retained/evidence/*.png
+          retention-days: 2
+          compression-level: 0

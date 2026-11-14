@@ -85,13 +85,7 @@ async function run(){try{
  prepareKeychain();
  await new Promise(r=>server.listen(0,'127.0.0.1',r));fs.writeFileSync(path.join(root,'rocket-update-api'),'http://127.0.0.1:'+server.address().port);
  cp.execFileSync(exe,['--init-http',profile,root],{env,stdio:'pipe'});const port=net.createServer();await new Promise(r=>port.listen(0,'127.0.0.1',r));const number=port.address().port;await new Promise(r=>port.close(r));fs.writeFileSync(path.join(profile,'settings'),`ROCKET-MCP-1\n${number}\n${root}\n`);
- const runEnv={...env};
- if(process.env.ROCKET_SPELL_OBSERVER){
-  assert.equal(process.env.GITHUB_ACTIONS,'true');assert.equal(process.env.ROCKET_MACOS_SANDBOX_DISPOSABLE_USER,'1');
-  const observer=fs.realpathSync(process.env.ROCKET_SPELL_OBSERVER);assert(fs.statSync(observer).isFile());
-  runEnv.DYLD_INSERT_LIBRARIES=observer;runEnv.ROCKET_SPELL_OBSERVE='1';report.spelling_observer_sha256=sha(observer);
- }
- const fd=fs.openSync(path.join(root,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env:runEnv,stdio:['ignore','ignore',fd]});fs.closeSync(fd);client=new RocketHttpClient(profile);
+ const fd=fs.openSync(path.join(root,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env,stdio:['ignore','ignore',fd]});fs.closeSync(fd);client=new RocketHttpClient(profile);
  for(let n=0;;n++){try{assert.equal((await client.raw('GET','/health')).status,200);break}catch(e){if(n>150)throw e;await delay(100)}}
  await client.initialize();await client.tool('rocket_open',{path:repo});await settled();await resize(1180,620);
  await until(s=>s.native_menus?.length>60&&s.updates.startup_checked&&!s.updates.running,'native menu and startup check');assert.equal(metadata,1);
@@ -145,12 +139,6 @@ async function run(){try{
  const logs=fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).map(n=>path.join(root,n)).concat(path.join(profile,'logs')).filter(p=>fs.existsSync(p));
  const events=logs.flatMap(p=>fs.readdirSync(p).filter(n=>/^rocket(?:\.\d+)?\.jsonl$/.test(n)).flatMap(n=>fs.readFileSync(path.join(p,n),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));
  report.events=events.length;if(!events.length||events.some(e=>e.dropped_before!==0)||JSON.stringify(events).includes('PRIVATE_MAC_')){report.passed=false;report.log_error='Missing, dropped or private diagnostic events';process.exitCode=1}
- if(process.env.ROCKET_SPELL_OBSERVER){
-  const serviceLog=fs.existsSync(path.join(root,'service.log'))?fs.readFileSync(path.join(root,'service.log'),'utf8'):'';
-  report.spelling_observer_ready=serviceLog.includes('ROCKET_SPELL_OBSERVER_READY');
-  report.spelling_native=serviceLog.split(/\r?\n/).filter(line=>line.startsWith('ROCKET_SPELL_TRACE ')).map(line=>JSON.parse(line.slice(19)));
-  if(!report.spelling_observer_ready){report.passed=false;report.observer_error='Native spelling observer did not load';process.exitCode=1}
- }
  fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));console.log('RESULT '+path.join(root,'result.json'));
 }}
 run().catch(e=>{console.error(e);process.exitCode=1});
