@@ -4006,13 +4006,15 @@ fn repository_map_state(state:&rocket_ui::repository_map::State)->Value {
         "has_more":d.has_more,"history_limit":d.history_limit,"boundary_parents":d.boundary_parents,
         "nodes":d.nodes.iter().enumerate().take(4096).map(|(i,n)|json!({"index":i,"kind":format!("{:?}",n.kind),"label":rocket_ui::tree::path_label(&n.label),"detail":rocket_ui::tree::path_label(&n.detail),"path":n.path.as_ref().map(|v|rocket_ui::tree::path_label(v)),"commit":n.commit.as_ref().map(|v|v.as_str()),"count":n.count,"files":n.files,"time":n.time,"evidence":n.evidence.iter().take(24).map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),"refs":n.refs.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>()})).collect::<Vec<_>>(),
         "links":d.links.iter().take(12000).map(|e|json!({"from":e.from,"to":e.to,"kind":format!("{:?}",e.kind),"weight":e.weight})).collect::<Vec<_>>(),"links_limited":d.links.len()>12000,
-        "package":d.scope.package.as_ref().map(|v|rocket_ui::tree::path_label(v)),
-        "modules":d.modules.as_ref().map(|m|json!({"package":m.package,"root":m.root,"followed":m.followed,"unknown":m.unknown,
+        "package":d.scope.package.as_ref().map(|v|rocket_ui::tree::path_label(&v.folder)),"package_language":d.scope.package.as_ref().map(|v|format!("{:?}",v.language)),
+        "module_packages":d.module_packages.iter().map(|p|json!({"folder":rocket_ui::tree::path_label(&p.folder),"name":rocket_ui::tree::path_label(&p.name),"language":format!("{:?}",p.language),"typescript":p.typescript,"manifest":p.manifest,"files":p.files,"node":p.node})).collect::<Vec<_>>(),
+        "modules":d.modules.as_ref().map(|m|json!({"package":m.package,"language":format!("{:?}",m.language),"root":m.root,"followed":m.followed,"unknown":m.unknown,
+            "outside":m.outside.iter().map(|(i,o)|json!({"node":i,"names":o.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>()})).collect::<Vec<_>>(),
             "unlinked":m.unlinked.iter().map(|(p,r)|json!({"path":rocket_ui::tree::path_label(p),"reason":format!("{r:?}")})).collect::<Vec<_>>(),
             "outline":m.outline.iter().map(|(i,o)|json!({"node":i,"items":o.len()})).collect::<Vec<_>>()}))
     }));
     json!({"kind":format!("{:?}",state.kind),"code_shows_modules":state.modules,"running":p.running(),"cancelling":p.cancelling,
-        "package":p.package.as_ref().map(|v|rocket_ui::tree::path_label(v)),"whole":p.whole,"by_name":p.by_name,"expanded":p.expanded.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),
+        "package":p.package.as_ref().map(|v|rocket_ui::tree::path_label(&v.folder)),"package_language":p.package.as_ref().map(|v|format!("{:?}",v.language)),"whole":p.whole,"by_name":p.by_name,"expanded":p.expanded.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),
         "captions":p.captions.iter().map(|c|json!({"what":format!("{:?}",c.what),"count":c.count})).collect::<Vec<_>>(),
         "revision":p.revision,"query":p.query,"all_branches":p.all_branches,"period":p.period.key(),"alternate":p.alternate,"condensed":p.condensed,"cell":p.cell,"line":p.line,
         "base":p.base,"path_scope":p.path_scope,"can_more":p.can_more(),"collapsed":p.collapsed.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),"neighbor_anchor":p.neighbor_anchor.as_ref().map(|v|rocket_ui::tree::path_label(v)),

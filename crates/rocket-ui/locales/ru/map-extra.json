@@ -142,8 +142,6 @@
   "Save in": "Сохранить в",
   "File name.mmd": "Имя файла.mmd",
   "Names and paths only, no file contents": "Только имена и пути, без содержимого файлов",
-  "No Rust package in this snapshot": "В этом снимке нет пакетов Rust",
-  "Modules reads Rust packages.": "Вид «Модули» читает пакеты Rust.",
   "This package has no src/lib.rs or src/main.rs": "В этом пакете нет ни src/lib.rs, ни src/main.rs",
   "MODULES": "МОДУЛИ",
   "A to Z": "От А до Я",
@@ -156,7 +154,6 @@
   "test": "тест",
   "Choose a module": "Выбрать модуль",
   "most used first": "сначала самые используемые",
-  "The Rust package to map": "Пакет Rust для карты",
   "No Rust files": "Нет файлов Rust",
   "listed in Details": "перечислены в сведениях",
   "NOT CONNECTED": "БЕЗ СВЯЗЕЙ",
@@ -229,5 +226,68 @@
   "Modules {modules} · links {links} · arrows point to what is used": "Модули: {modules} · связи: {links} · стрелки указывают на используемое",
   "Find a module": "Найти модуль",
   "In view: modules {nodes} · links {links}": "В представлении: модули {nodes} · связи {links}",
-  "over the read limits": "сверх лимитов чтения"
+  "over the read limits": "сверх лимитов чтения",
+  "Find a package": "Найти пакет",
+  "PACKAGES": "ПАКЕТЫ",
+  "Packages": "Пакеты",
+  "{n} more packages": {
+    "one": "Ещё {n} пакет",
+    "few": "Ещё {n} пакета",
+    "many": "Ещё {n} пакетов",
+    "other": "Ещё {n} пакета"
+  },
+  "Used by {n} packages": {
+    "one": "Используется в {n} пакете",
+    "few": "Используется в {n} пакетах",
+    "many": "Используется в {n} пакетах",
+    "other": "Используется в {n} пакета"
+  },
+  "Whole module": "Весь модуль",
+  "Every package of the module and how they connect": "Все пакеты модуля и их связи",
+  "Choose a package": "Выбрать пакет",
+  "Order the packages by how many use them, or by name": "Упорядочить пакеты по числу использующих их пакетов или по имени",
+  "No package matches": "Нет подходящих пакетов",
+  "{count} packages, {order}": "Пакеты: {count}, {order}",
+  "{count} packages are too many to draw at once. Choose one from the list": "Пакетов слишком много, чтобы нарисовать их сразу: {count}. Выберите один в списке",
+  "Packages {packages} · links {links} · arrows point to what is used": "Пакеты: {packages} · связи: {links} · стрелки указывают на используемое",
+  "IN THIS PACKAGE": "В ЭТОМ ПАКЕТЕ",
+  "{n} TypeScript files": {
+    "one": "{n} файл TypeScript",
+    "few": "{n} файла TypeScript",
+    "many": "{n} файлов TypeScript",
+    "other": "{n} файла TypeScript"
+  },
+  "{n} JavaScript files": {
+    "one": "{n} файл JavaScript",
+    "few": "{n} файла JavaScript",
+    "many": "{n} файлов JavaScript",
+    "other": "{n} файла JavaScript"
+  },
+  "{n} Python files": {
+    "one": "{n} файл Python",
+    "few": "{n} файла Python",
+    "many": "{n} файлов Python",
+    "other": "{n} файла Python"
+  },
+  "{n} Go files": {
+    "one": "{n} файл Go",
+    "few": "{n} файла Go",
+    "many": "{n} файлов Go",
+    "other": "{n} файла Go"
+  },
+  "TypeScript project · modules": "Проект TypeScript · модули",
+  "TypeScript folder · modules": "Папка TypeScript · модули",
+  "JavaScript project · modules": "Проект JavaScript · модули",
+  "JavaScript folder · modules": "Папка JavaScript · модули",
+  "Python package · modules": "Пакет Python · модули",
+  "Python folder · modules": "Папка Python · модули",
+  "Go module · packages": "Модуль Go · пакеты",
+  "No package to read in this snapshot": "В этом снимке нет пакетов для чтения",
+  "Modules reads Rust, JavaScript, TypeScript, Python and Go.": "Вид «Модули» читает Rust, JavaScript, TypeScript, Python и Go.",
+  "The package to map": "Пакет для карты",
+  "OUTSIDE": "ВНЕШНИЕ",
+  "build ignore": "исключён из сборки",
+  "Package root · {package}": "Корень пакета · {package}",
+  "Folder · {package}": "Папка · {package}",
+  "Package · {package}": "Пакет · {package}"
 }

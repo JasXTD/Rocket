@@ -135,8 +135,6 @@
   "Save in": "Spara i",
   "File name.mmd": "Filnamn.mmd",
   "Names and paths only, no file contents": "Bara namn och sökvägar, inget filinnehåll",
-  "No Rust package in this snapshot": "Inget Rust-paket i den här ögonblicksbilden",
-  "Modules reads Rust packages.": "Vyn Moduler läser Rust-paket.",
   "This package has no src/lib.rs or src/main.rs": "Det här paketet har varken src/lib.rs eller src/main.rs",
   "MODULES": "MODULER",
   "A to Z": "A till Ö",
@@ -149,7 +147,6 @@
   "test": "test",
   "Choose a module": "Välj en modul",
   "most used first": "mest använda först",
-  "The Rust package to map": "Rust-paketet att kartlägga",
   "No Rust files": "Inga Rust-filer",
   "listed in Details": "listas i Detaljer",
   "NOT CONNECTED": "UTAN KOPPLING",
@@ -206,5 +203,56 @@
   "Modules {modules} · links {links} · arrows point to what is used": "Moduler {modules} · länkar {links} · pilar pekar på det som används",
   "Find a module": "Hitta en modul",
   "In view: modules {nodes} · links {links}": "I vyn: moduler {nodes} · länkar {links}",
-  "over the read limits": "över läsgränserna"
+  "over the read limits": "över läsgränserna",
+  "Find a package": "Hitta ett paket",
+  "PACKAGES": "PAKET",
+  "Packages": "Paket",
+  "{n} more packages": {
+    "one": "{n} paket till",
+    "other": "{n} paket till"
+  },
+  "Used by {n} packages": {
+    "one": "Används av {n} paket",
+    "other": "Används av {n} paket"
+  },
+  "Whole module": "Hela modulen",
+  "Every package of the module and how they connect": "Alla paket i modulen och hur de hänger ihop",
+  "Choose a package": "Välj ett paket",
+  "Order the packages by how many use them, or by name": "Ordna paketen efter hur många som använder dem, eller efter namn",
+  "No package matches": "Inget paket matchar",
+  "{count} packages, {order}": "{count} paket, {order}",
+  "{count} packages are too many to draw at once. Choose one from the list": "{count} paket är för många för att rita samtidigt. Välj ett i listan",
+  "Packages {packages} · links {links} · arrows point to what is used": "Paket {packages} · länkar {links} · pilar pekar på det som används",
+  "IN THIS PACKAGE": "I DET HÄR PAKETET",
+  "{n} TypeScript files": {
+    "one": "{n} TypeScript-fil",
+    "other": "{n} TypeScript-filer"
+  },
+  "{n} JavaScript files": {
+    "one": "{n} JavaScript-fil",
+    "other": "{n} JavaScript-filer"
+  },
+  "{n} Python files": {
+    "one": "{n} Python-fil",
+    "other": "{n} Python-filer"
+  },
+  "{n} Go files": {
+    "one": "{n} Go-fil",
+    "other": "{n} Go-filer"
+  },
+  "TypeScript project · modules": "TypeScript-projekt · moduler",
+  "TypeScript folder · modules": "TypeScript-mapp · moduler",
+  "JavaScript project · modules": "JavaScript-projekt · moduler",
+  "JavaScript folder · modules": "JavaScript-mapp · moduler",
+  "Python package · modules": "Python-paket · moduler",
+  "Python folder · modules": "Python-mapp · moduler",
+  "Go module · packages": "Go-modul · paket",
+  "No package to read in this snapshot": "Inget paket att läsa i den här ögonblicksbilden",
+  "Modules reads Rust, JavaScript, TypeScript, Python and Go.": "Vyn Moduler läser Rust, JavaScript, TypeScript, Python och Go.",
+  "The package to map": "Paketet att kartlägga",
+  "OUTSIDE": "UTANFÖR",
+  "build ignore": "utesluten ur byggen",
+  "Package root · {package}": "Paketrot · {package}",
+  "Folder · {package}": "Mapp · {package}",
+  "Package · {package}": "Paket · {package}"
 }

@@ -50,6 +50,16 @@ requirements and validation limits.
   files no module is read from. Choose the package on the new button, or with Show
   modules in a package's Details. Rust only; macros and `cfg` are not expanded, other
   packages are not followed, and function calls are not shown.
+- Map → Code → Modules also reads JavaScript and TypeScript, Python and Go. A
+  JavaScript project is a folder with package.json (else a top-level folder) whose
+  folders group their files, joined by import, require() and tsconfig paths; a Python
+  package is a folder with `__init__.py`, joined by its imports, also those inside
+  functions; a Go module's packages each stand alone, joined by their imports and the
+  names used through them. The package button groups packages by language, Code offers
+  Modules where there is no Cargo package, and Details lists what each module imports
+  from outside the package. Read as text from committed files; nothing is run, and
+  paths built at run time and build constraints other than `//go:build ignore` are not
+  evaluated.
 - Hosting fixes from a check against each host's API documentation. GitHub and
   GitHub Enterprise lists and PR tabs with more than 50 entries load their next
   pages: GitHub's page links name the repository by its numeric ID. Bitbucket Cloud

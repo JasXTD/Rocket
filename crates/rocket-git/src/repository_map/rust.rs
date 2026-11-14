@@ -243,6 +243,8 @@ const ITEMS: [&str; 8] = ["fn", "struct", "enum", "trait", "type", "const", "sta
 
 /// Reads one file.
 pub(super) fn read(source: &str) -> Facts {
+    // A byte-order mark is no part of the first line.
+    let source = source.strip_prefix('﻿').unwrap_or(source);
     let t = lex(source);
     let mut facts = Facts::default();
     let is = |k: usize, p: &str| matches!(t.get(k), Some(Token::Punct(x)) if *x == p);
@@ -439,10 +441,12 @@ pub(super) fn read(source: &str) -> Facts {
 }
 
 fn outline(kind: OutlineKind, name: &str, visibility: Option<String>) -> OutlineItem {
+    let visibility = visibility.unwrap_or_default().into_bytes();
     OutlineItem {
         kind,
         name: name.as_bytes().to_vec(),
-        visibility: visibility.unwrap_or_default().into_bytes(),
+        exported: !visibility.is_empty(),
+        visibility,
         of_trait: None,
         functions: 0,
     }
@@ -530,6 +534,7 @@ fn implementation(t: &[Token], k: usize) -> OutlineItem {
         kind: OutlineKind::Impl,
         name: last.unwrap_or_default().into_bytes(),
         visibility: Vec::new(),
+        exported: false,
         of_trait: of_trait.map(String::into_bytes),
         functions,
     }

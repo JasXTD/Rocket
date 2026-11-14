@@ -127,6 +127,9 @@ async function run(){try{
  mods.write('crates/ui/src/app.rs','pub struct Rocket;\nimpl Rocket { pub fn new() -> Self { Self } fn draw(&self) {} }\npub fn start() { crate::検索::find(); }\n');
  mods.write('crates/ui/src/検索.rs','use crate::app::*;\npub fn find() { let _ = Rocket::new(); start(); crate::common::helper(); }\n');
  mods.write('crates/ui/src/tests.rs','use super::*;\n');mods.write('crates/shared/common.rs','pub fn helper() {}\n');mods.write('crates/ui/src/main.rs','fn main() {}\n');mods.write('crates/ui/src/stray.rs','// PRIVATE_STRAY\n');
+ // Section 46: a TypeScript project and a Go module beside the Rust workspace.
+ mods.write('web/package.json','{"name":"web-app"}\n');mods.write('web/src/app.ts',"import React from 'react';\nimport { view } from './view';\nexport function app() { return view(); }\n");mods.write('web/src/view.ts','export function view() { return 1; }\n');
+ mods.write('svc/go.mod','module example.com/svc\n\ngo 1.22\n');mods.write('svc/main.go','package main\n\nimport "example.com/svc/store"\n\nfunc main() { store.Open() }\n');mods.write('svc/store/db.go','package store\n\ntype DB struct{}\n\nfunc Open() *DB { return nil }\nfunc (d *DB) Close() {}\n');mods.write('svc/store/gen.go','//go:build ignore\n\npackage main\n');
  mods.commit('PRIVATE_MODULES');mods.write('crates/ui/src/app.rs','PRIVATE_UNCOMMITTED\n');mods.write('crates/ui/src/untracked.rs','fn private() {}\n');const beforeModules=snapshot(mods);
  await open(mods);assert(map().alternate,'Code opens on Packages');assert(control('map-mode-modules'));await click('map-mode-modules');await until(s=>!map().running&&map().data?.kind==='Modules','modules read');
  assert.equal(map().kind,'Modules');assert.equal(map().package,'crates/ui');assert.equal(map().code_shows_modules,true);assert(map().whole,'a small package starts on the whole package');
@@ -137,12 +140,18 @@ async function run(){try{
  await click('map-module-'+app.index);assert(!map().whole);assert.equal(map().selected,app.index);assert(map().visible.includes(search.index));assert(map().captions.some(c=>c.what==='UsedBy'));
  assert(control('map-module-section-outline'),'Details lists what the file declares');assert(control('map-outline-0'));checkBounds();await capture('modules-around-wide');
  await click('map-node-'+search.index);assert.equal(map().selected,search.index);assert(map().visible.includes(common.index),'the chosen card moves to the middle');
+ // Other languages in the same snapshot, picked on the package button: a TypeScript project, then a Go module.
+ const pickLanguage=async language=>{const k=map().data.module_packages.findIndex(p=>p.language===language);assert(k>=0,language+' is listed');await click('map-module-package');await click('map-module-package-'+k);await until(s=>!map().running&&map().package_language===language&&map().data?.modules?.language===language,language+' read');};
+ await pickLanguage('JavaScript');nodes=map().data.nodes;const tsApp=nodes.find(n=>n.kind==='Module'&&n.label==='app.ts'),tsView=nodes.find(n=>n.kind==='Module'&&n.label==='view.ts');assert(tsApp&&tsView,'TypeScript modules read');assert(map().data.links.some(e=>e.kind==='DependsOn'&&e.from===tsApp.index&&e.to===tsView.index),'an import connects them');
+ assert(map().data.modules.outside.some(o=>o.node===tsApp.index&&o.names.includes('react')),'react is listed as outside');assert(map().data.module_packages.find(p=>p.language==='JavaScript').typescript);checkBounds();await capture('modules-typescript-wide');
+ await pickLanguage('Go');nodes=map().data.nodes;const goMain=nodes.find(n=>n.kind==='Module'&&n.label==='main'),store=nodes.find(n=>n.kind==='Module'&&n.label==='store');assert(goMain&&store,'Go packages read');assert(map().data.links.some(e=>e.kind==='DependsOn'&&e.from===goMain.index&&e.to===store.index),'an import connects them');
+ assert.deepEqual(map().data.modules.unlinked.map(u=>[u.path,u.reason]),[['svc/store/gen.go','BuildIgnore']]);await click('map-module-'+store.index);assert.equal(map().selected,store.index);assert(control('map-module-section-outline'),"Details lists the package's types and functions");checkBounds();await capture('modules-go-wide');
  await click('map-module-package');await click('map-module-package-0');await until(s=>!map().running&&map().package==='crates/core','other package');assert(map().data.nodes.some(n=>n.kind==='Module'&&n.label==='lib.rs'));
  await click('map-mode-packages');assert.equal(map().kind,'Code');assert(map().alternate);const uiPackage=map().data.nodes.find(n=>n.label==='界面');await click('map-node-'+uiPackage.index);await click('map-show-modules');
  await until(s=>!map().running&&map().package==='crates/ui','Show modules');assert.equal(map().kind,'Modules');await click('map-view-history');await click('map-view-code');assert.equal(map().kind,'Modules','Code returns to Modules');
  await resize(780,620);assert(control('map-module-switcher'),'a narrow window folds the list into a button');checkBounds();await capture('modules-compact');await resize(1480,920);
  await click('map-export');assert.equal(map().export.name,'rocket-modules.mmd');await client.tool('rocket_escape');await settle();assert(!map().export);
- assert.deepEqual(snapshot(mods),beforeModules);passed('Code → Modules: committed module tree with #[path], connections, unlinked files, list, picture, package switch, Show modules, narrow switcher and export; local changes preserved');
+ assert.deepEqual(snapshot(mods),beforeModules);passed('Code → Modules: committed module tree with #[path], connections, unlinked files, list, picture, package switch, a TypeScript project and a Go module, Show modules, narrow switcher and export; local changes preserved');
  }
 
  const empty=fixture('PRIVATE_EMPTY',true);await open(empty);for(const kind of ['code','history','people']){await click('map-view-'+kind);assert.equal(map().data.nodes.length,0);assert(!map().running);await capture('empty-'+kind);}

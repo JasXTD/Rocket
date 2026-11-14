@@ -44,8 +44,8 @@ pub enum MapIntent {
     /// History of commits touching this literal path, searched for the text.
     Path(Vec<u8>, String),
     InspectCommit(ObjectId),
-    /// Code → Modules, for this package's folder (None keeps the one shown).
-    Modules(Option<Vec<u8>>),
+    /// Code → Modules, for this package (None keeps the one shown).
+    Modules(Option<PackageRef>),
     /// Code → Packages (true) or Folders (false), from Modules.
     CodeView(bool),
 }
@@ -96,8 +96,9 @@ pub struct MapPage {
     pub fit: bool,
     pub focus: bool,
     pub stale: bool,
-    /// Modules: the package's folder to read (None: the one with the most Rust files).
-    pub package: Option<Vec<u8>>,
+    /// Modules: the package to read (None: the largest of the language with the most
+    /// files).
+    pub package: Option<PackageRef>,
     /// Modules: the whole package is chosen instead of one module.
     pub whole: bool,
     /// Modules: the list is in name order instead of most used first.
@@ -744,40 +745,50 @@ fn snapshot_line(s: &MapPage, kind: MapKind) -> String {
 
 /// What the Code page's Packages, Folders and Modules show, read from whichever page
 /// has the snapshot's packages: counts for the buttons and the packages for the
-/// Modules package button (name, folder, Rust files).
+/// Modules package button, each with whether its files are counted yet.
 struct CodeViews {
+    /// Cargo packages: the Packages view.
     packages: usize,
     folders: usize,
-    list: Vec<(String, Vec<u8>, Option<usize>)>,
+    /// Packages of the other languages Modules reads.
+    others: usize,
+    list: Vec<(ModulePackage, bool)>,
 }
 fn code_views(state: &State) -> CodeViews {
     let code = state.pages[index(MapKind::Code)].data.as_ref();
     let count = |kind: &[MapNodeKind]| code.map_or(0, |d| d.nodes.iter().filter(|n| kind.contains(&n.kind)).count());
-    let mut list: Vec<(String, Vec<u8>, Option<usize>)> = state.pages[index(MapKind::Modules)]
+    let mut list: Vec<(ModulePackage, bool)> = state.pages[index(MapKind::Modules)]
         .data
         .as_ref()
-        .map(|d| {
-            d.nodes
-                .iter()
-                .filter(|n| n.kind == MapNodeKind::Crate)
-                .map(|n| (label(&n.label), n.path.clone().unwrap_or_default(), Some(n.count)))
-                .collect()
-        })
+        .map(|d| d.module_packages.iter().map(|p| (p.clone(), true)).collect())
         .unwrap_or_default();
     if list.is_empty() {
-        // Before Modules has read anything, the packages Code found; their Rust files
-        // are not counted yet.
+        // Before Modules has read anything: the Cargo packages Code found, their Rust
+        // files not counted yet, and the other languages' packages it found by path.
         list = code.map_or_else(Vec::new, |d| {
             d.nodes
                 .iter()
                 .filter(|n| n.kind == MapNodeKind::Crate)
-                .map(|n| (label(&n.label), modules::package_folder(n), None))
+                .map(|n| {
+                    let package = ModulePackage {
+                        folder: modules::package_folder(n),
+                        name: n.label.clone(),
+                        language: ModuleLanguage::Rust,
+                        typescript: false,
+                        manifest: true,
+                        files: 0,
+                        node: None,
+                    };
+                    (package, false)
+                })
+                .chain(d.module_packages.iter().map(|p| (p.clone(), true)))
                 .collect()
         });
     }
     CodeViews {
         packages: count(&[MapNodeKind::Crate]),
         folders: count(&[MapNodeKind::Directory, MapNodeKind::Crate]),
+        others: code.map_or(0, |d| d.module_packages.len()),
         list,
     }
 }
@@ -1063,7 +1074,7 @@ fn controls(
         MapKind::Code => tr("Find a package, folder or file"),
         MapKind::History => tr("Find a commit, author or branch"),
         MapKind::People => tr("Find a person or folder"),
-        MapKind::Modules => tr("Find a module"),
+        MapKind::Modules => modules::Words::of(s).find(),
     };
     let search = if compact { 190. } else { 260. };
     room(ui, search);
@@ -1080,15 +1091,18 @@ fn controls(
     match kind {
         MapKind::Code | MapKind::Modules => {
             let modules = kind == MapKind::Modules;
-            if views.packages > 0 || modules {
+            if views.packages > 0 || views.others > 0 || modules {
                 let a = trf!("Packages {count}", count = views.packages);
                 let b = trf!("Folders {count}", count = views.folders);
-                let items = [
-                    (a.as_str(), !modules && s.alternate, "map-mode-packages"),
-                    (b.as_str(), !modules && !s.alternate, "map-mode-folders"),
-                    (tr("Modules"), modules, "map-mode-modules"),
-                ];
-                match segments(ui, widgets, &items) {
+                // Without a Cargo package there is no Packages view: Folders and Modules.
+                let cargo = views.packages > 0;
+                let mut items = Vec::new();
+                if cargo {
+                    items.push((a.as_str(), !modules && s.alternate, "map-mode-packages"));
+                }
+                items.push((b.as_str(), !modules && !s.alternate, "map-mode-folders"));
+                items.push((tr("Modules"), modules, "map-mode-modules"));
+                match segments(ui, widgets, &items).map(|i| if cargo { i } else { i + 1 }) {
                     Some(2) if !modules => emit(intents, MapIntent::Modules(None)),
                     Some(i @ (0 | 1)) if modules => emit(intents, MapIntent::CodeView(i == 0)),
                     Some(i @ (0 | 1)) => {

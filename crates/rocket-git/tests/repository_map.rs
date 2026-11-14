@@ -445,7 +445,10 @@ fn modules(f: &Fixture, package: Option<&str>) -> Result<RepositoryMap> {
     f.repo().repository_map(
         &MapOptions {
             kind: MapKind::Modules,
-            package: package.map(|p| p.as_bytes().to_vec()),
+            package: package.map(|p| PackageRef {
+                folder: p.as_bytes().to_vec(),
+                language: ModuleLanguage::Rust,
+            }),
             ..Default::default()
         },
         &token(),
@@ -468,7 +471,7 @@ fn committed_rust_modules_connections_and_unlinked_files() {
                 "mod app;\npub mod 検索;\n#[cfg(test)]\nmod tests;\n#[path = \"../../shared/common.rs\"]\nmod common;\npub use app::Rocket;\n",
             );
             f.write("crates/ui/src/app.rs", "pub struct Rocket;\nimpl Rocket { pub fn new() -> Self { Self } fn draw(&self) {} }\npub fn start() { crate::検索::find(); }\n");
-            f.write("crates/ui/src/検索.rs", "use crate::app::*;\npub fn find() { let _ = Rocket::new(); start(); common_name(); }\nfn common_name() { crate::common::helper(); }\n");
+            f.write("crates/ui/src/検索.rs", "use crate::app::*;\nuse std::fmt;\npub fn find() { let _ = Rocket::new(); start(); common_name(); }\nfn common_name() { crate::common::helper(); }\n");
             f.write("crates/ui/src/tests.rs", "use super::*;\n#[test]\nfn works() { let _ = Rocket; }\n");
             f.write("crates/shared/common.rs", "pub fn helper() {}\n");
             f.write("crates/ui/src/main.rs", "mod cli;\nfn main() { 界面::app::start(); }\n");
@@ -485,7 +488,7 @@ fn committed_rust_modules_connections_and_unlinked_files() {
             // Without a package, the one with the most Rust files is read.
             let map = modules(&f, None).unwrap();
             assert_eq!(map.kind, MapKind::Modules);
-            assert_eq!(map.scope.package.as_deref(), Some(b"crates/ui".as_slice()));
+            assert_eq!(map.scope.package.as_ref().map(|p| p.folder.as_slice()), Some(b"crates/ui".as_slice()));
             let packages: Vec<(&[u8], usize)> = map
                 .nodes
                 .iter()
@@ -531,6 +534,9 @@ fn committed_rust_modules_connections_and_unlinked_files() {
                 .map(|o| format!("{:?} {}", o.kind, String::from_utf8_lossy(&o.name)))
                 .collect();
             assert_eq!(outline, ["Struct Rocket", "Impl Rocket", "Function start"]);
+            // Another crate a use line names is listed as outside; the package's own modules are not.
+            assert_eq!(details.outside.get(&module("検索")), Some(&vec![b"std".to_vec()]));
+            assert!(!details.outside.contains_key(&module("tests")));
             let unlinked: Vec<(String, UnlinkedReason)> = details
                 .unlinked
                 .iter()
@@ -563,6 +569,129 @@ fn committed_rust_modules_connections_and_unlinked_files() {
             assert_eq!(std::fs::read(f.repository.join("crates/ui/src/app.rs")).unwrap(), b"uncommitted local change\n");
         },
     );
+}
+
+#[test]
+fn committed_javascript_python_and_go_packages() {
+    isolated("ROCKET_MAP_TEST", "committed_javascript_python_and_go_packages", || {
+        let f = Fixture::new();
+        f.write("web/package.json", "{\"name\": \"@acme/web\", \"version\": \"1.0.0\"}\n");
+        f.write("web/tsconfig.json", "{\n  // aliases\n  \"compilerOptions\": { \"baseUrl\": \".\", \"paths\": { \"@/*\": [\"src/*\"] } },\n}\n");
+        f.write("web/src/app.tsx", "import React from 'react';\nimport { card } from './view/card';\nimport * as view from '@/view';\nexport function App() { view.list(); return card(); }\n");
+        f.write("web/src/view/card.ts", "export function card() { return 1; }\nexport class Card { draw() {} size() {} }\n");
+        f.write("web/src/view/index.ts", "export * from './card';\nexport function list() {}\n");
+        f.write("tools/build.cjs", "const fs = require('node:fs');\nmodule.exports = { build };\nfunction build() {}\n");
+        f.write("py/shop/__init__.py", "from .cart import Cart\n");
+        f.write("py/shop/cart.py", "from decimal import Decimal\nfrom shop.pay import card\nclass Cart:\n    def add(self): pass\n    def total(self): pass\n");
+        f.write("py/shop/pay/__init__.py", "");
+        f.write("py/shop/pay/card.py", "def charge(): pass\ndef _secret(): pass\n");
+        f.write("svc/go.mod", "module example.com/svc\n\ngo 1.22\n");
+        f.write("svc/main.go", "package main\n\nimport (\n\t\"fmt\"\n\t\"example.com/svc/store\"\n)\n\nfunc main() { fmt.Println(store.Open()) }\n");
+        f.write("svc/store/db.go", "package store\n\ntype DB struct{}\n\nfunc Open() *DB { return nil }\nfunc (d *DB) Close() {}\n");
+        f.write("svc/store/db_test.go", "package store\n\nimport \"testing\"\n");
+        f.write("svc/store/gen.go", "//go:build ignore\n\npackage main\n");
+        f.commit("languages");
+        let head = f.run(&["rev-parse", "HEAD"]);
+        let package = |folder: &str, language| PackageRef { folder: folder.as_bytes().to_vec(), language };
+        let read = |choice: Option<PackageRef>| {
+            f.repo()
+                .repository_map(&MapOptions { kind: MapKind::Modules, package: choice, ..Default::default() }, &token())
+                .unwrap()
+        };
+
+        // Code finds them by their paths, so it can offer Modules without a Cargo package.
+        let code = f.repo().repository_map(&MapOptions { kind: MapKind::Code, ..Default::default() }, &token()).unwrap();
+        let found: Vec<(String, ModuleLanguage, bool, usize)> = code
+            .module_packages
+            .iter()
+            .map(|p| (String::from_utf8_lossy(&p.folder).into_owned(), p.language, p.typescript, p.files))
+            .collect();
+        assert_eq!(
+            found,
+            [
+                ("tools".into(), ModuleLanguage::JavaScript, false, 1),
+                ("web".into(), ModuleLanguage::JavaScript, true, 3),
+                ("py/shop".into(), ModuleLanguage::Python, false, 4),
+                ("svc".into(), ModuleLanguage::Go, false, 3),
+            ]
+        );
+
+        // Without a choice: the language with the most files (JavaScript's 4 tie with
+        // Python's; the first language wins), then its largest package.
+        let map = read(None);
+        assert_eq!(map.scope.package, Some(package("web", ModuleLanguage::JavaScript)));
+        let names: Vec<(String, String)> = map
+            .nodes
+            .iter()
+            .filter(|n| n.kind == MapNodeKind::Crate)
+            .map(|n| (String::from_utf8_lossy(&n.label).into_owned(), String::from_utf8_lossy(&n.detail).into_owned()))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                ("tools".into(), "JavaScript folder".into()),
+                ("@acme/web".into(), "TypeScript project".into()),
+                ("shop".into(), "Python package".into()),
+                ("example.com/svc".into(), "Go module".into()),
+            ]
+        );
+        let details = map.modules.as_ref().unwrap();
+        assert_eq!(details.language, ModuleLanguage::JavaScript);
+        assert_eq!(details.root, None);
+        let module = |map: &RepositoryMap, key: &str| {
+            map.nodes
+                .iter()
+                .position(|n| n.key == format!("module:{key}").as_bytes())
+                .unwrap_or_else(|| panic!("no module {key}"))
+        };
+        let uses = |map: &RepositoryMap, from: &str, to: &str| {
+            map.links
+                .iter()
+                .find(|e| e.kind == MapLinkKind::DependsOn && e.from == module(map, from) && e.to == module(map, to))
+                .map(|e| e.evidence.iter().map(|n| String::from_utf8_lossy(n).into_owned()).collect::<Vec<_>>())
+        };
+        assert_eq!(uses(&map, "app.tsx", "view/card.ts"), Some(vec!["card".into()]));
+        assert_eq!(uses(&map, "app.tsx", "view/index.ts"), Some(vec!["*".into(), "list".into()]));
+        assert_eq!(uses(&map, "view/index.ts", "view/card.ts"), Some(vec!["*".into()]));
+        assert_eq!(map.nodes[module(&map, "view")].detail, b"Folder");
+        assert_eq!(details.outside[&module(&map, "app.tsx")], [b"react".to_vec()]);
+        let outline: Vec<String> = details.outline[&module(&map, "view/card.ts")]
+            .iter()
+            .map(|o| format!("{:?} {} {} {}", o.kind, String::from_utf8_lossy(&o.name), o.exported, o.functions))
+            .collect();
+        assert_eq!(outline, ["Function card true 0", "Class Card true 2"]);
+
+        // A Python package: its __init__.py is the root; dotted imports connect modules.
+        let map = read(Some(package("py/shop", ModuleLanguage::Python)));
+        let details = map.modules.as_ref().unwrap();
+        assert_eq!(details.root, Some(module(&map, "")));
+        assert_eq!(uses(&map, "", "cart"), Some(vec!["Cart".into()]));
+        assert_eq!(uses(&map, "cart", "pay.card"), Some(vec!["card".into()]));
+        assert_eq!(map.nodes[module(&map, "pay")].detail, b"Python package");
+        assert_eq!(details.outside[&module(&map, "cart")], [b"decimal".to_vec()]);
+        let outline: Vec<(String, bool)> = details.outline[&module(&map, "pay.card")].iter().map(|o| (String::from_utf8_lossy(&o.name).into_owned(), o.exported)).collect();
+        assert_eq!(outline, [("charge".into(), true), ("_secret".into(), false)]);
+
+        // A Go module: packages stand alone; a //go:build ignore file is listed apart.
+        let map = read(Some(package("svc", ModuleLanguage::Go)));
+        let details = map.modules.as_ref().unwrap();
+        assert_eq!((details.language, details.root), (ModuleLanguage::Go, None));
+        assert_eq!(uses(&map, "", "store"), Some(vec!["Open".into()]));
+        assert_eq!(map.nodes[module(&map, "")].label, b"main");
+        assert_eq!(map.nodes[module(&map, "store")].files, 1);
+        assert_eq!(details.unlinked, [(b"svc/store/gen.go".to_vec(), UnlinkedReason::BuildIgnore)]);
+        assert_eq!(details.outside[&module(&map, "")], [b"fmt".to_vec()]);
+        let outline: Vec<String> = details.outline[&module(&map, "store")].iter().map(|o| format!("{:?} {} {}", o.kind, String::from_utf8_lossy(&o.name), o.functions)).collect();
+        assert_eq!(outline, ["Type DB 1", "Function Open 0"]);
+
+        // A package of another language in the same folder is told apart, and one the
+        // snapshot does not have is refused.
+        assert!(matches!(
+            f.repo().repository_map(&MapOptions { kind: MapKind::Modules, package: Some(package("svc", ModuleLanguage::Python)), ..Default::default() }, &token()),
+            Err(Error::InvalidInput(_))
+        ));
+        assert_eq!(f.run(&["rev-parse", "HEAD"]), head);
+    });
 }
 
 #[test]

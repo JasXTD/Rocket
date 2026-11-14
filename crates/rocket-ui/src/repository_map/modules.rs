@@ -1,8 +1,150 @@
-//! Code → Modules: one Rust package's modules. The list beside the picture names every
-//! module, most used first. The picture puts the chosen module between the modules that
-//! use it and the ones it uses; a small package can also be drawn whole, in layers.
+//! Code → Modules: one package's modules (Rust, JavaScript or TypeScript, Python) or a
+//! Go module's packages. The list beside the picture names every one, most used first.
+//! The picture puts the chosen one between those that use it and those it uses; a small
+//! package can also be drawn whole, in layers.
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
+
+/// The words Modules uses for what it shows: Rust, JavaScript and Python have modules
+/// in a package; Go has packages in a module.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Words {
+    pub language: ModuleLanguage,
+    pub typescript: bool,
+}
+impl Words {
+    pub fn of(s: &MapPage) -> Self {
+        let info = s.units.as_ref().and_then(|u| u.info.clone());
+        let language = info.as_ref().map(|p| p.language).or(s.package.as_ref().map(|p| p.language)).unwrap_or_default();
+        Self {
+            language,
+            typescript: info.is_some_and(|p| p.typescript),
+        }
+    }
+    fn go(self) -> bool {
+        self.language == ModuleLanguage::Go
+    }
+    pub fn find(self) -> &'static str {
+        if self.go() { tr("Find a package") } else { tr("Find a module") }
+    }
+    fn caption(self) -> &'static str {
+        if self.go() { tr("PACKAGES") } else { tr("MODULES") }
+    }
+    fn column(self) -> &'static str {
+        if self.go() { crate::i18n::tr("Package") } else { tr("Module") }
+    }
+    fn count(self, n: usize) -> String {
+        if self.go() { trn!(n, "{n} package", "{n} packages") } else { trn!(n, "{n} module", "{n} modules") }
+    }
+    fn more(self, n: usize) -> String {
+        if self.go() { trn!(n, "{n} more package", "{n} more packages") } else { trn!(n, "{n} more module", "{n} more modules") }
+    }
+    fn used_by(self, n: usize) -> String {
+        if self.go() { trn!(n, "Used by {n} package", "Used by {n} packages") } else { trn!(n, "Used by {n} module", "Used by {n} modules") }
+    }
+    fn whole(self) -> &'static str {
+        if self.go() { tr("Whole module") } else { tr("Whole package") }
+    }
+    fn whole_hover(self) -> &'static str {
+        if self.go() { tr("Every package of the module and how they connect") } else { tr("Every module of the package and how they connect") }
+    }
+    fn choose(self) -> &'static str {
+        if self.go() { tr("Choose a package") } else { tr("Choose a module") }
+    }
+    fn order_hover(self) -> &'static str {
+        if self.go() { tr("Order the packages by how many use them, or by name") } else { tr("Order the modules by how many use them, or by name") }
+    }
+    fn none_match(self) -> &'static str {
+        if self.go() { tr("No package matches") } else { tr("No module matches") }
+    }
+    fn note(self, count: usize, order: &str) -> String {
+        let count = pages::number_text(count);
+        if self.go() { trf!("{count} packages, {order}", count = count, order = order) } else { trf!("{count} modules, {order}", count = count, order = order) }
+    }
+    fn too_many(self, count: usize) -> String {
+        let count = pages::number_text(count);
+        if self.go() {
+            trf!("{count} packages are too many to draw at once. Choose one from the list", count = count)
+        } else {
+            trf!("{count} modules are too many to draw at once. Choose one from the list", count = count)
+        }
+    }
+    pub fn legend(self, count: usize, links: usize) -> String {
+        let (count, links) = (pages::number_text(count), pages::number_text(links));
+        if self.go() {
+            trf!("Packages {packages} · links {links} · arrows point to what is used", packages = count, links = links)
+        } else {
+            trf!("Modules {modules} · links {links} · arrows point to what is used", modules = count, links = links)
+        }
+    }
+    /// "In this file", or for a Go package (many files) "In this package".
+    fn outline(self) -> &'static str {
+        if self.go() { tr("IN THIS PACKAGE") } else { tr("IN THIS FILE") }
+    }
+    /// The units the Modules fact counts: "Modules", or "Packages" in Go.
+    fn units(self) -> &'static str {
+        if self.go() { tr("Packages") } else { tr("Modules") }
+    }
+    /// What a package's source files are: "214 Rust files".
+    pub fn files(self, n: usize) -> String {
+        match self.language {
+            ModuleLanguage::Rust => trn!(n, "{n} Rust file", "{n} Rust files"),
+            ModuleLanguage::JavaScript if self.typescript => trn!(n, "{n} TypeScript file", "{n} TypeScript files"),
+            ModuleLanguage::JavaScript => trn!(n, "{n} JavaScript file", "{n} JavaScript files"),
+            ModuleLanguage::Python => trn!(n, "{n} Python file", "{n} Python files"),
+            ModuleLanguage::Go => trn!(n, "{n} Go file", "{n} Go files"),
+        }
+    }
+    /// The package's own name for itself: "TypeScript project · modules".
+    pub fn package_kind(self, manifest: bool) -> &'static str {
+        match (self.language, self.typescript, manifest) {
+            (ModuleLanguage::Rust, ..) => tr("Cargo package · modules"),
+            (ModuleLanguage::JavaScript, true, true) => tr("TypeScript project · modules"),
+            (ModuleLanguage::JavaScript, true, false) => tr("TypeScript folder · modules"),
+            (ModuleLanguage::JavaScript, false, true) => tr("JavaScript project · modules"),
+            (ModuleLanguage::JavaScript, false, false) => tr("JavaScript folder · modules"),
+            (ModuleLanguage::Python, _, true) => tr("Python package · modules"),
+            (ModuleLanguage::Python, _, false) => tr("Python folder · modules"),
+            (ModuleLanguage::Go, ..) => tr("Go module · packages"),
+        }
+    }
+    /// The keyword a declaration is written with.
+    pub(super) fn keyword(self, kind: OutlineKind) -> &'static str {
+        match (self.language, kind) {
+            (ModuleLanguage::Python, OutlineKind::Function) => "def",
+            (ModuleLanguage::Go, OutlineKind::Function) => "func",
+            (ModuleLanguage::JavaScript, OutlineKind::Function) => "function",
+            (_, OutlineKind::Function) => "fn",
+            (_, OutlineKind::Struct) => "struct",
+            (_, OutlineKind::Enum) => "enum",
+            (_, OutlineKind::Union) => "union",
+            (_, OutlineKind::Trait) => "trait",
+            (_, OutlineKind::Type) => "type",
+            (_, OutlineKind::Const) => "const",
+            (_, OutlineKind::Static) => "static",
+            (_, OutlineKind::Macro) => "macro_rules!",
+            (_, OutlineKind::Impl) => "impl",
+            (_, OutlineKind::Class) => "class",
+            (_, OutlineKind::Interface) => "interface",
+            (_, OutlineKind::Let) => "let",
+            (_, OutlineKind::Var) => "var",
+        }
+    }
+}
+/// A language as the package button groups it.
+pub(super) fn language_name(language: ModuleLanguage, typescript: bool) -> &'static str {
+    match language {
+        ModuleLanguage::Rust => "Rust",
+        ModuleLanguage::JavaScript if typescript => "TypeScript",
+        ModuleLanguage::JavaScript => "JavaScript",
+        ModuleLanguage::Python => "Python",
+        ModuleLanguage::Go => "Go",
+    }
+}
+/// A package's name; one at the top of the repository may have none.
+pub(super) fn package_name(name: &[u8]) -> String {
+    if name.is_empty() { tr("Top folder").to_owned() } else { label(name) }
+}
 
 /// Cards a side before the rest are counted on one card.
 pub(super) const SIDE: usize = 8;
@@ -40,12 +182,23 @@ pub enum More {
 /// The module tree of one read, worked out once per read.
 pub(crate) struct Units {
     pub package: Option<usize>,
+    /// The package as the package button lists it.
+    pub info: Option<ModulePackage>,
+    pub language: ModuleLanguage,
     pub root: Option<usize>,
-    /// Each node's line from the crate root down to it (itself alone when outside it).
+    /// Each node's line from the crate root down to it (itself alone when outside it,
+    /// and always in Go, whose packages stand alone).
     chains: Vec<Vec<usize>>,
+    /// What the list shows inside each row: modules, and in Go packages and folders.
     children: HashMap<usize, Vec<usize>>,
-    /// The crate root's modules, by name.
+    /// The row each node sits in, in the list.
+    list_parent: Vec<Option<usize>>,
+    /// The modules the package is made of at its top: the crate root's, those in no
+    /// other module, or every Go package.
     pub top: Vec<usize>,
+    /// The list's first rows: the top modules and the crate root, or in Go the packages
+    /// and folders in no other folder.
+    list_top: Vec<usize>,
     /// Modules that use each module, counted as Details lists them.
     pub used_by: HashMap<usize, usize>,
     /// A module with the modules inside it: files and lines.
@@ -63,9 +216,14 @@ impl Units {
     pub(super) fn new(data: &RepositoryMap) -> Self {
         let n = data.nodes.len();
         let module = |i: usize| data.nodes[i].kind == MapNodeKind::Module;
+        // A Go folder that holds packages: a row in the list, never a card.
+        let listed = |i: usize| module(i) || data.nodes[i].kind == MapNodeKind::Directory;
+        let details = data.modules.as_ref();
+        let language = details.map(|d| d.language).unwrap_or_default();
+        let standalone = language.standalone();
         let mut parent = vec![None; n];
         let mut children: HashMap<usize, Vec<usize>> = HashMap::new();
-        for e in data.links.iter().filter(|e| e.kind == MapLinkKind::Contains && module(e.from) && module(e.to)) {
+        for e in data.links.iter().filter(|e| e.kind == MapLinkKind::Contains && listed(e.from) && listed(e.to)) {
             parent[e.to] = Some(e.from);
             children.entry(e.from).or_default().push(e.to);
         }
@@ -73,12 +231,34 @@ impl Units {
         for list in children.values_mut() {
             list.sort_by_key(name);
         }
-        let details = data.modules.as_ref();
         let root = details.and_then(|d| d.root).filter(|&r| r < n);
-        let top = root.and_then(|r| children.get(&r).cloned()).unwrap_or_default();
+        let parentless = |keep: &dyn Fn(usize) -> bool| -> Vec<usize> {
+            let mut list: Vec<usize> = (0..n).filter(|&i| keep(i) && parent[i].is_none()).collect();
+            list.sort_by_key(name);
+            list
+        };
+        let (top, list_top) = match root {
+            Some(r) => {
+                let top = children.get(&r).cloned().unwrap_or_default();
+                let list = top.iter().copied().chain(Some(r)).collect();
+                (top, list)
+            }
+            None if standalone => {
+                let mut every: Vec<usize> = (0..n).filter(|&i| module(i)).collect();
+                every.sort_by_key(name);
+                (every, parentless(&listed))
+            }
+            None => {
+                let top = parentless(&module);
+                (top.clone(), top)
+            }
+        };
         let chains = (0..n)
             .map(|mut i| {
                 let mut line = vec![i];
+                if standalone {
+                    return line;
+                }
                 while let Some(p) = parent[i] {
                     if line.len() > 64 {
                         break;
@@ -90,23 +270,29 @@ impl Units {
                 line
             })
             .collect();
+        let package = details.map(|d| d.package).filter(|&p| p < n);
+        let info = package.and_then(|p| data.module_packages.iter().find(|m| m.node == Some(p)).cloned());
         let mut units = Self {
-            package: details.map(|d| d.package).filter(|&p| p < n),
+            package,
+            info,
+            language,
             root,
             chains,
             children,
+            list_parent: parent,
             top,
+            list_top,
             used_by: HashMap::new(),
             size: HashMap::new(),
             top_links: 0,
         };
-        // Sizes from the leaves up.
+        // Sizes from the leaves up; a Go package holds only its own files.
         let modules: Vec<usize> = (0..n).filter(|&i| module(i)).collect();
         let mut order = modules.clone();
         order.sort_by_key(|&i| std::cmp::Reverse(units.depth(i)));
         for &i in &order {
-            let own = (1, data.nodes[i].count);
-            let inside = if Some(i) == units.root {
+            let own = (data.nodes[i].files, data.nodes[i].count);
+            let inside = if Some(i) == units.root || standalone {
                 (0, 0)
             } else {
                 units.children.get(&i).map_or((0, 0), |kids| {
@@ -145,10 +331,11 @@ impl Units {
     fn depth(&self, i: usize) -> usize {
         self.chains[i].len() - 1
     }
-    /// The crate root's module that holds `i`; the root for the root itself.
+    /// The top-level module that holds `i`: under the crate root (the root for the root
+    /// itself), or the first of its line when there is no root.
     fn top_of(&self, i: usize) -> usize {
         let chain = &self.chains[i];
-        chain.get(1).copied().unwrap_or(chain[0])
+        if self.root.is_some() { chain.get(1).copied().unwrap_or(chain[0]) } else { chain[0] }
     }
     /// What the picture shows for `f` beside `chosen`: an ancestor as itself, anything
     /// else as the module on its side of the nearest module they share.
@@ -163,6 +350,19 @@ impl Units {
     /// Whether `x` is `chosen` or inside it. The crate root stands for its own file only.
     fn within(&self, x: usize, chosen: usize) -> bool {
         x == chosen || Some(chosen) != self.root && self.chains[x].contains(&chosen)
+    }
+    /// The rows that hold `i` in the list, nearest first.
+    pub(super) fn list_ancestors(&self, i: usize) -> Vec<usize> {
+        let mut out = Vec::new();
+        let mut at = i;
+        while let Some(p) = self.list_parent.get(at).copied().flatten() {
+            if out.len() >= 64 {
+                break;
+            }
+            out.push(p);
+            at = p;
+        }
+        out
     }
     pub(super) fn children(&self, i: usize) -> &[usize] {
         self.children.get(&i).map(Vec::as_slice).unwrap_or_default()
@@ -196,11 +396,14 @@ impl Units {
     }
 }
 
-/// A module as the map names it: its path in the crate, or the root's file name.
+/// A module as the map names it: its path in the crate or package (`style::tokens`,
+/// `mime.text`, `net/http`), or the root's own name. A JavaScript file goes by its file
+/// name, which the reader makes its path when two share one.
 pub(super) fn name(data: &RepositoryMap, i: usize) -> String {
     let n = &data.nodes[i];
+    let by_label = data.modules.as_ref().is_some_and(|m| m.language == ModuleLanguage::JavaScript);
     match n.key.strip_prefix(b"module:") {
-        Some(path) if !path.is_empty() => label(path),
+        Some(path) if !path.is_empty() && !by_label => label(path),
         _ => label(&n.label),
     }
 }
@@ -275,7 +478,8 @@ pub(super) fn rebuild(s: &mut MapPage) {
     // Only when the search changes: a module chosen while it is on stays chosen.
     let searched = s.filter_key.as_ref().is_none_or(|key| key.0 != s.query);
     if searched && !query.is_empty() && !s.whole {
-        let matches = |i: usize| name(&data, i).to_lowercase().contains(&query);
+        // A Go folder that only holds packages is listed, never chosen.
+        let matches = |i: usize| data.nodes[i].kind == MapNodeKind::Module && name(&data, i).to_lowercase().contains(&query);
         if !s.selected.is_some_and(matches) {
             let rows = rows(&data, &units, s, &query);
             if let Some(row) = rows.iter().find(|r| matches(r.node)) {
@@ -434,15 +638,17 @@ pub(super) fn rows(data: &RepositoryMap, units: &Units, s: &MapPage, query: &str
     fn holds(units: &Units, i: usize, matches: &dyn Fn(usize) -> bool, depth: usize) -> bool {
         depth < 64 && units.children(i).iter().any(|&k| matches(k) || holds(units, k, matches, depth + 1))
     }
-    let mut top: Vec<usize> = units.top.iter().copied().chain(units.root).collect();
-    if s.by_name {
-        top.sort_by_key(|&i| name(data, i).to_lowercase());
-    } else {
-        top.sort_by(|a, b| {
+    // Every level in the list's order: most used first, or A to Z.
+    fn sort(list: &mut [usize], data: &RepositoryMap, units: &Units, by_name: bool) {
+        if by_name {
+            list.sort_by_key(|&i| name(data, i).to_lowercase());
+        } else {
             let used = |i: &usize| units.used_by.get(i).copied().unwrap_or(0);
-            used(b).cmp(&used(a)).then_with(|| name(data, *a).to_lowercase().cmp(&name(data, *b).to_lowercase()))
-        });
+            list.sort_by(|a, b| used(b).cmp(&used(a)).then_with(|| name(data, *a).to_lowercase().cmp(&name(data, *b).to_lowercase())));
+        }
     }
+    let mut top: Vec<usize> = units.list_top.clone();
+    sort(&mut top, data, units, s.by_name);
     let mut out = Vec::new();
     #[allow(clippy::too_many_arguments)]
     fn add(out: &mut Vec<Row>, data: &RepositoryMap, units: &Units, s: &MapPage, i: usize, depth: usize, query: &str, matches: &dyn Fn(usize) -> bool) {
@@ -460,7 +666,9 @@ pub(super) fn rows(data: &RepositoryMap, units: &Units, s: &MapPage, query: &str
             open,
         });
         if open && depth < 32 {
-            for &k in kids {
+            let mut kids = kids.to_vec();
+            sort(&mut kids, data, units, s.by_name);
+            for k in kids {
                 add(out, data, units, s, k, depth + 1, query, matches);
             }
         }
@@ -508,13 +716,14 @@ pub(super) fn body(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, comp
         return;
     };
     let Some(units) = s.units() else { return };
+    let words = Words::of(s);
     if units.package.is_none() {
         let mut card = ui.new_child(UiBuilder::new().max_rect(rect).layout(Layout::top_down(Align::Center)));
         card.add_space((rect.height() / 2. - 52.).max(8.));
         icon(card.painter(), Rect::from_center_size(card.cursor().center_top() + vec2(0., 11.), vec2(22., 22.)), Icon::Braces, FAINT());
         card.add_space(28.);
-        card.label(RichText::new(tr("No Rust package in this snapshot")).font(semibold(14.)).color(TEXT()));
-        card.label(RichText::new(tr("Modules reads Rust packages.")).color(MUTED()));
+        card.label(RichText::new(tr("No package to read in this snapshot")).font(semibold(14.)).color(TEXT()));
+        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python and Go.")).color(MUTED()));
         card.add_space(6.);
         if button(&mut card, widgets, "map-modules-show-folders", crate::i18n::tr("Show folders"), !covered) {
             emit(intents, MapIntent::CodeView(false));
@@ -536,13 +745,14 @@ pub(super) fn body(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, comp
         }
         Rect::from_min_max(pos2(list.right() + 1., rect.top()), rect.max)
     };
-    let root_missing = units.root.is_none();
+    // Only a Rust package needs a root file; the other languages' files stand alone.
+    let root_missing = units.language == ModuleLanguage::Rust && units.root.is_none();
     if root_missing || s.whole && units.top.len() > WHOLE {
         let painter = ui.painter().with_clip_rect(picture);
         let text = if root_missing {
             tr("This package has no src/lib.rs or src/main.rs").to_owned()
         } else {
-            trf!("{count} modules are too many to draw at once. Choose one from the list", count = pages::number_text(units.top.len()))
+            words.too_many(units.top.len())
         };
         let galley = painter.layout(text, FontId::proportional(13.), MUTED(), (picture.width() - 48.).max(40.));
         painter.galley(picture.center() - galley.size() / 2., galley, MUTED());
@@ -557,10 +767,11 @@ pub(super) fn body(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, comp
 /// The list: a header with the count and the order, Whole package, then the modules.
 fn list_panel(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units, covered: bool, widgets: &mut HashMap<String, UiControl>) -> Option<Pick> {
     let mut pick = None;
+    let words = Words::of(s);
     let width = ui.available_width();
     let (head, _) = ui.allocate_exact_size(vec2(width, 38.), Sense::hover());
     let painter = ui.painter().clone();
-    let caption = painter.layout_no_wrap(tr("MODULES").to_owned(), semibold(11.), HINT());
+    let caption = painter.layout_no_wrap(words.caption().to_owned(), semibold(11.), HINT());
     let caption_width = caption.size().x;
     painter.galley(pos2(head.left() + 12., head.center().y - caption.size().y / 2.), caption, HINT());
     painter.text(
@@ -577,13 +788,13 @@ fn list_panel(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units,
             ui.add(Button::new(RichText::new(order).size(12.).color(MUTED())).frame(false).min_size(order_rect.size()))
         })
         .inner
-        .on_hover_text(tr("Order the modules by how many use them, or by name"));
+        .on_hover_text(words.order_hover());
     register(ui, widgets, "map-module-order", &r);
     if r.clicked() && !covered {
         pick = Some(Pick::Order);
     }
     let (columns, _) = ui.allocate_exact_size(vec2(width, 20.), Sense::hover());
-    painter.text(pos2(columns.left() + 26., columns.center().y), Align2::LEFT_CENTER, tr("Module"), FontId::proportional(11.), FAINT());
+    painter.text(pos2(columns.left() + 26., columns.center().y), Align2::LEFT_CENTER, words.column(), FontId::proportional(11.), FAINT());
     painter.text(pos2(columns.right() - 12., columns.center().y), Align2::RIGHT_CENTER, tr("Used by"), FontId::proportional(11.), FAINT());
     painter.hline(columns.x_range(), columns.bottom() - 0.5, Stroke::new(1., CARD_STROKE()));
     // Always listed: a package too large to draw whole still shows its facts in Details.
@@ -596,22 +807,28 @@ fn list_panel(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units,
             painter.rect_filled(r, 0., HOVER());
         }
         icon(&painter, Rect::from_center_size(pos2(r.left() + 15., r.center().y), vec2(12., 12.)), Icon::Package, if s.whole { BLUE() } else { FAINT() });
-        painter.text(pos2(r.left() + 30., r.center().y), Align2::LEFT_CENTER, tr("Whole package"), if s.whole { semibold(13.) } else { FontId::proportional(13.) }, TEXT());
+        painter.text(pos2(r.left() + 30., r.center().y), Align2::LEFT_CENTER, words.whole(), if s.whole { semibold(13.) } else { FontId::proportional(13.) }, TEXT());
         painter.hline(r.x_range(), r.bottom() - 0.5, Stroke::new(1., CARD_STROKE()));
-        let response = response.on_hover_text(tr("Every module of the package and how they connect"));
+        let response = response.on_hover_text(words.whole_hover());
         register(ui, widgets, "map-module-whole", &response);
         if response.clicked() && !covered {
             pick = Some(Pick::Whole);
         }
     }
     let query = s.query.to_lowercase();
+    let jump = std::mem::take(&mut s.list_jump);
+    // To show the chosen module the list opens the rows that hold it.
+    if jump && let Some(chosen) = s.selected {
+        for row in units.list_ancestors(chosen) {
+            s.expanded.insert(data.nodes[row].key.clone());
+        }
+    }
     let list = rows(data, units, s, &query);
     if list.is_empty() {
         ui.add_space(12.);
-        ui.vertical_centered(|ui| ui.label(RichText::new(tr("No module matches")).size(12.5).color(HINT())));
+        ui.vertical_centered(|ui| ui.label(RichText::new(words.none_match()).size(12.5).color(HINT())));
         return pick;
     }
-    let jump = std::mem::take(&mut s.list_jump);
     let mut area = ScrollArea::vertical().id_salt("map-modules-list").auto_shrink([false, false]);
     if jump && let Some(at) = list.iter().position(|r| Some(r.node) == s.selected) {
         let view = ui.available_height();
@@ -634,8 +851,11 @@ fn list_panel(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units,
                 icon(painter, twisty.shrink(3.), if row.open { Icon::Chevron } else { Icon::ChevronRight }, FAINT());
             }
             let n = &data.nodes[row.node];
+            // A Go folder that only holds packages has no count of its own.
+            let folder_only = n.kind != MapNodeKind::Module;
             let count = units.used_by.get(&row.node).copied().unwrap_or(0);
-            let count_galley = painter.layout_no_wrap(pages::number_text(count), FontId::proportional(12.), if on { ACCENT_TEXT() } else { FAINT() });
+            let count_text = if folder_only { String::new() } else { pages::number_text(count) };
+            let count_galley = painter.layout_no_wrap(count_text, FontId::proportional(12.), if on { ACCENT_TEXT() } else { FAINT() });
             let count_x = r.right() - 12. - count_galley.size().x;
             let mut end = count_x - 8.;
             let test = n.detail == b"Test module";
@@ -652,7 +872,8 @@ fn list_panel(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units,
             let galley = painter.layout_job(job);
             painter.galley(pos2(left + 16., r.center().y - galley.size().y / 2.), galley, TEXT());
             painter.galley(pos2(count_x, r.center().y - 7.), count_galley, FAINT());
-            let response = response.on_hover_text(format!("{}\n{}", name(data, row.node), trn!(count, "Used by {n} module", "Used by {n} modules")));
+            let about = if folder_only { crate::i18n::tr("Folder").to_owned() } else { words.used_by(count) };
+            let response = response.on_hover_text(format!("{}\n{about}", name(data, row.node)));
             register(ui, widgets, &format!("map-module-{}", row.node), &response);
             if row.folder {
                 let toggle = ui.interact(twisty.expand(4.).intersect(r), ui.scope_id().with(("map-module-toggle", row.node)), Sense::click());
@@ -663,7 +884,8 @@ fn list_panel(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units,
                 }
             }
             if response.clicked() && !covered {
-                pick = Some(Pick::Module(row.node));
+                // A folder row opens and closes; there is nothing to put in the middle.
+                pick = Some(if folder_only { Pick::Toggle(row.node) } else { Pick::Module(row.node) });
             }
         }
     });
@@ -673,8 +895,9 @@ fn list_panel(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units,
 
 /// A narrow window's list: a button naming the chosen module that opens the list.
 fn switcher(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units, bar: Rect, covered: bool, widgets: &mut HashMap<String, UiControl>) {
+    let words = Words::of(s);
     let chosen = if s.whole {
-        tr("Whole package").to_owned()
+        words.whole().to_owned()
     } else {
         s.selected.map(|i| name(data, i)).unwrap_or_default()
     };
@@ -686,7 +909,7 @@ fn switcher(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units, b
     let r = child
         .scope_builder(UiBuilder::new().max_rect(button_rect).id_salt("map-module-switcher"), |ui| ui.add_enabled(!covered, Button::new("").min_size(button_rect.size())))
         .inner
-        .on_hover_text(tr("Choose a module"));
+        .on_hover_text(words.choose());
     let painter = ui.painter().with_clip_rect(bar);
     icon(&painter, Rect::from_center_size(pos2(r.rect.left() + 15., r.rect.center().y), vec2(13., 13.)), if s.whole { Icon::Package } else { Icon::Braces }, TEAL());
     let text = painter.layout_job(drawing::title_job(chosen, 1., (r.rect.width() - 72.).max(20.)));
@@ -695,7 +918,7 @@ fn switcher(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units, b
     painter.text(pos2(r.rect.left() + 35. + text_size.x, r.rect.center().y), Align2::LEFT_CENTER, &detail, FontId::proportional(12.), FAINT());
     icon(&painter, Rect::from_center_size(pos2(r.rect.right() - 14., r.rect.center().y), vec2(11., 11.)), Icon::Chevron, FAINT());
     let order = if s.by_name { tr("A to Z") } else { tr("most used first") };
-    let note = trf!("{count} modules, {order}", count = pages::number_text(units.top.len()), order = order);
+    let note = words.note(units.top.len(), order);
     if r.rect.right() + 12. + text_width(ui, &note) < bar.right() - 12. {
         painter.text(pos2(r.rect.right() + 12., r.rect.center().y), Align2::LEFT_CENTER, note, FontId::proportional(12.), FAINT());
     }
@@ -713,42 +936,74 @@ fn switcher(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units, b
     }
 }
 
-/// The package button and its list of the snapshot's Rust packages.
-pub(super) fn package_picker(ui: &mut Ui, s: &MapPage, packages: &[(String, Vec<u8>, Option<usize>)], intents: &mut Vec<Intent>, widgets: &mut HashMap<String, UiControl>) {
-    let current = packages.iter().find(|(_, folder, _)| Some(folder) == s.package.as_ref());
-    let text = current.map_or_else(|| tr("Package").to_owned(), |(name, ..)| name.clone());
-    let width = (text_width(ui, &text) + 58.).min(240.);
+/// The package button and its list of the snapshot's packages, grouped by language;
+/// each package says how many of its language's files it has.
+pub(super) fn package_picker(ui: &mut Ui, s: &MapPage, packages: &[(ModulePackage, bool)], intents: &mut Vec<Intent>, widgets: &mut HashMap<String, UiControl>) {
+    let current = packages.iter().find(|(p, _)| s.package.as_ref() == Some(&p.reference()));
+    let text = current.map_or_else(|| crate::i18n::tr("Package").to_owned(), |(p, _)| package_name(&p.name));
+    let language = current.map(|(p, _)| language_name(p.language, p.typescript)).unwrap_or_default();
+    let width = (text_width(ui, &text) + text_width(ui, language) + 64.).min(260.);
     room(ui, width);
     let control_id = ui.make_persistent_id(("map-control", "map-module-package"));
     let r = ui
         .scope_builder(UiBuilder::new().scope_id(control_id), |ui| ui.add_enabled(!packages.is_empty(), Button::new("").min_size(vec2(width, CONTROL))))
         .inner
-        .on_hover_text(tr("The Rust package to map"));
+        .on_hover_text(tr("The package to map"));
     let painter = ui.painter();
     icon(painter, Rect::from_center_size(pos2(r.rect.left() + 15., r.rect.center().y), vec2(13., 13.)), Icon::Package, TEAL());
-    painter.with_clip_rect(r.rect.shrink2(vec2(26., 0.))).text(pos2(r.rect.left() + 28., r.rect.center().y), Align2::LEFT_CENTER, &text, FontId::proportional(12.5), TEXT());
+    let clipped = painter.with_clip_rect(r.rect.shrink2(vec2(26., 0.)));
+    let name = clipped.layout_no_wrap(text, FontId::proportional(12.5), TEXT());
+    let name_width = name.size().x;
+    clipped.galley(pos2(r.rect.left() + 28., r.rect.center().y - name.size().y / 2.), name, TEXT());
+    clipped.text(pos2(r.rect.left() + 34. + name_width, r.rect.center().y), Align2::LEFT_CENTER, language, FontId::proportional(12.), FAINT());
     icon(painter, Rect::from_center_size(pos2(r.rect.right() - 13., r.rect.center().y), vec2(11., 11.)), Icon::Chevron, FAINT());
     register(ui, widgets, "map-module-package", &r);
-    Popup::menu(&r).width(280.).show(|ui| {
-        ScrollArea::vertical().id_salt("map-module-packages").max_height(360.).show(ui, |ui| {
-            for (k, (name, folder, files)) in packages.iter().enumerate() {
-                let on = Some(folder) == s.package.as_ref();
-                // Before Modules reads, the files are not counted yet.
-                let usable = *files != Some(0);
+    // As tall as its rows, up to the room below the button: egui sizes a new popup at 400 pt
+    // unless the content asks for more.
+    let room = (ui.ctx().content_rect().bottom() - r.rect.bottom() - 32.).clamp(220., 560.);
+    let mut groups: Vec<(ModuleLanguage, bool)> = packages.iter().map(|(p, _)| (p.language, p.typescript)).collect();
+    groups.sort();
+    groups.dedup();
+    let rows = packages.len() as f32 * (30. + ui.spacing().item_spacing.y) + groups.len() as f32 * 28.;
+    Popup::menu(&r).width(320.).show(|ui| {
+        ScrollArea::vertical().id_salt("map-module-packages").max_height(room).min_scrolled_height(rows.min(room)).show(ui, |ui| {
+            // Grouped by language, each group in the order the read gave.
+            let mut order: Vec<usize> = (0..packages.len()).collect();
+            order.sort_by_key(|&i| (packages[i].0.language, packages[i].0.typescript));
+            let mut group = None;
+            for (k, (package, counted)) in order.into_iter().map(|k| (k, &packages[k])) {
+                let language = language_name(package.language, package.typescript);
+                if group != Some(language) {
+                    ui.add_space(if group.is_none() { 2. } else { 6. });
+                    group = Some(language);
+                    ui.label(RichText::new(language.to_uppercase()).font(semibold(11.)).color(HINT()));
+                }
+                let on = s.package.as_ref() == Some(&package.reference());
+                // Before Modules reads, a Cargo package's files are not counted yet.
+                let usable = !*counted || package.files > 0;
                 let r = ui.add_enabled(usable, Button::selectable(on, "").min_size(vec2(ui.available_width(), 30.)));
                 let painter = ui.painter();
                 icon(painter, Rect::from_center_size(pos2(r.rect.left() + 14., r.rect.center().y), vec2(13., 13.)), Icon::Package, if usable { TEAL() } else { FAINT() });
-                painter.text(pos2(r.rect.left() + 30., r.rect.center().y), Align2::LEFT_CENTER, name, FontId::proportional(12.5), if usable { TEXT() } else { FAINT() });
-                let count = match *files {
-                    Some(0) => tr("No Rust files").to_owned(),
-                    Some(n) => trn!(n, "{n} Rust file", "{n} Rust files"),
-                    None => String::new(),
+                let words = Words {
+                    language: package.language,
+                    typescript: package.typescript,
                 };
-                painter.text(pos2(r.rect.right() - 10., r.rect.center().y), Align2::RIGHT_CENTER, count, FontId::proportional(12.), FAINT());
-                let r = r.on_hover_text(if folder.is_empty() { tr("the top folder").to_owned() } else { label(folder) });
+                let count = match (*counted, package.files) {
+                    (false, _) => String::new(),
+                    (true, 0) => tr("No Rust files").to_owned(),
+                    (true, n) => words.files(n),
+                };
+                let count = painter.layout_no_wrap(count, FontId::proportional(12.), FAINT());
+                let count_x = r.rect.right() - 10. - count.size().x;
+                painter.galley(pos2(count_x, r.rect.center().y - count.size().y / 2.), count, FAINT());
+                let mut job = text::LayoutJob::simple_singleline(package_name(&package.name), FontId::proportional(12.5), if usable { TEXT() } else { FAINT() });
+                job.wrap = text::TextWrapping::truncate_at_width((count_x - r.rect.left() - 40.).max(20.));
+                let galley = painter.layout_job(job);
+                painter.galley(pos2(r.rect.left() + 30., r.rect.center().y - galley.size().y / 2.), galley, TEXT());
+                let r = r.on_hover_text(if package.folder.is_empty() { tr("the top folder").to_owned() } else { label(&package.folder) });
                 register(ui, widgets, &format!("map-module-package-{k}"), &r);
                 if r.clicked() && !on {
-                    emit(intents, MapIntent::Modules(Some(folder.clone())));
+                    emit(intents, MapIntent::Modules(Some(package.reference())));
                     ui.close();
                 }
             }
@@ -797,8 +1052,8 @@ pub(super) fn hover(s: &MapPage, data: &RepositoryMap, i: usize) -> String {
 }
 
 /// What a "N more modules" card says.
-pub(super) fn more_text(group: &FileGroup) -> (String, String) {
-    (trn!(group.files, "{n} more module", "{n} more modules"), tr("listed in Details").into())
+pub(super) fn more_text(s: &MapPage, group: &FileGroup) -> (String, String) {
+    (Words::of(s).more(group.files), tr("listed in Details").into())
 }
 pub(super) fn caption_text(c: &Caption) -> String {
     let title = match c.what {
@@ -815,16 +1070,20 @@ pub(super) fn caption_text(c: &Caption) -> String {
 /// what uses it.
 pub(super) fn module_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, select: &mut Option<usize>, intents: &mut Vec<Intent>, widgets: &mut HashMap<String, UiControl>) {
     let Some(units) = s.units.clone() else { return };
+    let words = Words::of(s);
     let n = &data.nodes[i];
     let file = n.path.clone().unwrap_or_default();
+    // A JavaScript folder and a Go package stand for a folder, not one file.
+    let is_folder = n.detail == b"Folder" || n.detail == b"Go package";
     let (users, uses) = units.neighbors(data, i);
-    details::fact_mono(ui, crate::i18n::tr("File"), &label(&file));
+    let what = if is_folder { crate::i18n::tr("Folder") } else { crate::i18n::tr("File") };
+    details::fact_mono(ui, what, &label(&file));
     details::fact(ui, tr("Size"), &size_text(&units, i));
-    let count = |n: usize| if n == 0 { tr("None").to_owned() } else { trn!(n, "{n} module", "{n} modules") };
+    let count = |n: usize| if n == 0 { tr("None").to_owned() } else { words.count(n) };
     details::fact(ui, tr("Uses"), &count(uses.len()));
     details::fact(ui, tr("Used by"), &count(users.len()));
     details::actions(ui, |ui| {
-        let folder = file.rsplitn(2, |b| *b == b'/').nth(1).unwrap_or_default().to_vec();
+        let folder = if is_folder { file.clone() } else { file.rsplitn(2, |b| *b == b'/').nth(1).unwrap_or_default().to_vec() };
         if button(ui, widgets, "map-show-folder", tr("Show folder"), !folder.is_empty()) {
             emit(intents, MapIntent::Code(folder));
         }
@@ -833,7 +1092,7 @@ pub(super) fn module_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: 
         }
     });
     if let Some(outline) = data.modules.as_ref().and_then(|d| d.outline.get(&i)) {
-        outline_section(ui, data, i, outline, widgets);
+        outline_section(ui, data, i, outline, words, widgets);
     }
     for (title, list, id, image) in [(tr("USES"), &uses, "map-module-section-uses", Icon::ArrowDown), (tr("USED BY"), &users, "map-module-section-used-by", Icon::ArrowUp)] {
         if list.is_empty() {
@@ -850,6 +1109,14 @@ pub(super) fn module_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: 
             }
         }
         details::more(ui, list.len().min(100), list.len());
+    }
+    // What the file imports from outside the package: other crates, npm, PyPI, Go modules.
+    let outside = data.modules.as_ref().and_then(|d| d.outside.get(&i)).map(Vec::as_slice).unwrap_or_default();
+    if !outside.is_empty() && section(ui, tr("OUTSIDE"), outside.len(), "map-module-section-outside", false, widgets) {
+        for (k, what) in outside.iter().take(100).enumerate() {
+            details::row(ui, widgets, &format!("map-module-outside-{k}"), Icon::External, MUTED(), &label(what), "", false, "");
+        }
+        details::more(ui, outside.len().min(100), outside.len());
     }
 }
 
@@ -885,8 +1152,9 @@ pub(super) fn open_section(ctx: &Context, more: More) {
     ctx.data_mut(|d| d.insert_temp(section_key(id), true));
 }
 
-/// "In this file": public items first, each type with its own functions counted.
-fn outline_section(ui: &mut Ui, data: &RepositoryMap, i: usize, outline: &[OutlineItem], widgets: &mut HashMap<String, UiControl>) {
+/// "In this file" ("In this package" in Go): exported items first, each type or class
+/// with its own functions counted.
+fn outline_section(ui: &mut Ui, data: &RepositoryMap, i: usize, outline: &[OutlineItem], words: Words, widgets: &mut HashMap<String, UiControl>) {
     let inherent: HashMap<&[u8], usize> = outline.iter().filter(|o| o.kind == OutlineKind::Impl && o.of_trait.is_none()).fold(HashMap::new(), |mut m, o| {
         *m.entry(o.name.as_slice()).or_default() += o.functions;
         m
@@ -900,30 +1168,20 @@ fn outline_section(ui: &mut Ui, data: &RepositoryMap, i: usize, outline: &[Outli
             _ => true,
         })
         .collect();
-    shown.sort_by_key(|o| o.visibility.is_empty());
+    shown.sort_by_key(|o| !o.exported);
     if shown.is_empty() {
         return;
     }
-    if !section(ui, tr("IN THIS FILE"), shown.len(), "map-module-section-outline", true, widgets) {
+    if !section(ui, words.outline(), shown.len(), "map-module-section-outline", true, widgets) {
         return;
     }
     let all_key = ui.make_persistent_id(("map-outline-all", data.nodes[i].key.clone()));
     let all = ui.data(|d| d.get_temp::<bool>(all_key)).unwrap_or(false);
     let limit = if all { shown.len().min(400) } else { OUTLINE_ROWS };
     for (k, o) in shown.iter().take(limit).enumerate() {
-        let keyword = match o.kind {
-            OutlineKind::Function => "fn",
-            OutlineKind::Struct => "struct",
-            OutlineKind::Enum => "enum",
-            OutlineKind::Union => "union",
-            OutlineKind::Trait => "trait",
-            OutlineKind::Type => "type",
-            OutlineKind::Const => "const",
-            OutlineKind::Static => "static",
-            OutlineKind::Macro => "macro_rules!",
-            OutlineKind::Impl => "impl",
-        };
-        let functions = if o.kind == OutlineKind::Impl { o.functions } else { inherent.get(o.name.as_slice()).copied().unwrap_or(0) };
+        let keyword = words.keyword(o.kind);
+        // Rust counts an impl block's functions on its type; a class or Go type its own.
+        let functions = if o.kind == OutlineKind::Impl { o.functions } else { inherent.get(o.name.as_slice()).copied().unwrap_or(0) + o.functions };
         let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 24.), Sense::hover());
         let painter = ui.painter();
         let mut job = text::LayoutJob::default();
@@ -959,11 +1217,12 @@ fn outline_section(ui: &mut Ui, data: &RepositoryMap, i: usize, outline: &[Outli
 pub(super) fn package_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, select: &mut Option<usize>, intents: &mut Vec<Intent>, widgets: &mut HashMap<String, UiControl>) {
     let Some(units) = s.units.clone() else { return };
     let Some(package) = units.package else { return };
+    let words = Words::of(s);
     let n = &data.nodes[package];
     let folder = n.path.clone().unwrap_or_default();
     details::fact_mono(ui, crate::i18n::tr("Folder"), &if folder.is_empty() { tr("the top folder").to_owned() } else { label(&folder) });
-    details::fact(ui, crate::i18n::tr("Files"), &trn!(n.count, "{n} Rust file", "{n} Rust files"));
-    details::fact(ui, tr("Modules"), &pages::number_text(units.top.len()));
+    details::fact(ui, crate::i18n::tr("Files"), &words.files(n.count));
+    details::fact(ui, words.units(), &pages::number_text(units.top.len()));
     details::fact(ui, tr("Links"), &pages::number_text(units.top_links));
     details::actions(ui, |ui| {
         if button(ui, widgets, "map-show-folders", crate::i18n::tr("Show folders"), true) {
@@ -1006,9 +1265,32 @@ pub(super) fn package_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, se
         }
         details::more(ui, apart.len().min(100), apart.len());
     }
+    // What the package imports from outside, by how many of its modules import it.
+    let mut outside: BTreeMap<&[u8], usize> = BTreeMap::new();
+    for names in data.modules.as_ref().map(|d| d.outside.values()).into_iter().flatten() {
+        for name in names {
+            *outside.entry(name.as_slice()).or_default() += 1;
+        }
+    }
+    if !outside.is_empty() {
+        let mut list: Vec<(&[u8], usize)> = outside.into_iter().collect();
+        list.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
+        details::section(ui, tr("OUTSIDE"), list.len());
+        for (k, (what, count)) in list.iter().take(5).enumerate() {
+            let count = if words.language == ModuleLanguage::Go { words.count(*count) } else { trn!(*count, "{n} file", "{n} files") };
+            details::row(ui, widgets, &format!("map-package-outside-{k}"), Icon::External, MUTED(), &label(what), &count, false, "");
+        }
+        details::more(ui, list.len().min(5), list.len());
+    }
     if !unlinked.is_empty() {
         details::section(ui, tr("NOT LINKED"), unlinked.len());
-        let src = if folder.is_empty() { b"src/".to_vec() } else { [folder.as_slice(), b"/src/"].concat() };
+        // Rust's files sit in src; the other languages' anywhere in the package.
+        let src = match (units.language, folder.is_empty()) {
+            (ModuleLanguage::Rust, true) => b"src/".to_vec(),
+            (ModuleLanguage::Rust, false) => [folder.as_slice(), b"/src/"].concat(),
+            (_, true) => Vec::new(),
+            (_, false) => [folder.as_slice(), b"/"].concat(),
+        };
         for (k, (path, reason)) in unlinked.iter().take(100).enumerate() {
             let why = match reason {
                 UnlinkedReason::Program => tr("its own program"),
@@ -1016,6 +1298,7 @@ pub(super) fn package_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, se
                 UnlinkedReason::TooLarge => tr("over 1 MiB"),
                 UnlinkedReason::NotUtf8 => tr("not UTF-8"),
                 UnlinkedReason::Limit => tr("over the read limits"),
+                UnlinkedReason::BuildIgnore => tr("build ignore"),
             };
             let shown = path.strip_prefix(src.as_slice()).unwrap_or(path);
             let hover = format!("{}\n{}", label(path), tr("Commits that changed this file"));

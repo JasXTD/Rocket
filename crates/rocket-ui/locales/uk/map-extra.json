@@ -142,8 +142,6 @@
   "Save in": "Зберегти в",
   "File name.mmd": "Ім’я файлу.mmd",
   "Names and paths only, no file contents": "Лише імена та шляхи, без вмісту файлів",
-  "No Rust package in this snapshot": "У цьому знімку немає пакетів Rust",
-  "Modules reads Rust packages.": "Вигляд «Модулі» читає пакети Rust.",
   "This package has no src/lib.rs or src/main.rs": "У цьому пакеті немає ні src/lib.rs, ні src/main.rs",
   "MODULES": "МОДУЛІ",
   "A to Z": "Від А до Я",
@@ -156,7 +154,6 @@
   "test": "тест",
   "Choose a module": "Вибрати модуль",
   "most used first": "спочатку найуживаніші",
-  "The Rust package to map": "Пакет Rust для карти",
   "No Rust files": "Немає файлів Rust",
   "listed in Details": "перелічено у відомостях",
   "NOT CONNECTED": "БЕЗ ЗВ’ЯЗКІВ",
@@ -229,5 +226,68 @@
   "Modules {modules} · links {links} · arrows point to what is used": "Модулі: {modules} · зв’язки: {links} · стрілки вказують на те, що використовується",
   "Find a module": "Знайти модуль",
   "In view: modules {nodes} · links {links}": "У вигляді: модулі {nodes} · зв’язки {links}",
-  "over the read limits": "понад ліміти читання"
+  "over the read limits": "понад ліміти читання",
+  "Find a package": "Знайти пакет",
+  "PACKAGES": "ПАКЕТИ",
+  "Packages": "Пакети",
+  "{n} more packages": {
+    "one": "Ще {n} пакет",
+    "few": "Ще {n} пакети",
+    "many": "Ще {n} пакетів",
+    "other": "Ще {n} пакета"
+  },
+  "Used by {n} packages": {
+    "one": "Використовується в {n} пакеті",
+    "few": "Використовується в {n} пакетах",
+    "many": "Використовується в {n} пакетах",
+    "other": "Використовується в {n} пакета"
+  },
+  "Whole module": "Увесь модуль",
+  "Every package of the module and how they connect": "Усі пакети модуля та їхні зв’язки",
+  "Choose a package": "Вибрати пакет",
+  "Order the packages by how many use them, or by name": "Упорядкувати пакети за кількістю пакетів, що їх використовують, або за назвою",
+  "No package matches": "Немає відповідних пакетів",
+  "{count} packages, {order}": "Пакети: {count}, {order}",
+  "{count} packages are too many to draw at once. Choose one from the list": "Забагато пакетів, щоб намалювати їх одразу: {count}. Виберіть один у списку",
+  "Packages {packages} · links {links} · arrows point to what is used": "Пакети: {packages} · зв’язки: {links} · стрілки вказують на те, що використовується",
+  "IN THIS PACKAGE": "У ЦЬОМУ ПАКЕТІ",
+  "{n} TypeScript files": {
+    "one": "{n} файл TypeScript",
+    "few": "{n} файли TypeScript",
+    "many": "{n} файлів TypeScript",
+    "other": "{n} файлу TypeScript"
+  },
+  "{n} JavaScript files": {
+    "one": "{n} файл JavaScript",
+    "few": "{n} файли JavaScript",
+    "many": "{n} файлів JavaScript",
+    "other": "{n} файлу JavaScript"
+  },
+  "{n} Python files": {
+    "one": "{n} файл Python",
+    "few": "{n} файли Python",
+    "many": "{n} файлів Python",
+    "other": "{n} файлу Python"
+  },
+  "{n} Go files": {
+    "one": "{n} файл Go",
+    "few": "{n} файли Go",
+    "many": "{n} файлів Go",
+    "other": "{n} файлу Go"
+  },
+  "TypeScript project · modules": "Проєкт TypeScript · модулі",
+  "TypeScript folder · modules": "Тека TypeScript · модулі",
+  "JavaScript project · modules": "Проєкт JavaScript · модулі",
+  "JavaScript folder · modules": "Тека JavaScript · модулі",
+  "Python package · modules": "Пакет Python · модулі",
+  "Python folder · modules": "Тека Python · модулі",
+  "Go module · packages": "Модуль Go · пакети",
+  "No package to read in this snapshot": "У цьому знімку немає пакетів для читання",
+  "Modules reads Rust, JavaScript, TypeScript, Python and Go.": "Вигляд «Модулі» читає Rust, JavaScript, TypeScript, Python і Go.",
+  "The package to map": "Пакет для карти",
+  "OUTSIDE": "ЗОВНІШНІ",
+  "build ignore": "виключено зі збирання",
+  "Package root · {package}": "Корінь пакета · {package}",
+  "Folder · {package}": "Тека · {package}",
+  "Package · {package}": "Пакет · {package}"
 }

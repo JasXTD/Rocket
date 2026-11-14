@@ -1088,7 +1088,7 @@ fn modules_map(modules: &[(&str, Option<usize>, usize)], uses: &[(usize, usize, 
         kind: MapKind::Modules,
         nodes,
         links,
-        scope: MapOptions { kind: MapKind::Modules, package: Some(b"crates/app".to_vec()), ..Default::default() },
+        scope: MapOptions { kind: MapKind::Modules, package: Some(PackageRef { folder: b"crates/app".to_vec(), language: ModuleLanguage::Rust }), ..Default::default() },
         modules: Some(ModuleMap { package: 0, root: Some(1), ..Default::default() }),
         ..Default::default()
     }
@@ -1240,7 +1240,7 @@ fn modules_start_on_the_whole_package_or_the_most_used_module_and_keep_it_on_ref
     assert_eq!(big.selected, Some(m(9)), "a refresh keeps the chosen module");
     // Another package starts again.
     let mut other = large;
-    other.scope.package = Some(b"crates/other".to_vec());
+    other.scope.package = Some(PackageRef { folder: b"crates/other".to_vec(), language: ModuleLanguage::Rust });
     big.finish(Ok(other));
     assert_eq!(big.selected, Some(m(7)));
     // The whole package stays chosen across a refresh of the same package.
@@ -1425,7 +1425,7 @@ fn modules_list_keeps_the_picked_row_in_view() {
         frame(&mut s, vec![]);
         // Another package's read, then this one again, as the package button does.
         let mut other = large_fixture(&uses);
-        other.scope.package = Some(b"crates/other".to_vec());
+        other.scope.package = Some(PackageRef { folder: b"crates/other".to_vec(), language: ModuleLanguage::Rust });
         s.finish(Ok(other));
         frame(&mut s, vec![]);
         s.finish(Ok(large_fixture(&uses)));
@@ -1447,5 +1447,151 @@ fn modules_list_keeps_the_picked_row_in_view() {
         frame(&mut s, vec![]);
         let controls = frame(&mut s, vec![]);
         assert!(controls.contains_key(&format!("map-module-{far}")), "a module picked elsewhere is scrolled into the list's view");
+    });
+}
+
+/// A unit of `language_map`: key, label, detail, Go folder, files, lines, parent.
+type TestUnit<'a> = (&'a str, &'a str, &'a str, bool, usize, usize, Option<usize>);
+/// A Modules read of another language than Rust: a package node, then its units, and
+/// connections between them.
+fn language_map(language: ModuleLanguage, units: &[TestUnit], uses: &[(usize, usize, &[&str])]) -> RepositoryMap {
+    let node = |key: String, label: &str, detail: &str, kind, files, count| MapNode {
+        key: key.into_bytes(),
+        label: label.as_bytes().to_vec(),
+        detail: detail.as_bytes().to_vec(),
+        kind,
+        path: Some(b"pkg".to_vec()),
+        commit: None,
+        count,
+        files,
+        evidence: Vec::new(),
+        refs: Vec::new(),
+        time: 0,
+    };
+    let mut nodes = vec![node("package-x:pkg".into(), "pkg", "Package", MapNodeKind::Crate, units.len(), units.len())];
+    let mut links = Vec::new();
+    for (k, (key, label, detail, folder, files, lines, parent)) in units.iter().enumerate() {
+        let kind = if *folder { MapNodeKind::Directory } else { MapNodeKind::Module };
+        nodes.push(node(format!("module:{key}"), label, detail, kind, *files, *lines));
+        if let Some(p) = parent {
+            links.push(MapLink { from: p + 1, to: k + 1, kind: MapLinkKind::Contains, weight: 1, evidence: vec![] });
+        }
+    }
+    for (from, to, names) in uses {
+        links.push(MapLink { from: from + 1, to: to + 1, kind: MapLinkKind::DependsOn, weight: names.len(), evidence: names.iter().map(|n| n.as_bytes().to_vec()).collect() });
+    }
+    let package = PackageRef { folder: b"pkg".to_vec(), language };
+    RepositoryMap {
+        kind: MapKind::Modules,
+        nodes,
+        links,
+        scope: MapOptions { kind: MapKind::Modules, package: Some(package), ..Default::default() },
+        modules: Some(ModuleMap { package: 0, language, ..Default::default() }),
+        module_packages: vec![ModulePackage { folder: b"pkg".to_vec(), name: b"pkg".to_vec(), language, typescript: false, manifest: true, files: units.len(), node: Some(0) }],
+        ..Default::default()
+    }
+}
+
+#[test]
+fn modules_go_packages_stand_alone_and_folders_only_hold_them_in_the_list() {
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        // net holds net/http in the list, but each is a package of its own.
+        let data = language_map(
+            ModuleLanguage::Go,
+            &[
+                ("archive", "archive", "Folder", true, 0, 0, None),
+                ("archive/tar", "tar", "Go package", false, 2, 40, Some(0)),
+                ("io", "io", "Go package", false, 3, 100, None),
+                ("net", "net", "Go package", false, 5, 500, None),
+                ("net/http", "http", "Go package", false, 32, 18_604, Some(3)),
+            ],
+            &[(1, 2, &["EOF"]), (4, 2, &["Copy", "ReadAll"]), (4, 3, &["Dial"])],
+        );
+        let mut s = modules_page(data);
+        let units = s.units().unwrap();
+        let data = s.data.clone().unwrap();
+        // Every package counts at the top; the folder only in the list.
+        let mut top: Vec<String> = units.top.iter().map(|&i| modules::name(&data, i)).collect();
+        top.sort();
+        assert_eq!(top, ["archive/tar", "io", "net", "net/http"]);
+        // net/http's use of net is net's, not a use from inside it.
+        assert_eq!(units.used_by[&m(2)], 2);
+        assert_eq!(units.used_by[&m(3)], 1);
+        assert_eq!(units.used_by[&m(4)], 0);
+        assert_eq!(units.size(m(3)), (5, 500), "a package holds its own files only");
+        let (users, uses) = units.neighbors(&data, m(4));
+        assert!(users.is_empty());
+        let uses: Vec<String> = uses.iter().map(|n| modules::name(&data, n.unit)).collect();
+        assert_eq!(uses, ["io", "net"]);
+        let rows = modules::rows(&data, &units, &s, "");
+        let first: Vec<(String, bool)> = rows.iter().filter(|r| r.depth == 0).map(|r| (modules::name(&data, r.node), r.folder)).collect();
+        assert_eq!(first, [("io".to_owned(), false), ("net".into(), true), ("archive".into(), true)], "most used first, the folder last");
+        // A search never chooses a folder.
+        s.whole = false;
+        s.query = "arch".into();
+        s.rebuild();
+        assert_eq!(s.selected, Some(m(1)));
+        let words = modules::Words::of(&s);
+        assert_eq!((words.find(), words.legend(4, 3)), ("Find a package", "Packages 4 · links 3 · arrows point to what is used".to_owned()));
+        assert_eq!(words.files(32), "32 Go files");
+        // net/http chosen on the picture: the list opens net to show it.
+        let ctx = Context::default();
+        crate::style::install(&ctx);
+        let rect = Rect::from_min_size(Pos2::ZERO, vec2(880., 600.));
+        s.query.clear();
+        s.selected = Some(m(4));
+        s.list_jump = true;
+        s.filter_key = None;
+        modules_frame(&ctx, &mut s, rect, false, vec![], 0.);
+        let controls = modules_frame(&ctx, &mut s, rect, false, vec![], 0.1);
+        assert!(s.expanded.contains(&data.nodes[m(3)].key), "net is opened");
+        assert!(controls.contains_key(&format!("map-module-{}", m(4))), "net/http is a row in view");
+    });
+}
+
+#[test]
+fn modules_javascript_folders_group_their_files_and_cards_use_file_names() {
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        let data = language_map(
+            ModuleLanguage::JavaScript,
+            &[
+                ("tests", "tests", "Folder", false, 0, 0, None),
+                ("tests/git-relay.cjs", "git-relay.cjs", "JavaScript module", false, 1, 28, Some(0)),
+                ("tests/features", "features", "Folder", false, 0, 0, Some(0)),
+                ("tests/features/a.cjs", "a.cjs", "JavaScript module", false, 1, 70, Some(2)),
+                ("tests/smoke.cjs", "smoke.cjs", "JavaScript module", false, 1, 10, Some(0)),
+                ("mcp", "mcp", "Folder", false, 0, 0, None),
+            ],
+            &[(3, 1, &["gitRelay"]), (4, 1, &["gitRelay"]), (1, 5, &["client"])],
+        );
+        let mut s = modules_page(data);
+        let units = s.units().unwrap();
+        let data = s.data.clone().unwrap();
+        let mut top: Vec<String> = units.top.iter().map(|&i| modules::name(&data, i)).collect();
+        top.sort();
+        assert_eq!(top, ["mcp", "tests"], "a project's top folders are its top level");
+        // Without a root, a link joins the top-level folders that hold its two ends.
+        assert_eq!(units.top_links, 1);
+        // Inside an open folder the rows follow the list's order too: most used first.
+        s.expanded.insert(data.nodes[m(0)].key.clone());
+        let inside: Vec<String> = modules::rows(&data, &units, &s, "").iter().filter(|r| r.depth == 1).map(|r| modules::name(&data, r.node)).collect();
+        assert_eq!(inside, ["git-relay.cjs", "features", "smoke.cjs"]);
+        s.by_name = true;
+        let inside: Vec<String> = modules::rows(&data, &units, &s, "").iter().filter(|r| r.depth == 1).map(|r| modules::name(&data, r.node)).collect();
+        assert_eq!(inside, ["features", "git-relay.cjs", "smoke.cjs"]);
+        s.by_name = false;
+        assert_eq!(units.size(m(0)), (3, 108), "a folder sums the files inside it");
+        assert_eq!(modules::name(&data, m(1)), "git-relay.cjs");
+        // Beside git-relay.cjs the features folder stands for the file inside it.
+        let (users, _) = units.neighbors(&data, m(1));
+        let users: Vec<String> = users.iter().map(|n| modules::name(&data, n.unit)).collect();
+        assert_eq!(users, ["features", "smoke.cjs"]);
+        let words = modules::Words::of(&s);
+        assert_eq!(words.find(), "Find a module");
+        assert_eq!(words.files(226), "226 JavaScript files");
+        assert_eq!(words.keyword(OutlineKind::Function), "function");
+        assert_eq!(modules::Words { language: ModuleLanguage::Python, typescript: false }.keyword(OutlineKind::Function), "def");
+        assert_eq!(modules::Words { language: ModuleLanguage::Go, typescript: false }.keyword(OutlineKind::Function), "func");
+        assert_eq!(modules::Words { language: ModuleLanguage::JavaScript, typescript: true }.package_kind(false), "TypeScript folder · modules");
     });
 }

@@ -4,9 +4,14 @@ use crate::{parse, repository::commit_revision_args, runner::args, *};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 mod cargo;
+mod golang;
+mod javascript;
 mod mermaid;
 mod modules;
+mod packages;
+mod python;
 mod rust;
+mod units;
 pub use mermaid::map_mermaid;
 
 pub const MAP_COMMITS: usize = 500;
@@ -31,7 +36,8 @@ pub enum MapKind {
     Code,
     History,
     People,
-    /// One Rust package's modules and which uses which.
+    /// One package's modules and which uses which: Rust, JavaScript or TypeScript,
+    /// Python or Go.
     Modules,
 }
 impl MapKind {
@@ -59,9 +65,9 @@ pub struct MapOptions {
     /// Literal path filter, applied by Git before the commit limit.
     pub path: Option<RepoPath>,
     pub page_size: usize,
-    /// Modules: the Cargo package's folder (empty for the top folder). None reads the
-    /// package with the most Rust files; the result's scope names the one read.
-    pub package: Option<Vec<u8>>,
+    /// Modules: the package to read. None reads the largest package of the language
+    /// with the most files; the result's scope names the one read.
+    pub package: Option<PackageRef>,
 }
 impl Default for MapOptions {
     fn default() -> Self {
@@ -77,6 +83,55 @@ impl Default for MapOptions {
         }
     }
 }
+/// The languages Modules reads. TypeScript is read as JavaScript.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ModuleLanguage {
+    #[default]
+    Rust,
+    JavaScript,
+    Python,
+    Go,
+}
+impl ModuleLanguage {
+    /// Go's packages stand alone: a folder inside a package is another package, so
+    /// nothing is counted as inside another. The other languages nest like folders.
+    pub fn standalone(self) -> bool {
+        self == Self::Go
+    }
+}
+/// A package Modules can read, named by its folder (empty for the top folder) and
+/// language: one folder can hold a Cargo package and a JavaScript project.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PackageRef {
+    pub folder: Vec<u8>,
+    pub language: ModuleLanguage,
+}
+/// A package the snapshot holds, as the package button lists it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ModulePackage {
+    pub folder: Vec<u8>,
+    /// Cargo's or package.json's name, a Go module's path, else the folder's own name
+    /// (empty for the top folder).
+    pub name: Vec<u8>,
+    pub language: ModuleLanguage,
+    /// A JavaScript project with TypeScript files or a tsconfig.json.
+    pub typescript: bool,
+    /// Found by its own file: Cargo.toml, package.json, __init__.py or go.mod. False
+    /// for a top-level folder of JavaScript or Python files that has none.
+    pub manifest: bool,
+    /// Source files: Rust files in `src`, or the package's files of its language.
+    pub files: usize,
+    /// Its node in a Modules read.
+    pub node: Option<usize>,
+}
+impl ModulePackage {
+    pub fn reference(&self) -> PackageRef {
+        PackageRef {
+            folder: self.folder.clone(),
+            language: self.language,
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MapNodeKind {
     Directory,
@@ -85,7 +140,9 @@ pub enum MapNodeKind {
     Commit,
     Person,
     Area,
-    /// A Rust module with a file of its own.
+    /// A module: a Rust module with a file of its own, a JavaScript file or folder, a
+    /// Python module or package, or a Go package. In a Modules read a Directory is a Go
+    /// folder that holds packages but is none itself.
     Module,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -138,23 +195,34 @@ pub struct RepositoryMap {
     pub continuation: Option<MapContinuation>,
     /// Modules: what the package's files declare, beyond nodes and links.
     pub modules: Option<ModuleMap>,
+    /// Code and Modules: the packages Modules can read. A Code read lists those of
+    /// other languages than Rust (its Cargo packages are nodes); a Modules read lists
+    /// them all, with their nodes.
+    pub module_packages: Vec<ModulePackage>,
 }
-/// A Modules read. Its nodes are the snapshot's Cargo packages, then the chosen
-/// package's modules; Contains links join a module to the modules it declares and
-/// DependsOn links join a module's file to the modules whose names it uses, with
-/// those names as evidence.
+/// A Modules read. Its nodes are the snapshot's packages, then the chosen package's
+/// modules; Contains links join a module to the modules it holds (for Go, a folder to
+/// the packages in it, for the list only) and DependsOn links join a module's file to
+/// the modules whose names it uses, with those names as evidence.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ModuleMap {
     /// The package read, by node.
     pub package: usize,
-    /// The crate root's node: `src/lib.rs`, or `src/main.rs` without a library.
+    pub language: ModuleLanguage,
+    /// The node every other module is inside: Rust's crate root (`src/lib.rs`, or
+    /// `src/main.rs` without a library) or a Python package's `__init__.py`. None for
+    /// JavaScript, Go and a Python folder without one.
     pub root: Option<usize>,
-    /// What each module's own file declares at its top level, by node, in order.
+    /// What each module's own files declare at their top level, by node, in order.
     pub outline: BTreeMap<usize, Vec<OutlineItem>>,
-    /// Rust files in the package's `src` that no module of the library is read from.
+    /// What each module imports from outside the package, by node: other crates,
+    /// Node built-ins and npm packages, Python's and PyPI's modules, other Go modules.
+    pub outside: BTreeMap<usize, Vec<Vec<u8>>>,
+    /// The package's source files no module is read from, and why.
     pub unlinked: Vec<(Vec<u8>, UnlinkedReason)>,
     /// Paths into the package that were followed, and how many of those ended at a
-    /// module without finding the item they name (macros, `cfg` or generated code).
+    /// module without finding the item they name (macros, `cfg` or generated code), or
+    /// at no file (an import of a file not in the snapshot).
     pub followed: usize,
     pub unknown: usize,
 }
@@ -162,11 +230,15 @@ pub struct ModuleMap {
 pub struct OutlineItem {
     pub kind: OutlineKind,
     pub name: Vec<u8>,
-    /// `pub`, `pub(crate)` and the like, as written; empty when private.
+    /// Rust's `pub`, `pub(crate)` and the like, or JavaScript's `export`, as written;
+    /// empty when private and in Python and Go.
     pub visibility: Vec<u8>,
+    /// Seen from outside: Rust's `pub…`, an exported JavaScript name, a Python name
+    /// without a leading underscore, a Go name starting with a capital letter.
+    pub exported: bool,
     /// An `impl` block's trait, if it implements one.
     pub of_trait: Option<Vec<u8>>,
-    /// An `impl` block's functions.
+    /// An `impl` block's functions, or a class's or Go type's own.
     pub functions: usize,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -181,6 +253,13 @@ pub enum OutlineKind {
     Static,
     Macro,
     Impl,
+    /// A JavaScript or Python class.
+    Class,
+    /// A TypeScript interface.
+    Interface,
+    /// JavaScript's `let` and `var`.
+    Let,
+    Var,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnlinkedReason {
@@ -193,6 +272,9 @@ pub enum UnlinkedReason {
     /// Not read: past the 2,000 files or 32 MiB one read takes.
     Limit,
     NotUtf8,
+    /// A Go file marked `//go:build ignore`: a program kept beside a package, never
+    /// built with it.
+    BuildIgnore,
 }
 /// Opaque continuation bound to this repository and immutable Git object IDs.
 #[derive(Clone, Debug)]
@@ -598,6 +680,32 @@ impl Repository {
                 cargo::connect(map, &index, &manifests, &blobs, cancel)
             })?;
         }
+        // The JavaScript, Python and Go packages Modules can read, so Code offers it
+        // where there is no Cargo package.
+        let paths: Vec<&[u8]> = output
+            .split(|b| *b == 0)
+            .filter_map(|raw| {
+                let (header, path) = raw.split_once_byte(b'\t')?;
+                let mut fields = header.split(|b| b.is_ascii_whitespace()).filter(|f| !f.is_empty());
+                let (mode, kind) = (fields.next()?, fields.next()?);
+                (mode != b"120000" && kind == b"blob").then_some(path)
+            })
+            .collect();
+        cancel.check()?;
+        // Past 128 packages of a language the list is cut; the folders shown are not.
+        let (found, _) = packages::find(&paths);
+        map.module_packages = found
+            .into_iter()
+            .map(|f| ModulePackage {
+                name: packages::file_name(&f.folder).to_vec(),
+                language: f.language,
+                typescript: f.typescript,
+                manifest: f.manifest.is_some(),
+                files: f.files.len(),
+                node: None,
+                folder: f.folder,
+            })
+            .collect();
         map.notes.push("Committed snapshot only. Folder/file containment and local Cargo path declarations are separate connections. Other language imports, generated code and external packages are not analyzed.".into());
         Ok(())
     }

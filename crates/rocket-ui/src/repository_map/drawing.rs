@@ -406,6 +406,8 @@ pub(super) fn card_text(s: &MapPage, data: &RepositoryMap, i: usize) -> (Icon, C
             label(&n.label),
             n.commit.as_ref().map(|id| format!("{} · {}", short(id), label(&n.detail))).unwrap_or_default(),
         ),
+        // A JavaScript folder holds files: it shows as a folder.
+        MapNodeKind::Module if n.detail == b"Folder" => (Icon::Folder, TEAL(), modules::name(data, i), modules::card_detail(s, data, i)),
         MapNodeKind::Module => (Icon::Braces, TEAL(), modules::name(data, i), modules::card_detail(s, data, i)),
     }
 }
@@ -640,7 +642,7 @@ pub(super) fn canvas(
             painter.rect_filled(r, 8. * s.zoom.min(1.), VIEW_RAISED().gamma_multiply(0.6));
             let dash = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
             painter.extend(Shape::dashed_line(&dash, Stroke::new(1., BORDER()), 5., 3.));
-            let (title, line) = modules::more_text(group);
+            let (title, line) = modules::more_text(s, group);
             if s.zoom >= 0.4 {
                 let ink = painter.with_clip_rect(r.shrink(4.).intersect(rect));
                 ink.galley(r.left_top() + vec2(10., 8.) * s.zoom, ink.layout_job(title_job(title.clone(), s.zoom, r.width() - 20. * s.zoom)), MUTED());
@@ -824,7 +826,7 @@ fn legend(ui: &Ui, s: &MapPage, data: &RepositoryMap, rect: Rect, max_right: f32
         MapKind::History => trn!(s.visible.len(), "{n} commit", "{n} commits"),
         MapKind::Modules => {
             let (count, links) = s.units.as_ref().map_or((0, 0), |u| (u.top.len(), u.top_links));
-            trf!("Modules {modules} · links {links} · arrows point to what is used", modules = pages::number_text(count), links = pages::number_text(links))
+            modules::Words::of(s).legend(count, links)
         }
     };
     let painter = ui.painter().with_clip_rect(rect);

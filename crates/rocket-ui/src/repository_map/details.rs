@@ -230,7 +230,10 @@ fn heading(s: &MapPage, data: &RepositoryMap, pick: &Pick) -> (Mark, String, Str
             ),
         },
         Pick::Node(i) => node_heading(s, data, i),
-        Pick::Package(p) => (Mark::Icon(Icon::Package, TEAL()), label(&data.nodes[p].label), tr("Cargo package · modules").into()),
+        Pick::Package(p) => {
+            let manifest = s.units.as_ref().and_then(|u| u.info.as_ref()).is_none_or(|i| i.manifest);
+            (Mark::Icon(Icon::Package, TEAL()), modules::package_name(&data.nodes[p].label), modules::Words::of(s).package_kind(manifest).into())
+        }
     }
 }
 fn node_heading(s: &MapPage, data: &RepositoryMap, i: usize) -> (Mark, String, String) {
@@ -252,13 +255,17 @@ fn node_heading(s: &MapPage, data: &RepositoryMap, i: usize) -> (Mark, String, S
         MapNodeKind::Commit if n.count > 1 => (Mark::Icon(Icon::Merge, BLUE()), name, tr("Merge commit").into()),
         MapNodeKind::Commit => (Mark::Icon(Icon::Commit, BLUE()), name, crate::i18n::tr("Commit").into()),
         MapNodeKind::Module => {
-            let package = s.units.as_ref().and_then(|u| u.package).map(|p| label(&data.nodes[p].label)).unwrap_or_default();
+            let package = s.units.as_ref().and_then(|u| u.package).map(|p| modules::package_name(&data.nodes[p].label)).unwrap_or_default();
             let about = match n.detail.as_slice() {
                 b"Crate root" => trf!("Crate root · {package}", package = package),
                 b"Test module" => trf!("Test module · {package}", package = package),
+                b"Package root" => trf!("Package root · {package}", package = package),
+                b"Folder" => trf!("Folder · {package}", package = package),
+                b"Go package" | b"Python package" => trf!("Package · {package}", package = package),
                 _ => trf!("Module · {package}", package = package),
             };
-            (Mark::Icon(Icon::Braces, TEAL()), modules::name(data, i), about)
+            let mark = if n.detail == b"Folder" { Icon::Folder } else { Icon::Braces };
+            (Mark::Icon(mark, TEAL()), modules::name(data, i), about)
         }
     }
 }
@@ -479,7 +486,10 @@ fn package(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut O
             out.emit(MapIntent::Code(path.clone()));
         }
         if button(ui, out.widgets, "map-show-modules", tr("Show modules"), true) {
-            out.emit(MapIntent::Modules(Some(modules::package_folder(n))));
+            out.emit(MapIntent::Modules(Some(PackageRef {
+                folder: modules::package_folder(n),
+                language: ModuleLanguage::Rust,
+            })));
         }
         if button(ui, out.widgets, "map-history", tr("Commits here"), !path.is_empty()) {
             out.emit(MapIntent::Path(path.clone(), String::new()));

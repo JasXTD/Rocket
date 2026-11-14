@@ -298,11 +298,13 @@ impl<'a> Index<'a> {
 }
 
 /// Which module's file uses which, with the names it uses, and how many paths into
-/// the crate were followed and how many of those ended at a module but no known item.
+/// the crate were followed and how many of those ended at a module but no known item;
+/// also the other crates each module's `use` lines name.
 pub(super) struct Links {
     pub uses: BTreeMap<(usize, usize), BTreeSet<String>>,
     pub followed: usize,
     pub unknown: usize,
+    pub outside: BTreeMap<usize, BTreeSet<String>>,
 }
 pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel: &CancellationToken) -> Result<Links> {
     let index = Index::new(modules, facts);
@@ -310,6 +312,7 @@ pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel:
         uses: BTreeMap::new(),
         followed: 0,
         unknown: 0,
+        outside: BTreeMap::new(),
     };
     let add = |from: usize, found: Found, out: &mut Links| {
         if let Found::At(to, name, known) = found {
@@ -329,6 +332,29 @@ pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel:
         for u in f.uses.iter().filter(|u| !u.glob) {
             if let Some(found) = index.resolve(&u.segments, &within(&u.chain), 0) {
                 add(m, found, &mut out);
+            }
+        }
+        // `use std::…`, `use egui::…`: a first name that is no module or item here is a crate.
+        for u in &f.uses {
+            let current = within(&u.chain);
+            let Some(first) = u.segments.first() else { continue };
+            let krate = if first.is_empty() {
+                // `use ::serde::X` names the crate after the leading `::`.
+                match u.segments.get(1).filter(|k| !k.is_empty()) {
+                    Some(k) => k,
+                    None => continue,
+                }
+            } else {
+                // Not found here at all: a module, an item, or a name another use line
+                // brings in (`use std::fmt; use fmt::Write;`) is no crate.
+                if ["crate", "self", "super"].contains(&first.as_str()) || index.start(&u.segments, &current).is_some() || !matches!(index.find(&current, first, 0), Found::At(_, _, false)) {
+                    continue;
+                }
+                first
+            };
+            let names = out.outside.entry(m).or_default();
+            if names.len() < 256 {
+                names.insert(krate.clone());
             }
         }
         for p in &f.paths {
@@ -365,6 +391,34 @@ struct Sources {
     lines: HashMap<Vec<u8>, usize>,
     unlinked: BTreeMap<Vec<u8>, UnlinkedReason>,
     total: usize,
+}
+
+/// Without a choice: the largest package of the language with the most files, Rust
+/// first when two languages have as many.
+fn default_package(packages: &[ModulePackage]) -> Option<usize> {
+    let mut totals: BTreeMap<ModuleLanguage, usize> = BTreeMap::new();
+    for p in packages {
+        *totals.entry(p.language).or_default() += p.files;
+    }
+    // A repository with a Rust package opens on Rust, as it did before the other languages
+    // were read: its JavaScript may be fixtures or a website.
+    let language = if totals.get(&ModuleLanguage::Rust).is_some_and(|n| *n > 0) {
+        ModuleLanguage::Rust
+    } else {
+        totals.iter().max_by_key(|(l, n)| (**n, std::cmp::Reverse(**l))).map(|(l, _)| *l)?
+    };
+    (0..packages.len()).filter(|&i| packages[i].language == language).max_by_key(|&i| (packages[i].files, std::cmp::Reverse(i)))
+}
+
+/// Read limits shared by every language's files: the same as Rust's.
+fn readable(size: usize, read: usize, total: usize) -> std::result::Result<(), UnlinkedReason> {
+    if size > FILE_BYTES {
+        Err(UnlinkedReason::TooLarge)
+    } else if read >= FILES || total + size > TOTAL_BYTES {
+        Err(UnlinkedReason::Limit)
+    } else {
+        Ok(())
+    }
 }
 
 /// The package's programs other than the library: `main.rs` beside `lib.rs` and the
@@ -448,18 +502,77 @@ impl Repository {
             n.files = entries.iter().filter(|(path, ..)| inside(path, folder)).count();
             let src = src_of(folder);
             n.count = rust.keys().filter(|path| inside(path, &src)).count();
+            let at = map.nodes.len();
             map.nodes.push(n);
+            map.module_packages.push(ModulePackage {
+                folder: folder.clone(),
+                name: name.clone().into_bytes(),
+                language: ModuleLanguage::Rust,
+                typescript: false,
+                manifest: true,
+                files: map.nodes[at].count,
+                node: Some(at),
+            });
         }
-        map.notes.push("Read from the committed Rust files of one package. Connections come from use lines and from paths into the package; names a use …::* line brings in are matched by name. Macros and cfg are not expanded, and other packages are not followed.".into());
+        // The other languages' packages, found by their paths.
+        let blobs: BTreeMap<&[u8], (ObjectId, usize)> = entries.iter().map(|(path, _, id, size)| (*path, (id.clone(), *size))).collect();
+        let (others, limited) = packages::find(&blobs.keys().copied().collect::<Vec<_>>());
+        // A cut list of packages leaves the package read whole: a note, not a partial map.
+        if limited {
+            map.notes.push(format!("More than {} packages of one language: the first {} by folder are listed.", packages::PACKAGES, packages::PACKAGES));
+        }
+        let wanted: Vec<Vec<u8>> = others.iter().filter_map(|f| f.manifest.clone()).filter(|m| !m.ends_with(b"__init__.py")).collect();
+        let small = if wanted.is_empty() { BTreeMap::new() } else { self.runner.step(op, "read-manifests", || self.map_small(&wanted, &blobs, cancel))? };
+        for f in &others {
+            let text = f.manifest.as_ref().and_then(|m| small.get(m));
+            let own = packages::file_name(&f.folder).to_vec();
+            let (prefix, name, detail): (&[u8], Vec<u8>, &[u8]) = match f.language {
+                ModuleLanguage::JavaScript => (
+                    b"package-javascript:",
+                    text.and_then(|t| packages::json(t)).and_then(|j| j.get("name").and_then(packages::Json::str).map(|n| n.as_bytes().to_vec())).filter(|n| !n.is_empty()).unwrap_or(own),
+                    match (f.typescript, f.manifest.is_some()) {
+                        (true, true) => b"TypeScript project",
+                        (true, false) => b"TypeScript folder",
+                        (false, true) => b"JavaScript project",
+                        (false, false) => b"JavaScript folder",
+                    },
+                ),
+                ModuleLanguage::Python => (b"package-python:", own, if f.manifest.is_some() { b"Python package" } else { b"Python folder" }),
+                ModuleLanguage::Go | ModuleLanguage::Rust => (b"package-go:", text.and_then(|t| packages::go_module(t)).map(String::into_bytes).unwrap_or(own), b"Go module"),
+            };
+            let mut n = node(MapNodeKind::Crate, [prefix, f.folder.as_slice()].concat(), name.clone(), detail.to_vec());
+            n.path = Some(f.folder.clone());
+            n.files = entries.iter().filter(|(path, ..)| inside(path, &f.folder)).count();
+            n.count = f.files.len();
+            let at = map.nodes.len();
+            map.nodes.push(n);
+            map.module_packages.push(ModulePackage {
+                folder: f.folder.clone(),
+                name,
+                language: f.language,
+                typescript: f.typescript,
+                manifest: f.manifest.is_some(),
+                files: f.files.len(),
+                node: Some(at),
+            });
+        }
         let chosen = match &map.scope.package {
-            Some(folder) => Some(packages.iter().position(|(f, _)| f == folder).ok_or_else(|| {
+            Some(wanted) => Some(map.module_packages.iter().position(|p| p.folder == wanted.folder && p.language == wanted.language).ok_or_else(|| {
                 Error::InvalidInput("The chosen package is not in this snapshot. Choose another package.".into())
             })?),
-            // The package with the most Rust files.
-            None => (0..packages.len()).max_by_key(|&i| (map.nodes[i].count, std::cmp::Reverse(i))),
+            None => default_package(&map.module_packages),
         };
-        let Some(package) = chosen else { return Ok(()) };
-        map.scope.package = Some(packages[package].0.clone());
+        let Some(chosen) = chosen else { return Ok(()) };
+        map.scope.package = Some(map.module_packages[chosen].reference());
+        if map.module_packages[chosen].language != ModuleLanguage::Rust {
+            let found = &others[chosen - packages.len()];
+            let package = map.module_packages[chosen].node.unwrap_or_default();
+            // A Go module's path, as its imports start; empty when go.mod names none.
+            let module = (found.language == ModuleLanguage::Go).then(|| found.manifest.as_ref().and_then(|m| small.get(m)).and_then(|t| packages::go_module(t)).unwrap_or_default());
+            return self.map_other(map, package, found, module, &blobs, cancel);
+        }
+        map.notes.push("Read from the committed Rust files of one package. Connections come from use lines and from paths into the package; names a use …::* line brings in are matched by name. Macros and cfg are not expanded, and other packages are not followed.".into());
+        let package = chosen;
         let src = src_of(&packages[package].0);
         let mut details = ModuleMap {
             package,
@@ -578,6 +691,11 @@ impl Repository {
             }
         }
         let shown = map.nodes.len() - base;
+        for (m, names) in found.outside {
+            if m < shown {
+                details.outside.insert(base + m, names.into_iter().map(String::into_bytes).collect());
+            }
+        }
         for ((from, to), names) in found.uses {
             if from >= shown || to >= shown || map.links.len() >= MAP_LINKS {
                 map.limited |= from < shown && to < shown;
@@ -591,6 +709,102 @@ impl Repository {
         details.root = (shown > 0).then_some(base);
         details.followed = found.followed;
         details.unknown = found.unknown;
+        map.modules = Some(details);
+        Ok(())
+    }
+
+    /// Small text files by path (package.json, go.mod, tsconfig.json): at most 512 of
+    /// 128 KiB, 4 MiB in all; one that is larger, missing or not UTF-8 is left out.
+    fn map_small(&self, paths: &[Vec<u8>], blobs: &BTreeMap<&[u8], (ObjectId, usize)>, cancel: &CancellationToken) -> Result<BTreeMap<Vec<u8>, String>> {
+        let mut batch = Vec::new();
+        let mut total = 0;
+        for path in paths.iter().take(512) {
+            let Some((id, size)) = blobs.get(path.as_slice()) else { continue };
+            if *size > 128 * 1024 || total + size > 4 * 1024 * 1024 {
+                continue;
+            }
+            total += size;
+            batch.push((path.clone(), id.clone(), *size));
+        }
+        let mut out = BTreeMap::new();
+        if batch.is_empty() {
+            return Ok(out);
+        }
+        let input = batch.iter().flat_map(|(_, id, _)| id.as_str().bytes().chain(Some(b'\n'))).collect();
+        let bytes = self.map_read(&args(&["cat-file", "--batch", "--buffer"]), input, cancel)?;
+        for ((path, _, _), blob) in batch.iter().zip(parse_blobs(&bytes, &batch, cancel)?) {
+            if let Ok(text) = std::str::from_utf8(blob) {
+                out.insert(path.clone(), text.to_owned());
+            }
+        }
+        Ok(out)
+    }
+
+    /// One JavaScript, Python or Go package: its files read as text within Rust's limits,
+    /// then its units, connections, outline and outside imports.
+    fn map_other(&self, map: &mut RepositoryMap, package: usize, found: &packages::Found, module: Option<String>, blobs: &BTreeMap<&[u8], (ObjectId, usize)>, cancel: &CancellationToken) -> Result<()> {
+        let op = "map-modules";
+        let mut details = ModuleMap {
+            package,
+            language: found.language,
+            ..Default::default()
+        };
+        // What to read: shallow files first, so a limit leaves out the deepest ones.
+        let mut order = found.files.clone();
+        order.sort_by_key(|p| (p.iter().filter(|b| **b == b'/').count(), p.clone()));
+        let mut batch = Vec::new();
+        let mut total = 0;
+        for path in order {
+            let Some((id, size)) = blobs.get(path.as_slice()) else { continue };
+            match readable(*size, batch.len(), total) {
+                Ok(()) => {
+                    total += size;
+                    batch.push((path, id.clone(), *size));
+                }
+                Err(reason) => {
+                    map.limited |= reason == UnlinkedReason::Limit;
+                    details.unlinked.push((path, reason));
+                }
+            }
+        }
+        let mut texts: BTreeMap<Vec<u8>, String> = BTreeMap::new();
+        if !batch.is_empty() {
+            let bytes = self.runner.step(op, "read-sources", || {
+                let input = batch.iter().flat_map(|(_, id, _)| id.as_str().bytes().chain(Some(b'\n'))).collect();
+                self.map_read(&args(&["cat-file", "--batch", "--buffer"]), input, cancel)
+            })?;
+            for ((path, _, _), blob) in batch.iter().zip(parse_blobs(&bytes, &batch, cancel)?) {
+                cancel.check()?;
+                match std::str::from_utf8(blob) {
+                    Ok(text) => {
+                        texts.insert(path.clone(), text.to_owned());
+                    }
+                    Err(_) => details.unlinked.push((path.clone(), UnlinkedReason::NotUtf8)),
+                }
+            }
+        }
+        let built = self.runner.step(op, "connect-modules", || match found.language {
+            ModuleLanguage::JavaScript => {
+                // tsconfig.json's paths, else jsconfig.json's: where `@/view` looks.
+                let configs: Vec<Vec<u8>> = [b"tsconfig.json".as_slice(), b"jsconfig.json"].iter().map(|n| packages::join(&found.folder, n)).collect();
+                let small = self.map_small(&configs, blobs, cancel)?;
+                let aliases = configs.iter().find_map(|c| small.get(c)).map(|text| packages::aliases(text, &found.folder)).unwrap_or_default();
+                let known: HashSet<&[u8]> = blobs.keys().copied().collect();
+                units::javascript(&found.folder, &texts, &known, &aliases, cancel)
+            }
+            ModuleLanguage::Python => units::python(&found.folder, found.manifest.is_some(), &texts, cancel),
+            ModuleLanguage::Go | ModuleLanguage::Rust => units::go(&found.folder, module.as_deref().unwrap_or_default(), &texts, &found.files, cancel),
+        })?;
+        map.notes.push(
+            match found.language {
+                ModuleLanguage::JavaScript => "Read from the committed JavaScript and TypeScript files of one project. Connections come from import, export … from, require() and import() with a fixed path, and tsconfig paths; other imports are listed as outside. Nothing is run, so paths built while a program runs are not followed.",
+                ModuleLanguage::Python => "Read from the committed Python files of one package. Connections come from import and from … import lines, also inside functions; other imports are listed as outside. Nothing is run, so importlib and sys.path changes are not followed.",
+                ModuleLanguage::Go | ModuleLanguage::Rust => "Read from the committed Go files of one module. Each package stands alone; connections come from imports and the names used through them. Test files and files marked //go:build ignore are left out; other build constraints are not evaluated.",
+            }
+            .into(),
+        );
+        units::push(map, &mut details, built);
+        details.unlinked.sort_by(|a, b| a.0.cmp(&b.0));
         map.modules = Some(details);
         Ok(())
     }
@@ -758,6 +972,21 @@ mod tests {
         assert!(start.elapsed() < std::time::Duration::from_secs(5), "{:?}", start.elapsed());
         // Each module uses the next one's function, found through the root's globs.
         assert_eq!(found.uses.iter().filter(|((a, _), _)| *a != 0).count(), count);
+    }
+
+    #[test]
+    fn rust_opens_first_and_other_crates_are_named_once() {
+        let package = |language, files| ModulePackage { folder: Vec::new(), name: Vec::new(), language, typescript: false, manifest: true, files, node: None };
+        // A crate with a large JavaScript fixtures tree still opens on the crate.
+        assert_eq!(default_package(&[package(ModuleLanguage::JavaScript, 900), package(ModuleLanguage::Rust, 3)]), Some(1));
+        assert_eq!(default_package(&[package(ModuleLanguage::Rust, 0), package(ModuleLanguage::Go, 2), package(ModuleLanguage::Python, 5)]), Some(2));
+        let (modules, facts) = build(&[
+            ("src/lib.rs", "mod a;\n"),
+            ("src/a.rs", "use ::serde::Serialize;\nuse std::fmt;\nuse fmt::Write;\nuse std::cmp::Ordering;\nuse Ordering::*;\nenum Mode { A }\nuse Mode::*;\n"),
+        ]);
+        let found = links(&modules, &facts, &CancellationToken::new()).unwrap();
+        let outside: Vec<&str> = found.outside.get(&1).map(|n| n.iter().map(String::as_str).collect()).unwrap_or_default();
+        assert_eq!(outside, ["serde", "std"]);
     }
 
     #[test]

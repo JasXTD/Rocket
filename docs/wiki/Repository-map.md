@@ -37,10 +37,12 @@ files do not appear.
 
 ### Modules
 
-**Modules** shows the modules of one Rust package and which module uses which. Choose
-the package on the button beside **Packages · Folders · Modules**, or **Show modules**
-in a package's Details. Without a choice it reads the package with the most Rust
-files.
+**Modules** shows the modules of one package and which module uses which: a Rust
+crate, a JavaScript or TypeScript project, a Python package, or the packages of a Go
+module. Choose the package on the button beside **Packages · Folders · Modules**, which
+lists the snapshot's packages grouped by language, or **Show modules** in a Cargo
+package's Details. Without a choice it reads the largest package of the language with
+the most files. A repository without Cargo packages shows **Folders · Modules**.
 
 The list on the left names every module of the package with how many modules use it,
 most used first; **Most used** switches to A to Z. A module with modules inside it
@@ -68,6 +70,35 @@ through `use` lines, paths starting `crate::`, `super::` or `self::`, and paths 
 own modules. Names a `use …::*` line brings in are matched by name. Macros and `cfg` are
 not expanded, other packages are not followed, and which function calls which is not
 shown: that needs the compiler. Nothing is compiled or run.
+
+The other languages are read the same way, as text within the same limits:
+
+- **JavaScript and TypeScript.** A project is a folder with `package.json`; files in
+  no project make one project per top-level folder. Each file is a module and its
+  folders group their files, as Rust modules do. Files are connected by `import`,
+  `export … from`, `require()` and `import()` with a fixed relative path, and by the
+  project's tsconfig.json (or jsconfig.json) `paths`; `./view.js` also finds
+  `view.ts`. The names a card shows are the names imported, with `default` and `*`, and
+  the names used through a namespace (`ns.card()`). `node_modules` and hidden folders
+  are skipped.
+- **Python.** A package is a folder with `__init__.py` that no other package holds; its
+  `__init__.py` is the root, like Rust's `lib.rs`. Python files in no package make one
+  folder of scripts per top-level folder. Modules are connected by `import` and
+  `from … import` lines, absolute and relative, including those inside functions, so
+  two modules can use each other.
+- **Go.** A module is a folder with `go.mod`. Each package (a folder of Go files)
+  stands alone: a folder inside it is another package, nothing counts as inside
+  another, and the list only nests them by folder. Packages are connected by imports
+  that start with the module's path and the names used through them
+  (`http.Client`). Test files, `testdata`, `vendor` and files marked
+  `//go:build ignore` are left out; the last are listed under Not linked. Other build
+  constraints are not evaluated, so files for every platform are read together.
+
+Imports from outside the package (other crates, Node built-ins and npm packages,
+Python's and PyPI's modules, other Go modules) are listed under **Outside** in a
+module's Details, and counted in the package's. They are not drawn. Paths built while a
+program runs, bundler aliases other than tsconfig paths and `sys.path` changes are not
+followed.
 
 ## History
 

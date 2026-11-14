@@ -135,8 +135,6 @@
   "Save in": "Speichern in",
   "File name.mmd": "Dateiname.mmd",
   "Names and paths only, no file contents": "Nur Namen und Pfade, keine Dateiinhalte",
-  "No Rust package in this snapshot": "Kein Rust-Paket in dieser Momentaufnahme",
-  "Modules reads Rust packages.": "Die Ansicht Module liest Rust-Pakete.",
   "This package has no src/lib.rs or src/main.rs": "Dieses Paket hat weder src/lib.rs noch src/main.rs",
   "MODULES": "MODULE",
   "A to Z": "A bis Z",
@@ -149,7 +147,6 @@
   "test": "Test",
   "Choose a module": "Modul wählen",
   "most used first": "meistverwendete zuerst",
-  "The Rust package to map": "Das darzustellende Rust-Paket",
   "No Rust files": "Keine Rust-Dateien",
   "listed in Details": "in Details aufgeführt",
   "NOT CONNECTED": "OHNE VERBINDUNG",
@@ -206,5 +203,56 @@
   "Modules {modules} · links {links} · arrows point to what is used": "Module {modules} · Verbindungen {links} · Pfeile zeigen auf das Verwendete",
   "Find a module": "Modul suchen",
   "In view: modules {nodes} · links {links}": "In der Ansicht: Module {nodes} · Verbindungen {links}",
-  "over the read limits": "über den Lesegrenzen"
+  "over the read limits": "über den Lesegrenzen",
+  "Find a package": "Paket suchen",
+  "PACKAGES": "PAKETE",
+  "Packages": "Pakete",
+  "{n} more packages": {
+    "one": "{n} weiteres Paket",
+    "other": "{n} weitere Pakete"
+  },
+  "Used by {n} packages": {
+    "one": "Verwendet von {n} Paket",
+    "other": "Verwendet von {n} Paketen"
+  },
+  "Whole module": "Ganzes Modul",
+  "Every package of the module and how they connect": "Alle Pakete des Moduls und wie sie zusammenhängen",
+  "Choose a package": "Paket wählen",
+  "Order the packages by how many use them, or by name": "Pakete danach ordnen, wie viele sie verwenden, oder nach Namen",
+  "No package matches": "Kein passendes Paket",
+  "{count} packages, {order}": "{count} Pakete, {order}",
+  "{count} packages are too many to draw at once. Choose one from the list": "{count} Pakete sind zu viele, um sie auf einmal zu zeichnen. Wählen Sie eines aus der Liste",
+  "Packages {packages} · links {links} · arrows point to what is used": "Pakete {packages} · Verbindungen {links} · Pfeile zeigen auf das Verwendete",
+  "IN THIS PACKAGE": "IN DIESEM PAKET",
+  "{n} TypeScript files": {
+    "one": "{n} TypeScript-Datei",
+    "other": "{n} TypeScript-Dateien"
+  },
+  "{n} JavaScript files": {
+    "one": "{n} JavaScript-Datei",
+    "other": "{n} JavaScript-Dateien"
+  },
+  "{n} Python files": {
+    "one": "{n} Python-Datei",
+    "other": "{n} Python-Dateien"
+  },
+  "{n} Go files": {
+    "one": "{n} Go-Datei",
+    "other": "{n} Go-Dateien"
+  },
+  "TypeScript project · modules": "TypeScript-Projekt · Module",
+  "TypeScript folder · modules": "TypeScript-Ordner · Module",
+  "JavaScript project · modules": "JavaScript-Projekt · Module",
+  "JavaScript folder · modules": "JavaScript-Ordner · Module",
+  "Python package · modules": "Python-Paket · Module",
+  "Python folder · modules": "Python-Ordner · Module",
+  "Go module · packages": "Go-Modul · Pakete",
+  "No package to read in this snapshot": "Kein lesbares Paket in dieser Momentaufnahme",
+  "Modules reads Rust, JavaScript, TypeScript, Python and Go.": "Die Ansicht Module liest Rust, JavaScript, TypeScript, Python und Go.",
+  "The package to map": "Das darzustellende Paket",
+  "OUTSIDE": "EXTERN",
+  "build ignore": "vom Build ausgenommen",
+  "Package root · {package}": "Paketwurzel · {package}",
+  "Folder · {package}": "Ordner · {package}",
+  "Package · {package}": "Paket · {package}"
 }
