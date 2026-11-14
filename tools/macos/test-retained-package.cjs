@@ -1,12 +1,14 @@
 'use strict';
-// Retest an exact package produced by this repository. No builds, dependencies,
-// account changes, releases, arbitrary download URLs or result overrides.
+// Retest an exact package produced by this repository without rebuilding the app.
+// Native tests compile their first-party Git relay with the installed Rust compiler.
+// No dependency installs, account changes, arbitrary download URLs or result overrides.
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto'),assert=require('node:assert/strict');
 const zip=require('./read-package-zip.cjs');
 const ROOT=path.resolve(__dirname,'../..'),REPO='JasXTD/Rocket',BASE='/repos/'+REPO;
 const TEST_ONLY=new Set([
  '.github/workflows/macos-package-acceptance.yml','tools/macos/test-retained-package.cjs','tools/macos/read-package-zip.cjs',
  'tools/macos/test-lua-integration.sh','tools/tests/test-retained-package.cjs','tools/tests/test-mcp-macos-package.cjs',
+ 'tools/tests/test-mcp-agents.cjs',
  'tools/tests/fixtures/hosting-other-inline.cjs','tools/tests/test-cli-hosting-other-inline.cjs','tools/tests/test-hosting-inline-fixture.cjs',
 ]);
 const hash=b=>crypto.createHash('sha256').update(b).digest('hex');

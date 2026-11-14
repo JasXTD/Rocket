@@ -2,6 +2,7 @@
 // using the installed CLI and existing login; all repositories remain disposable.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),cp=require('node:child_process'),crypto=require('node:crypto'),net=require('node:net'),assert=require('node:assert/strict');
 const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');
+const {gitRelay}=require('./git-relay.cjs');
 // Resolve macOS's /var and /tmp aliases before applying the MCP fixture-root guard.
 const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),'rocket-agent-'))),repo=path.join(root,'source 資料'),profile=path.join(root,'http-profile');
 const reportDir=path.resolve(process.env.ROCKET_AGENTS_REPORT_ROOT||'tools/maintenance/agent-sessions-20261110','native-'+path.basename(root));fs.mkdirSync(reportDir,{recursive:true});
@@ -20,7 +21,7 @@ fs.writeFileSync(path.join(repo,'資料.txt'),'original\n');fs.writeFileSync(pat
 fs.writeFileSync(path.join(repo,'資料.txt'),'staged\n');git(['add','.']);fs.appendFileSync(path.join(repo,'資料.txt'),'unstaged\n');fs.writeFileSync(path.join(repo,'untracked.txt'),'preserve');
 fs.writeFileSync(path.join(repo,'.git/rocket-ui-fixture'),'rocket-ui-test/agents');fs.writeFileSync(path.join(root,'rocket-private-state'),'synthetic-content-only-v1\n');
 const snapshot=()=>({head:git(['rev-parse','HEAD']),index:hash(path.join(repo,'.git/index')),config:hash(path.join(repo,'.git/config')),file:hash(path.join(repo,'資料.txt')),untracked:hash(path.join(repo,'untracked.txt'))});const before=snapshot();
-const report={passed:false,platform:process.platform,architecture:process.arch,root,exe_sha256:hash(exe),cases:[],stop:[],viewports:[]};let client,service,state;
+const report={passed:false,platform:process.platform,architecture:process.arch,root,exe_sha256:hash(exe),cases:[],stop:[],viewports:[]};let client,service,state,relay;
 const wait=ms=>new Promise(r=>setTimeout(r,ms));const pass=s=>{report.cases.push(s);console.log('PASS '+s)};
 async function until(fn,label='state',timeout=45000){const at=performance.now();for(;;){state=await client.tool('rocket_state');if(fn(state))return;assert(performance.now()-at<timeout,label+' timeout '+JSON.stringify({agents:state.agents,dialog:state.dialog?.kind,busy:state.busy,viewport:state.viewport}));await wait(65)}}
 const control=id=>state.controls?.find(c=>c.id===id);const session=id=>state.agents.sessions.find(s=>s.id===id);
@@ -56,9 +57,10 @@ async function choose(id){await stable();if(state.agents.selected===id)return;if
 async function stop(id){await choose(id);const child=Number(session(id).tail.match(/child=(\d+)/)[1]),pid=session(id).pid;const at=performance.now();await client.tool('rocket_click',{target:'agents-stop',expected_tab:state.active_tab});await until(s=>['Stopping','Stopped'].includes(session(id)?.phase),'stop acknowledgement');const ack=performance.now()-at;await until(s=>session(id)?.phase==='Stopped'&&!session(id)?.active,'process exit');for(let i=0;i<30&&(alive(pid)||alive(child));i++)await wait(50);assert(!alive(pid)&&!alive(child),'owned tree exited');report.stop.push({ack_ms:ack,closed_ms:performance.now()-at});}
 async function close(){await client.tool('rocket_close');await until(s=>['closed','not_started'].includes(s.window)||s.dialog?.kind==='quit');if(state.dialog?.kind==='quit'){await client.tool('rocket_click',{target:'dialog-submit',expected_tab:state.active_tab});await until(s=>['closed','not_started'].includes(s.window))}}
 (async()=>{try{
-cp.execFileSync(exe,['--init-http',profile,root],{env,windowsHide:true});const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));report.port=port;fs.writeFileSync(path.join(profile,'settings'),'ROCKET-MCP-1\n'+port+'\n'+root+'\n');
-const out=fs.openSync(path.join(reportDir,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env,windowsHide:true,stdio:['ignore','ignore',out]});fs.closeSync(out);client=new RocketHttpClient(profile);
-for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break}catch(e){if(i>100)throw e;await wait(100)}}await client.initialize();await client.tool('rocket_open',{path:repo});await settled();await resize(...wideSize);if(control('console-close'))await click('console-close');
+relay=gitRelay(root,env,'tools/helpers/file-history-preview/git-relay.rs');
+cp.execFileSync(exe,['--init-http',profile,root],{env:relay.env,windowsHide:true});const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));report.port=port;fs.writeFileSync(path.join(profile,'settings'),'ROCKET-MCP-1\n'+port+'\n'+root+'\n');
+const out=fs.openSync(path.join(reportDir,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env:relay.env,windowsHide:true,stdio:['ignore','ignore',out]});fs.closeSync(out);client=new RocketHttpClient(profile);
+for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break}catch(e){if(i>100)throw e;await wait(100)}}await client.initialize();await client.tool('rocket_open',{path:repo});await settled();relay.check(state);await resize(...wideSize);if(control('console-close'))await click('console-close');
 await click('toolbar-terminal');await until(s=>s.terminal?.running);await type('terminal-command',windows?"Write-Output ('ROCKET_' + 'TERMINAL_OK')":"printf 'ROCKET_%s\\n' TERMINAL_OK");await client.tool('rocket_terminal_enter',{expected_tab:state.active_tab});await until(s=>s.terminal?.tail?.includes('ROCKET_TERMINAL_OK'));await click('terminal-hide');pass('Ordinary repository terminal still accepts typed input and Enter');
 await menuAction('menu-edit','preferences');await click('pref-page-appearance');await click('theme-clay-dark');await client.tool('rocket_escape');await settled();
 await click('view-agents');await capture('empty');
@@ -107,8 +109,17 @@ for(const id of ['agents-stop','agents-tab-terminal','agents-tab-changes','agent
 await resize(...wideSize);
 fs.writeFileSync(path.join(second.dst,'新規 🧪.txt'),'external version two\nsecond line\nthird line\n');
 await until(s=>!s.agents.changes.busy&&s.agents.changes.patch?.includes('external version two'),'external change notification');
-await click('agents-refresh',false);await click('agents-read-stop',false);
+// A fast read can finish between two MCP requests. Hold real Git output so this
+// tests cancellation of active work, not whether a transient button lasts long enough.
+fs.rmSync(relay.marker,{force:true});fs.writeFileSync(relay.gate,'status');
+await click('agents-refresh',false);
+await until(s=>fs.existsSync(relay.marker)&&s.agents.changes.busy&&control('agents-read-stop')?.enabled,'held changes read');
+const readPids=fs.readFileSync(relay.marker,'utf8').trim().split('\n').map(Number);assert.equal(readPids.length,2);assert(readPids.every(p=>Number.isSafeInteger(p)&&p>0));
+const readStopAt=performance.now();await click('agents-read-stop',false);
 await until(s=>!s.agents.changes.busy&&s.agents.changes.notice?.includes('cancelled'),'read cancellation');
+await until(()=>readPids.every(p=>!alive(p)),'cancelled read process cleanup');
+report.read_cancellation={held:true,elapsed_ms:Math.round(performance.now()-readStopAt),processes_stopped:true};
+fs.unlinkSync(relay.gate);
 assert(session(two).active,'read cancellation leaves agent running');
 await click('agents-refresh');await until(s=>s.agents.changes.patch?.includes('external version two')&&!s.agents.changes.busy);
 await click('agents-refresh',false);await click('agents-session-'+one,false);await until(s=>s.agents.changes.owner===one&&s.agents.changes.loaded&&!s.agents.changes.busy);
@@ -153,6 +164,7 @@ assert(records.length);assert(records.every(r=>r.dropped_before===0));const logs
 for(const op of ['agent-session-changes','agent-session-diff','agent-session-preview','agent-session-start','agent-session-remove','agent_started','agent_stop_requested','agent_stopped'])assert(records.some(r=>r.operation===op),'missing log step '+op);pass('Payload-free lifecycle diagnostics and no dropped records');report.passed=true;
 }catch(e){report.failure=e.stack;try{await capture('failure')}catch{}console.error(e.stack);process.exitCode=1;}finally{
 if(client){try{await client.raw('POST','/shutdown')}catch{}await client.finish();}if(service&&service.exitCode===null){await new Promise(r=>{const timer=setTimeout(()=>{service.kill();r()},5000);service.once('exit',()=>{clearTimeout(timer);r()})})}
+if(relay)fs.rmSync(relay.gate,{force:true});
 // Retain only diagnostic timing fields, including on a failed run. Temporary
 // filesystems can disappear after WSL exits; never copy terminal payloads here.
 try{report.agent_timings=fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).flatMap(n=>fs.readdirSync(path.join(root,n)).filter(f=>/rocket.*\.jsonl$/.test(f)).flatMap(f=>fs.readFileSync(path.join(root,n,f),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse))).filter(r=>r.operation?.startsWith('agent')).map(({event,operation,request,elapsed_ms,outcome})=>({event,operation,request,elapsed_ms,outcome}));}catch(e){report.timing_capture_error=e.message;}
