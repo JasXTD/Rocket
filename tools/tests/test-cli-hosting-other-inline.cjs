@@ -62,7 +62,15 @@ async function main(){try{
    s.mode='partial';assert((await exec(scoped('pull','42'))).data.files.limited);
    s.mode='row-limit';const bounded=(await exec(scoped('pull','42'))).data;assert.equal(bounded.files.items.length,2);assert.equal(bounded.files.items[0].lines.length,0);assert.equal(bounded.files.items[1].path,'/asset.png');assert(bounded.files.limited);s.mode='ok';
   }
-  if(provider==='azure-server')for(const version of ['6.0','7.0','7.1'])assert((await exec(scoped('pull','42'),{extra:['--api-version',version]})).data.capabilities.inline);
+  if(provider==='azure-server'){
+   for(const version of ['6.0','7.0','7.1']){
+    s.apiVersion=version;const start=s.requests.length;
+    assert((await exec(scoped('pull','42'),{extra:['--api-version',version]})).data.capabilities.inline);
+    const statuses=s.requests.slice(start).filter(r=>r.path.endsWith('/pullrequests/42/statuses'));
+    assert.equal(statuses.length,1);assert.equal(new URLSearchParams(statuses[0].query).get('api-version'),version==='6.0'?'6.0-preview.1':version);
+   }
+   s.apiVersion='7.0';
+  }
   pass(provider+': binary/incomplete diffs stay read-only; pagination and configured server API versions are preserved');
   s.mode='401';assert.equal((await exec(scoped('pull','42'),{exit:1})).error.code,'hosting_unauthorized');s.mode='slow-read';const at=performance.now();r=await exec(scoped('pull','42'),{exit:130,extra:['--cancel-after-ms','1800']});assert.equal(r.error.code,'cancelled');assert(performance.now()-at<6000);s.mode='ok';
   pass(provider+': authentication errors and cancellation keep JSON/logs private and local state unchanged');

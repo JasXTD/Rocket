@@ -8,7 +8,7 @@ function create(provider,token,threadHandler){
  const pr=(server?'/pull-requests':'/pullrequests')+'/42';
  const name=(azure?'/':'')+'資料/新.rs',old=(azure?'/':'')+'資料/旧.rs';
  const actor=azure?{id:'11111111-1111-4111-8111-111111111111',displayName:'fixture',providerDisplayName:'fixture',isActive:true}:server?{name:'fixture',displayName:'fixture'}:{uuid:'{fixture}',display_name:'fixture'};
- const state={mode:'ok',head:'a'.repeat(40),base:'b'.repeat(40),common:'c'.repeat(40),iteration:3,version:7,tracking:9,requests:[],notes:[],closedAt:null,error:null};
+ const state={mode:'ok',head:'a'.repeat(40),base:'b'.repeat(40),common:'c'.repeat(40),iteration:3,version:7,apiVersion:provider==='azure-server'?'7.0':'7.1',tracking:9,requests:[],notes:[],closedAt:null,error:null};
  const summary=()=>azure?{pullRequestId:42,title:'PRIVATE PR 界',description:'PRIVATE details',status:'active',createdBy:{...actor,id:'22222222-2222-4222-8222-222222222222'},sourceRefName:'refs/heads/feature/界',targetRefName:'refs/heads/main',lastMergeSourceCommit:{commitId:state.head},lastMergeTargetCommit:{commitId:state.base},reviewers:[]}:
  server?{id:42,version:state.version,title:'PRIVATE PR 界',description:'PRIVATE details',state:'OPEN',author:{user:{name:'author',displayName:'作者'}},fromRef:{id:'refs/heads/feature/界',latestCommit:state.head},toRef:{id:'refs/heads/main',latestCommit:state.base},reviewers:[]}:
  {id:42,title:'PRIVATE PR 界',description:'PRIVATE details',state:'OPEN',author:{uuid:'{author}',display_name:'作者'},source:{branch:{name:'feature/界'},commit:{hash:state.head}},destination:{branch:{name:'main'},commit:{hash:state.base}},participants:[]};
@@ -24,7 +24,12 @@ function create(provider,token,threadHandler){
   if(p===base+'/user')return send(200,actor);
   if(p===base+'/application-properties')return send(200,{version:'9.4.0'},{'X-AUSERNAME':'fixture'});
   if(p===base+'/_apis/connectionData')return send(200,{authenticatedUser:actor,authorizedUser:actor});
-  if(azure)assert(['6.0','7.0','7.1'].includes(u.searchParams.get('api-version')),'missing configured API version');
+  if(azure){
+   // Server 2020's PR statuses contract is 6.0-preview.1; other reads use
+   // the configured stable version. Require the exact endpoint contract.
+   const expected=state.apiVersion==='6.0'&&p===prefix+pr+'/statuses'?'6.0-preview.1':state.apiVersion;
+   assert.equal(u.searchParams.get('api-version'),expected,'incorrect configured API version for '+p);
+  }
   if(p===base+'/team/_apis/build/builds')return send(200,{value:[]});
   assert(p.startsWith(prefix),'Unexpected scope '+p);const route=p.slice(prefix.length);
   if(state.mode==='slow-read'&&req.method==='GET')return slow();
