@@ -391,5 +391,12 @@
   "No reviews yet.": "لا توجد مراجعات بعد.",
   "No changed files returned.": "لم تُرجع أي ملفات متغيرة.",
   "Load threads": "تحميل سلاسل النقاش",
-  "Load threads to reply, resolve or reopen.": "حمّل سلاسل النقاش للرد أو الحل أو إعادة الفتح."
+  "Load threads to reply, resolve or reopen.": "حمّل سلاسل النقاش للرد أو الحل أو إعادة الفتح.",
+  "Start agent": "تشغيل وكيل",
+  "Still running": "لا تزال قيد التشغيل",
+  "Starts a new branch from the pull request's head.": "ينشئ فرعًا جديدًا من طرف طلب السحب.",
+  "{n} open": "مفتوحة: {n}",
+  "{n} failed": "فاشلة: {n}",
+  "Finish or discard what is open in Hosting first.": "أنهِ ما هو مفتوح في الاستضافة أو أهمله أولًا.",
+  "No open comments": "لا توجد تعليقات مفتوحة"
 }

@@ -54,6 +54,9 @@ const AGENT_PROGRAM_MAGIC: &[u8] = b"ROCKET-STATE\0\x1f";
 // v32 appends the repositories whose "Speed up history" notice was closed, written only
 // once one is, so a state without them stays readable by older binaries.
 const HISTORY_NOTICE_MAGIC: &[u8] = b"ROCKET-STATE\0\x20";
+/// v33: tasks saved from agent sessions' first messages (canvas section 48). Written
+/// only when there are some.
+const AGENT_TASKS_MAGIC: &[u8] = b"ROCKET-STATE\0\x21";
 /// Heights the commit message area can be dragged to and saved at.
 pub const COMMIT_HEIGHTS: std::ops::RangeInclusive<f32> = 120.0..=2000.0;
 // v15 uses the v14 layout and version-2 definitions for context-specific commands.
@@ -165,6 +168,8 @@ pub struct SavedState {
     pub insights_views: BTreeMap<PathBuf, crate::statistics::View>,
     /// Repositories where the "Speed up history" notice was closed.
     pub hidden_history_notices: BTreeSet<PathBuf>,
+    /// Tasks saved from agent sessions' first messages.
+    pub agent_tasks: Vec<crate::agents::brief::Saved>,
     pub library: crate::repository_library::Library,
     pub tools: [rocket_git::ExternalToolConfig; 3],
     pub tool_profiles: Option<crate::tool_profiles::Profiles>,
@@ -450,7 +455,9 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     if copilot && !rocket_git::valid_custom_program_path(Path::new(&state.copilot_program)) {
         return Err(invalid());
     }
-    let notices = !state.hidden_history_notices.is_empty();
+    let tasks = !state.agent_tasks.is_empty();
+    // v32's notices are written, perhaps none, whenever v33's tasks are.
+    let notices = tasks || !state.hidden_history_notices.is_empty();
     // Every record before the newest one is written, v31's program as an empty text.
     let program = notices || copilot;
     let insights = program || !state.insights_views.is_empty();
@@ -639,6 +646,10 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
             }
             put(&mut bytes, &path_bytes(path))?;
         }
+    }
+    if tasks {
+        bytes[..AGENT_TASKS_MAGIC.len()].copy_from_slice(AGENT_TASKS_MAGIC);
+        put(&mut bytes, &crate::agents::brief::encode_saved(&state.agent_tasks)?)?;
     }
     if bytes.len() as u64 > MAX_BYTES {
         return Err(invalid());
@@ -846,7 +857,8 @@ impl<'a> Reader<'a> {
 fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     let mut r = Reader(bytes);
     let magic = r.take(MAGIC.len())?;
-    let notices = magic == HISTORY_NOTICE_MAGIC;
+    let tasks = magic == AGENT_TASKS_MAGIC;
+    let notices = tasks || magic == HISTORY_NOTICE_MAGIC;
     let copilot = notices || magic == AGENT_PROGRAM_MAGIC;
     let insights = copilot || magic == INSIGHTS_MAGIC;
     let agents = insights || magic == AGENTS_MAGIC;
@@ -1159,14 +1171,21 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     }
     if notices {
         let count = r.u32()? as usize;
-        // The record exists only once a notice was closed, and each repository is there once.
-        if count == 0 || count > HIDDEN_HISTORY_NOTICES {
+        // The record exists only once a notice was closed, or ahead of saved tasks, and
+        // each repository is there once.
+        if (count == 0 && !tasks) || count > HIDDEN_HISTORY_NOTICES {
             return Err(invalid());
         }
         for _ in 0..count {
             if !state.hidden_history_notices.insert(r.path()?) {
                 return Err(invalid());
             }
+        }
+    }
+    if tasks {
+        state.agent_tasks = crate::agents::brief::decode_saved(r.bytes()?)?;
+        if state.agent_tasks.is_empty() {
+            return Err(invalid());
         }
     }
     if !r.0.is_empty() {
@@ -1266,6 +1285,26 @@ mod scan_budget_tests {
         relative[at..at + 3].copy_from_slice(b"../");
         assert!(decode(&relative).is_err());
         state.copilot_program = "copilot.exe".into();
+        assert!(encode(&state).is_err());
+    }
+
+    #[test]
+    fn saved_agent_tasks_roundtrip_as_v33_only_when_there_are_some() {
+        use crate::agents::{brief::Saved, model::Kind};
+        let mut state = SavedState::default();
+        assert_ne!(&encode(&state).unwrap()[..MAGIC.len()], AGENT_TASKS_MAGIC);
+        state.agent_tasks = vec![Saved { name: "Fix with a test".into(), kind: Kind::Issue, words: "Fix issue #{number}: \"{title}\".\nAdd a test.".into() }];
+        let bytes = encode(&state).unwrap();
+        assert_eq!(&bytes[..MAGIC.len()], AGENT_TASKS_MAGIC);
+        assert_eq!(decode(&bytes).unwrap(), state);
+        // v32's notices come first and may be empty; an older version can't skip the tasks.
+        let mut old = bytes.clone();
+        old[MAGIC.len() - 1] = 0x20;
+        assert!(decode(&old).is_err());
+        state.hidden_history_notices = [std::env::temp_dir().join("repository")].into();
+        assert_eq!(decode(&encode(&state).unwrap()).unwrap(), state);
+        // A task without a name is never written.
+        state.agent_tasks[0].name = " ".into();
         assert!(encode(&state).is_err());
     }
 

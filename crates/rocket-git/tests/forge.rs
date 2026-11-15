@@ -21,6 +21,8 @@ mod search_gitlab_tests;
 mod insights_reviews_tests;
 #[path = "forge/provider_contracts.rs"]
 mod provider_contract_tests;
+#[path = "forge/issue_text.rs"]
+mod issue_text_tests;
 use common::{Fixture, isolated};
 use rocket_git::*;
 use std::{

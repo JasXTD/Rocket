@@ -76,5 +76,6 @@
   "Add a workflow under .gitea/workflows and push. Its runs show here and beside your commits.": ".gitea/workflows에 워크플로를 추가하고 푸시하세요. 실행이 여기와 커밋 옆에 표시됩니다.",
   "Add a .gitlab-ci.yml file and push. Its pipelines show here and beside your commits.": ".gitlab-ci.yml 파일을 추가하고 푸시하세요. 파이프라인이 여기와 커밋 옆에 표시됩니다.",
   "Add a bitbucket-pipelines.yml file and push. Its pipelines show here and beside your commits.": "bitbucket-pipelines.yml 파일을 추가하고 푸시하세요. 파이프라인이 여기와 커밋 옆에 표시됩니다.",
-  "Create a pipeline for this repository in Azure Pipelines. Its builds show here and beside your commits.": "Azure Pipelines에서 이 저장소의 파이프라인을 만드세요. 빌드가 여기와 커밋 옆에 표시됩니다."
+  "Create a pipeline for this repository in Azure Pipelines. Its builds show here and beside your commits.": "Azure Pipelines에서 이 저장소의 파이프라인을 만드세요. 빌드가 여기와 커밋 옆에 표시됩니다.",
+  "Fix with agent": "에이전트로 수정"
 }

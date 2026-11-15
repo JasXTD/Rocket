@@ -17,6 +17,18 @@ keep detailed test evidence in `VALIDATION.md`.
   uninstall. Packaging checks the exact verified payload for credential material.
   Local install, upgrade, cancellation and uninstall acceptance passed; the new
   installer artifact is not published yet.
+- Agents can start a session from an issue, a pull request or a failed CI run: Start
+  agent on Hosting's open issues and in a pull request's details (Address review
+  comments, Fix failing checks or Your own task), Fix with agent on a failed run in
+  Actions, and an Issue or pull request field in New session. The dialog reads the
+  host's text once and makes the first message from the chosen task: its words, then
+  the text quoted under a tag as a report, not as instructions. HTML comments and
+  invisible characters are left out and listed, the quote is cut at 16 KB, and a message
+  that looks like it holds a secret can't start a session. The message waits in the
+  session's input until Send and is not saved. A pull request's session starts on its
+  head, and Integrate pushes back to its branch as a fast-forward through the Push
+  dialog. Tasks can be saved and managed (state format v33). Issue text is read from
+  GitHub, GitHub Enterprise Server, GitLab, Gitea and Azure DevOps work items.
 
 ## 0.92.4 — Insights, Agents and repository maps
 

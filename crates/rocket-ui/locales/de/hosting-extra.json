@@ -387,5 +387,12 @@
   "No reviews yet.": "Noch keine Reviews.",
   "No changed files returned.": "Keine geänderten Dateien zurückgegeben.",
   "Load threads": "Diskussionen laden",
-  "Load threads to reply, resolve or reopen.": "Laden Sie Diskussionen, um zu antworten, sie zu erledigen oder wieder zu öffnen."
+  "Load threads to reply, resolve or reopen.": "Laden Sie Diskussionen, um zu antworten, sie zu erledigen oder wieder zu öffnen.",
+  "Start agent": "Agent starten",
+  "Still running": "Läuft noch",
+  "Starts a new branch from the pull request's head.": "Startet einen neuen Branch vom Head des Pull Requests.",
+  "{n} open": "{n} offen",
+  "{n} failed": "{n} fehlgeschlagen",
+  "Finish or discard what is open in Hosting first.": "Schließen Sie zuerst ab, was unter Hosting offen ist, oder verwerfen Sie es.",
+  "No open comments": "Keine offenen Kommentare"
 }

@@ -16,6 +16,8 @@ mod checks;
 pub use checks::*;
 mod insights;
 pub use insights::*;
+mod issue_text;
+pub use issue_text::*;
 mod bitbucket_server;
 mod pagination;
 mod protection;

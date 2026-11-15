@@ -76,5 +76,6 @@
   "Add a workflow under .gitea/workflows and push. Its runs show here and beside your commits.": "Добавьте рабочий процесс в .gitea/workflows и отправьте изменения. Его запуски появятся здесь и рядом с коммитами.",
   "Add a .gitlab-ci.yml file and push. Its pipelines show here and beside your commits.": "Добавьте файл .gitlab-ci.yml и отправьте изменения. Конвейеры появятся здесь и рядом с коммитами.",
   "Add a bitbucket-pipelines.yml file and push. Its pipelines show here and beside your commits.": "Добавьте файл bitbucket-pipelines.yml и отправьте изменения. Конвейеры появятся здесь и рядом с коммитами.",
-  "Create a pipeline for this repository in Azure Pipelines. Its builds show here and beside your commits.": "Создайте конвейер для этого репозитория в Azure Pipelines. Сборки появятся здесь и рядом с коммитами."
+  "Create a pipeline for this repository in Azure Pipelines. Its builds show here and beside your commits.": "Создайте конвейер для этого репозитория в Azure Pipelines. Сборки появятся здесь и рядом с коммитами.",
+  "Fix with agent": "Исправить с агентом"
 }

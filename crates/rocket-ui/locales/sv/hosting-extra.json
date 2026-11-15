@@ -387,5 +387,12 @@
   "No reviews yet.": "Inga granskningar än.",
   "No changed files returned.": "Inga ändrade filer returnerades.",
   "Load threads": "Läs in trådar",
-  "Load threads to reply, resolve or reopen.": "Läs in trådar för att svara, lösa eller öppna igen."
+  "Load threads to reply, resolve or reopen.": "Läs in trådar för att svara, lösa eller öppna igen.",
+  "Start agent": "Starta agent",
+  "Still running": "Körs fortfarande",
+  "Starts a new branch from the pull request's head.": "Startar en ny gren från pull requestens head.",
+  "{n} open": "öppna: {n}",
+  "{n} failed": "misslyckade: {n}",
+  "Finish or discard what is open in Hosting first.": "Slutför eller kasta det som är öppet i Hosting först.",
+  "No open comments": "Inga öppna kommentarer"
 }

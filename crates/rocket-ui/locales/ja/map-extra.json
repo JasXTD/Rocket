@@ -200,5 +200,6 @@
   "build ignore": "ビルド対象外",
   "Package root · {package}": "パッケージのルート · {package}",
   "Folder · {package}": "フォルダー · {package}",
-  "Package · {package}": "パッケージ · {package}"
+  "Package · {package}": "パッケージ · {package}",
+  "{n} lines": "{n} 行"
 }

@@ -384,5 +384,12 @@
   "No reviews yet.": "暂无审查。",
   "No changed files returned.": "未返回已更改的文件。",
   "Load threads": "加载讨论串",
-  "Load threads to reply, resolve or reopen.": "加载讨论串以回复、解决或重新打开。"
+  "Load threads to reply, resolve or reopen.": "加载讨论串以回复、解决或重新打开。",
+  "Start agent": "启动智能体",
+  "Still running": "仍在运行",
+  "Starts a new branch from the pull request's head.": "从拉取请求的顶端新建分支。",
+  "{n} open": "{n} 条未解决",
+  "{n} failed": "{n} 项失败",
+  "Finish or discard what is open in Hosting first.": "请先完成或放弃托管中已打开的内容。",
+  "No open comments": "没有未解决的评论"
 }

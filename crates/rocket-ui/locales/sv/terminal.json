@@ -42,5 +42,8 @@
   "Your login shell, from $SHELL": "Ditt inloggningsskal, från $SHELL",
   "Your own program": "Eget program",
   "{shell} isn't installed. Choose another shell.": "{shell} är inte installerat. Välj ett annat skal.",
-  "{shell} isn't on this system. Choose another shell.": "{shell} finns inte på detta system. Välj ett annat skal."
+  "{shell} isn't on this system. Choose another shell.": "{shell} finns inte på detta system. Välj ett annat skal.",
+  "Send": "Skicka",
+  "This program didn't turn on pasted input. Send the message as one line.": "Programmet har inte slagit på inklistrad inmatning. Skicka meddelandet som en rad.",
+  "First message from {from} · not sent yet": "Första meddelandet från {from} · inte skickat än"
 }

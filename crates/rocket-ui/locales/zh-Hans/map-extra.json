@@ -200,5 +200,6 @@
   "build ignore": "构建时忽略",
   "Package root · {package}": "包根 · {package}",
   "Folder · {package}": "文件夹 · {package}",
-  "Package · {package}": "包 · {package}"
+  "Package · {package}": "包 · {package}",
+  "{n} lines": "{n} 行"
 }

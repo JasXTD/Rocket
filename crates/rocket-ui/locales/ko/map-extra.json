@@ -200,5 +200,6 @@
   "build ignore": "빌드에서 제외",
   "Package root · {package}": "패키지 루트 · {package}",
   "Folder · {package}": "폴더 · {package}",
-  "Package · {package}": "패키지 · {package}"
+  "Package · {package}": "패키지 · {package}",
+  "{n} lines": "{n}행"
 }

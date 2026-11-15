@@ -428,6 +428,113 @@ fn an_empty_page_offers_the_first_session() {
 }
 
 #[test]
+fn escape_closes_the_task_menu_before_the_session_dialog() {
+    common::isolated(
+        CASE,
+        "agents::view::tests::escape_closes_the_task_menu_before_the_session_dialog",
+        || {
+            let fixture = common::Fixture::new();
+            let ctx = Context::default();
+            let mut app = open(&ctx, &fixture, 0);
+            app.agents.new_form(fixture.repository.clone(), &app.drafting);
+            let url = "https://github.com/team/shop/issues/482";
+            let issue = rocket_git::ForgeIssueText {
+                number: 482,
+                title: "Cart is empty after signing in on mobile".into(),
+                state: "open".into(),
+                author: "dana".into(),
+                date: "2026-11-12T10:00:00Z".into(),
+                body: "Steps here.".into(),
+                url: url.into(),
+                comments: Vec::new(),
+                limited: false,
+                is_pull: false,
+            };
+            let origin = crate::agents::model::Origin {
+                kind: crate::agents::model::Kind::Issue,
+                number: 482,
+                title: issue.title.clone(),
+                url: url.into(),
+                host: "GitHub".into(),
+                repository: "team/shop".into(),
+                push: None,
+            };
+            app.agents.brief_form(origin, Some(crate::agents::briefing::Material::Issue(issue)), None, &ctx);
+            click(&ctx, &mut app, WIDE, "agents-task");
+            assert!(shown(&app, "agents-task-fix"), "the Task menu is open");
+            let escape = Event::Key {
+                key: Key::Escape,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Modifiers::NONE,
+            };
+            frame(&ctx, &mut app, WIDE, vec![escape.clone()]);
+            settle(&ctx, &mut app, WIDE);
+            assert!(!shown(&app, "agents-task-fix"), "Escape closes the menu");
+            assert!(app.agents.form.is_some(), "and leaves the dialog");
+            frame(&ctx, &mut app, WIDE, vec![escape]);
+            settle(&ctx, &mut app, WIDE);
+            assert!(app.agents.form.is_none(), "the next Escape closes the dialog");
+        },
+    );
+}
+
+#[test]
+fn a_finished_read_proposes_the_name_from_its_title_and_keeps_a_typed_branch() {
+    common::isolated(
+        CASE,
+        "agents::view::tests::a_finished_read_proposes_the_name_from_its_title_and_keeps_a_typed_branch",
+        || {
+            use crate::agents::briefing::Material;
+            let fixture = common::Fixture::new();
+            let ctx = Context::default();
+            let mut app = open(&ctx, &fixture, 0);
+            app.agents.new_form(fixture.repository.clone(), &app.drafting);
+            let url = "https://github.com/team/shop/issues/482";
+            // Picked by its link: only the number is known until the read finishes.
+            let origin = crate::agents::model::Origin {
+                kind: crate::agents::model::Kind::Issue,
+                number: 482,
+                title: "#482".into(),
+                url: url.into(),
+                host: "GitHub".into(),
+                repository: "team/shop".into(),
+                push: None,
+            };
+            app.agents.brief_form(origin, None, None, &ctx);
+            let issue = rocket_git::ForgeIssueText {
+                number: 482,
+                title: "Cart is empty after signing in on mobile".into(),
+                state: "open".into(),
+                author: "dana".into(),
+                date: "2026-11-12T10:00:00Z".into(),
+                body: "Steps here.".into(),
+                url: url.into(),
+                comments: Vec::new(),
+                limited: false,
+                is_pull: false,
+            };
+            let f = app.agents.form.as_mut().unwrap();
+            f.record.branch = "mine".into();
+            let b = f.briefing.as_mut().unwrap();
+            b.error = None;
+            b.read = Some(rocket_git::ReadTask::spawn(move |_| Ok(Material::Issue(issue))).unwrap());
+            let deadline = Instant::now() + Duration::from_secs(20);
+            while app.agents.form.as_ref().unwrap().briefing.as_ref().unwrap().reading() {
+                app.poll(&ctx);
+                assert!(Instant::now() < deadline, "the read did not finish");
+                thread::sleep(Duration::from_millis(10));
+            }
+            let f = app.agents.form.as_ref().unwrap();
+            assert_eq!(f.record.name, "#482 Cart is empty after signing in on mobile");
+            assert_eq!(f.record.branch, "mine", "a branch typed while it read stays");
+            assert!(f.briefing.as_ref().unwrap().message.contains("Steps here."));
+        },
+    );
+}
+
+#[test]
 fn the_session_dialog_folds_program_fields_until_they_are_needed() {
     common::isolated(
         CASE,

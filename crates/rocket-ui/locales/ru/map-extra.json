@@ -289,5 +289,10 @@
   "build ignore": "исключён из сборки",
   "Package root · {package}": "Корень пакета · {package}",
   "Folder · {package}": "Папка · {package}",
-  "Package · {package}": "Пакет · {package}"
+  "Package · {package}": "Пакет · {package}",
+  "{n} lines": {
+    "one": "{n} строка",
+    "few": "{n} строки",
+    "many": "{n} строк"
+  }
 }

@@ -15,6 +15,14 @@ pub const DEFAULT_SECRET_SCAN_MIB: u64 = 256;
 /// Largest whole-MiB budget representable on this platform, not an allocation.
 pub const MAX_SECRET_SCAN_MIB: u64 = (usize::MAX / (1024 * 1024)) as u64;
 
+/// Text Rocket is about to hand to another program (an agent's first message): what kind
+/// of secret it seems to hold and on which line (from 1), or None. Same patterns as a
+/// commit message's check; the text itself is never kept or reported.
+pub fn scan_text_for_secret(text: &str) -> Option<(SecretKind, usize)> {
+    patterns::scan_with_policy(text.as_bytes(), true, patterns::Policy::ALL, &mut || Ok(()))
+        .expect("an unconditional check cannot fail")
+}
+
 pub fn validate_secret_scan_mib(mib: u64) -> Result<()> {
     if !(1..=MAX_SECRET_SCAN_MIB).contains(&mib) {
         return Err(Error::InvalidInput(format!(

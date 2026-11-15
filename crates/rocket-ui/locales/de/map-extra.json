@@ -254,5 +254,9 @@
   "build ignore": "vom Build ausgenommen",
   "Package root · {package}": "Paketwurzel · {package}",
   "Folder · {package}": "Ordner · {package}",
-  "Package · {package}": "Paket · {package}"
+  "Package · {package}": "Paket · {package}",
+  "{n} lines": {
+    "one": "{n} Zeile",
+    "other": "{n} Zeilen"
+  }
 }

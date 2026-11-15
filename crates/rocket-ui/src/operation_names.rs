@@ -154,6 +154,7 @@ const NAMES: &[(&str, &str, &str)] = &[
 const READS: &[(&str, &str)] = &[
     ("status", crate::i18n::mark("Read status")),
     ("github-search", crate::i18n::mark("Search GitHub")),
+    ("hosting-issue-text", crate::i18n::mark("Read issue")),
     ("diff", crate::i18n::mark("Read diff")),
     ("diff-words", crate::i18n::mark("Read diff words")),
     ("history", crate::i18n::mark("Read history")),

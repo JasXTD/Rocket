@@ -76,5 +76,6 @@
   "Add a workflow under .gitea/workflows and push. Its runs show here and beside your commits.": "Workflow unter .gitea/workflows hinzufügen und pushen. Seine Läufe erscheinen hier und neben Ihren Commits.",
   "Add a .gitlab-ci.yml file and push. Its pipelines show here and beside your commits.": "Eine .gitlab-ci.yml-Datei hinzufügen und pushen. Ihre Pipelines erscheinen hier und neben Ihren Commits.",
   "Add a bitbucket-pipelines.yml file and push. Its pipelines show here and beside your commits.": "Eine bitbucket-pipelines.yml-Datei hinzufügen und pushen. Ihre Pipelines erscheinen hier und neben Ihren Commits.",
-  "Create a pipeline for this repository in Azure Pipelines. Its builds show here and beside your commits.": "Eine Pipeline für dieses Repository in Azure Pipelines erstellen. Ihre Builds erscheinen hier und neben Ihren Commits."
+  "Create a pipeline for this repository in Azure Pipelines. Its builds show here and beside your commits.": "Eine Pipeline für dieses Repository in Azure Pipelines erstellen. Ihre Builds erscheinen hier und neben Ihren Commits.",
+  "Fix with agent": "Mit Agent beheben"
 }

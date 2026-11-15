@@ -262,6 +262,8 @@ pub enum ActionsIntent {
     ShowCommit(String),
     /// Sign the remembered account in again now.
     RetrySignIn,
+    /// Start an agent session to fix the selected run's failed jobs.
+    FixWithAgent,
 }
 
 /// "14:20" on this computer's clock, `seconds` from now.
@@ -336,6 +338,23 @@ impl Rocket {
             ActionsIntent::Open(url) => {
                 let ctx = self.context.clone();
                 self.open_ci_link(&ctx, url);
+            }
+            ActionsIntent::FixWithAgent => {
+                let Some(tab) = self.tab() else { return };
+                let Some(details) = tab.actions.details.clone() else { return };
+                let run = &details.run;
+                let Some(url) = run.link.as_ref().filter(|l| l.external.is_none()).map(|l| l.url.clone()) else { return };
+                let origin = crate::agents::model::Origin {
+                    kind: crate::agents::model::Kind::Run,
+                    number: run.id.max(1),
+                    title: run.title(),
+                    url,
+                    host: details.repository().config().provider().label().to_owned(),
+                    repository: details.repository().path().to_owned(),
+                    push: None,
+                };
+                let base = run.commit.clone();
+                self.start_agent(origin, Some(crate::agents::briefing::Material::Run(details)), base, Some(crate::agents::brief::Task::Checks));
             }
             ActionsIntent::Connect { host, server } => {
                 // Choose the host only when no account is being entered or connected.
@@ -1155,6 +1174,14 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
             }
         }
         let url = run.link.as_ref().filter(|l| l.external.is_none()).map(|l| l.url.clone());
+        // An agent session made from the failed jobs, read already for this card.
+        if failed && url.is_some() {
+            let r = ui.add_enabled(details.is_some() && !reading, Button::new(crate::i18n::tr("Fix with agent")));
+            control(widgets, "actions-fix-agent", &r, ui.clip_rect());
+            if r.clicked() {
+                intents.push(Intent::Actions(ActionsIntent::FixWithAgent));
+            }
+        }
         if let Some(url) = url
             && external_button(ui, crate::i18n::tr("Open in browser"), widgets, "actions-open-run")
         {

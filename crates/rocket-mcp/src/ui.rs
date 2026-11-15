@@ -567,17 +567,29 @@ impl Ui {
         state["actions"] = actions_state(&self.app);
         state["agents"] = json!({"selected":self.app.agents.selected,"busy":self.app.agents.working(),"notice":self.app.agents.notice,
             "attention_count":self.app.agents.sessions.iter().filter(|s|s.attention).count(),
-            "integration":{"reading":self.app.agents.integration.task.is_some(),"stopping":self.app.agents.integration.stopping,"error":self.app.agents.integration.error,"review":self.app.agents.integration.review.as_ref().map(|r|json!({"owner":r.owner.id,"incoming":r.merge.incoming(),"files":r.comparison.files.len(),"base":r.comparison.base.as_str(),"target":r.comparison.target.as_str()}))},
+            "integration":{"reading":self.app.agents.integration.task.is_some(),"stopping":self.app.agents.integration.stopping,"error":self.app.agents.integration.error,"review":self.app.agents.integration.review.as_ref().map(|r|json!({"owner":r.owner.id,"incoming":r.incoming(),"merge":r.merge.is_some(),
+                "push":r.push.as_ref().map(|p|json!({"remote":p.remote,"branch":p.branch,"ahead":p.ahead})),"files":r.comparison.files.len(),"base":r.comparison.base.as_str(),"target":r.comparison.target.as_str()}))},
+            "hosted":self.app.agents.hosting.is_some(),"saved_tasks":self.app.agents.saved.len(),"managing":self.app.agents.managing.is_some(),
             "pane":format!("{:?}",self.app.agents.pane),"folded":self.app.agents.folded,
             "changes":{"owner":self.app.agents.changes.owner.as_ref().map(|r|r.id),"busy":self.app.agents.changes.busy(),"loading":self.app.agents.changes.loading(),"stopping":self.app.agents.changes.stopping,
                 "selected":self.app.agents.changes.selected,"loaded":self.app.agents.changes.loaded.is_some(),"error":self.app.agents.changes.error,"notice":self.app.agents.changes.notice,
                 "files":self.app.agents.changes.loaded.as_ref().map(|s|s.files.iter().enumerate().map(|(i,f)|json!({"index":i,"area":f.area.label(),"path":self.policy.private_state_allowed().then(||String::from_utf8_lossy(f.path.as_bytes()))})).collect::<Vec<_>>()),
                 "patch":if self.policy.private_state_allowed(){self.app.agents.changes.patch.as_ref().map(|p|bounded_agent_tail(p.files.iter().flat_map(|f|f.lines.iter()).take(200).map(|l|l.text.clone()).collect::<Vec<_>>().join("\n")))}else{None}},
             "form":self.app.agents.form.as_ref().map(|f|json!({"mode":format!("{:?}",f.mode),"reading":f.task.is_some(),"reviewed":f.plan.is_some(),"error":f.error,
-                "provider":f.record.provider.key(),"program":self.policy.private_state_allowed().then_some(&f.record.command.program),"arguments":self.policy.private_state_allowed().then_some(&f.record.command.arguments)})),
+                "provider":f.record.provider.key(),"program":self.policy.private_state_allowed().then_some(&f.record.command.program),"arguments":self.policy.private_state_allowed().then_some(&f.record.command.arguments),
+                "base":self.policy.private_state_allowed().then_some(&f.record.base),"branch":self.policy.private_state_allowed().then_some(&f.record.branch),
+                "picker":{"busy":f.picker.busy(),"results":f.picker.results.len(),"error":f.picker.error},
+                "briefing":f.briefing.as_ref().map(|b|json!({"kind":b.origin.kind.key(),"number":b.origin.number,"reading":b.reading(),"ready":b.ready(),"error":b.error,"without":b.without,
+                    "task":format!("{:?}",b.choice),"include":{"comments":b.include.comments,"checks":b.include.checks,"description":b.include.description,"discussion":b.include.discussion,"resolved":b.include.resolved},
+                    "left_out_comments":b.built.left_out.comments.len(),"left_out_hidden":b.built.left_out.hidden.iter().map(|(_,n)|n).sum::<usize>(),"cut":b.built.cut.map(|c|json!({"kept":c.kept,"total":c.total})),
+                    "secret_line":b.secret.map(|(_,line)|line),"push":b.origin.push.is_some(),"message_lines":b.message.lines().count(),
+                    "message":self.policy.private_state_allowed().then(||bounded_agent_tail(b.message.clone()))}))})),
             "sessions":self.app.agents.sessions.iter().map(|s|json!({"id":s.record.id,"provider":s.record.provider.key(),"phase":s.phase.label(),"active":s.active(),"exit_code":s.exit_code,"error":s.error,
                 "activity_state":s.activity_state.label(),"attention":s.attention,"notifications":s.notifications,"resumable":s.resumable(),"tracking":s.record.tracking,"conversation":self.policy.private_state_allowed().then_some(&s.record.conversation),
                 "bracketed_paste":s.terminal.as_ref().map(|t|t.screen.bracketed_paste()),
+                "origin":s.record.origin.as_ref().map(|o|json!({"kind":o.kind.key(),"number":o.number,"host":o.host,"push":o.push.is_some(),"url":self.policy.private_state_allowed().then_some(&o.url)})),
+                "first_waiting":s.terminal.as_ref().is_some_and(|t|t.first_waiting()),"first_pending":s.first.is_some(),
+                "input_error":s.terminal.as_ref().and_then(|t|t.error.clone()),
                 "activity":s.activity.iter().map(|e|e.phase.label()).collect::<Vec<_>>(),
                 "pid":s.terminal.as_ref().and_then(|t|t.status.pid),"closed":s.terminal.as_ref().map(|t|t.status.closed),
                 "tail":if self.policy.private_state_allowed(){s.terminal.as_ref().and_then(|t|t.session.snapshot(0)).map(|screen|bounded_agent_tail(screen.text()))}else{None}})).collect::<Vec<_>>()});
@@ -1182,7 +1194,13 @@ impl Ui {
         if target == "terminal-send" {
             let input = self.input_terminal()
                 .ok_or("Open the fixture terminal first")?;
-            self.validate_terminal_probe(&input.command)?;
+            if input.first_refused() && self.app.tab().is_some_and(|t|t.view==rocket_ui::app::View::Agents) {
+                // Send refuses an agent's first message of several lines for a program that
+                // didn't turn on pasted input and writes nothing, so that refusal can be checked.
+                self.agent_record_allowed(&self.app.agents.selected().ok_or("Select an agent fixture")?.record)?;
+            } else {
+                self.validate_terminal_probe(&input.command)?;
+            }
         }
         if request.name == "rocket_terminal_enter" {
             let input = self.input_terminal()
@@ -2368,6 +2386,7 @@ impl Ui {
                             | "terminal-command"
                             | "agents-name" | "agents-base" | "agents-branch" | "agents-destination"
                             | "agents-search"
+                            | "agents-from" | "agents-tasks-name"
                             | "agents-program" | "agents-arguments" | "agents-setup-program" | "agents-setup-arguments"
                             | "commit-filter"
                             | "dialog-remote-name"

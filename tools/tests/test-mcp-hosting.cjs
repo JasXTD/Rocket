@@ -172,6 +172,8 @@ async function run(){
  const vault=path.join(root,'rocket-ui-state/hosting-accounts.dpapi');assert(fs.existsSync(vault));assert(!fs.readFileSync(vault).includes(Buffer.from(token)));
  await click('hosting-load-accounts');assert.equal(state.hosting.accounts_count,1);await click('hosting-account-0');await click('hosting-connect');assert(state.hosting.connected);
  mode='401';await click('hosting-refresh');assert(state.hosting.error.includes('hosting_unauthorized'));assert(!state.hosting.connected);mode='ok';
+ // Signed out, Hosting's list shows its sign-in prompt; Open Accounts reaches Preferences → Accounts with the error kept.
+ await click('hosting-go-accounts');assert(state.hosting.error.includes('hosting_unauthorized'),'the rejected token stays named');
  await click('hosting-load-accounts');await click('hosting-account-0');await click('hosting-forget');assert.equal(state.hosting.accounts_count,0);
  pass('Protected profile roundtrip, disconnect after unauthorized token and forgetting only Rocket profile; compact controls reachable');
  // Marker removed: no new window can call any hosting API.

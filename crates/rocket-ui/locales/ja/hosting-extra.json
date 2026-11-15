@@ -384,5 +384,12 @@
   "No reviews yet.": "まだレビューはありません。",
   "No changed files returned.": "変更されたファイルが返されませんでした。",
   "Load threads": "スレッドを読み込む",
-  "Load threads to reply, resolve or reopen.": "返信、解決、再開するにはスレッドを読み込んでください。"
+  "Load threads to reply, resolve or reopen.": "返信、解決、再開するにはスレッドを読み込んでください。",
+  "Start agent": "エージェントを開始",
+  "Still running": "まだ実行中",
+  "Starts a new branch from the pull request's head.": "プルリクエストの先端から新しいブランチを作成します。",
+  "{n} open": "未解決 {n} 件",
+  "{n} failed": "失敗 {n} 件",
+  "Finish or discard what is open in Hosting first.": "先に、ホスティングで開いている内容を完了するか破棄してください。",
+  "No open comments": "未解決のコメントはありません"
 }

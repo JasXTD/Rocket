@@ -254,5 +254,9 @@
   "build ignore": "exclu des builds",
   "Package root · {package}": "Racine du paquet · {package}",
   "Folder · {package}": "Dossier · {package}",
-  "Package · {package}": "Paquet · {package}"
+  "Package · {package}": "Paquet · {package}",
+  "{n} lines": {
+    "one": "{n} ligne",
+    "other": "{n} lignes"
+  }
 }

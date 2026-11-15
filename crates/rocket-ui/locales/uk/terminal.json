@@ -42,5 +42,8 @@
   "Your login shell, from $SHELL": "Ваша оболонка входу з $SHELL",
   "Your own program": "Власна програма",
   "{shell} isn't installed. Choose another shell.": "{shell} не встановлено. Виберіть іншу оболонку.",
-  "{shell} isn't on this system. Choose another shell.": "{shell} недоступна в цій системі. Виберіть іншу оболонку."
+  "{shell} isn't on this system. Choose another shell.": "{shell} недоступна в цій системі. Виберіть іншу оболонку.",
+  "Send": "Надіслати",
+  "This program didn't turn on pasted input. Send the message as one line.": "Ця програма не ввімкнула режим вставлення. Надішліть повідомлення одним рядком.",
+  "First message from {from} · not sent yet": "Перше повідомлення з {from} · ще не надіслано"
 }

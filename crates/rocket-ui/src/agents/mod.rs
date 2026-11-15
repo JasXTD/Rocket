@@ -1,5 +1,7 @@
 //! Managed local processes in separate Git worktrees. No agent installation,
 //! permission bypass, automatic merge or background relaunch.
+pub mod brief;
+pub mod briefing;
 pub mod changes;
 pub mod events;
 mod discovery;
@@ -86,10 +88,15 @@ pub struct Session {
     pub activity: VecDeque<Activity>,
     started: Option<Instant>,
     elapsed: Option<Duration>,
+    /// The first message, made from what the session started from: put in the agent's
+    /// input once its terminal starts, never sent by Rocket and never saved. Its label
+    /// says where it came from ("#482").
+    pub first: Option<(String, String)>,
 }
 impl Session {
     fn restored(record: Record) -> Self {
         Self {
+            first: None,
             activity_state: record.last_activity,
             attention: record.attention,
             notifications: 0,
@@ -192,7 +199,20 @@ pub struct Form {
     /// Which presets' programs are on this PC, in `Provider::ALL`'s order. Looked up
     /// when the dialog first shows and again after Browse chose one.
     pub found: Option<[bool; 4]>,
+    /// What the session starts from, its task and first message (section 48).
+    pub briefing: Option<briefing::Briefing>,
+    /// The Issue or pull request field of a new session that starts from nothing yet.
+    pub picker: briefing::Picker,
+    /// The name and branch the dialog proposed, so a task chosen later can propose its
+    /// own unless they were edited.
+    auto: (String, String),
+    /// What the dialog proposed before it started from an issue or pull request (branch
+    /// and folder), and the folder the item proposed: × puts the first two back unless
+    /// they were edited since.
+    plain: (String, String, String),
 }
+/// Claude Code's option that starts a conversation planning, without changing files.
+const PLAN: [&str; 2] = ["--permission-mode", "plan"];
 impl Form {
     pub fn proposed(&self) -> Record {
         let mut r = self.record.clone();
@@ -200,7 +220,79 @@ impl Form {
         if self.mode != Mode::Resume {
             r.setup = self.setup_enabled.then(|| self.setup.clone());
         }
+        if self.mode == Mode::Create {
+            r.origin = self.briefing.as_ref().map(|b| b.origin.clone());
+            // Plan first starts Claude Code in its plan mode; the review lists the option
+            // with the other arguments.
+            let planning = self.briefing.as_ref().is_some_and(|b| b.task() == brief::Task::Plan);
+            if planning && r.provider == Provider::Claude && !r.command.args().windows(2).any(|w| w == PLAN) {
+                let mut lines = r.command.args();
+                lines.extend(PLAN.map(str::to_owned));
+                r.command.arguments = lines.join("\n");
+            }
+        }
         r
+    }
+    /// The task chosen in the dialog: a new message and, unless they were edited, the
+    /// name and branch that go with it.
+    pub fn choose(&mut self, choice: briefing::Choice, saved: &[brief::Saved]) {
+        let Some(b) = &mut self.briefing else { return };
+        b.choose(choice, saved);
+        self.propose();
+    }
+    /// The name, branch and folder for the item and task, each only where it is still
+    /// what the dialog proposed: what the user typed stays.
+    fn propose(&mut self) {
+        let Some(b) = &self.briefing else { return };
+        let (name, branch) = proposal(&b.origin, b.task());
+        if self.record.name.trim().is_empty() || self.record.name == self.auto.0 {
+            self.record.name.clone_from(&name);
+        }
+        if self.record.branch == self.plain.0 || self.record.branch == self.auto.1 {
+            self.record.branch.clone_from(&branch);
+        }
+        if self.destination == self.plain.1 || self.destination == self.plain.2 {
+            let folder = format!("rocket-agent-{}", self.record.branch.trim_start_matches("agent/").replace('/', "-"));
+            let path = self.record.source.parent().unwrap_or(&self.record.source).join(folder);
+            self.destination = crate::views::display_path(&path);
+            self.plain.2.clone_from(&self.destination);
+        }
+        self.auto = (name, branch);
+    }
+}
+
+/// The name and branch a session from `o` starts with for `task`. A name is at most 160
+/// bytes, so a long title is cut.
+fn proposal(o: &model::Origin, task: brief::Task) -> (String, String) {
+    let (mut name, branch) = proposal_parts(o, task);
+    if name.len() > 150 {
+        let mut end = 149;
+        while !name.is_char_boundary(end) {
+            end -= 1;
+        }
+        name.truncate(end);
+        name.push('…');
+    }
+    (name, branch)
+}
+fn proposal_parts(o: &model::Origin, task: brief::Task) -> (String, String) {
+    use brief::Task;
+    let n = o.number;
+    match (o.kind, task) {
+        (model::Kind::Pull, Task::Comments | Task::Checks) => (
+            format!("#{n} {}", crate::i18n::tr(task.label())),
+            format!("agent/{n}-{}", if task == Task::Comments { "review-comments" } else { "failing-checks" }),
+        ),
+        (model::Kind::Run, _) => (
+            crate::i18n::trf!("Fix {run}", run = &o.title),
+            format!("agent/run-{n}-failing-checks"),
+        ),
+        _ => {
+            // A title without Latin letters or digits names the branch by its number only.
+            let slug = briefing::slug(&o.title, 30);
+            let branch = if slug.is_empty() { format!("agent/{n}") } else { format!("agent/{n}-{slug}") };
+            (format!("#{n} {}", o.title), branch)
+        }
     }
 }
 #[derive(Default)]
@@ -219,6 +311,15 @@ pub struct State {
     pub copilot: String,
     pub changes: changes::State,
     pub integration: integration::State,
+    /// Tasks the user saved, for sessions started from an issue, pull request or run.
+    pub saved: Vec<brief::Saved>,
+    /// The repository's hosting account while Hosting has one connected, for reading
+    /// what a session starts from. Kept current by the app each frame.
+    pub hosting: Option<briefing::Hosting>,
+    /// The Manage tasks dialog: which saved task is open in it, if it is shown.
+    pub managing: Option<Option<usize>>,
+    /// Frames Manage tasks is raised above the session dialog it was opened from.
+    pub tasks_raise: u8,
 }
 impl State {
     pub fn load(&mut self, records: Vec<Record>) {
@@ -241,17 +342,26 @@ impl State {
         self.sessions.iter().any(Session::active)
     }
     pub fn working(&self) -> bool {
-        self.integration.task.is_some() || self.form.as_ref().is_some_and(|f| f.task.is_some())
+        self.integration.task.is_some()
+            || self.form.as_ref().is_some_and(|f| {
+                f.task.is_some() || f.picker.busy() || f.briefing.as_ref().is_some_and(briefing::Briefing::reading)
+            })
             || self.sessions.iter().any(|s| s.job.is_some() || s.pending)
             || self.changes.busy()
     }
     pub fn stop_all(&mut self) {
         self.integration.stop();
         self.changes.release();
-        if let Some(f) = &self.form
-            && let Some(t) = &f.task
-        {
-            t.cancel();
+        if let Some(f) = &mut self.form {
+            if let Some(t) = &f.task {
+                t.cancel();
+            }
+            if let Some(t) = f.picker.task.take() {
+                t.cancel();
+            }
+            if let Some(b) = &mut f.briefing {
+                b.stop_read();
+            }
         }
         for s in &mut self.sessions {
             s.stop();
@@ -296,7 +406,92 @@ impl State {
             task: None,
             error: None,
             found: None,
+            briefing: None,
+            picker: briefing::Picker::default(),
+            auto: (String::new(), String::new()),
+            plain: Default::default(),
         });
+        // What a plain session proposes, so an item picked later can tell what was typed.
+        if let Some(f) = &mut self.form {
+            f.plain = (f.record.branch.clone(), f.destination.clone(), String::new());
+        }
+    }
+    /// A new session from an issue, a pull request or a CI run: the name, branch, base
+    /// and folder proposed for it, and the host's text read, unless the page it came from
+    /// already has it (`material`). A pull request's session starts on its head (`base`).
+    pub fn new_form_from(
+        &mut self,
+        source: PathBuf,
+        drafting: &crate::commit_draft::Settings,
+        origin: Origin,
+        material: Option<briefing::Material>,
+        base: Option<String>,
+        ctx: &Context,
+    ) {
+        self.new_form(source, drafting);
+        self.brief_form(origin, material, base, ctx);
+    }
+    /// The open dialog starts from `origin` from now on.
+    fn brief_form(&mut self, origin: Origin, material: Option<briefing::Material>, base: Option<String>, ctx: &Context) {
+        let Some(f) = &mut self.form else { return };
+        let mut b = briefing::Briefing::new(origin, material);
+        if let Some(base) = base {
+            f.record.base = base;
+        }
+        if b.material.is_some() {
+            b.rebuild(&self.saved);
+        } else {
+            match &self.hosting {
+                Some(h) => {
+                    if let Err(e) = b.start_read(h, ctx) {
+                        b.error = Some(user_error(&e));
+                    }
+                }
+                None => b.error = Some(crate::i18n::tr("Connect this repository's hosting account in Hosting to read it.").into()),
+            }
+        }
+        f.briefing = Some(b);
+        f.propose();
+    }
+    /// The Issue or pull request field's choice.
+    pub fn pick(&mut self, found: briefing::Found, ctx: &Context) {
+        let Some(h) = self.hosting.clone() else { return };
+        // An issue found by its number was read whole already.
+        let material = found.issue.as_ref().map(|i| briefing::Material::Issue((**i).clone()));
+        let origin = Origin {
+            kind: found.kind,
+            number: found.number,
+            title: if found.title.is_empty() { format!("#{}", found.number) } else { found.title },
+            url: found.url,
+            host: h.host.clone(),
+            repository: h.repo.path().to_owned(),
+            push: None,
+        };
+        if let Some(f) = &mut self.form {
+            f.picker = briefing::Picker::default();
+        }
+        self.brief_form(origin, material, None, ctx);
+    }
+    /// × on the dialog's source card: a session of the user's own, as before.
+    pub fn unbrief(&mut self) {
+        if let Some(f) = &mut self.form
+            && let Some(mut b) = f.briefing.take()
+        {
+            b.stop_read();
+            // What the item proposed goes; what the user typed stays.
+            if f.record.name == f.auto.0 {
+                f.record.name.clear();
+            }
+            if f.record.branch == f.auto.1 {
+                f.record.branch.clone_from(&f.plain.0);
+            }
+            if f.destination == f.plain.2 {
+                f.destination.clone_from(&f.plain.1);
+            }
+            f.auto = Default::default();
+            f.record.base = "HEAD".into();
+            f.plan = None;
+        }
     }
     pub fn existing_form(&mut self, mode: Mode) {
         let Some(s) = self.selected().filter(|s| !s.active()) else {
@@ -313,6 +508,10 @@ impl State {
             task: None,
             error: None,
             found: None,
+            briefing: None,
+            picker: briefing::Picker::default(),
+            auto: (String::new(), String::new()),
+            plain: Default::default(),
         });
     }
     pub fn preview(&mut self, backend: &Backend, ctx: &Context) -> Result<()> {
@@ -358,6 +557,18 @@ impl State {
         if f.proposed() != plan.record {
             return Err(model::invalid("Session changed. Review again."));
         }
+        // The first message goes into the agent's input as reviewed, and never with
+        // what looks like a secret in it.
+        let first = match (&f.briefing, plan.mode) {
+            (Some(b), Mode::Create) => {
+                if rocket_git::scan_text_for_secret(&b.message).is_some() {
+                    return Err(model::invalid("Remove what looks like a secret from the first message first."));
+                }
+                let text = brief::sendable(&b.message);
+                (!text.trim().is_empty()).then(|| (b.origin.short(), text))
+            }
+            _ => None,
+        };
         if let Some(s) = self.sessions.iter().find(|s| s.record.id == plan.record.id)
             && s.active()
         {
@@ -389,6 +600,7 @@ impl State {
         }
         s.activity_state=events::Activity::Unknown;s.attention=false;s.event_at=0;s.event_turn=None;s.bridge=None;
         s.record.attention=false;s.record.last_activity=events::Activity::Unknown;
+        s.first = first;
         s.plan = Some(plan);
         s.pending = true;
         s.after_setup = false;
@@ -425,6 +637,33 @@ impl State {
                     f.plan = Some(Arc::new(plan));
                 }
                 Err(e) => f.error = Some(user_error(&e)),
+            }
+        }
+        if let Some(f) = &mut self.form {
+            let mut read = false;
+            match &mut f.briefing {
+                Some(b) => {
+                    let reading = b.reading();
+                    b.poll(&self.saved);
+                    read = reading && !b.reading() && b.material.is_some();
+                    // A pull request's session starts on the head that was just read, and
+                    // pushes back to its branch on the remote that was this repository
+                    // when the read started.
+                    if read && let Some(briefing::Material::Pull { details, .. }) = b.material.as_deref() {
+                        let p = details.summary();
+                        f.record.base.clone_from(&p.head);
+                        if b.origin.push.is_none() {
+                            b.origin.push = briefing::push_back(b.remote(), &p.source, &p.head);
+                        }
+                    }
+                    b.scan();
+                }
+                None if f.mode == Mode::Create => f.picker.poll(self.hosting.as_ref(), ctx),
+                None => {}
+            }
+            // The title as read: the name, branch and folder it proposes, where untouched.
+            if read {
+                f.propose();
             }
         }
         if self.form.as_ref().is_some_and(|f|f.mode==Mode::Resume&&f.plan.is_some()) {
@@ -464,6 +703,13 @@ impl State {
                             t.stop();
                         } else {
                             s.phase = Phase::Starting;
+                        }
+                        // The agent's own terminal, not setup's, gets the first message.
+                        if !started.setup
+                            && let Some((from, text)) = s.first.take()
+                        {
+                            t.command = text;
+                            t.first = Some(from);
                         }
                         s.terminal = Some(t);
                     }

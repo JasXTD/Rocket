@@ -1367,5 +1367,6 @@
   "Partly stashed": "部分已贮藏",
   "No line changes to show.": "没有可显示的行更改。",
   "Word highlights cancelled. Toggle Words to retry.": "单词高亮已取消。切换“单词”以重试。",
-  "Read module map": "读取模块图谱"
+  "Read module map": "读取模块图谱",
+  "Read issue": "读取议题"
 }

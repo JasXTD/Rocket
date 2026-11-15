@@ -49,10 +49,19 @@ pub struct TerminalPane {
     /// Bash can take seconds to print its prompt, and an empty drawer looks broken.
     printed: bool,
     pub(crate) events: Vec<&'static str>,
+    /// An agent session's first message waits in the input, unsent, while this names
+    /// where it came from ("#482"). The input shows several lines until it is sent or
+    /// cleared.
+    pub first: Option<String>,
 }
+/// Lines the input shows while a first message waits in it.
+const FIRST_ROWS: usize = 7;
+/// The caption above a waiting first message.
+const FIRST_CAPTION: f32 = 20.0;
 impl TerminalPane {
     pub(crate) fn new(session: Session, name: String, network: bool) -> Self {
         Self {
+            first: None,
             session,
             screen: Screen::new(100, 12),
             command: String::new(),
@@ -135,9 +144,10 @@ impl TerminalPane {
         }
         // The command line sits under the screen, as a console's input does. Its room is
         // kept first, so the screen still ends on a whole row right above it.
+        let input = self.input_height(ui, agent);
         let body = vec2(
             ui.available_width(),
-            (ui.available_height() - CONTROL - ui.spacing().item_spacing.y).max(0.0),
+            (ui.available_height() - input - ui.spacing().item_spacing.y).max(0.0),
         );
         let action = ui
             .allocate_ui_with_layout(body, Layout::top_down(Align::Min), |ui| {
@@ -152,8 +162,112 @@ impl TerminalPane {
         action
     }
 
+    /// Whether an agent's first message waits in the input.
+    pub fn first_waiting(&self) -> bool {
+        self.first.is_some() && !self.command.is_empty()
+    }
+    /// How tall the input is: one line, or the first message's lines under its caption.
+    pub(crate) fn input_height(&self, ui: &Ui, agent: bool) -> f32 {
+        if agent && self.first_waiting() {
+            FIRST_CAPTION + 4.0 + FIRST_ROWS as f32 * ui.text_style_height(&TextStyle::Monospace) + 8.0
+        } else {
+            CONTROL
+        }
+    }
+
+    /// The first message, waiting in an agent session's input: where it came from, the
+    /// text to edit, Clear and Send. Nothing is sent until Send.
+    fn first_message(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, running: bool) {
+        const SEND: f32 = 64.0;
+        let from = self.first.clone().unwrap_or_default();
+        ui.spacing_mut().item_spacing.y = 4.0;
+        ui.allocate_ui_with_layout(vec2(ui.available_width(), FIRST_CAPTION), Layout::left_to_right(Align::Center), |ui| {
+            let (mark, _) = ui.allocate_exact_size(vec2(13.0, 13.0), Sense::hover());
+            icon(ui.painter(), mark, Icon::Info, HINT());
+            ui.label(RichText::new(crate::i18n::trf!("First message from {from} · not sent yet", from)).size(12.0).color(HINT()));
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                let r = ui.add(
+                    Button::new(RichText::new(crate::i18n::tr("Clear")).size(12.0).color(MUTED()))
+                        .frame(false)
+                        .min_size(vec2(0.0, FIRST_CAPTION)),
+                );
+                widgets.insert("terminal-first-clear".into(), (&r).into());
+                if r.clicked() {
+                    self.command.clear();
+                    self.first = None;
+                    // A refusal was about the message that is gone.
+                    self.error = None;
+                }
+            });
+        });
+        let row = ui.text_style_height(&TextStyle::Monospace);
+        // Send at the bottom right, beside the message's last rows.
+        ui.with_layout(Layout::left_to_right(Align::Max), |ui| {
+            let width = (ui.available_width() - SEND - ui.spacing().item_spacing.x).max(120.0);
+            // Not shrunk, so held to its width: Send sits beside it, not past the edge.
+            let area = ScrollArea::vertical()
+                .id_salt(("terminal-first", id))
+                .max_width(width)
+                .max_height(FIRST_ROWS as f32 * row + 8.0)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.add_enabled(
+                        running,
+                        TextEdit::multiline(&mut self.command)
+                            .id(command_id(id))
+                            .frame(Frame::NONE)
+                            .font(TextStyle::Monospace)
+                            .desired_width(width - 10.0)
+                            .desired_rows(FIRST_ROWS),
+                    )
+                });
+            widgets.insert("terminal-command".into(), (&area.inner).into());
+            let send = crate::pages::primary(ui, running, crate::i18n::tr("Send"));
+            widgets.insert("terminal-send".into(), (&send).into());
+            let ctrl_enter = running
+                && area.inner.has_focus()
+                && ui.input(|i| i.key_pressed(Key::Enter) && i.modifiers.command_only());
+            if send.clicked() || ctrl_enter {
+                self.send_first();
+            }
+        });
+    }
+
+    /// Whether Send refuses the waiting first message and writes nothing: it has several
+    /// lines and the program didn't turn on pasted input.
+    pub fn first_refused(&self) -> bool {
+        self.first_waiting() && crate::agents::brief::sendable(&self.command).contains('\n') && !self.screen.bracketed_paste()
+    }
+
+    /// Sends the first message as one pasted block and Enter. A program that did not
+    /// turn on pasted input would take each line break as Enter, so several lines wait.
+    fn send_first(&mut self) {
+        let text = crate::agents::brief::sendable(&self.command);
+        if text.trim().is_empty() {
+            return;
+        }
+        if self.first_refused() {
+            self.error = Some(crate::i18n::tr("This program didn't turn on pasted input. Send the message as one line.").into());
+            return;
+        }
+        let mut bytes = self.screen.paste_input(&text);
+        bytes.push(b'\r');
+        self.send(&bytes, "terminal_input_queued");
+        if self.error.is_none() {
+            self.command.clear();
+            self.first = None;
+        }
+    }
+
     /// A line for the shell, sent with Enter or Send.
     fn command_line(&mut self, ui: &mut Ui, id: u64, widgets: &mut HashMap<String, UiControl>, running: bool, agent: bool) {
+        if agent && self.first.is_some() {
+            if self.first_waiting() {
+                return self.first_message(ui, id, widgets, running);
+            }
+            // Emptied by hand: an ordinary input from now on.
+            self.first = None;
+        }
         const SEND: f32 = 64.0;
         // A single-line TextEdit consumes Enter as it surrenders focus.
         // Capture ownership before drawing it: lost_focus() can still be

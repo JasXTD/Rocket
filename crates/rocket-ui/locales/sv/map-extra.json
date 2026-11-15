@@ -254,5 +254,9 @@
   "build ignore": "utesluten ur byggen",
   "Package root · {package}": "Paketrot · {package}",
   "Folder · {package}": "Mapp · {package}",
-  "Package · {package}": "Paket · {package}"
+  "Package · {package}": "Paket · {package}",
+  "{n} lines": {
+    "one": "{n} rad",
+    "other": "{n} rader"
+  }
 }

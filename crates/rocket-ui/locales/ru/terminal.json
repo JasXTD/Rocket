@@ -42,5 +42,8 @@
   "Your login shell, from $SHELL": "Ваша оболочка входа из $SHELL",
   "Your own program": "Своя программа",
   "{shell} isn't installed. Choose another shell.": "{shell} не установлена. Выберите другую оболочку.",
-  "{shell} isn't on this system. Choose another shell.": "{shell} недоступна в этой системе. Выберите другую оболочку."
+  "{shell} isn't on this system. Choose another shell.": "{shell} недоступна в этой системе. Выберите другую оболочку.",
+  "Send": "Отправить",
+  "This program didn't turn on pasted input. Send the message as one line.": "Эта программа не включила режим вставки. Отправьте сообщение одной строкой.",
+  "First message from {from} · not sent yet": "Первое сообщение из {from} · ещё не отправлено"
 }

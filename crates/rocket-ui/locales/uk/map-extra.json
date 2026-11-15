@@ -289,5 +289,10 @@
   "build ignore": "виключено зі збирання",
   "Package root · {package}": "Корінь пакета · {package}",
   "Folder · {package}": "Тека · {package}",
-  "Package · {package}": "Пакет · {package}"
+  "Package · {package}": "Пакет · {package}",
+  "{n} lines": {
+    "one": "{n} рядок",
+    "few": "{n} рядки",
+    "many": "{n} рядків"
+  }
 }

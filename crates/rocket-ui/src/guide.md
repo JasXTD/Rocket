@@ -431,6 +431,20 @@ Push branches together publishes several branches in one atomic push: every sele
 - The list groups sessions by what they need from you: Needs you, Running and Not running. A group folds when you click its heading; searching shows every match.
 - Stop ends the program and keeps the worktree and its changes. Closing Rocket stops its sessions; reopening restores them without starting anything.
 
+### Starting from an issue or pull request
+
+- Start agent on an open issue in Hosting → Issues, or in a pull request's details, opens a new session made from it. Fix with agent on a failed run in Actions does the same for its failed jobs. In New session, the Issue or pull request field takes a number, a link or words from the title; on GitLab a number is an issue's, and a merge request's link finds it. These need the repository's hosting account connected in Hosting, for a repository one of this checkout's remotes points to.
+- Rocket reads the issue's text and comments, or the pull request's review comments, failed checks, description and discussion, when the dialog opens. Bitbucket has no issues; Azure DevOps lists work items. If the read fails or you stop it, Try again; an issue can also Start without its text, with the task's words only. A pull request's session starts on its head, so it needs the read.
+- Task says what the agent is asked to do. For an issue: Fix it, Plan first or Your own task. For a pull request: Address review comments, Fix failing checks or Your own task. Plan first also starts Claude Code with --permission-mode plan, listed in the review with the other arguments; other programs get only its words. Changing Task, or what a pull request puts in the message, writes the message again.
+- The first message is the task's words, then the host's text quoted under a tag such as <issue>, as a report and not as instructions. Edit all of it before you review the session.
+- Left out lists what the host's page doesn't show either: HTML comments and invisible characters. The quoted text can't close its own tag.
+- The quoted text is cut at 16 KB: an issue keeps its text and its newest comments, and the message links the rest. Job logs aren't read; the message names the failed jobs and links the run.
+- A message that looks like it holds a secret (a token, a key, a password) can't start a session until that line, marked in the message, is removed. The same patterns as Secret protection are used.
+- The message waits in the session's input once its program starts, up to seven lines in view. Nothing is sent until you press Send (or Ctrl+Enter); Clear empties it. It is not saved with the session, so Review and restart doesn't send it again. If the program didn't turn on pasted input, Send refuses a message of several lines, since each line break would press Enter; join the lines first.
+- A pull request's session starts on a new branch from the pull request's head as the host reported it, so your checkout of its branch stays as it is. Fetch first if that commit isn't in this checkout yet.
+- The session's header links the issue or pull request it started from. Only its number, title, link and host are saved with the session; the host's text is not.
+- Save the message as a task (in the Task menu) keeps the words above the quote, with {number}, {title} and {repository} standing for the item. Manage tasks renames, edits and removes saved tasks. When it closes, a task left without a name or words is dropped, and a name another task for the same kind of item already has gets a number.
+
 ### Activity and resuming
 
 - Track conversation activity lets the program report when it is working, has finished a turn or is waiting for you. It does not change the program's own configuration or login. Codex may ask you to review these hooks in /hooks.
@@ -443,6 +457,7 @@ Push branches together publishes several branches in one atomic push: every sele
 - Commit what you want to keep in the worktree: Open worktree shows it in a tab of its own. Rocket commits nothing for you.
 - Check integration needs the session stopped, both checkouts clean and the original checkout on a branch. It names the branch that will receive the work and how many commits come in. Nothing is saved, stashed or discarded for you.
 - Compare committed changes opens the comparison. Review merge opens the usual merge review; applying it is your decision, checks both branch tips again and uses the conflict editor if needed. The session's branch and worktree stay, and nothing is pushed.
+- A session that started from a pull request is checked against the pull request's branch instead: the remote's copy of that branch must still be the commit the session started on, and the agent's commits must follow it. Review push then opens the Push dialog set to push the agent's branch to the pull request's branch, as a fast-forward; Secret protection checks the commits as for any push. A pull request from a fork can't be pushed to from here.
 
 ### Removing
 

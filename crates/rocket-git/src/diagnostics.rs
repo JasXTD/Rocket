@@ -1004,6 +1004,7 @@ fn operation_label(value: &str) -> &'static str {
         "hosting-preview",
         "hosting-create",
         "hosting-pull-details",
+        "hosting-issue-text",
         "hosting-review-preview",
         "hosting-review-submit",
         "hosting-merge-preview",

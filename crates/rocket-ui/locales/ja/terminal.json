@@ -42,5 +42,8 @@
   "Your login shell, from $SHELL": "$SHELL で指定されたログインシェル",
   "Your own program": "独自のプログラム",
   "{shell} isn't installed. Choose another shell.": "{shell} はインストールされていません。別のシェルを選んでください。",
-  "{shell} isn't on this system. Choose another shell.": "このシステムでは {shell} を利用できません。別のシェルを選んでください。"
+  "{shell} isn't on this system. Choose another shell.": "このシステムでは {shell} を利用できません。別のシェルを選んでください。",
+  "Send": "送信",
+  "This program didn't turn on pasted input. Send the message as one line.": "このプログラムは貼り付けモードを有効にしていません。メッセージを 1 行にして送信してください。",
+  "First message from {from} · not sent yet": "{from} からの最初のメッセージ · 未送信"
 }

@@ -816,6 +816,10 @@ impl Rocket {
             self.open_actions(Some(branch), None);
             return;
         }
+        if let Some(a) = out.agent {
+            self.start_agent(a.origin, None, a.base, a.task);
+            return;
+        }
         if let Some(a) = out.action {
             self.forge_action(a);
         }
@@ -882,6 +886,15 @@ struct PageOut {
     ci_rerun: bool,
     /// All runs for this branch was chosen on the Checks tab: Actions opens.
     ci_runs: Option<String>,
+    /// Start agent on an issue row or a pull request: Agents opens with a new session
+    /// made from it.
+    agent: Option<AgentStart>,
+}
+/// What Start agent starts from, and for a pull request its head and chosen task.
+pub(crate) struct AgentStart {
+    pub origin: crate::agents::model::Origin,
+    pub base: Option<String>,
+    pub task: Option<crate::agents::brief::Task>,
 }
 
 pub(crate) fn show_section(s: &mut State, next: Section) {
@@ -1150,9 +1163,30 @@ fn list_card(
             }
             for i in &visible {
                 let details = (!issues && s.session.is_some()).then_some(!busy);
-                let (open, show) = item_row(ui, &s.items[*i], issues, widgets, *i, details);
+                // An open issue can start an agent session made from it.
+                let item = &s.items[*i];
+                let closed = matches!(item.state.to_ascii_lowercase().as_str(), "closed" | "done" | "removed" | "resolved" | "completed");
+                let agent = (issues && s.session.is_some() && !closed).then_some(!busy);
+                let (open, show, start) = item_row(ui, item, issues, widgets, *i, details, agent);
                 if open {
                     out.open = Some(s.items[*i].url.clone());
+                }
+                if start
+                    && let Some(session) = &s.session
+                {
+                    out.agent = Some(AgentStart {
+                        origin: crate::agents::model::Origin {
+                            kind: crate::agents::model::Kind::Issue,
+                            number: item.number,
+                            title: item.title.clone(),
+                            url: item.url.clone(),
+                            host: session.config().provider().label().to_owned(),
+                            repository: s.repository.clone(),
+                            push: None,
+                        },
+                        base: None,
+                        task: None,
+                    });
                 }
                 if show {
                     out.pull = Some(s.items[*i].number);
@@ -1194,8 +1228,9 @@ fn list_card(
 }
 
 /// One pull request or issue: its state, title and number, who opened it and its
-/// branches, then Details (pull requests, when `details` says whether it is enabled)
-/// and Open in browser. Returns whether Open and Details were clicked.
+/// branches, then Details (pull requests, when `details` says whether it is enabled),
+/// Start agent (open issues, when `agent` says whether it is enabled) and Open in
+/// browser. Returns whether Open, Details and Start agent were clicked.
 fn item_row(
     ui: &mut Ui,
     item: &ForgeItem,
@@ -1203,11 +1238,13 @@ fn item_row(
     widgets: &mut HashMap<String, UiControl>,
     index: usize,
     details: Option<bool>,
-) -> (bool, bool) {
+    agent: Option<bool>,
+) -> (bool, bool, bool) {
     let (state, color) = state_look(&item.state);
     let background = ui.painter().add(Shape::Noop);
     let mut open = false;
     let mut show = false;
+    let mut start = false;
     let frame = Frame::new().inner_margin(Margin::symmetric(14, 10)).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
@@ -1223,6 +1260,9 @@ fn item_row(
                 open = r.clicked();
                 if let Some(enabled) = details {
                     show = btn(ui, widgets, &format!("hosting-details-{index}"), tr("Details"), enabled);
+                }
+                if let Some(enabled) = agent {
+                    start = btn(ui, widgets, &format!("hosting-agent-{index}"), tr("Start agent"), enabled);
                 }
                 pages::pill(ui, &state, color);
                 ui.with_layout(Layout::top_down(Align::Min), |ui| {
@@ -1260,7 +1300,7 @@ fn item_row(
             epaint::RectShape::filled(frame.response.rect, 0, LIST_HOT()),
         );
     }
-    (open, show)
+    (open, show, start)
 }
 
 /// A provider's state word as shown, and its color.

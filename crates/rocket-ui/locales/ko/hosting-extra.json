@@ -384,5 +384,12 @@
   "No reviews yet.": "아직 검토가 없습니다.",
   "No changed files returned.": "반환된 변경 파일이 없습니다.",
   "Load threads": "스레드 불러오기",
-  "Load threads to reply, resolve or reopen.": "답글을 작성하거나 해결 또는 다시 열려면 스레드를 불러오세요."
+  "Load threads to reply, resolve or reopen.": "답글을 작성하거나 해결 또는 다시 열려면 스레드를 불러오세요.",
+  "Start agent": "에이전트 시작",
+  "Still running": "아직 실행 중",
+  "Starts a new branch from the pull request's head.": "풀 리퀘스트의 헤드에서 새 브랜치를 만듭니다.",
+  "{n} open": "미해결 {n}개",
+  "{n} failed": "실패 {n}개",
+  "Finish or discard what is open in Hosting first.": "먼저 호스팅에서 열려 있는 내용을 완료하거나 폐기하세요.",
+  "No open comments": "열린 댓글 없음"
 }

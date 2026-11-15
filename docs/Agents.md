@@ -156,6 +156,59 @@ The agent branch and worktree remain after integration. Nothing is pushed,
 deleted, stashed, or discarded automatically. A dirty checkout shows a refusal
 with its files preserved. There is no remote agent service or cost dashboard.
 
+### Starting from an issue, a pull request or a failed run (pending release)
+
+**Start agent** on an open issue in Hosting → Issues, **Start agent** in a pull request's
+details (Address review comments, Fix failing checks or Your own task) and **Fix with
+agent** on a failed run in Actions open a new session made from that item. In New session,
+the **Issue or pull request** field takes a number, a link or words from the title (on
+GitLab a number is an issue's; a merge request's link finds it). These need the repository's
+hosting account connected in Hosting, for a repository one of this checkout's remotes points
+to; without it, New session is as before. Issue text and comments are read from GitHub,
+GitHub Enterprise Server, GitLab, Gitea and Azure DevOps work items; Bitbucket has no issues.
+A pull request's review comments, failed checks, description and discussion come from the
+reads its details page already uses. Job logs are not read: the message names the failed jobs
+and links the run.
+
+**Task** chooses what the agent is asked to do. **Plan first** also starts Claude Code with
+`--permission-mode` `plan`, listed in the review with the other arguments; other programs get
+only its words. The **first message** is the task's words, then the host's text quoted under a
+tag such as `<issue>` as a report, not as instructions, so text written by other people is
+marked as such. Before quoting, Rocket leaves out what the host's page does not show: HTML
+comments outside code blocks and invisible characters (zero-width, direction controls, tag
+characters and other controls), in the title too. **Left out** lists them. Quoted text cannot
+open or close its own tag. Quoted text is cut at 16 KB; an issue keeps its own text and its
+newest comments and links the rest. The message can be edited before review. A message that
+looks like it holds a secret (the same patterns as Secret protection: tokens, keys, passwords)
+cannot be reviewed until that line, which is marked, is removed. If the item can't be read,
+**Try again**; an issue can also **Start without its text**, with the task's words only. A pull
+request's session needs its head, so it has no such option.
+
+The message is put in the agent's input when its program starts and waits there: nothing is
+sent until **Send** (or Ctrl+Enter). **Clear** empties it. It is not saved, so restarting a
+session never sends it again. Send pastes it with the program's bracketed paste; if the program
+did not turn bracketed paste on, a message of several lines is refused, because each line
+break would press Enter. Control characters are removed before sending.
+
+Only what names the item is saved with the session (kind, number, title, link, host and
+repository, and for a pull request its remote, branch and head); the host's text is not. The
+session's header links the item.
+
+A pull request's session starts on a new branch from the pull request's head as the host
+reported it; fetch first if that commit is not in this checkout. In **Integrate**, its check
+compares the agent's branch with the pull request's branch as this checkout last fetched it:
+that branch must still be the commit the session started on and the agent's commits must
+follow it. **Review push** then opens the Push dialog set to push the agent's branch to the
+pull request's branch; the push is the Push dialog's own reviewed, fast-forward-only action,
+with Secret protection. A pull request from a fork is refused, because its branch is not on
+this repository's remote.
+
+**Save the message as a task** (Task menu) keeps the words above the quote, with `{number}`,
+`{title}` and `{repository}` standing for the item. **Manage tasks** renames, edits and
+removes saved tasks; when it closes, a task left without a name or words is dropped and a name
+another task of the same kind already has gets a number. Tasks are stored with Rocket's
+settings (state format v33), never read from a repository.
+
 Provider contracts: [Codex hooks](https://learn.chatgpt.com/docs/hooks),
 [Claude hooks](https://code.claude.com/docs/en/hooks),
 [Claude CLI](https://code.claude.com/docs/en/cli-reference), and

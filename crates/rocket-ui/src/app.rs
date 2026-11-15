@@ -2525,6 +2525,9 @@ impl Rocket {
             }
         }
         self.poll_terminals();
+        // The repository's hosting account, for sessions that start from an issue or
+        // pull request: only while Hosting has one connected for this tab's repository.
+        self.agents.hosting = self.agent_hosting();
         if let Some(backend)=&self.backend {
             let visible=self.tab().is_some_and(|t|t.view==View::Agents)&&!self.quitting;
             self.agents.poll(backend,ctx,&self.written.agents,visible,&mut self.terminal_log);
@@ -2565,6 +2568,7 @@ impl Rocket {
                             self.commands = saved.commands.clone();
                             self.agents.load(saved.agents.clone());
                             self.agents.copilot.clone_from(&saved.copilot_program);
+                            self.agents.saved.clone_from(&saved.agent_tasks);
                             self.library = saved.library.clone();
                             ctx.set_zoom_factor(p.zoom);
                             self.recent = saved.recent.clone();
@@ -3193,7 +3197,13 @@ impl Rocket {
             language: self.language,
         };
         let agents=self.agents.records();
-        let mut changed = self.saved.agents != agents || self.saved.copilot_program != self.agents.copilot
+        // Saved tasks are written once they are whole; one being named waits.
+        let tasks: Vec<_> = self.agents.saved.iter().filter(|t| t.valid()).cloned().collect();
+        let changed_tasks = self.saved.agent_tasks != tasks;
+        if changed_tasks {
+            self.saved.agent_tasks = tasks;
+        }
+        let mut changed = changed_tasks || self.saved.agents != agents || self.saved.copilot_program != self.agents.copilot
             || self.saved.preferences != preferences
             || self.saved.recent != self.recent
             || self.saved.tool_profiles.as_ref() != Some(&self.external.profiles)

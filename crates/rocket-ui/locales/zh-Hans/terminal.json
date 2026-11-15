@@ -42,5 +42,8 @@
   "Your login shell, from $SHELL": "您的登录 Shell，来自 $SHELL",
   "Your own program": "您指定的程序",
   "{shell} isn't installed. Choose another shell.": "未安装 {shell}。请选择其他 Shell。",
-  "{shell} isn't on this system. Choose another shell.": "此系统上没有 {shell}。请选择其他 Shell。"
+  "{shell} isn't on this system. Choose another shell.": "此系统上没有 {shell}。请选择其他 Shell。",
+  "Send": "发送",
+  "This program didn't turn on pasted input. Send the message as one line.": "此程序未开启粘贴模式。请将消息合并为一行发送。",
+  "First message from {from} · not sent yet": "来自 {from} 的首条消息 · 尚未发送"
 }

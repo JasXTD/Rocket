@@ -111,8 +111,112 @@ impl Command {
     }
 }
 
+/// What a session can start from on the repository's host.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Kind {
+    #[default]
+    Issue,
+    Pull,
+    Run,
+}
+impl Kind {
+    pub const ALL: [Self; 3] = [Self::Issue, Self::Pull, Self::Run];
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Issue => "issue",
+            Self::Pull => "pull",
+            Self::Run => "run",
+        }
+    }
+}
+
+/// A pull request's branch on the remote it was read from, and the commit the session
+/// started on: where Integrate pushes the agent's commits back.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PushBack {
+    pub remote: String,
+    pub branch: String,
+    pub head: String,
+}
+
+/// The issue, pull request or CI run a session started from. Only what names and links
+/// it is saved; the host's text is not.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Origin {
+    pub kind: Kind,
+    /// The issue's or pull request's number; a run's id.
+    pub number: u64,
+    pub title: String,
+    pub url: String,
+    /// The host's name as Hosting shows it: "GitHub", "GitLab".
+    pub host: String,
+    pub repository: String,
+    pub push: Option<PushBack>,
+}
+impl Origin {
+    /// "#482", or a run's title.
+    pub fn short(&self) -> String {
+        match self.kind {
+            Kind::Run => self.title.clone(),
+            _ => format!("#{}", self.number),
+        }
+    }
+    pub fn validate(&self) -> Result<()> {
+        let web = self.url.starts_with("https://")
+            || self.url.starts_with("http://127.0.0.1:")
+            || self.url.starts_with("http://localhost:");
+        let fine = |s: &str, max: usize| s.len() <= max && visible(s);
+        let push = self.push.as_ref().is_none_or(|p| {
+            !p.remote.is_empty()
+                && fine(&p.remote, 256)
+                && !p.remote.starts_with('-')
+                && !p.branch.is_empty()
+                && fine(&p.branch, 1024)
+                && !p.branch.starts_with('-')
+                && matches!(p.head.len(), 40 | 64)
+                && p.head.bytes().all(|b| b.is_ascii_hexdigit())
+        });
+        if self.number == 0
+            || !web
+            || !fine(&self.url, 2048)
+            || self.url.contains(char::is_whitespace)
+            || !fine(&self.title, 1024)
+            || !fine(&self.host, 64)
+            || !fine(&self.repository, 1024)
+            || !push
+        {
+            return Err(invalid("Invalid saved issue or pull request for this session."));
+        }
+        Ok(())
+    }
+    fn encode(&self) -> Value {
+        json!({"kind":self.kind.key(),"number":self.number,"title":self.title,"url":self.url,"host":self.host,"repository":self.repository,
+            "push":self.push.as_ref().map(|p|json!({"remote":p.remote,"branch":p.branch,"head":p.head}))})
+    }
+    fn decode(v: &Value) -> Option<Self> {
+        let text = |v: &Value, k: &str| v[k].as_str().map(str::to_owned);
+        let push = if v["push"].is_null() {
+            None
+        } else {
+            let p = &v["push"];
+            Some(PushBack { remote: text(p, "remote")?, branch: text(p, "branch")?, head: text(p, "head")? })
+        };
+        Some(Self {
+            kind: Kind::ALL.into_iter().find(|k| Some(k.key()) == v["kind"].as_str())?,
+            number: v["number"].as_u64()?,
+            title: text(v, "title")?,
+            url: text(v, "url")?,
+            host: text(v, "host")?,
+            repository: text(v, "repository")?,
+            push,
+        })
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Record {
+    /// The issue, pull request or run it started from, if any.
+    pub origin: Option<Origin>,
     pub attention: bool,
     pub last_activity: super::events::Activity,
     pub tracking: bool,
@@ -151,6 +255,9 @@ impl Record {
         if let Some(c) = &self.setup {
             c.validate()?;
         }
+        if let Some(o) = &self.origin {
+            o.validate()?;
+        }
         Ok(())
     }
 }
@@ -178,7 +285,7 @@ pub(crate) fn encode(records: &[Record]) -> std::io::Result<Vec<u8>> {
         {
             return Err(std::io::Error::other("Invalid agent session identity"));
         }
-        rows.push(json!({"id":r.id,"name":r.name,"source":r.source,"destination":r.destination,"branch":r.branch,"base":r.base,"provider":r.provider.key(),"command":command(&r.command),"setup":r.setup.as_ref().map(command),"tracking":r.tracking,"conversation":r.conversation,"approval":r.approval,"attention":r.attention,"last_activity":r.last_activity.label()}));
+        rows.push(json!({"id":r.id,"name":r.name,"source":r.source,"destination":r.destination,"branch":r.branch,"base":r.base,"provider":r.provider.key(),"command":command(&r.command),"setup":r.setup.as_ref().map(command),"tracking":r.tracking,"conversation":r.conversation,"approval":r.approval,"attention":r.attention,"last_activity":r.last_activity.label(),"origin":r.origin.as_ref().map(Origin::encode)}));
     }
     serde_json::to_vec(&rows).map_err(std::io::Error::other)
 }
@@ -199,6 +306,8 @@ pub(crate) fn decode(bytes: &[u8]) -> std::io::Result<Vec<Record>> {
     let mut records = Vec::new();
     for v in rows {
         records.push(Record {
+            // Saved before sessions could start from an issue or pull request: none.
+            origin: if v["origin"].is_null() { None } else { Some(Origin::decode(&v["origin"]).ok_or_else(bad)?) },
             attention: if v["attention"].is_null(){false}else{v["attention"].as_bool().ok_or_else(bad)?},
             last_activity: if v["last_activity"].is_null(){Default::default()}else{super::events::Activity::ALL.into_iter().find(|a|Some(a.label())==v["last_activity"].as_str()).ok_or_else(bad)?},
             tracking: if v["tracking"].is_null(){false}else{v["tracking"].as_bool().ok_or_else(bad)?},

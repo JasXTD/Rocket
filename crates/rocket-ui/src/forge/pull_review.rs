@@ -184,6 +184,100 @@ impl Rocket {
     }
 }
 
+/// Start agent and its menu: a new agent session made from this pull request, for its
+/// open review comments, its failing checks or a task of the user's own. A choice with
+/// nothing to work on says why it is greyed out.
+fn start_agent_menu(
+    ui: &mut Ui,
+    s: &super::State,
+    widgets: &mut HashMap<String, UiControl>,
+    busy: bool,
+    details: &ForgePullDetails,
+    out: &mut PageOut,
+) {
+    use crate::agents::brief::Task;
+    let p = details.summary();
+    // Room at the right for the menu's chevron.
+    let label = tr("Start agent");
+    let width = pages::button_width(ui, label, 0.0) + 20.0;
+    let r = ui.add_enabled(
+        !busy,
+        Button::new(RichText::new(label)).right_text("").min_size(vec2(width, 28.0)),
+    );
+    icon(
+        ui.painter(),
+        Rect::from_center_size(pos2(r.rect.right() - 13.0, r.rect.center().y), vec2(9.0, 9.0)),
+        Icon::Chevron,
+        if busy { FAINT() } else { MUTED() },
+    );
+    control(widgets, "hosting-pull-agent", &r, ui.clip_rect());
+    // What there is to work on, as far as this page has read it.
+    let comments: Option<usize> = s
+        .pull
+        .threads
+        .snapshot
+        .as_ref()
+        .filter(|t| t.number() == p.number && t.repository() == details.repository())
+        .map(|t| t.threads.iter().filter(|t| !t.resolved).map(|t| t.comments.len()).sum())
+        .or_else(|| details.inline_comments.error.is_none().then_some(details.inline_comments.items.len()));
+    let ci = s.pull.ci.as_ref().filter(|c| c.commit() == p.head);
+    let failed = ci.map(|c| c.count(ForgeCheckState::Failed) + c.count(ForgeCheckState::Cancelled));
+    let mut chosen = None;
+    Popup::menu(&r).width(320.0).show(|ui| {
+        let rows = [
+            (
+                Task::Comments,
+                "hosting-pull-agent-comments",
+                match comments {
+                    Some(0) => (false, tr("No open comments").to_owned()),
+                    Some(n) => (true, trf!("{n} open", n)),
+                    None => (true, String::new()),
+                },
+            ),
+            (
+                Task::Checks,
+                "hosting-pull-agent-checks",
+                match (failed, ci.map(|c| c.state())) {
+                    (Some(n), _) if n > 0 => (true, trf!("{n} failed", n)),
+                    (_, Some(ForgeCiState::Passed)) => (false, tr("Checks passed").to_owned()),
+                    (_, Some(ForgeCiState::Running)) => (false, tr("Still running").to_owned()),
+                    (_, Some(ForgeCiState::NotChecked)) => (false, tr("No checks").to_owned()),
+                    _ => (true, String::new()),
+                },
+            ),
+            (Task::Own, "hosting-pull-agent-own", (true, String::new())),
+        ];
+        for (task, key, (enabled, right)) in rows {
+            let r = ui.add_enabled(enabled, Button::new(tr(task.label())).frame(false).min_size(vec2(ui.available_width(), 28.0)));
+            if !right.is_empty() {
+                let g = ui.painter().layout_no_wrap(right, FontId::proportional(12.0), HINT());
+                ui.painter().galley(pos2(r.rect.right() - 10.0 - g.size().x, r.rect.center().y - g.size().y / 2.0), g, HINT());
+            }
+            control(widgets, key, &r, ui.clip_rect());
+            if r.clicked() {
+                chosen = Some(task);
+            }
+        }
+        ui.separator();
+        ui.add(Label::new(RichText::new(tr("Starts a new branch from the pull request's head.")).size(12.0).color(HINT())).wrap());
+    });
+    if let Some(task) = chosen {
+        out.agent = Some(super::AgentStart {
+            origin: crate::agents::model::Origin {
+                kind: crate::agents::model::Kind::Pull,
+                number: p.number,
+                title: p.title.clone(),
+                url: details.url(),
+                host: s.session.as_ref().map_or("", |x| x.config().provider().label()).to_owned(),
+                repository: details.repository().path().to_owned(),
+                push: None,
+            },
+            base: Some(p.head.clone()),
+            task: Some(task),
+        });
+    }
+}
+
 pub(super) fn section(
     ui: &mut Ui,
     s: &mut super::State,
@@ -298,6 +392,9 @@ pub(super) fn section(
                     if r.clicked() {
                         s.pull.composing = true;
                         s.pull.merge.preview = None;
+                    }
+                    if open && s.session.is_some() && !s.pull.composing {
+                        start_agent_menu(ui, s, widgets, busy, &details, out);
                     }
                     if s.pull.composing
                         && btn(

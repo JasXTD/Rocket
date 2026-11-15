@@ -16,6 +16,7 @@ mod form;
 mod integrate;
 mod list;
 mod parts;
+mod tasks;
 #[cfg(test)]
 mod tests;
 use parts::{Look, action as button, child};
@@ -52,6 +53,22 @@ enum Action {
     StopRead,
     File(usize),
     DismissNotice,
+    /// A link to the host: the issue or pull request a session or dialog starts from.
+    OpenUrl(String),
+    /// The Issue or pull request field's result, by index.
+    Pick(usize),
+    /// × on the dialog's source card.
+    Unbrief,
+    /// Read the issue or pull request again after a failed read.
+    ReadAgain,
+    /// Go on without the host's text.
+    GoWithout,
+    StopBriefRead,
+    /// Save the dialog's message as a task with this name.
+    SaveTask(String),
+    ManageTasks,
+    /// Integrate's last step for a session from a pull request.
+    PushIntegration,
 }
 
 fn duration(d: Duration) -> String {
@@ -127,13 +144,25 @@ impl Rocket {
                 &mut action,
             );
         });
-        let covered = self.picker.is_some();
+        let covered = self.picker.is_some() || self.agents.managing.is_some();
+        let hosted = self.agents.hosting.is_some();
         match &mut self.agents.form {
             Some(f) => {
                 let chosen = Chosen::of(&self.drafting, &self.agents.copilot);
-                form::show(ui.ctx(), &mut self.frame_widgets, f, chosen, ready, covered, &mut action);
+                let inputs = form::Inputs { chosen, ready, covered, hosted, saved: &self.agents.saved };
+                form::show(ui.ctx(), &mut self.frame_widgets, f, &inputs, &mut action);
             }
             None => form::forget(ui.ctx()),
+        }
+        if self.agents.managing.is_some() {
+            // Opened by a press on the session dialog: raised for its first frames, or that
+            // press's dialog stays on top.
+            if self.agents.tasks_raise > 0 {
+                self.agents.tasks_raise -= 1;
+                pages::raise(ui.ctx(), "agents-tasks-dialog");
+            }
+            let chosen = self.agents.form.as_mut().and_then(|f| f.briefing.as_mut()).map(|b| &mut b.choice);
+            tasks::manage(ui.ctx(), &mut self.frame_widgets, &mut self.agents.saved, &mut self.agents.managing, chosen);
         }
         let result = match action {
             Some(Action::New) => {
@@ -246,6 +275,73 @@ impl Rocket {
                 self.agents.notice = None;
                 Ok(())
             }
+            Some(Action::OpenUrl(url)) => {
+                if rocket_git::https_url(&url) || url.starts_with("http://127.0.0.1:") {
+                    if let Some(list) = &mut self.opened_urls {
+                        list.push(url);
+                    } else {
+                        ui.ctx().open_url(OpenUrl::new_tab(url));
+                    }
+                }
+                Ok(())
+            }
+            Some(Action::Pick(i)) => {
+                if let Some(found) = self.agents.form.as_ref().and_then(|f| f.picker.results.get(i).cloned()) {
+                    self.agents.pick(found, &self.context);
+                }
+                Ok(())
+            }
+            Some(Action::Unbrief) => {
+                self.agents.unbrief();
+                Ok(())
+            }
+            Some(Action::ReadAgain) => {
+                match (self.agents.hosting.clone(), self.agents.form.as_mut().and_then(|f| f.briefing.as_mut())) {
+                    (Some(h), Some(b)) => b.start_read(&h, &self.context),
+                    _ => Err(model::invalid("Connect this repository's hosting account in Hosting to read it.")),
+                }
+            }
+            Some(Action::GoWithout) => {
+                let saved = self.agents.saved.clone();
+                if let Some(b) = self.agents.form.as_mut().and_then(|f| f.briefing.as_mut()) {
+                    b.go_without(&saved);
+                }
+                Ok(())
+            }
+            Some(Action::StopBriefRead) => {
+                if let Some(b) = self.agents.form.as_mut().and_then(|f| f.briefing.as_mut()) {
+                    b.stop_read();
+                }
+                Ok(())
+            }
+            Some(Action::SaveTask(name)) => {
+                let saved = self.agents.form.as_ref().and_then(|f| f.briefing.as_ref()).map(|b| brief::Saved::from_message(&name, &b.origin, &b.message));
+                match saved {
+                    Some(s) if !s.valid() => Err(model::invalid("Give the task a name and some words, without hidden characters.")),
+                    Some(_) if self.agents.saved.len() >= brief::MAX_SAVED => Err(model::invalid("Remove a saved task before saving another.")),
+                    Some(s) => {
+                        self.agents.saved.retain(|t| !(t.name == s.name && t.kind == s.kind));
+                        let name = s.name.clone();
+                        self.agents.saved.push(s);
+                        let index = self.agents.saved.len() - 1;
+                        // The message stays as written: the task was saved from it.
+                        if let Some(b) = self.agents.form.as_mut().and_then(|f| f.briefing.as_mut()) {
+                            b.choice = briefing::Choice::Saved(name);
+                        }
+                        // Opened on the new task, to name it.
+                        self.agents.managing = Some(Some(index));
+                        self.agents.tasks_raise = 2;
+                        Ok(())
+                    }
+                    None => Ok(()),
+                }
+            }
+            Some(Action::ManageTasks) => {
+                self.agents.managing = Some(None);
+                self.agents.tasks_raise = 2;
+                Ok(())
+            }
+            Some(Action::PushIntegration) => self.agent_push_handoff(),
             None => Ok(()),
         };
         if let Err(e) = result {
@@ -298,6 +394,9 @@ impl Rocket {
         }
         let record = s.record.clone();
         let preview = r.merge.clone();
+        if merge && preview.is_none() {
+            return Err(model::invalid("Check integration first."));
+        }
         let comparison = r.comparison.clone();
         self.open(record.source);
         let tab = self
@@ -309,7 +408,7 @@ impl Rocket {
                 "The original checkout is loading. Return to Agents and check integration when it is ready.",
             ));
         }
-        if merge {
+        if let Some(preview) = preview.filter(|_| merge) {
             self.show_dialog(crate::app::DialogKind::Merge);
             if let Some(d) = &mut self.dialog {
                 d.first = preview.revision().into();
@@ -324,6 +423,104 @@ impl Rocket {
             self.compare_intent(crate::compare::CompareIntent::Open);
             self.compare_intent(crate::compare::CompareIntent::Load);
         }
+        Ok(())
+    }
+}
+
+impl Rocket {
+    /// Hosting's connected account and repository, when one of this tab's remotes is that
+    /// repository; with that remote's name, for pushing a pull request's branch back.
+    pub(crate) fn agent_hosting(&self) -> Option<briefing::Hosting> {
+        let session = self.forge.session.clone()?;
+        let repo = rocket_git::ForgeRepository::new(session.config().clone(), &self.forge.repository).ok()?;
+        let snapshot = self.tab()?.snapshot.as_ref()?;
+        let remote = snapshot.remotes.iter().find(|r| {
+            r.urls
+                .iter()
+                .any(|u| rocket_git::ForgeRepository::from_remote(session.config().clone(), u).as_ref() == Some(&repo))
+        })?;
+        Some(briefing::Hosting {
+            host: session.config().provider().label().to_owned(),
+            remote: Some(String::from_utf8_lossy(&remote.name).into_owned()),
+            session,
+            repo,
+        })
+    }
+
+    /// Start agent on an issue, a pull request or a failed run: Agents, with a new
+    /// session's dialog made from it. A pull request's session starts on its head
+    /// (`base`); `task` is the one chosen in its menu.
+    pub(crate) fn start_agent(
+        &mut self,
+        origin: Origin,
+        material: Option<briefing::Material>,
+        base: Option<String>,
+        task: Option<brief::Task>,
+    ) {
+        let source = self.tab().filter(|t| !t.is_preview() && t.worktree()).map(|t| t.path.clone());
+        let Some(source) = source else {
+            self.notice = Some(tr("Open the repository's own checkout to start an agent session.").into());
+            return;
+        };
+        if self.agents.form.is_some() {
+            self.notice = Some(tr("Close the open agent session dialog first.").into());
+            return;
+        }
+        if self.agents.sessions.len() >= MAX_SESSIONS {
+            self.notice = Some(tr("Remove a saved session before creating another.").into());
+            return;
+        }
+        let hosting_page = self.dialog.as_ref().is_some_and(|d| matches!(d.kind, crate::app::DialogKind::Hosting));
+        if hosting_page && self.forge.editing() {
+            self.notice = Some(tr("Finish or discard what is open in Hosting first.").into());
+            return;
+        }
+        self.agents.hosting = self.agent_hosting();
+        self.dispatch(crate::app::Intent::View(View::Agents));
+        // A Hosting page stays open over the views; Agents shows once it closes.
+        if hosting_page {
+            self.dialog = None;
+        }
+        self.agents.new_form_from(source, &self.drafting, origin, material, base, &self.context);
+        if let Some(task) = task {
+            let saved = self.agents.saved.clone();
+            if let Some(f) = &mut self.agents.form {
+                f.choose(briefing::Choice::Task(task), &saved);
+            }
+        }
+        self.terminal_log.push("agent_start_from_host", false);
+    }
+
+    /// Integrate's last step for a session from a pull request: the original checkout's
+    /// Push dialog, set to push the agent's branch to the pull request's branch. Its
+    /// review shows the commits; Secret protection checks them when it pushes.
+    fn agent_push_handoff(&mut self) -> Result<()> {
+        let s = self.agents.selected().ok_or_else(|| model::invalid("Select a session."))?;
+        let r = self.agents.integration.review.as_ref().ok_or_else(|| model::invalid("Check integration first."))?;
+        let push = r.push.clone().ok_or_else(|| model::invalid("Check integration first."))?;
+        if s.active() || s.record != r.owner {
+            return Err(model::invalid("The session changed. Stop it and check integration again."));
+        }
+        let record = s.record.clone();
+        self.open(record.source);
+        let tab = self.tabs.get(self.active).ok_or_else(|| model::invalid("Open the original checkout."))?;
+        let Some(snapshot) = &tab.snapshot else {
+            return Err(model::invalid(
+                "The original checkout is loading. Return to Agents and check integration when it is ready.",
+            ));
+        };
+        let remote = snapshot.remotes.iter().position(|r| r.name == push.remote.as_bytes());
+        let Some(remote) = remote else {
+            return Err(model::invalid("The pull request's remote is no longer configured here."));
+        };
+        self.show_dialog(crate::app::DialogKind::Push);
+        if let Some(d) = &mut self.dialog {
+            d.remote = remote;
+            d.branch = record.branch.into_bytes();
+            d.second.clone_from(&push.branch);
+            d.flag = false;
+        }
+        self.terminal_log.push("agent_push_reviewed", false);
         Ok(())
     }
 }
@@ -506,9 +703,40 @@ fn session_head(ui: &mut Ui, s: &Session, w: &mut Widgets, ready: bool, narrow: 
         return;
     }
     let meta = Rect::from_min_max(pos2(rect.left() + inset, line.bottom() + 2.0), pos2(rect.right() - 16.0, rect.bottom() - 2.0));
-    let galley = ui.painter().layout_job(facts(s, meta.width()));
+    // Where the session came from, as a link at the end of the facts: "#482 on GitHub".
+    let link = s.record.origin.as_ref().map(|o| (o.url.clone(), trf!("{item} on {host}", item = o.short(), host = &o.host)));
+    let link_width = link.as_ref().map_or(0.0, |(_, text)| {
+        ui.painter().layout_no_wrap(text.clone(), FontId::proportional(12.0), TEXT()).size().x + 14.0 + 26.0
+    });
+    let room = (meta.width() - link_width).max(meta.width() * 0.5);
+    let galley = ui.painter().layout_job(facts(s, room));
+    let end = meta.left() + galley.size().x;
     ui.painter()
         .galley(pos2(meta.left(), meta.center().y - galley.size().y / 2.0), galley, HINT());
+    if let Some((url, text)) = link {
+        ui.painter().text(pos2(end + 6.0, meta.center().y), Align2::LEFT_CENTER, "·", FontId::proportional(12.0), FAINT());
+        let place = Rect::from_min_size(pos2(end + 18.0, meta.center().y - 11.0), vec2((meta.right() - end - 18.0).max(0.0), 22.0));
+        // A child over the header's own rect: the header keeps its height.
+        let mut child = ui.new_child(
+            UiBuilder::new()
+                .id_salt("agents-origin")
+                .max_rect(place)
+                .layout(Layout::left_to_right(Align::Center)),
+        );
+        child.set_clip_rect(place.intersect(ui.clip_rect()));
+        let r = child
+            .add(
+                Button::new(RichText::new(&text).size(12.0).color(ACCENT_TEXT()))
+                    .frame(false)
+                    .min_size(vec2(0.0, 22.0)),
+            )
+            .on_hover_text(&url)
+            .on_hover_cursor(CursorIcon::PointingHand);
+        pages::control(w, "agents-origin", &r, ui.clip_rect());
+        if r.clicked() {
+            *action = Some(Action::OpenUrl(url));
+        }
+    }
 }
 
 /// The one action that fits the session's state, and Mark as seen while it waits.
@@ -616,7 +844,9 @@ fn terminal(ui: &mut Ui, s: &mut Session, w: &mut Widgets, ready: bool, narrow: 
         return;
     };
     // The input's row is the card's foot: a band under the screen, closed by a hairline.
-    let foot = Rect::from_min_max(pos2(area.left() + 1.0, area.bottom() - CONTROL - 17.0), area.max - vec2(1.0, 1.0));
+    // A first message waiting in it makes it taller.
+    let input = t.input_height(ui, true);
+    let foot = Rect::from_min_max(pos2(area.left() + 1.0, area.bottom() - input - 17.0), area.max - vec2(1.0, 1.0));
     ui.painter()
         .rect_filled(foot, CornerRadius { nw: 0, ne: 0, sw: 7, se: 7 }, PANEL());
     ui.painter()
@@ -631,7 +861,7 @@ fn terminal(ui: &mut Ui, s: &mut Session, w: &mut Widgets, ready: bool, narrow: 
             crate::terminal::PaneAction::TryAgain => Action::Restart,
         });
     }
-    for id in ["terminal-screen", "terminal-command", "terminal-send", "terminal-settings", "terminal-try-again"] {
+    for id in ["terminal-screen", "terminal-command", "terminal-send", "terminal-settings", "terminal-try-again", "terminal-first-clear"] {
         if let Some(c) = w.get_mut(id) {
             c.rect = c.rect.intersect(inner);
             c.enabled &= ui.is_enabled();

@@ -389,5 +389,12 @@
   "No reviews yet.": "Рецензий пока нет.",
   "No changed files returned.": "Изменённые файлы не получены.",
   "Load threads": "Загрузить обсуждения",
-  "Load threads to reply, resolve or reopen.": "Загрузите обсуждения, чтобы ответить, решить или открыть повторно."
+  "Load threads to reply, resolve or reopen.": "Загрузите обсуждения, чтобы ответить, решить или открыть повторно.",
+  "Start agent": "Запустить агента",
+  "Still running": "Ещё выполняются",
+  "Starts a new branch from the pull request's head.": "Создаёт новую ветку от вершины pull request.",
+  "{n} open": "открытых: {n}",
+  "{n} failed": "не пройдено: {n}",
+  "Finish or discard what is open in Hosting first.": "Сначала завершите или отмените то, что открыто в разделе «Хостинг».",
+  "No open comments": "Нет открытых комментариев"
 }

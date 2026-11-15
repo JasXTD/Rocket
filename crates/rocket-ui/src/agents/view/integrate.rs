@@ -34,6 +34,13 @@ pub(super) fn show(
 
 fn steps(ui: &mut Ui, s: &Session, state: &Integration, w: &mut Widgets, ready: bool, action: &mut Option<Action>) {
     let idle = ready && !s.active();
+    // A session from a pull request pushes back to its branch instead of merging here.
+    let pull = s.record.origin.as_ref().filter(|o| o.push.is_some()).map(|o| o.number);
+    let (check_title, check_about) = if pull.is_some() {
+        (tr("Check it against the pull request"), tr("The pull request's branch must not have moved."))
+    } else {
+        (tr("Check it against the original checkout"), tr("Both checkouts must be clean."))
+    };
     Frame::new()
         .fill(PANEL())
         .stroke(Stroke::new(1.0, CARD_STROKE()))
@@ -63,8 +70,8 @@ fn steps(ui: &mut Ui, s: &Session, state: &Integration, w: &mut Widgets, ready: 
                 ui,
                 2,
                 state.review.is_some(),
-                tr("Check it against the original checkout"),
-                tr("Both checkouts must be clean."),
+                check_title,
+                check_about,
                 w,
                 action,
                 |ui, w, action| {
@@ -88,29 +95,50 @@ fn steps(ui: &mut Ui, s: &Session, state: &Integration, w: &mut Widgets, ready: 
                     let Some(r) = &state.review else { return };
                     ui.add_space(9.0);
                     pages::well(ui, |ui| {
-                        let into = match r.merge.head() {
-                            rocket_git::Head::Branch { name, .. } => String::from_utf8_lossy(name),
-                            _ => std::borrow::Cow::Borrowed("Detached"),
-                        };
-                        pages::key_value(ui, tr("Merge into"), 110.0, |ui| {
-                            ui.add(Label::new(RichText::new(into.as_ref()).monospace().size(12.5)).wrap());
-                            ui.add(
-                                Label::new(
-                                    RichText::new(crate::views::display_path(&r.owner.source))
-                                        .size(12.0)
-                                        .color(HINT()),
-                                )
-                                .wrap(),
-                            );
-                        });
+                        match (&r.merge, &r.push) {
+                            (Some(merge), _) => {
+                                let into = match merge.head() {
+                                    rocket_git::Head::Branch { name, .. } => String::from_utf8_lossy(name),
+                                    _ => std::borrow::Cow::Borrowed("Detached"),
+                                };
+                                pages::key_value(ui, tr("Merge into"), 110.0, |ui| {
+                                    ui.add(Label::new(RichText::new(into.as_ref()).monospace().size(12.5)).wrap());
+                                    ui.add(
+                                        Label::new(
+                                            RichText::new(crate::views::display_path(&r.owner.source))
+                                                .size(12.0)
+                                                .color(HINT()),
+                                        )
+                                        .wrap(),
+                                    );
+                                });
+                            }
+                            (None, Some(p)) => {
+                                pages::key_value(ui, tr("Push to"), 110.0, |ui| {
+                                    ui.add(Label::new(RichText::new(&p.branch).monospace().size(12.5)).wrap());
+                                    let about = match pull {
+                                        Some(n) => trf!("{remote} · pull request #{n}", remote = &p.remote, n),
+                                        None => p.remote.clone(),
+                                    };
+                                    ui.add(Label::new(RichText::new(about).size(12.0).color(HINT())).wrap());
+                                });
+                            }
+                            (None, None) => {}
+                        }
                         pages::key_value(ui, tr("Agent branch"), 110.0, |ui| {
                             ui.add(Label::new(RichText::new(&r.owner.branch).monospace().size(12.5)).wrap());
                         });
-                        ui.label(format!(
-                            "{} · {}",
-                            trn!(r.merge.incoming(), "{n} incoming commit", "{n} incoming commits"),
-                            trn!(r.comparison.files.len(), "{n} changed file", "{n} changed files")
-                        ));
+                        let commits = if r.push.is_some() {
+                            trn!(r.incoming(), "{n} commit", "{n} commits")
+                        } else {
+                            trn!(r.incoming(), "{n} incoming commit", "{n} incoming commits")
+                        };
+                        let mut facts = format!("{commits} · {}", trn!(r.comparison.files.len(), "{n} changed file", "{n} changed files"));
+                        if r.push.is_some() {
+                            facts.push_str(" · ");
+                            facts.push_str(tr("a fast-forward"));
+                        }
+                        ui.label(facts);
                         ui.add_space(2.0);
                         let b = button(ui, Look::Plain, None, false, tr("Compare committed changes"), idle);
                         pages::control(w, "agents-integration-compare", &b, ui.clip_rect());
@@ -121,6 +149,27 @@ fn steps(ui: &mut Ui, s: &Session, state: &Integration, w: &mut Widgets, ready: 
                 },
             );
             line_between(ui);
+            if pull.is_some() {
+                step(
+                    ui,
+                    3,
+                    false,
+                    tr("Push to the pull request"),
+                    tr("Opens the push review. Secret protection checks the commits."),
+                    w,
+                    action,
+                    |ui, w, action| {
+                        let enabled = idle && state.review.as_ref().is_some_and(|r| r.push.is_some() && r.incoming() > 0);
+                        let r = button(ui, Look::Primary, None, false, tr("Review push"), enabled);
+                        pages::control(w, "agents-integration-push", &r, ui.clip_rect());
+                        if r.clicked() {
+                            *action = Some(Action::PushIntegration);
+                        }
+                    },
+                    |_, _, _| (),
+                );
+                return;
+            }
             step(
                 ui,
                 3,
@@ -130,7 +179,7 @@ fn steps(ui: &mut Ui, s: &Session, state: &Integration, w: &mut Widgets, ready: 
                 w,
                 action,
                 |ui, w, action| {
-                    let enabled = idle && state.review.as_ref().is_some_and(|r| r.merge.incoming() > 0);
+                    let enabled = idle && state.review.as_ref().is_some_and(|r| r.merge.is_some() && r.incoming() > 0);
                     let r = button(ui, Look::Primary, None, false, tr("Review merge"), enabled);
                     pages::control(w, "agents-integration-merge", &r, ui.clip_rect());
                     if r.clicked() {

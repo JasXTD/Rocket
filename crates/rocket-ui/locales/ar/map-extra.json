@@ -326,5 +326,13 @@
   "build ignore": "مستثنى من البناء",
   "Package root · {package}": "جذر الحزمة · {package}",
   "Folder · {package}": "مجلد · {package}",
-  "Package · {package}": "حزمة · {package}"
+  "Package · {package}": "حزمة · {package}",
+  "{n} lines": {
+    "zero": "لا أسطر",
+    "one": "سطر واحد",
+    "two": "سطران",
+    "few": "{n} أسطر",
+    "many": "{n} سطرًا",
+    "other": "{n} سطر"
+  }
 }

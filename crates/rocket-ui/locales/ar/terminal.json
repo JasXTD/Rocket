@@ -42,5 +42,8 @@
   "Your login shell, from $SHELL": "صدفة تسجيل الدخول، من $SHELL",
   "Your own program": "برنامجك الخاص",
   "{shell} isn't installed. Choose another shell.": "{shell} غير مثبّتة. اختر صدفة أخرى.",
-  "{shell} isn't on this system. Choose another shell.": "{shell} غير متاحة على هذا النظام. اختر صدفة أخرى."
+  "{shell} isn't on this system. Choose another shell.": "{shell} غير متاحة على هذا النظام. اختر صدفة أخرى.",
+  "Send": "إرسال",
+  "This program didn't turn on pasted input. Send the message as one line.": "لم يفعّل هذا البرنامج وضع اللصق. أرسل الرسالة في سطر واحد.",
+  "First message from {from} · not sent yet": "الرسالة الأولى من {from} · لم تُرسل بعد"
 }

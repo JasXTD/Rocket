@@ -42,5 +42,8 @@
   "Your login shell, from $SHELL": "Votre shell de connexion, depuis $SHELL",
   "Your own program": "Votre programme",
   "{shell} isn't installed. Choose another shell.": "{shell} n’est pas installé. Choisissez un autre shell.",
-  "{shell} isn't on this system. Choose another shell.": "{shell} n’est pas disponible sur ce système. Choisissez un autre shell."
+  "{shell} isn't on this system. Choose another shell.": "{shell} n’est pas disponible sur ce système. Choisissez un autre shell.",
+  "Send": "Envoyer",
+  "This program didn't turn on pasted input. Send the message as one line.": "Ce programme n’a pas activé la saisie collée. Envoyez le message sur une seule ligne.",
+  "First message from {from} · not sent yet": "Premier message issu de {from} · pas encore envoyé"
 }
