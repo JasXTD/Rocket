@@ -40,17 +40,16 @@ open **Help → Setup Guide** in the app. **Ctrl+K** opens the command palette a
 guide.
 
 > [!NOTE]
-> [Download Rocket 0.92.4](https://github.com/JasXTD/Rocket/releases/tag/v0.92.4):
+> [Download Rocket 0.92.5](https://github.com/JasXTD/Rocket/releases/tag/v0.92.5):
 > Windows x64, Linux x64 (glibc 2.43+) and macOS 15+ previews for Apple Silicon and Intel.
 > The Mac preview is not Developer-ID-signed or notarized.
 > Pick your package on the [download page](https://jasxtd.github.io/Rocket/get.html), or
 > [build from source](#build-and-run).
 
-**New in 0.92.4:** [Insights](docs/Insights.md) with pull request trends, review
-timing and exports; Rust module maps; faster history; and Agents with Copilot CLI,
-conversation resume, attention status and guided integration. This release also
-fixes security boundaries, hosting adapters and loading/layout issues, and updates
-the UI framework. See the [release notes](docs/releases/0.92.4.md).
+**New in 0.92.5:** a Windows installer alongside the portable ZIP; cross-language
+Code Map and Modules; Agents launched from issues, pull requests and failed CI
+runs; Forgejo/Codeberg hosting; GitLab/Gitea Explore; and security/UI refinements.
+See the [full release notes](docs/releases/0.92.5.md).
 
 ## Features
 
@@ -326,7 +325,7 @@ the rest.
 
 ✅ supported as described · 💲 paid plan · — not documented in the sources checked
 
-Updated for **Rocket 0.92.4 on 2026-11-14**. This
+Updated for **Rocket 0.92.5 on 2026-11-16**. This
 compares documented capabilities, not speed, maturity or identical coverage. Features
 vary by platform, host and plan; AI providers may require a separate subscription. See
 [Platforms](#platforms) for Rocket's package requirements and preview status.

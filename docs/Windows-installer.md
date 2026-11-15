@@ -2,7 +2,7 @@
 
 Rocket keeps the portable ZIP. The optional Inno Setup package wraps the same
 verified files; it does not download Git or another runtime during installation.
-Installer builds stay local until separately approved for publication.
+Download Setup or the portable ZIP from [GitHub Releases](https://github.com/JasXTD/Rocket/releases/tag/v0.92.5).
 
 ## Installation and removal
 
@@ -60,7 +60,7 @@ from that ZIP's verification record:
 
 ```powershell
 .\tools\Package-Installer.ps1 `
-  -Archive 'tools\releases\Rocket-0.92.4-windows-x64.zip' `
+  -Archive 'tools\releases\Rocket-0.92.5-windows-x64.zip' `
   -ArchiveSha256 '<reviewed ZIP SHA-256>' `
   -Compiler '<verified Inno Setup 6.7.3 directory>\ISCC.exe' `
   -CompareLocalSshKeys
@@ -111,6 +111,6 @@ The source and runner require successful native acceptance before publishing an
 installer. A clean Windows 11 machine remains a separate compatibility check.
 
 Local acceptance on 14 November 2026 passed all 13 native lifecycle cases using
-the released 0.92.4 payload, plus six package-audit and eight updater regression
+the released 0.92.5 payload, plus six package-audit and eight updater regression
 cases. Native tests used Windows 10 and an isolated test registration/profile.
 No real hosting login was used and no installer was published.

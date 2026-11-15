@@ -33,7 +33,7 @@ feature. The [README](README.md) gives an overview.
 The credential and Linux safeguards described below are included in the 0.92.4
 release; their former development-status labels did not reflect publication.
 
-## Repository input hardening for the next release
+## Repository input hardening (0.92.5)
 
 Code Map applies one 10,000-file / 64 MiB budget to source reads, including Rust
 `#[path]` follow-ups. CODEOWNERS matching has a separate bounded work allowance,

@@ -4,6 +4,8 @@
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const project = path.resolve(__dirname, '../..'), docs = path.join(project, 'docs');
 const GITHUB = 'https://github.com/JasXTD/Rocket', SITE = 'https://jasxtd.github.io/Rocket/';
+const VERSION = fs.readFileSync(path.join(project, 'Cargo.toml'), 'utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"/)[1];
+const releaseAssets = new Set(['Setup-x64.exe', 'windows-x64.zip', 'linux-x64.tar.gz', 'macos-arm64-preview.zip', 'macos-x64-preview.zip'].map(name => `Rocket-${VERSION}-${name}`));
 const pages = ['index.html', 'get.html', '404.html'];
 const problems = [], seen = { links: 0, images: 0, github: 0 };
 const fail = (page, text) => problems.push(`${page}: ${text}`);
@@ -23,8 +25,9 @@ for (const page of pages) {
     if (/^https?:/.test(value)) {
       if (value === GITHUB || value === GITHUB + '.git') continue;
       const release = GITHUB + '/releases/';
-      if (value === release + 'tag/v0.92.4' || value === release + 'download/v0.92.4/SHA256SUMS'
-        || /^Rocket-0\.92\.4-(?:windows-x64\.zip|linux-x64\.tar\.gz|macos-(?:arm64|x64)-preview\.zip)$/.test(value.startsWith(release+'download/v0.92.4/') ? value.slice((release+'download/v0.92.4/').length) : '')) {
+      const download = release + `download/v${VERSION}/`;
+      if (value === release + `tag/v${VERSION}` || value === download + 'SHA256SUMS'
+        || (value.startsWith(download) && releaseAssets.has(value.slice(download.length)))) {
         seen.github++; continue;
       }
       if (value.startsWith(GITHUB + '/blob/main/')) {

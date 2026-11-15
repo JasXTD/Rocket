@@ -10,7 +10,9 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
-## Unreleased
+## 0.92.5 — Code Map, connected Agents and Windows installer
+
+See [full release notes](docs/releases/0.92.5.md) for downloads, requirements and validation limits.
 
 - Security: bound Code Map's Rust path-follow-up reads and CODEOWNERS matching work,
   including cancellation inside wildcard matching. Installer packaging no longer
@@ -41,7 +43,7 @@ keep detailed test evidence in `VALIDATION.md`.
   installation, shortcuts, a separate updater-compatible app folder and guarded
   uninstall. Packaging checks the exact verified payload for credential material.
   Local install, upgrade, cancellation and uninstall acceptance passed; the new
-  installer artifact is not published yet.
+  installer is available alongside the portable ZIP.
 - Map → Code → Folders is a code map: open folders become boxes, and arrows between
   cards show which files use which across the repository's Rust, JavaScript and
   TypeScript, Python and Go packages, numbered by the files that use. **Colour** shows
