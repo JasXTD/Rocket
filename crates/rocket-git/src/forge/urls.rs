@@ -85,7 +85,7 @@ impl ForgeConfig {
             ForgeProvider::Bitbucket => "https://api.bitbucket.org/2.0".into(),
             ForgeProvider::BitbucketServer => format!("{server}/rest/api/1.0"),
             ForgeProvider::GitLab => format!("{server}/api/v4"),
-            ForgeProvider::Gitea => format!("{server}/api/v1"),
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => format!("{server}/api/v1"),
             ForgeProvider::Azure | ForgeProvider::AzureServer => server.clone(),
         };
         Ok(Self {
@@ -266,7 +266,8 @@ impl ForgeRepository {
     /// Known public hosts only. Custom hosts need an explicit provider/server,
     /// never a guess based on a hostname or repository-supplied command.
     pub fn from_known_remote(remote: &[u8]) -> Option<Self> {
-        for provider in [ForgeProvider::GitHub, ForgeProvider::GitLab, ForgeProvider::Bitbucket, ForgeProvider::Gitea] {
+        // Forgejo's default server is Codeberg, the public host that runs it.
+        for provider in [ForgeProvider::GitHub, ForgeProvider::GitLab, ForgeProvider::Bitbucket, ForgeProvider::Gitea, ForgeProvider::Forgejo] {
             if let Some(repo) = Self::from_remote(ForgeConfig::new(provider, provider.default_server()).ok()?, remote) {
                 return Some(repo);
             }
@@ -429,6 +430,32 @@ mod tests {
             assert!(ForgeRepository::from_remote(c.clone(),remote.as_bytes()).is_none());
         }
         assert_eq!(c.with_fixture(12345).unwrap().api(), "http://127.0.0.1:12345/github-enterprise/api/v3");
+    }
+    #[test]
+    fn forgejo_uses_gitea_paths_and_knows_codeberg() {
+        let p = ForgeProvider::Forgejo;
+        assert_eq!(ForgeProvider::from_key("forgejo"), Some(p));
+        assert!(p.is_gitea() && ForgeProvider::Gitea.is_gitea() && !ForgeProvider::GitLab.is_gitea());
+        let c = ForgeConfig::new(p, "https://Forge.example.org:3000/git/").unwrap();
+        assert_eq!((c.server(), c.api().as_str()), ("https://forge.example.org:3000/git", "https://forge.example.org:3000/git/api/v1"));
+        assert_eq!(c.clone().with_fixture(12345).unwrap().api(), "http://127.0.0.1:12345/forgejo");
+        for remote in ["https://forge.example.org:3000/git/team/資料.git", "git@forge.example.org:team/資料.git", "ssh://git@forge.example.org:2222/team/%E8%B3%87%E6%96%99.git"] {
+            let repo = ForgeRepository::from_remote(c.clone(), remote.as_bytes()).unwrap();
+            assert_eq!(repo.path(), "team/資料");
+            assert_eq!(repo.item_url(ForgeKind::Pulls, 7), "https://forge.example.org:3000/git/team/%E8%B3%87%E6%96%99/pulls/7");
+            assert_eq!(repo.item_url(ForgeKind::Issues, 8), "https://forge.example.org:3000/git/team/%E8%B3%87%E6%96%99/issues/8");
+        }
+        // Codeberg runs Forgejo: its remotes are known without a saved account.
+        for remote in ["https://codeberg.org/team/repo.git", "git@codeberg.org:team/repo.git", "ssh://git@codeberg.org/team/repo"] {
+            let repo = ForgeRepository::from_known_remote(remote.as_bytes()).unwrap();
+            assert_eq!((repo.config().provider(), repo.config().server(), repo.path()), (p, "https://codeberg.org", "team/repo"));
+            assert_eq!(repo.commit_url(&ObjectId::parse(&"a".repeat(40)).unwrap()), format!("https://codeberg.org/team/repo/commit/{}", "a".repeat(40)));
+        }
+        let gitea = ForgeRepository::from_known_remote(b"https://gitea.com/team/repo.git").unwrap();
+        assert_eq!(gitea.config().provider(), ForgeProvider::Gitea);
+        for remote in ["https://codeberg.org.evil.example/team/repo.git", "https://codeberg.org/team/sub/repo.git", "git@codeberg.org:team/%2e%2e.git"] {
+            assert!(ForgeRepository::from_known_remote(remote.as_bytes()).is_none(), "{remote}");
+        }
     }
     #[test]
     fn bitbucket_server_context_paths_and_personal_projects() {

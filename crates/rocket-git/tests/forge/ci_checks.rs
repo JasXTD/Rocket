@@ -310,6 +310,145 @@ case!(gitea_statuses_runs_and_rerun, {
     h.mode(1);
     assert_eq!(h.checks(FAIL).rerun, Some(ForgeRerunBlock::Unsupported));
 });
+// ------------------------------------------------------------------ Forgejo
+// Forgejo keeps Gitea's commit statuses, but its runs have their own shape
+// (codeberg.org/swagger.v1.json, Forgejo 17), and its API grew in steps.
+const FORGEJO_17: usize = 0;
+const FORGEJO_16: usize = 1; // jobs, but no re-run
+const FORGEJO_12: usize = 2; // runs, but no jobs
+const FORGEJO_11: usize = 3; // no runs at all
+const FORGEJO_REFUSES_SECOND: usize = 4;
+const FORGEJO_HIDDEN_REPO: usize = 5;
+fn forgejo_run_json(index: u64, id: u64, status: &str, sha: &str, pretty: &str, event: &str) -> String {
+    format!(
+        r#"{{"id":{id},"index_in_repo":{index},"title":"Fix the build\nmore","workflow_id":"ci.yml","prettyref":"{pretty}","commit_sha":"{sha}","event":"{event}","trigger_event":"{event}","status":"{status}","created":"{}","started":"{}","stopped":"{}","updated":"{}","duration":60000000000,"html_url":"https://codeberg.org/team/sample/actions/runs/{index}","need_approval":false,"is_ref_deleted":false}}"#,
+        ago(120), ago(120), ago(60), ago(60)
+    )
+}
+fn forgejo(req: &Request, mode: usize) -> (u16, String, Vec<(String, String)>) {
+    let (path, query) = req.path.split_once('?').unwrap_or((&req.path, ""));
+    let missing = || (404, r#"{"message":"404 Not Found"}"#.to_string(), vec![]);
+    let base = "/forgejo/repos/team/sample";
+    if req.method == "POST" {
+        let job = path.strip_prefix(&format!("{base}/actions/jobs/")).and_then(|p| p.strip_suffix("/rerun")).expect("only jobs are re-run");
+        if mode != FORGEJO_17 && mode != FORGEJO_REFUSES_SECOND {
+            return missing();
+        }
+        if mode == FORGEJO_REFUSES_SECOND && job == "71" {
+            return (400, r#"{"message":"job is still running"}"#.into(), vec![]);
+        }
+        assert!(matches!(job, "70" | "71"), "only failed jobs are re-run: {job}");
+        return (204, String::new(), vec![]);
+    }
+    if path == "/forgejo/version" {
+        let version = if mode == FORGEJO_16 { "16.0.2+gitea-1.22.0" } else { "17.0.0-100-2254cb0+gitea-1.22.0" };
+        return response(&format!(r#"{{"version":"{version}"}}"#));
+    }
+    if path == base {
+        if mode == FORGEJO_HIDDEN_REPO {
+            return missing();
+        }
+        return response(r#"{"full_name":"team/sample","archived":false,"permissions":{"admin":false,"push":true,"pull":true}}"#);
+    }
+    if let Some(sha) = path.strip_prefix(&format!("{base}/commits/")).and_then(|p| p.strip_suffix("/status")) {
+        return match sha {
+            PASS => response(r#"{"state":"success","total_count":1,"statuses":[{"context":"ci / test (push)","status":"success","target_url":"https://codeberg.org/team/sample/actions/runs/4/jobs/0"}]}"#),
+            FAIL => response(r#"{"state":"failure","total_count":2,"statuses":[{"context":"ci / build (push)","status":"failure","description":"Failure","target_url":"https://codeberg.org/team/sample/actions/runs/5/jobs/0"},{"context":"ci / test (push)","status":"success"}]}"#),
+            NONE => response(r#"{"state":"","total_count":0,"statuses":[]}"#),
+            _ => missing(),
+        };
+    }
+    if (mode == FORGEJO_11 || mode == FORGEJO_HIDDEN_REPO) && path.contains("/actions/") {
+        return missing();
+    }
+    if path == format!("{base}/actions/runs") {
+        let failed = forgejo_run_json(5, 7, "failure", FAIL, "main", "push");
+        if query.contains("head_sha=") {
+            assert!(query.contains(&format!("head_sha={FAIL}")) && query.contains("limit=20"), "{query}");
+            return response(&format!(r#"{{"total_count":1,"workflow_runs":[{failed}]}}"#));
+        }
+        assert!(query.contains("limit=30") && query.contains("page=1"), "{query}");
+        // Forgejo before 15 ignores ref: the reply holds every branch's runs.
+        let rows = [failed, forgejo_run_json(4, 6, "success", PASS, "feature/x", "push"), forgejo_run_json(3, 5, "running", NONE, "#12", "pull_request")].join(",");
+        return response(&format!(r#"{{"total_count":3,"workflow_runs":[{rows}]}}"#));
+    }
+    if path == format!("{base}/actions/runs/7") {
+        return response(&forgejo_run_json(5, 7, "failure", FAIL, "main", "push"));
+    }
+    if path == format!("{base}/actions/runs/7/jobs") {
+        if mode == FORGEJO_12 {
+            return missing();
+        }
+        assert!(query.is_empty(), "Forgejo lists all of a run's jobs at once");
+        return response(r#"[{"id":70,"run_id":7,"name":"build","status":"failure","attempt":1,"html_url":"https://codeberg.org/team/sample/actions/runs/5/jobs/0"},{"id":71,"run_id":7,"name":"lint","status":"failure","attempt":1},{"id":72,"run_id":7,"name":"test","status":"success","attempt":1},{"id":73,"run_id":7,"name":"deploy","status":"skipped","attempt":1}]"#);
+    }
+    missing()
+}
+fn posts(h: &Host) -> Vec<String> {
+    h.seen("POST").into_iter().map(|r| r.path).collect()
+}
+case!(forgejo_runs_jobs_and_a_rerun_of_each_failed_job, {
+    let h = Host::new(ForgeProvider::Forgejo, forgejo);
+    assert_eq!(h.marks(&[PASS, FAIL, NONE, UNKNOWN]), vec![(PASS.into(), ForgeCiState::Passed), (FAIL.into(), ForgeCiState::Failed), (NONE.into(), ForgeCiState::NotChecked)]);
+    // The checks popover: the commit's statuses and its run, with the run's failed jobs.
+    let d = h.checks(FAIL);
+    assert_eq!((d.checks[0].name.as_str(), d.rerun), ("ci / build (push)", None));
+    let run = &d.runs[0];
+    assert_eq!((run.title().as_str(), run.state, run.branch.as_deref(), run.subject.as_deref()), ("ci.yml · run 5", ForgeCheckState::Failed, Some("main"), Some("Fix the build")));
+    assert_eq!((run.failed.clone(), run.attempt, run.took), (vec!["build".to_string(), "lint".to_string()], Some(1), Some(60)));
+    let preview = h.session.preview_rerun(&d, &CancellationToken::new()).unwrap();
+    assert_eq!(h.session.submit_rerun(&preview, &CancellationToken::new()).unwrap().started, vec![("ci.yml · run 5".to_string(), Some(2))]);
+    // One request per failed job; Forgejo also runs the jobs that need it.
+    assert_eq!(posts(&h), ["/forgejo/repos/team/sample/actions/jobs/70/rerun", "/forgejo/repos/team/sample/actions/jobs/71/rerun"]);
+
+    // The Actions page: all branches, then main only (a server before 15 sends every branch).
+    let all = list(&h, None, 1);
+    assert_eq!(all.runs.iter().map(|r| (r.title(), r.state)).collect::<Vec<_>>(), [("ci.yml · run 5".to_string(), ForgeCheckState::Failed), ("ci.yml · run 4".to_string(), ForgeCheckState::Passed), ("ci.yml · run 3".to_string(), ForgeCheckState::Running)]);
+    assert_eq!((all.runs[2].branch.as_deref(), all.runs[2].event.as_deref(), all.more), (None, Some("pull request #12"), false), "#12 is a pull request, not a branch");
+    let main = list(&h, Some("main"), 1);
+    assert_eq!(main.runs.iter().map(|r| r.id).collect::<Vec<_>>(), [7]);
+    assert!(h.seen("GET").iter().any(|r| r.path.contains("ref=refs%2Fheads%2Fmain")));
+    // One run, read again, with its jobs: failures first, and a re-run of that run alone.
+    let details = h.session.ci_run(&h.repo, &all.runs[0], &CancellationToken::new()).unwrap();
+    assert_eq!(details.jobs.iter().map(|j| (j.name.as_str(), j.state)).collect::<Vec<_>>(), [("build", ForgeCheckState::Failed), ("lint", ForgeCheckState::Failed), ("test", ForgeCheckState::Passed), ("deploy", ForgeCheckState::Skipped)]);
+    assert_eq!((details.run.failed.clone(), details.run.attempt, details.rerun, details.error), (vec!["build".to_string(), "lint".to_string()], Some(1), None, None));
+    let preview = h.session.preview_run_rerun(&details, &CancellationToken::new()).unwrap();
+    h.session.submit_rerun(&preview, &CancellationToken::new()).unwrap();
+    assert_eq!(posts(&h).len(), 4);
+});
+case!(forgejo_older_servers_say_what_they_lack, {
+    let h = Host::new(ForgeProvider::Forgejo, forgejo);
+    let c = CancellationToken::new();
+    // 16 lists jobs but can't re-run them through its API.
+    h.mode(FORGEJO_16);
+    assert_eq!(h.checks(FAIL).rerun, Some(ForgeRerunBlock::Unsupported));
+    let details = h.session.ci_run(&h.repo, &list(&h, None, 1).runs[0], &c).unwrap();
+    assert_eq!((details.jobs.len(), details.rerun), (4, Some(ForgeRerunBlock::Unsupported)));
+    // 12 to 15 list runs but not their jobs: nothing to re-run, and the run says why.
+    h.mode(FORGEJO_12);
+    let d = h.checks(FAIL);
+    assert_eq!((d.runs.len(), d.failed_runs().count(), d.rerun), (1, 0, Some(ForgeRerunBlock::Unsupported)));
+    let details = h.session.ci_run(&h.repo, &list(&h, None, 1).runs[0], &c).unwrap();
+    assert_eq!((details.jobs.len(), details.error, details.rerun), (0, Some(ForgeFailure::Unsupported), None));
+    // 11 has no runs: statuses only, and Actions is told the server lists none.
+    h.mode(FORGEJO_11);
+    let d = h.checks(FAIL);
+    assert_eq!((d.checks.len(), d.runs.len(), d.rerun), (2, 0, Some(ForgeRerunBlock::Unsupported)));
+    assert!(matches!(h.session.ci_runs(&h.repo, None, 1, &c), Err(Error::Forge(ForgeFailure::Unsupported))));
+    // A repository this account can't read stays not found.
+    h.mode(FORGEJO_HIDDEN_REPO);
+    assert!(matches!(h.session.ci_runs(&h.repo, None, 1, &c), Err(Error::Forge(ForgeFailure::NotFound))));
+    assert!(posts(&h).is_empty());
+});
+case!(forgejo_names_what_started_when_a_later_job_is_refused, {
+    let h = Host::new(ForgeProvider::Forgejo, forgejo);
+    let d = h.checks(FAIL);
+    let preview = h.session.preview_rerun(&d, &CancellationToken::new()).unwrap();
+    h.mode(FORGEJO_REFUSES_SECOND);
+    let error = h.session.submit_rerun(&preview, &CancellationToken::new()).unwrap_err().to_string();
+    assert!(error.contains("In ci.yml · run 5, build started again, but lint wasn't sent: Forgejo refused it (hosting_rejected). It may already be running again"), "{error}");
+    assert_eq!(posts(&h).len(), 2, "no retry");
+});
 fn bitbucket(req: &Request, _mode: usize) -> (u16, String, Vec<(String, String)>) {
     let path = req.path.split('?').next().unwrap();
     assert_eq!(req.method, "GET", "Bitbucket is never asked to re-run");

@@ -87,7 +87,7 @@ impl ForgeSession {
                 }
                 (out, limited)
             }
-            ForgeProvider::Gitea => {
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => {
                 let (reviews, mut limited) =
                     self.thread_page(&format!("{path}/reviews?limit=50&page=1"), None, c)?;
                 let mut rows = Vec::new();
@@ -116,7 +116,15 @@ impl ForgeSession {
                 }
                 // Replies join their conversation across reviews; the general cap
                 // below then keeps at most MAX_THREADS conversations.
-                (parse::gitea(&rows)?, limited)
+                let mut threads = parse::gitea(&rows)?;
+                if p == ForgeProvider::Forgejo {
+                    // Forgejo's API has no endpoint to resolve or reopen a conversation
+                    // (only its website can), so its threads are shown read-only.
+                    for t in &mut threads {
+                        (t.can_resolve, t.can_unresolve) = (false, false);
+                    }
+                }
+                (threads, limited)
             }
             _ => return fail(ForgeFailure::Unsupported),
         };

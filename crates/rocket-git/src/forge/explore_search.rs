@@ -66,9 +66,10 @@ pub enum RepositorySearchOutcome {
 }
 
 impl ForgeProvider {
-    /// Hosts whose repositories Explore searches: GitLab, and Gitea with Forgejo.
+    /// Hosts whose repositories Explore searches: GitLab, and Gitea and Forgejo (Forgejo
+    /// kept Gitea's search).
     pub fn searches_repositories(self) -> bool {
-        matches!(self, Self::GitLab | Self::Gitea)
+        self == Self::GitLab || self.is_gitea()
     }
     /// Whether a repository search can filter by language: GitLab can, Gitea can't.
     pub fn filters_language(self) -> bool {
@@ -153,7 +154,7 @@ fn search_path(
             }
             path
         }
-        ForgeProvider::Gitea => {
+        ForgeProvider::Gitea | ForgeProvider::Forgejo => {
             let order = match sort {
                 RepositorySearchSort::Stars => "stars",
                 RepositorySearchSort::Updated => "updated",
@@ -346,10 +347,14 @@ mod tests {
         assert_eq!(anonymous, "/projects?search=x&order_by=last_activity_at&sort=desc&per_page=30&page=1");
         let tea = search_path(ForgeProvider::Gitea, "static site&q=evil", RepositorySearchSort::Updated, None, 3, true).unwrap();
         assert_eq!(tea, "/repos/search?q=static%20site%26q%3Devil&includeDesc=true&sort=updated&order=desc&limit=30&page=3");
+        // Forgejo kept Gitea's search: the same path, and no language filter either.
+        assert!(ForgeProvider::Forgejo.searches_repositories() && !ForgeProvider::Forgejo.filters_language());
+        assert_eq!(search_path(ForgeProvider::Forgejo, "static site&q=evil", RepositorySearchSort::Updated, None, 3, true).unwrap(), tea);
         for (provider, query, language) in [
             (ForgeProvider::GitLab, "", None),
             (ForgeProvider::GitLab, "a\nb", None),
             (ForgeProvider::Gitea, "site", Some("Go")),
+            (ForgeProvider::Forgejo, "site", Some("Go")),
             (ForgeProvider::GitHub, "site", None),
         ] {
             assert!(search_path(provider, query, RepositorySearchSort::Stars, language, 1, false).is_err(), "{provider:?} {query:?}");

@@ -27,6 +27,8 @@ pub(super) fn queued(
         ui.colored_label(MUTED(), tr("GitLab: send one single-line discussion with Comment and an empty review message. Submit other discussions or votes separately."));
     } else if s.pull.details.as_ref().is_some_and(|d|d.repository().config().provider()==ForgeProvider::Gitea) {
         ui.colored_label(MUTED(), tr("Gitea: up to 32 single-line comments in one reviewed submission."));
+    } else if s.pull.details.as_ref().is_some_and(|d|d.repository().config().provider()==ForgeProvider::Forgejo) {
+        ui.colored_label(MUTED(), tr("Forgejo: up to 32 single-line comments in one reviewed submission."));
     } else if s.pull.details.as_ref().is_some_and(|d|matches!(d.repository().config().provider(),ForgeProvider::Bitbucket|ForgeProvider::BitbucketServer|ForgeProvider::Azure|ForgeProvider::AzureServer)) {
         ui.colored_label(MUTED(), tr("Send one single-line comment at a time. Select Comment and leave the separate review message empty. Refresh to see published comments."));
         if s.pull.details.as_ref().is_some_and(|d|d.repository().config().provider()==ForgeProvider::Bitbucket) {

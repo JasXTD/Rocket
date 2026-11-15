@@ -132,7 +132,7 @@
   "custom commands program arguments script scope repository commit file branch submodule": "사용자 지정 명령 커스텀 명령어 프로그램 인수 인자 스크립트 범위 대상 리포지토리 저장소 커밋 파일 브랜치 서브모듈 하위 모듈",
   "external editor diff merge program arguments profile placeholder beyond compare kdiff3 winmerge vs code visual studio code meld p4merge tortoisegitmerge sublime notepad++ araxis": "외부 편집기 에디터 diff 비교 병합 머지 프로그램 인수 인자 프로필 자리 표시자 플레이스홀더 beyond compare kdiff3 winmerge vs code visual studio code meld p4merge tortoisegitmerge sublime notepad++ araxis",
   "git executable instance path program global name email identity": "git 실행 파일 인스턴스 경로 프로그램 전역 글로벌 이름 이메일 email 사용자 정보",
-  "hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea server profile connect": "호스팅 계정 로그인 브라우저 토큰 token github enterprise gitlab bitbucket azure devops gitea 서버 프로필 연결",
+  "hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea forgejo codeberg server profile connect": "호스팅 계정 로그인 브라우저 토큰 token github enterprise gitlab bitbucket azure devops gitea forgejo codeberg 서버 프로필 연결",
   "keyboard shortcuts keys keybindings hotkeys mouse buttons wheel gestures": "키보드 단축키 바로 가기 키 키 바인딩 핫키 마우스 버튼 휠 제스처",
   "lua scripts integrations jira extensions plugins packages install update custom ui panels connections accounts permissions playground": "lua 스크립트 통합 연동 jira 확장 플러그인 패키지 설치 업데이트 사용자 지정 커스텀 ui 패널 연결 계정 권한 playground 플레이그라운드",
   "mcp server port token endpoint fixture test repositories automation": "mcp 서버 포트 토큰 token 엔드포인트 픽스처 테스트 리포지토리 저장소 자동화",

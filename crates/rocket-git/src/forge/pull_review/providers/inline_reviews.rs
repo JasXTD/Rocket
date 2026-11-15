@@ -127,7 +127,7 @@ impl ForgeSession {
         number: u64,
         c: &CancellationToken,
     ) -> Result<()> {
-        if self.config.provider() != ForgeProvider::Gitea {
+        if !self.config.provider().is_gitea() {
             return Ok(());
         }
         let path = self.provider_path(repo, number)?;
@@ -212,7 +212,7 @@ impl ForgeSession {
                 }
                 Ok(out)
             }
-            ForgeProvider::Gitea => {
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => {
                 let mut out = ForgePullCollection {
                     items: vec![],
                     limited: reviews.limited,

@@ -132,7 +132,7 @@
   "custom commands program arguments script scope repository commit file branch submodule": "カスタムコマンド コマンド プログラム 引数 スクリプト スコープ 対象 リポジトリ コミット ファイル ブランチ サブモジュール",
   "external editor diff merge program arguments profile placeholder beyond compare kdiff3 winmerge vs code visual studio code meld p4merge tortoisegitmerge sublime notepad++ araxis": "外部 エディター 差分 マージ プログラム 引数 プロファイル プレースホルダー beyond compare kdiff3 winmerge vs code visual studio code meld p4merge tortoisegitmerge sublime notepad++ araxis",
   "git executable instance path program global name email identity": "git 実行ファイル インスタンス パス プログラム グローバル 名前 メール メールアドレス email ユーザー情報",
-  "hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea server profile connect": "ホスティング アカウント サインイン ログイン ブラウザー トークン token github enterprise gitlab bitbucket azure devops gitea サーバー プロファイル 接続",
+  "hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea forgejo codeberg server profile connect": "ホスティング アカウント サインイン ログイン ブラウザー トークン token github enterprise gitlab bitbucket azure devops gitea forgejo codeberg サーバー プロファイル 接続",
   "keyboard shortcuts keys keybindings hotkeys mouse buttons wheel gestures": "キーボード ショートカット キー キー割り当て キーバインド ホットキー マウス ボタン ホイール ジェスチャー",
   "lua scripts integrations jira extensions plugins packages install update custom ui panels connections accounts permissions playground": "lua スクリプト 連携 jira 拡張機能 プラグイン パッケージ インストール 更新 アップデート カスタム ui パネル 接続 アカウント 権限 playground プレイグラウンド",
   "mcp server port token endpoint fixture test repositories automation": "mcp サーバー ポート トークン token エンドポイント フィクスチャ テスト リポジトリ 自動化",

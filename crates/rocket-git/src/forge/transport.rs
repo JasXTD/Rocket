@@ -109,7 +109,7 @@ impl GitClient {
                 }
                 format!("Basic {}", basic(&format!("{username}:{token}")))
             }
-            ForgeProvider::Gitea => format!("token {token}"),
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => format!("token {token}"),
             _ => format!("Bearer {token}"),
         };
         let mut runner = self.runner.clone();
@@ -319,7 +319,7 @@ impl ForgeSession {
                 }
                 return fail(f);
             }
-            // Gitea confirms synchronous merges with 200 or 204 and no body.
+            // Gitea and Forgejo confirm synchronous merges with 200 or 204 and no body.
             // The merge adapter must verify the resulting PR with a scoped GET.
             // A re-run is confirmed by 201 alone: GitHub and Gitea send no body.
             let value=if text {
@@ -327,7 +327,7 @@ impl ForgeSession {
                 // before parsing paths/hunks. No response links are followed.
                 if response.body.len() > 256 * 1024 { return fail(ForgeFailure::InvalidResponse); }
                 Json::String(std::str::from_utf8(response.body).map_err(|_| Error::Forge(ForgeFailure::InvalidResponse))?.to_owned())
-            } else if (self.config.provider()==ForgeProvider::Gitea && operation=="hosting-merge-submit" && mutation && matches!(response.status,200|204) && response.body.is_empty())
+            } else if (self.config.provider().is_gitea() && operation=="hosting-merge-submit" && mutation && matches!(response.status,200|204) && response.body.is_empty())
                 || (operation==super::checks::RERUN && mutation && matches!(response.status,201|202|204) && response.body.iter().all(u8::is_ascii_whitespace))
                 // These state-change APIs confirm with 204. The thread adapter
                 // still reads back the selected discussion before success.

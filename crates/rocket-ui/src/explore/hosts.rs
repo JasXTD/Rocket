@@ -1,4 +1,4 @@
-//! Where Explore searches: GitHub, each GitLab or Gitea account in Preferences →
+//! Where Explore searches: GitHub, each GitLab, Gitea or Forgejo account in Preferences →
 //! Accounts (or Hosting's connected one), and gitlab.com and codeberg.org without an
 //! account. Also one result type for every host, and GitHub's search words, which the
 //! other hosts would look for in names and descriptions.
@@ -6,7 +6,8 @@ use crate::hosting_accounts::Account;
 use rocket_git::{ForgeConfig, ForgeProvider, GitHubSearchItem, RepositorySearchItem};
 
 /// Hosts that need no account: their public repositories, with the host's lower limits.
-pub const PUBLIC: [(ForgeProvider, &str); 2] = [(ForgeProvider::GitLab, "https://gitlab.com"), (ForgeProvider::Gitea, "https://codeberg.org")];
+/// Codeberg runs Forgejo, so a Forgejo account there takes the place of this entry.
+pub const PUBLIC: [(ForgeProvider, &str); 2] = [(ForgeProvider::GitLab, "https://gitlab.com"), (ForgeProvider::Forgejo, "https://codeberg.org")];
 
 /// One place Explore can search.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,13 +45,15 @@ impl Host {
     pub fn is_github(&self) -> bool {
         self.kind == HostKind::GitHub
     }
-    /// The host's name in sentences: GitHub, GitLab, Gitea, or Codeberg for codeberg.org.
+    /// The host's name in sentences: GitHub, GitLab, Gitea, Forgejo, or Codeberg for
+    /// codeberg.org.
     pub fn name(&self) -> &'static str {
         match self.provider {
-            ForgeProvider::Gitea if self.site() == "codeberg.org" => "Codeberg",
+            ForgeProvider::Gitea | ForgeProvider::Forgejo if self.site() == "codeberg.org" => "Codeberg",
             ForgeProvider::GitHub => "GitHub",
             ForgeProvider::GitLab => "GitLab",
             ForgeProvider::Gitea => "Gitea",
+            ForgeProvider::Forgejo => "Forgejo",
             _ => "GitHub",
         }
     }
@@ -121,7 +124,7 @@ pub fn hosts(forge: bool, accounts: &[Account], live: Option<(ForgeProvider, &st
 pub fn forge_sites(accounts: &[Account]) -> Vec<String> {
     let mut sites: Vec<String> = ["github.com", "gitlab.com", "codeberg.org", "gitea.com"].into_iter().map(String::from).collect();
     for a in accounts {
-        if matches!(a.provider, ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::GitLab | ForgeProvider::Gitea) {
+        if matches!(a.provider, ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::GitLab | ForgeProvider::Gitea | ForgeProvider::Forgejo) {
             let site = crate::ci_checks::server_name(&a.server);
             let site = site.split(':').next().unwrap_or(&site).to_ascii_lowercase();
             if !sites.contains(&site) {
@@ -263,14 +266,20 @@ mod tests {
                 "account:gitlab|https://gitlab.com|Me",
                 "account:gitea|https://git.example.org|Home server",
                 "live:gitlab|https://gitlab.example.com",
-                "public:gitea|https://codeberg.org",
+                "public:forgejo|https://codeberg.org",
             ],
             "gitlab.com moves up to the account; Bitbucket can't search"
         );
         assert_eq!((list[2].name(), list[2].site(), list[2].label()), ("Gitea", "git.example.org".into(), Some("Home server")));
         assert_eq!(list[4].name(), "Codeberg");
         let bare = hosts(true, &[], None);
-        assert_eq!(bare.iter().map(|h| h.key.as_str()).collect::<Vec<_>>(), ["github", "public:gitlab|https://gitlab.com", "public:gitea|https://codeberg.org"]);
+        assert_eq!(bare.iter().map(|h| h.key.as_str()).collect::<Vec<_>>(), ["github", "public:gitlab|https://gitlab.com", "public:forgejo|https://codeberg.org"]);
+        // Codeberg runs Forgejo: a Forgejo account there takes the public entry's place.
+        let codeberg = hosts(true, &[account(ForgeProvider::Forgejo, "https://codeberg.org", "Mine")], None);
+        assert_eq!(codeberg.iter().map(|h| h.key.as_str()).collect::<Vec<_>>(), ["github", "account:forgejo|https://codeberg.org|Mine", "public:gitlab|https://gitlab.com"]);
+        assert_eq!(codeberg[1].name(), "Codeberg");
+        let own = hosts(true, &[account(ForgeProvider::Forgejo, "https://forge.example.org", "Forge")], None);
+        assert_eq!((own[1].name(), own.len()), ("Forgejo", 4));
         let live_twice = hosts(true, &accounts, Some((ForgeProvider::Gitea, "https://git.example.org")));
         assert!(!live_twice.iter().any(|h| h.kind == HostKind::Live), "Hosting's account is the remembered one");
     }
@@ -280,8 +289,9 @@ mod tests {
         let sites = forge_sites(&[
             account(ForgeProvider::GitLab, "https://GitLab.Example.com:8443/gitlab", "Work"),
             account(ForgeProvider::Azure, "https://dev.azure.com/org", "Azure"),
+            account(ForgeProvider::Forgejo, "https://forge.example.org", "Forge"),
         ]);
-        assert_eq!(sites, ["github.com", "gitlab.com", "codeberg.org", "gitea.com", "gitlab.example.com"]);
+        assert_eq!(sites, ["github.com", "gitlab.com", "codeberg.org", "gitea.com", "gitlab.example.com", "forge.example.org"]);
     }
 
     #[test]

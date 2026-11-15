@@ -54,7 +54,7 @@ All) per month, and past 48 months per year. The bars add up to the Opened and M
 tiles. Beside the chart, the period is compared with the period of the same length
 before it: Opened, Merged and Median merge time with both medians' sample counts, and
 the tiles show the change. A comparison needs both periods in the loaded sample.
-GitHub, GHES, GitLab, Gitea and Bitbucket Cloud lists are read newest-updated first,
+GitHub, GHES, GitLab, Gitea, Forgejo and Bitbucket Cloud lists are read newest-updated first,
 and opening or merging a PR updates it, so a partial sample holds every PR opened or
 merged after the oldest update loaded (rows updated exactly then may continue on the
 next page). Weeks before that are drawn as **Not loaded**, the change is left out and
@@ -119,7 +119,7 @@ no one.
 Time to first review needs each PR's reviews, one request per PR, so it is read only
 when **Read reviews** is chosen: the PRs opened in the period, newest first, at most
 100 per click; **Read more** continues and **Stop** keeps what was read. Refresh
-clears them with the sample. Only GitHub, GitHub Enterprise Server and Gitea report
+clears them with the sample. Only GitHub, GitHub Enterprise Server, Gitea and Forgejo report
 when a review was submitted
 ([GitHub reviews](https://docs.github.com/en/rest/pulls/reviews#list-reviews-for-a-pull-request),
 [Gitea reviews](https://docs.gitea.com/api/1.25/operations/repo-list-pull-reviews/)).

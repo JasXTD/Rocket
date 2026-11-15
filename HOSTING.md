@@ -38,8 +38,25 @@ claim of real-account or self-hosted GitLab acceptance.
 | Azure DevOps Services | https://dev.azure.com/organization | project/repository | PRs, work items, reviewed PR creation/details, comments, votes and completion |
 | Azure DevOps Server | your HTTPS collection URL, including virtual directory | project/repository | PAT accounts, explicit API 6.0/7.0/7.1, PRs/work items, PR creation/details, comments, votes and completion |
 | Gitea | your HTTPS Gitea server | owner/repository | PRs, issues, reviewed creation/details, reviews and merge/squash/rebase |
+| Forgejo | https://codeberg.org or your HTTPS Forgejo server | owner/repository | Gitea's API: PRs, issues, reviewed creation/details, reviews and merge/squash/rebase; read-only review threads; CI marks, Actions runs and re-run, by server version |
 
-GitLab, Gitea and Bitbucket Server/Data Center support an explicitly configured HTTPS server and optional base path. Azure DevOps Server requires its collection path. Redirects are refused; enter the final server address.
+GitLab, Gitea, Forgejo and Bitbucket Server/Data Center support an explicitly configured HTTPS server and optional base path. Azure DevOps Server requires its collection path. Redirects are refused; enter the final server address.
+
+Forgejo, which Codeberg runs, kept Gitea's API (`/api/v1`, `Authorization: token`), so
+Rocket uses the Gitea adapter for it, with the differences in
+[Forgejo's API reference](https://codeberg.org/api/swagger) (checked against Forgejo 17):
+merges send Forgejo's `Do` field, which Gitea renamed `do`; Forgejo has no API to reply
+to, resolve or reopen a review conversation, so its threads are read-only; and its
+Actions runs have their own shape, and its API grew in steps: Rocket lists runs from
+Forgejo 12, a run's jobs from 16, and re-runs failed jobs from 17, one request per
+failed job (Forgejo also runs the jobs that need it again; `/version` tells the version).
+An older server shows commit statuses only, and Actions says when it lists no runs or
+no jobs.
+codeberg.org remotes are recognised as Forgejo, like github.com and gitea.com. A saved
+Forgejo account uses the provider key `forgejo`, which earlier Rocket builds don't
+know: they can't read an accounts file that holds one, and leave it unchanged. These
+adapters are checked against Forgejo-shaped mock services; no live Forgejo server or
+Codeberg account has been accepted.
 
 ## PR collaboration and saved drafts
 
@@ -52,8 +69,8 @@ as a complete zero. Open the provider for the full discussion and policy details
 GitLab supports comments and approval; its request-changes vote is unavailable in
 this adapter. Bitbucket Cloud/Server and Azure support comments and review votes.
 Their vote endpoints do not accept accompanying text: publish a separate comment
-if needed. Gitea supports comments, approvals and change requests with a message.
-GitHub.com/GHES, GitLab, Gitea, Bitbucket Cloud/Server and Azure Services/Server
+if needed. Gitea and Forgejo support comments, approvals and change requests with a message.
+GitHub.com/GHES, GitLab, Gitea, Forgejo, Bitbucket Cloud/Server and Azure Services/Server
 publish inline comments. Version 0.92.2 has thread reply/resolve/reopen controls
 for GitHub.com/GHES. The pending discussion extension is described below.
 
@@ -152,6 +169,7 @@ which GitHub Enterprise Server has from 3.17 on.
 | Bitbucket Server / Data Center | Reply to the original comment | Version-checked thread state; task severity is preserved |
 | Azure DevOps Services / Server | Reply inside the selected thread | Active ↔ Fixed; other server states are preserved |
 | Gitea | Use the provider website | Resolve / reopen a conversation (its first comment) |
+| Forgejo | Use the provider website | Use the provider website; Forgejo's API has no resolution endpoint, so threads are read-only |
 
 Gitea's stable 1.26 API supports resolution but not a documented review-thread
 reply endpoint. Rocket leaves Reply disabled rather than guessing a route from
@@ -361,6 +379,7 @@ Token permissions vary by provider and organization. Begin with repository metad
 - [Bitbucket API tokens](https://support.atlassian.com/bitbucket-cloud/docs/using-api-tokens/)
 - [Azure DevOps PAT guidance](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops)
 - [Gitea API authentication](https://docs.gitea.com/development/api-usage/)
+- [Forgejo API usage](https://forgejo.org/docs/latest/user/api/usage/)
 
 Existing GitHub repository/notification browsing through Git Credential Manager remains in its separate menu entry.
 
@@ -543,6 +562,7 @@ Hosting itself stays disconnected. Bitbucket Server / Data Center has no CI read
 | GitHub, GitHub Enterprise Server | Check runs and commit statuses: GitHub's `statusCheckRollup`, one GraphQL request for up to 50 commits; Actions runs when a token can't read it | Re-run failed jobs: `POST /repos/{owner}/{repo}/actions/runs/{id}/rerun-failed-jobs`, which also runs the jobs that need them; within 30 days, 50 attempts per run | Fine-grained: Actions Read and Commit statuses Read / Actions Read and write. Classic or browser sign-in: `repo` for private repositories / `repo`. Re-running also needs write access |
 | GitLab | The newest 100 pipelines, one request | Retry: `POST /projects/:id/pipelines/:id/retry`, which also retries canceled jobs | `read_api` / `api` and the Developer role (Maintainer on a protected branch) |
 | Gitea | Combined commit status, one request per commit (up to 20) | Re-run failed jobs: `POST /repos/{owner}/{repo}/actions/runs/{run}/rerun-failed-jobs` on a Gitea with the Actions API; older servers show results only | `read:repository` / `write:repository` |
+| Forgejo | Combined commit status, one request per commit (up to 20), with the commit's runs (Forgejo 12+) | Each failed job: `POST /repos/{owner}/{repo}/actions/jobs/{job}/rerun`, which also runs the jobs that need it (Forgejo 17+) | `read:repository` / `write:repository` |
 | Bitbucket Cloud | Commit statuses, which include Pipelines; one request per commit (up to 20) | None: the API can only start a new pipeline | `read:repository:bitbucket`, `read:pipeline:bitbucket` |
 | Azure DevOps Services and Server | The newest 100 builds of the repository plus commit statuses; two requests per refresh | None in this version | Code (Read) and Build (Read); Code (Status) also reads statuses |
 
@@ -555,7 +575,7 @@ credentials and are never followed with the token; a status linking to another
 site shows that site's name before it opens in the browser.
 
 **Re-run failed jobs** is offered only when the run has finished and failed and the
-host says the account can write to the repository (GitHub and Gitea:
+host says the account can write to the repository (GitHub, Gitea and Forgejo:
 `permissions.push`, as Merge checks; GitLab: Developer access or above). A classic
 GitHub token's scopes and a GitLab token's scopes are read when the host reports
 them. The review names host, repository, account, run, commit and failed jobs, and
@@ -588,6 +608,7 @@ dot on Actions says the current branch's newest run failed (red) or is running
 | GitHub, GitHub Enterprise Server | `GET /repos/{owner}/{repo}/actions/runs?per_page=30&page=N`, with `branch` | The run, and its `jobs?filter=latest` | Fine-grained: Actions Read. Classic or browser sign-in: `repo` for private repositories |
 | GitLab | `GET /projects/:id/pipelines?per_page=30&page=N&order_by=id&sort=desc`, with `ref` | The pipeline (its duration) and its jobs | `read_api` |
 | Gitea | `GET /repos/{owner}/{repo}/actions/runs?limit=30&page=N`, with `branch` | The run and its jobs | `read:repository` |
+| Forgejo | `GET /repos/{owner}/{repo}/actions/runs?limit=30&page=N`, with `ref=refs/heads/…` (Forgejo 12+; before 15 the server ignores `ref` and other branches' runs are dropped) | The run and `…/runs/{run}/jobs` (Forgejo 16+) | `read:repository` |
 | Bitbucket Cloud | `GET /repositories/{workspace}/{repo}/pipelines?sort=-created_on&pagelen=30&page=N`, with `target.branch` | The pipeline (by UUID) and its steps | `read:pipeline:bitbucket` |
 | Azure DevOps Services and Server | The repository, then `GET /{project}/_apis/build/builds?repositoryId=…&$top=30×N`, with `branchName` | The build and its timeline's jobs | Code (Read) and Build (Read) |
 
@@ -603,7 +624,7 @@ branch with that run chosen; the PR Checks tab's **All runs for** a branch does 
 same.
 
 These adapters are checked against provider-shaped mock services and the native
-`test-mcp-ci-checks` and `test-mcp-actions` runners only. No live GitHub, GitLab, Gitea, Bitbucket or Azure
+`test-mcp-ci-checks` and `test-mcp-actions` runners only. No live GitHub, GitLab, Gitea, Forgejo, Bitbucket or Azure
 DevOps project, organization policy or token scope has been accepted end to end.
 Unconfirmed from the providers' documentation: whether GitHub fine-grained tokens
 read check runs, which Gitea version first offers the Actions re-run API, and the

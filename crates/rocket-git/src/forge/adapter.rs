@@ -54,7 +54,7 @@ impl ForgeSession {
                 "{pre}/refs?filter={}&$top=100&api-version={}",
                 encode(&format!("heads/{branch}")), self.config.azure_api_version()
             ),
-            ForgeProvider::Gitea => format!("{pre}/branches/{}", encode(branch)),
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => format!("{pre}/branches/{}", encode(branch)),
             ForgeProvider::BitbucketServer => unreachable!("separate server adapter"),
         };
         let v = self
@@ -70,7 +70,7 @@ impl ForgeSession {
             .0;
         let id = match self.config.provider() {
             ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise => text(&v, &["commit", "sha"]),
-            ForgeProvider::GitLab | ForgeProvider::Gitea => text(&v, &["commit", "id"]),
+            ForgeProvider::GitLab | ForgeProvider::Gitea | ForgeProvider::Forgejo => text(&v, &["commit", "id"]),
             ForgeProvider::Bitbucket => text(&v, &["target", "hash"]),
             ForgeProvider::BitbucketServer => unreachable!("separate server adapter"),
             ForgeProvider::Azure | ForgeProvider::AzureServer => {
@@ -152,7 +152,7 @@ impl ForgeSession {
                         _ => "all",
                     }
                 ),
-                ForgeProvider::Gitea => format!(
+                ForgeProvider::Gitea | ForgeProvider::Forgejo => format!(
                     "{pre}/{}?state={state}&sort=recentupdate&limit={PAGE}&page={page}{}",
                     if pulls { "pulls" } else { "issues" },
                     if pulls { "" } else { "&type=issues" }
@@ -456,7 +456,7 @@ impl ForgeSession {
             return None;
         }
         let author = match self.config.provider() {
-            ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea => text_ref(v, &["user", "login"]),
+            ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea | ForgeProvider::Forgejo => text_ref(v, &["user", "login"]),
             ForgeProvider::GitLab => text_ref(v, &["author", "username"]),
             ForgeProvider::Bitbucket => text_ref(v, &["author", "display_name"]),
             ForgeProvider::Azure | ForgeProvider::AzureServer if azure_issue => {
@@ -473,7 +473,7 @@ impl ForgeSession {
             text_ref(v, &["state"])
         };
         let (source, target) = match self.config.provider() {
-            ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea => {
+            ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea | ForgeProvider::Forgejo => {
                 (text_ref(v, &["head", "ref"]), text_ref(v, &["base", "ref"]))
             }
             ForgeProvider::GitLab => (text_ref(v, &["source_branch"]), text_ref(v, &["target_branch"])),
@@ -511,7 +511,7 @@ impl ForgeSession {
         let source = quote(&d.source);
         let target = quote(&d.target);
         match self.config.provider() {
-            ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea => (
+            ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea | ForgeProvider::Forgejo => (
                 format!("{pre}/pulls"),
                 format!(
                     "{{\"title\":{title},\"body\":{body},\"head\":{source},\"base\":{target}}}"

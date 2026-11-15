@@ -1531,7 +1531,7 @@ fn details(
     if let Some(at) = item.updated {
         let label = match host.provider {
             ForgeProvider::GitLab => tr("Last activity"),
-            ForgeProvider::Gitea => tr("Last update"),
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => tr("Last update"),
             _ => tr("Last push"),
         };
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
@@ -1790,10 +1790,10 @@ mod tests {
                 }
                 fits(&mut app, &["explore-host", "explore-query", "explore-add-account", "explore-sort-stars", "explore-language", "explore-preview", "explore-open"]);
                 assert!(app.frame_widgets.get("explore-language").is_some_and(|c| c.enabled), "GitLab filters by language");
-                let codeberg = app.explore_hosts().into_iter().find(|h| h.kind == HostKind::Public && h.provider == ForgeProvider::Gitea).unwrap();
+                let codeberg = app.explore_hosts().into_iter().find(|h| h.kind == HostKind::Public && h.provider == ForgeProvider::Forgejo).unwrap();
                 app.explore.host = codeberg.key;
                 fits(&mut app, &["explore-host", "explore-language"]);
-                assert!(app.frame_widgets.get("explore-language").is_some_and(|c| !c.enabled), "Gitea can't filter by language");
+                assert!(app.frame_widgets.get("explore-language").is_some_and(|c| !c.enabled), "Forgejo can't filter by language");
                 assert!(!app.frame_widgets.contains_key("explore-sort-best"), "relevance is GitHub's");
                 // German's longer words still fit, on GitHub with its three orders too.
                 crate::i18n::scoped(crate::i18n::Language::German, || {
@@ -1874,7 +1874,7 @@ mod tests {
     #[test]
     fn countdowns_stay_with_their_host() {
         let mut s = State { host: "public:gitlab|https://gitlab.com".into(), wait_until: Some(Instant::now() + Duration::from_secs(50)), ..Default::default() };
-        s.choose_host("public:gitea|https://codeberg.org".into());
+        s.choose_host("public:forgejo|https://codeberg.org".into());
         assert!(s.wait_until.is_none(), "Codeberg isn't limited");
         s.choose_host("public:gitlab|https://gitlab.com".into());
         assert!(s.wait_seconds().is_some_and(|w| w > 40), "gitlab.com's countdown comes back");
@@ -1946,7 +1946,7 @@ mod tests {
     #[test]
     fn host_keys_name_their_server() {
         assert_eq!(place("account:gitlab|https://gitlab.com|Work|team"), ("gitlab", "https://gitlab.com"));
-        assert_eq!(place("public:gitea|https://codeberg.org"), ("gitea", "https://codeberg.org"));
+        assert_eq!(place("public:forgejo|https://codeberg.org"), ("forgejo", "https://codeberg.org"));
         assert_eq!(place("live:gitlab|https://gitlab.example.com/gitlab"), ("gitlab", "https://gitlab.example.com/gitlab"));
         assert_eq!((place(""), place("github")), (("", ""), ("", "")));
     }

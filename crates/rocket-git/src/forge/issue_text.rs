@@ -69,7 +69,7 @@ impl ForgeSession {
         Ok(issue)
     }
 
-    /// GitHub, GitHub Enterprise Server, GitLab and Gitea: the issue, then its comments.
+    /// GitHub, GitHub Enterprise Server, GitLab, Gitea and Forgejo: the issue, then its comments.
     fn issue(&self, repo: &ForgeRepository, n: u64, c: &CancellationToken) -> Result<ForgeIssueText> {
         let p = self.config.provider();
         let path = format!("{}/issues/{n}", self.prefix(repo));
@@ -110,7 +110,7 @@ impl ForgeSession {
                     comment(j, "author", "username").map(Some)
                 },
             )?,
-            ForgeProvider::Gitea => self.gitea_comments(&format!("{path}/comments"), c)?,
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => self.gitea_comments(&format!("{path}/comments"), c)?,
             _ => self.linked_comments(repo, &format!("{path}/comments"), "per_page=50&page=1", c, |j| {
                 comment(j, "user", "login").map(Some)
             })?,

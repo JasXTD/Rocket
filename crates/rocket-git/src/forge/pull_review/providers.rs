@@ -10,10 +10,10 @@ pub(super) fn supports_review(p: ForgeProvider, a: ForgeReviewAction) -> bool {
     !(p == ForgeProvider::GitLab && a == ForgeReviewAction::RequestChanges)
 }
 pub(super) fn message_supported(p: ForgeProvider, a: ForgeReviewAction) -> bool {
-    a == ForgeReviewAction::Comment || p.is_github() || p == ForgeProvider::Gitea
+    a == ForgeReviewAction::Comment || p.is_github() || p.is_gitea()
 }
 pub(super) fn supports_merge(p: ForgeProvider, m: ForgeMergeMethod) -> bool {
-    m != ForgeMergeMethod::Rebase || p.is_github() || p == ForgeProvider::Gitea || p.is_azure()
+    m != ForgeMergeMethod::Rebase || p.is_github() || p.is_gitea() || p.is_azure()
 }
 pub(super) fn merge_condition(p: ForgeProvider) -> &'static str {
     match p {
@@ -50,7 +50,7 @@ pub(super) fn validate_review(
             "This provider's approval/vote endpoint does not accept a message. Publish a separate comment first; Rocket never silently drops review text or chains two writes.",
         ));
     }
-    if !p.is_github() && p != ForgeProvider::Gitea && !comments.is_empty()
+    if !p.is_github() && !p.is_gitea() && !comments.is_empty()
         && (comments.len() != 1 || a != ForgeReviewAction::Comment || !body.is_empty()) {
         return Err(invalid("This provider sends one inline discussion per review. Select Comment, leave the separate review message empty, and send other comments or votes separately. Rocket never chains partial writes."));
     }
@@ -210,7 +210,7 @@ fn commit(j: &Json, p: ForgeProvider) -> Option<ForgePullCommit> {
 }
 pub(super) fn note(j: &Json, p: ForgeProvider) -> Option<ForgePullComment> {
     let user = match p {
-        ForgeProvider::Bitbucket | ForgeProvider::Gitea => j.get("user"),
+        ForgeProvider::Bitbucket | ForgeProvider::Gitea | ForgeProvider::Forgejo => j.get("user"),
         _ => j.get("author"),
     }?;
     let text = match p {
@@ -310,7 +310,7 @@ impl ForgeSession {
         let id_key = match p {
             ForgeProvider::GitLab => "iid",
             ForgeProvider::Azure | ForgeProvider::AzureServer => "pullRequestId",
-            ForgeProvider::Gitea => "number",
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => "number",
             _ => "id",
         };
         if j.u64(id_key) != Some(n) {
@@ -363,7 +363,7 @@ impl ForgeSession {
                 j.str("mergeStatus"),
                 j.get("createdBy"),
             ),
-            ForgeProvider::Gitea => (
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => (
                 txt(j, &["head", "sha"]),
                 txt(j, &["head", "ref"]),
                 txt(j, &["base", "ref"]),
@@ -439,7 +439,7 @@ impl ForgeSession {
             number: n,
             title: need(string(j, "title", 4096))?,
             body: multiline(
-                j.str(if p == ForgeProvider::Gitea {
+                j.str(if p.is_gitea() {
                     "body"
                 } else {
                     "description"
@@ -579,7 +579,7 @@ impl ForgeSession {
             };
             self.first_page(&endpoint, key, "read_pull_files", c, |j| file(j, p))?
         };
-        if p == ForgeProvider::Gitea && files.error.is_none() && !files.items.is_empty() {
+        if p.is_gitea() && files.error.is_none() && !files.items.is_empty() {
             match self.request_diff(&format!("{path}.diff?binary=false"), c).and_then(|diff| inline_reviews::attach_gitea_diff(&mut files.items, &diff, c)) {
                 Ok(()) => (),
                 Err(Error::Forge(e)) if e != ForgeFailure::Unauthorized => { files.error = Some(e); }
@@ -605,7 +605,7 @@ impl ForgeSession {
         } else {
             let endpoint = if p == ForgeProvider::GitLab {
                 format!("{path}/notes{suffix}")
-            } else if p == ForgeProvider::Gitea {
+            } else if p.is_gitea() {
                 format!("/repos/{}/issues/{n}/comments{suffix}", repo.encoded())
             } else {
                 format!("{path}/comments{suffix}")
@@ -613,7 +613,7 @@ impl ForgeSession {
             self.first_page(&endpoint, key, "read_pull_discussion", c, |j| note(j, p))?
         };
         let reviews = match p {
-            ForgeProvider::Gitea => self.first_page(
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => self.first_page(
                 &format!("{path}/reviews{suffix}"),
                 None,
                 "read_pull_reviews",
@@ -653,7 +653,7 @@ impl ForgeSession {
         let inline_comments = match other_inline_comments { Some(rows)=>rows, None=>self.provider_inline_comments(&path, &reviews, c)? };
         let endpoint = match p {
             ForgeProvider::GitLab => format!("{path}/pipelines{suffix}"),
-            ForgeProvider::Gitea => format!(
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => format!(
                 "/repos/{}/commits/{}/statuses{suffix}",
                 repo.encoded(),
                 first.head
@@ -706,7 +706,7 @@ impl ForgeSession {
         if p == ForgeProvider::GitLab && !pv.comments.is_empty() {
             return self.submit_gitlab_inline(&path, pv, c);
         }
-        if !pv.comments.is_empty() && p != ForgeProvider::Gitea {
+        if !pv.comments.is_empty() && !p.is_gitea() {
             return self.submit_other_inline(&path, pv, c);
         }
         let (method, endpoint, payload) = match (p, pv.action) {
@@ -812,7 +812,7 @@ impl ForgeSession {
                     ),
                 )
             }
-            (ForgeProvider::Gitea, a) => (
+            (ForgeProvider::Gitea | ForgeProvider::Forgejo, a) => (
                 "POST",
                 format!("{path}/reviews"),
                 format!(
@@ -841,12 +841,12 @@ impl ForgeSession {
             .map_err(|e| {
                 // Gitea creates pending comments before submitting the review;
                 // even an HTTP rejection can leave a partially saved draft.
-                if p == ForgeProvider::Gitea && !pv.comments.is_empty() {
+                if p.is_gitea() && !pv.comments.is_empty() {
                     Error::Forge(ForgeFailure::PullReviewUnknown)
                 } else { review_error(e) }
             })?
             .0;
-        let review = if p == ForgeProvider::Gitea {
+        let review = if p.is_gitea() {
             provider_review(&j, p).filter(|r| {
                 r.id > 0 && r.author.eq_ignore_ascii_case(&self.login)
                     && r.state == pv.action.state()
@@ -948,7 +948,7 @@ impl ForgeSession {
                     return fail(ForgeFailure::PullMergeBlocked);
                 }
             }
-            ForgeProvider::Gitea => {
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => {
                 if s.mergeable != Some(true) {
                     return fail(ForgeFailure::PullMergeBlocked);
                 }
@@ -1039,11 +1039,14 @@ impl ForgeSession {
                     })
                 ),
             ),
-            ForgeProvider::Gitea => (
+            // Gitea renamed the merge style field to `do`; Forgejo's API still names it
+            // `Do`. Each gets its own documented name.
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => (
                 "POST",
                 format!("{path}/merge"),
                 format!(
-                    "{{\"do\":{},\"head_commit_id\":{},\"force_merge\":false,\"delete_branch_after_merge\":false,\"merge_when_checks_succeed\":false}}",
+                    "{{\"{}\":{},\"head_commit_id\":{},\"force_merge\":false,\"delete_branch_after_merge\":false,\"merge_when_checks_succeed\":false}}",
+                    if p == ForgeProvider::Forgejo { "Do" } else { "do" },
                     quote(m.key()),
                     quote(&s.head)
                 ),
@@ -1074,7 +1077,7 @@ impl ForgeSession {
         };
         // Empty acknowledgments and queued Azure/Cloud merges are not proof of
         // completion. A scoped read must confirm both the PR and reviewed head.
-        let raw = if p == ForgeProvider::Gitea {
+        let raw = if p.is_gitea() {
             self.provider_raw("hosting-merge-submit", repo, s.number, c)
                 .map_err(|_| Error::Forge(ForgeFailure::PullMergeUnknown))?
         } else {

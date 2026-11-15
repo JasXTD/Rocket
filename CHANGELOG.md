@@ -12,6 +12,17 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Hosting supports **Forgejo**, which Codeberg runs, as its own provider: Preferences →
+  Accounts lists it with the self-hosted servers, starting at https://codeberg.org, and
+  codeberg.org remotes are recognised for commit links, CI marks and Actions. It uses
+  Gitea's API for pull requests and issues, reviewed creation, details, reviews with up
+  to 32 inline comments, merge/squash/rebase (with Forgejo's `Do` field), Insights and
+  Agents' issue text. Forgejo's API can't reply to, resolve or reopen review threads, so
+  they are read-only. Actions lists Forgejo's runs (Forgejo 12 and later) and a run's jobs
+  (16 and later), and Re-run failed jobs re-runs each failed job (17 and later); an older
+  server shows commit statuses, and Actions says what it doesn't list. Explore
+  searches Codeberg, and Forgejo accounts' servers, as Forgejo. Earlier builds can't
+  read a saved accounts file that holds a Forgejo account (they leave it unchanged).
 - Preferences → Security: **Total scan budget** is now a row of the Secret protection
   card (Guard AI API keys scans with it too); Enter applies it, and until then the row
   says which budget is in use. Dependency checks gains **Scan limits**: Files (256, up

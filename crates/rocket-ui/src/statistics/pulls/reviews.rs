@@ -128,7 +128,7 @@ impl State {
             .filter(|c| *c <= self.read_at && since.is_none_or(|s| *c >= s))
     }
     /// Reads the reviews of the next pull requests [`review_targets`] names, one at a
-    /// time on a worker. Only GitHub, GitHub Enterprise Server and Gitea time reviews.
+    /// time on a worker. Only GitHub, GitHub Enterprise Server, Gitea and Forgejo time reviews.
     pub(super) fn start_reviews(&mut self, backend: Backend, ctx: Context) {
         let Some((repository, session)) = self.connection.clone() else {
             return;
@@ -352,10 +352,10 @@ pub(super) fn review_strip(ui: &mut Ui, s: &State, widgets: &mut HashMap<String,
     }
     if !s.times_reviews() {
         let text = match s.host() {
-            "GitLab" => tr("GitLab’s list names the reviewers but not whether they reviewed, so waiting reviews are not counted. Time to first review is measured on GitHub, GitHub Enterprise Server and Gitea.").to_owned(),
-            "Azure DevOps" => tr("Time to first review is measured on GitHub, GitHub Enterprise Server and Gitea. Azure DevOps shows who has not voted yet.").to_owned(),
+            "GitLab" => tr("GitLab’s list names the reviewers but not whether they reviewed, so waiting reviews are not counted. Time to first review is measured on GitHub, GitHub Enterprise Server, Gitea and Forgejo.").to_owned(),
+            "Azure DevOps" => tr("Time to first review is measured on GitHub, GitHub Enterprise Server, Gitea and Forgejo. Azure DevOps shows who has not voted yet.").to_owned(),
             host => trf!(
-                "Time to first review is measured on GitHub, GitHub Enterprise Server and Gitea. {host} shows who has not approved yet.",
+                "Time to first review is measured on GitHub, GitHub Enterprise Server, Gitea and Forgejo. {host} shows who has not approved yet.",
                 host
             ),
         };

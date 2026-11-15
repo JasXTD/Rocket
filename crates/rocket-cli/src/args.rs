@@ -141,7 +141,7 @@ Hosting (uses HTTPS APIs; no saved-account or Git-credential changes):
   merge NUMBER --method merge|squash|rebase
   Every hosting write requires --preview or --expect-review SHA256 from its preview.
   Comments JSON uses exact path/start/line/side/head/base/body/diff_revision from pull.
-  GitLab/Bitbucket/Azure: one single-line comment; Gitea: up to 32 in one review.
+  GitLab/Bitbucket/Azure: one single-line comment; Gitea/Forgejo: up to 32 in one review.
   Bitbucket Server/Azure iterations require the exact diff_revision returned by pull.
   Explicit test-only --fixture-api-port N needs a marked repo and synthetic token.
 

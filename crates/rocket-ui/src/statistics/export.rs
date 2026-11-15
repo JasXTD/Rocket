@@ -980,7 +980,7 @@ mod tests {
         // Merged with a request left over: nobody waits on it.
         let mut merged = ForgeItem { number: 44, ..s.items[0].clone() };
         merged.timing = Some(ForgePullTiming { is_merged: true, ..Default::default() });
-        // Reviewers named without who still waits (GitLab, Gitea).
+        // Reviewers named without who still waits (GitLab, Gitea, Forgejo).
         let mut assigned = ForgeItem { number: 45, ..s.items[0].clone() };
         assigned.reviewers = Some(ForgeReviewRequests {
             assigned: vec![ForgeReviewer { team: false, name: "Cy".into() }],

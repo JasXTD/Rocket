@@ -121,7 +121,7 @@ the UI framework. See the [release notes](docs/releases/0.92.4.md).
 - Remote tags, remote branch deletion and prune.
 - **Publish to GitHub** from a local repository.
 - Pull requests, issues and reviews on GitHub, GitHub Enterprise Server, GitLab, Bitbucket,
-  Azure DevOps and Gitea ([what each supports](HOSTING.md)).
+  Azure DevOps, Gitea and Forgejo, which Codeberg runs ([what each supports](HOSTING.md)).
 - Inline review drafts with revision checks before submission, and reviewed discussion
   replies and resolution; GitLab server-side search for merge requests and issues.
   Non-GitHub adapters are tested with mock APIs.
@@ -372,7 +372,7 @@ Official comparison sources:
   you pick yourself is limited to local and SSH remotes
   ([why](SECURITY.md#windows-git-http-runtime-gate-2026-10-29)).
 - **Hosting:** only GitHub's account sign-in has been checked against the real service.
-  GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps and Gitea are tested against
+  GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps, Gitea and Forgejo are tested against
   local fixtures. Inline capabilities and limits differ by host; see [Hosting](HOSTING.md).
 - **Languages:** all ten translations remain previews while advanced-screen coverage
   and wording are reviewed. Untranslated interface text falls back to English;
@@ -384,7 +384,7 @@ Official comparison sources:
   Claude Code/Codex CLI provider paths still use stand-ins in acceptance tests.
 - **Map and Insights:** Modules reads Rust packages only, without expanding
   macros or `cfg`. Insights counts a loaded sample of up to 500 pull requests; time to
-  first review is measured on GitHub, GitHub Enterprise Server and Gitea only, and
+  first review is measured on GitHub, GitHub Enterprise Server, Gitea and Forgejo only, and
   missing data is named rather than estimated.
 - **Partial actions** (single lines, hunks) cover specific text cases; other files need a
   whole-file action. The CLI and MCP service cover a subset of the desktop.
@@ -430,7 +430,7 @@ and platform limits are described in the [release notes](docs/releases/0.92.4.md
 
 **Hosting and integrations**
 
-- [ ] Check GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps and Gitea against
+- [ ] Check GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps, Gitea and Forgejo against
   real accounts, not only local test servers.
 - [ ] Check the Jira extension against a live Jira site.
 

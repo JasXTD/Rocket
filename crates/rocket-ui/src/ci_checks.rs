@@ -321,6 +321,7 @@ pub(crate) fn host_name(p: ForgeProvider) -> &'static str {
         ForgeProvider::BitbucketServer => "Bitbucket Server",
         ForgeProvider::Azure | ForgeProvider::AzureServer => "Azure DevOps",
         ForgeProvider::Gitea => "Gitea",
+        ForgeProvider::Forgejo => "Forgejo",
     }
 }
 /// A check's group in the popover: its run, or "" for Other checks.
@@ -617,7 +618,7 @@ impl Rocket {
         let (Some(details), Some(session)) = (pull.details.clone(), session) else { return };
         let head = details.summary().head.clone();
         let host = details.repository().config().provider();
-        if !matches!(host, ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::GitLab | ForgeProvider::Gitea)
+        if !matches!(host, ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::GitLab | ForgeProvider::Gitea | ForgeProvider::Forgejo)
             || pull.ci_task.is_some()
             || pull.ci_for.as_deref() == Some(head.as_str())
         {

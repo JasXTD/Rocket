@@ -159,7 +159,7 @@ impl Page {
             Page::Terminal => mark("shell bash git bash cmd command prompt powershell pwsh console drawer program arguments"),
             Page::Commit => mark("spelling spell check ai draft claude codex anthropic openai language style conventional"),
             Page::Tools => mark("external editor diff merge program arguments profile placeholder beyond compare kdiff3 winmerge vs code visual studio code meld p4merge tortoisegitmerge sublime notepad++ araxis"),
-            Page::Accounts => mark("hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea server profile connect"),
+            Page::Accounts => mark("hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea forgejo codeberg server profile connect"),
             Page::SshKeys => mark("ssh keys openssh agent passphrase identity profile ed25519 rsa public key repository unlock fingerprint copy found new add file"),
             Page::Integrations => mark("lua scripts integrations jira extensions plugins packages install update custom ui panels connections accounts permissions playground"),
             Page::Mcp => mark("mcp server port token endpoint fixture test repositories automation"),

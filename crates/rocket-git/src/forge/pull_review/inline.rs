@@ -110,7 +110,7 @@ impl ForgePullDetails {
     pub fn supports_inline_review(&self) -> bool {
         match self.repository.config().provider() {
             p if p.is_github() => true,
-            ForgeProvider::Gitea => true,
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => true,
             ForgeProvider::Bitbucket => true,
             ForgeProvider::BitbucketServer => self.summary.revision.is_some(),
             p if p.is_azure() => self.inline_diff_revision().is_some(),
@@ -121,7 +121,7 @@ impl ForgePullDetails {
     pub fn supports_inline_ranges(&self) -> bool { self.repository.config().provider().is_github() }
     pub fn inline_comment_limit(&self) -> usize {
         if !self.supports_inline_review() { 0 }
-        else if self.repository.config().provider().is_github() || self.repository.config().provider() == ForgeProvider::Gitea { 32 } else { 1 }
+        else if self.repository.config().provider().is_github() || self.repository.config().provider().is_gitea() { 32 } else { 1 }
     }
     pub fn inline_comment(
         &self,

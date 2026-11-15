@@ -244,6 +244,6 @@ editing or inline reviews. Reviewed completion is available in PR details.
 Existing Git/SSH credentials are separate.
 
 GitHub has scoped live-test evidence. Additional adapters exist for GitHub Enterprise Server, GitLab,
-Bitbucket Cloud, Bitbucket Server/Data Center, Azure DevOps Services/Server and Gitea,
+Bitbucket Cloud, Bitbucket Server/Data Center, Azure DevOps Services/Server, Gitea and Forgejo,
 but live acceptance for those services remains unverified. Consult
 [Hosting](../../HOSTING.md) for authentication, search, pagination and provider limits.

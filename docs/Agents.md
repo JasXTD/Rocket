@@ -165,7 +165,7 @@ the **Issue or pull request** field takes a number, a link or words from the tit
 GitLab a number is an issue's; a merge request's link finds it). These need the repository's
 hosting account connected in Hosting, for a repository one of this checkout's remotes points
 to; without it, New session is as before. Issue text and comments are read from GitHub,
-GitHub Enterprise Server, GitLab, Gitea and Azure DevOps work items; Bitbucket has no issues.
+GitHub Enterprise Server, GitLab, Gitea, Forgejo and Azure DevOps work items; Bitbucket has no issues.
 A pull request's review comments, failed checks, description and discussion come from the
 reads its details page already uses. Job logs are not read: the message names the failed jobs
 and links the run.

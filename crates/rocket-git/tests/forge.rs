@@ -25,6 +25,8 @@ mod provider_contract_tests;
 mod issue_text_tests;
 #[path = "forge/explore_search.rs"]
 mod explore_search_tests;
+#[path = "forge/forgejo.rs"]
+mod forgejo_tests;
 use common::{Fixture, isolated};
 use rocket_git::*;
 use std::{
@@ -135,7 +137,7 @@ fn response(s: &str) -> (u16, String, Vec<(String, String)>) {
 }
 fn item(p: ForgeProvider, n: u64) -> String {
     match p {
-        ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea => format!(
+        ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea | ForgeProvider::Forgejo => format!(
             r#"{{"number":{n},"title":"PRIVATE 界 🚀","state":"open","user":{{"login":"fixture"}},"head":{{"ref":"feature/界"}},"base":{{"ref":"main"}}}}"#
         ),
         ForgeProvider::GitLab => format!(
@@ -172,7 +174,7 @@ fn route(p: ForgeProvider, req: &Request, mode: usize) -> (u16, String, Vec<(Str
         };
         return response(&match p {
             ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise => format!(r#"{{"commit":{{"sha":"{id}"}}}}"#),
-            ForgeProvider::GitLab | ForgeProvider::Gitea => {
+            ForgeProvider::GitLab | ForgeProvider::Gitea | ForgeProvider::Forgejo => {
                 format!(r#"{{"commit":{{"id":"{id}"}}}}"#)
             }
             ForgeProvider::Bitbucket => format!(r#"{{"target":{{"hash":"{id}"}}}}"#),
@@ -732,8 +734,17 @@ fn all_provider_routes_create_and_privacy() {
                         r#""head":"feature/界""#,
                         r#""base":"main""#,
                     ),
+                    ForgeProvider::Forgejo => (
+                        "/forgejo/repos/team/%E8%B3%87%E6%96%99/pulls",
+                        r#""head":"feature/界""#,
+                        r#""base":"main""#,
+                    ),
                 };
                 assert_eq!(post.path, creation_path);
+                if p.is_gitea() {
+                    // Gitea and Forgejo document the `token` scheme for access tokens.
+                    assert!(seen.iter().all(|r| r.head.contains(&format!("Authorization: token {TOKEN}"))), "{p:?}");
+                }
                 assert!(post.body.contains(source_field));
                 assert!(post.body.contains(target_field));
                 assert!(

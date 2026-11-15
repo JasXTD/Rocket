@@ -286,6 +286,7 @@ pub(crate) fn ci_name(host: ForgeProvider) -> &'static str {
         ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise => "GitHub Actions",
         ForgeProvider::GitLab => "GitLab pipelines",
         ForgeProvider::Gitea => "Gitea Actions",
+        ForgeProvider::Forgejo => "Forgejo Actions",
         ForgeProvider::Bitbucket => "Bitbucket Pipelines",
         ForgeProvider::Azure | ForgeProvider::AzureServer => "Azure Pipelines",
         ForgeProvider::BitbucketServer => "Bitbucket Server",
@@ -590,6 +591,16 @@ pub(crate) fn view(ui: &mut Ui, tab: &mut Tab, intents: &mut Vec<Intent>, widget
             });
             return;
         }
+        // A Forgejo before 12 has no runs API: the runs are on its own Actions page.
+        if a.failure == Some(ForgeFailure::Unsupported) && host == ForgeProvider::Forgejo && !a.reading() {
+            let url = repository.runs_url();
+            empty_state(ui, Icon::Info, crate::i18n::tr(FORGEJO_RUNS), crate::i18n::tr(FORGEJO_CHECKS), widgets, |ui, widgets| {
+                if external_button(ui, crate::i18n::tr(FORGEJO_OPEN), widgets, "actions-open-host") {
+                    intents.push(Intent::Actions(ActionsIntent::Open(url.clone())));
+                }
+            });
+            return;
+        }
         if let Some(error) = a.error.clone().filter(|_| !a.reading()) {
             let title = if a.failure == Some(ForgeFailure::RateLimited) { crate::i18n::trf!("{host}'s rate limit is used up", host = host_name(host)) } else { crate::i18n::tr("Couldn't read runs").to_string() };
             let text = match &a.paused_until {
@@ -687,18 +698,24 @@ fn permission(host: ForgeProvider, missing: Option<&str>) -> (&'static str, Stri
     match host {
         ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise => (crate::i18n::tr("Actions"), crate::i18n::trf!("Give it {permission} (fine-grained) or repo (classic)", permission = missing.unwrap_or("Actions: Read"))),
         ForgeProvider::GitLab => (crate::i18n::tr("pipelines"), crate::i18n::tr("Give it the read_api scope").into()),
-        ForgeProvider::Gitea => (crate::i18n::tr("Actions"), crate::i18n::tr("Give it read:repository").into()),
+        ForgeProvider::Gitea | ForgeProvider::Forgejo => (crate::i18n::tr("Actions"), crate::i18n::tr("Give it read:repository").into()),
         ForgeProvider::Bitbucket => (crate::i18n::tr("pipelines"), crate::i18n::tr("Give it read:pipeline:bitbucket").into()),
         ForgeProvider::Azure | ForgeProvider::AzureServer => (crate::i18n::tr("builds"), crate::i18n::tr("Give it Build (Read)").into()),
         ForgeProvider::BitbucketServer => (crate::i18n::tr("builds"), crate::i18n::tr("Check the account in Accounts").into()),
     }
 }
 
+/// A Forgejo server that lists no runs (before Forgejo 12): title, text and button.
+const FORGEJO_RUNS: &str = crate::i18n::mark("This Forgejo server doesn't list runs");
+const FORGEJO_CHECKS: &str = crate::i18n::mark("Each commit's checks show beside it in Commits. Forgejo's Actions page lists the runs.");
+const FORGEJO_OPEN: &str = crate::i18n::mark("Open Actions on Forgejo");
+
 /// (title, text, button) when the host has no run for the repository at all.
 fn no_runs(host: ForgeProvider, path: &str) -> (String, &'static str, String) {
     match host {
         ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise => (crate::i18n::trf!("No workflow has run for {path}", path), crate::i18n::tr("Add a workflow under .github/workflows and push. Its runs show here and beside your commits."), crate::i18n::tr("Open Actions on GitHub").into()),
         ForgeProvider::Gitea => (crate::i18n::trf!("No workflow has run for {path}", path), crate::i18n::tr("Add a workflow under .gitea/workflows and push. Its runs show here and beside your commits."), crate::i18n::tr("Open Actions on Gitea").into()),
+        ForgeProvider::Forgejo => (crate::i18n::trf!("No workflow has run for {path}", path), crate::i18n::tr("Add a workflow under .forgejo/workflows and push. Its runs show here and beside your commits."), crate::i18n::tr(FORGEJO_OPEN).into()),
         ForgeProvider::GitLab => (crate::i18n::trf!("No pipeline has run for {path}", path), crate::i18n::tr("Add a .gitlab-ci.yml file and push. Its pipelines show here and beside your commits."), crate::i18n::tr("Open pipelines on GitLab").into()),
         ForgeProvider::Bitbucket => (crate::i18n::trf!("No pipeline has run for {path}", path), crate::i18n::tr("Add a bitbucket-pipelines.yml file and push. Its pipelines show here and beside your commits."), crate::i18n::tr("Open Pipelines on Bitbucket").into()),
         _ => (crate::i18n::trf!("No pipeline has built {path}", path), crate::i18n::tr("Create a pipeline for this repository in Azure Pipelines. Its builds show here and beside your commits."), crate::i18n::tr("Open Pipelines on Azure DevOps").into()),
@@ -772,7 +789,7 @@ fn reach_state(ui: &mut Ui, reach: &Reach, intents: &mut Vec<Intent>, widgets: &
             ui,
             Icon::Branch,
             crate::i18n::tr("No remote on a host Rocket reads"),
-            crate::i18n::tr("Actions shows runs from GitHub, GitHub Enterprise, GitLab, Gitea, Bitbucket Cloud and Azure DevOps."),
+            crate::i18n::tr("Actions shows runs from GitHub, GitHub Enterprise, GitLab, Gitea, Forgejo, Bitbucket Cloud and Azure DevOps."),
             widgets,
             |ui, widgets| {
                 let r = pages::ghost(ui, true, crate::i18n::tr("Remotes"));
@@ -1208,6 +1225,8 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
         let text = match (e, &d.missing) {
             (ForgeFailure::Forbidden, Some(p)) => crate::i18n::trf!("Some jobs are hidden: this token needs {permission}.", permission = p),
             (ForgeFailure::Forbidden, None) => crate::i18n::tr("Some jobs are hidden: this token can't read them.").to_string(),
+            // Forgejo lists a run's jobs from 16 on.
+            (ForgeFailure::Unsupported, _) => crate::i18n::tr("This server doesn't list a run's jobs. Open the run in the browser for them.").to_string(),
             (other, _) => crate::i18n::trf!("Part of the run couldn't be read ({code}).", code = other.code()),
         };
         pages::notice_strip(ui, MUTED(), &text, None);
@@ -1225,7 +1244,7 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
             let spare = if note.is_some() || d.limited { 30.0 } else { 6.0 };
             ScrollArea::vertical().id_salt(("actions-jobs", d.run.id)).max_height((ui.available_height() - spare).max(40.0)).auto_shrink([false, true]).show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
-                if d.jobs.is_empty() {
+                if d.jobs.is_empty() && d.error.is_none() {
                     ui.add_space(6.0);
                     ui.label(RichText::new(crate::i18n::tr("The host reported no jobs for this run.")).size(12.5).color(HINT()));
                 }

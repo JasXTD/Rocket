@@ -44,9 +44,10 @@ pub enum ForgeProvider {
     Azure,
     AzureServer,
     Gitea,
+    Forgejo,
 }
 impl ForgeProvider {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::GitHub,
         Self::GitHubEnterprise,
         Self::GitLab,
@@ -55,6 +56,7 @@ impl ForgeProvider {
         Self::Azure,
         Self::AzureServer,
         Self::Gitea,
+        Self::Forgejo,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -66,6 +68,7 @@ impl ForgeProvider {
             Self::Azure => "Azure DevOps Services",
             Self::AzureServer => "Azure DevOps Server",
             Self::Gitea => "Gitea",
+            Self::Forgejo => "Forgejo",
         }
     }
     pub fn key(self) -> &'static str {
@@ -78,6 +81,7 @@ impl ForgeProvider {
             Self::Azure => "azure",
             Self::AzureServer => "azure-server",
             Self::Gitea => "gitea",
+            Self::Forgejo => "forgejo",
         }
     }
     fn diagnostic_step(self) -> &'static str {
@@ -90,6 +94,7 @@ impl ForgeProvider {
             Self::Azure => "hosting_provider_azure",
             Self::AzureServer => "hosting_provider_azure_server",
             Self::Gitea => "hosting_provider_gitea",
+            Self::Forgejo => "hosting_provider_forgejo",
         }
     }
     pub fn from_key(key: &str) -> Option<Self> {
@@ -101,6 +106,12 @@ impl ForgeProvider {
     }
     pub fn is_azure(self) -> bool {
         matches!(self, Self::Azure | Self::AzureServer)
+    }
+    /// Gitea's repository API, which Forgejo kept when it forked. Where the two
+    /// differ (merge fields, review-thread resolution, Actions runs), the
+    /// adapters check for the one provider.
+    pub fn is_gitea(self) -> bool {
+        matches!(self, Self::Gitea | Self::Forgejo)
     }
     pub fn supports_search(self) -> bool {
         self.is_github() || self == Self::GitLab
@@ -115,6 +126,7 @@ impl ForgeProvider {
             Self::Azure => "https://dev.azure.com/organization",
             Self::AzureServer => "https://devops.example.com/tfs/DefaultCollection",
             Self::Gitea => "https://gitea.com",
+            Self::Forgejo => "https://codeberg.org",
         }
     }
 }
@@ -190,8 +202,8 @@ impl ForgeFailure {
             Self::PullChanged => "The pull request changed while it was being read or reviewed. Refresh its details and review the current commits before submitting. Your draft is retained.",
             Self::PullReviewStale => "This preview expired, was already used, or belongs to another account or PR revision. Refresh and review again. Inline drafts are retained; remove and re-select comments from an earlier revision before submitting.",
             Self::PullReviewRejected => "The provider rejected this review. Check the PR state, review permissions and any pending review on the provider. Your draft is retained; Rocket does not retry automatically.",
-            Self::PendingReview => "This account already has a pending review on Gitea. Finish or discard it on the provider, then refresh and review again. Rocket will not submit or replace those saved comments.",
-            Self::ReviewStateUnavailable => "Rocket could not verify that this account has no pending Gitea review within the bounded review scan. Check the provider before continuing; no review was submitted.",
+            Self::PendingReview => "This account already has a pending review on this Gitea or Forgejo server. Finish or discard it on the provider, then refresh and review again. Rocket will not submit or replace those saved comments.",
+            Self::ReviewStateUnavailable => "Rocket could not verify that this account has no pending Gitea or Forgejo review within the bounded review scan. Check the provider before continuing; no review was submitted.",
             Self::PullReviewUnknown => "The review submission was interrupted or its result could not be verified. It may have succeeded or saved only some pending comments. Refresh this PR's reviews and check the provider before explicitly deciding to submit again. Rocket will not retry automatically.",
             Self::Unauthorized => {
                 "The server rejected this account's token. Check its expiry, host and account, then reconnect. For a browser session, sign in again. Existing Git credentials were not changed."

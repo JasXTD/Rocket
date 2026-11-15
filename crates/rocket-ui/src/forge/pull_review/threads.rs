@@ -182,6 +182,8 @@ fn body(
     }
     if snapshot.repository().config().provider() == ForgeProvider::Gitea {
         pages::note(ui, tr("Gitea supports resolving and reopening review comments. Replies require the provider website with the stable API."));
+    } else if snapshot.repository().config().provider() == ForgeProvider::Forgejo {
+        pages::note(ui, tr("Forgejo's API can't reply to, resolve or reopen review comments. Use the provider website."));
     }
     for (i, thread) in snapshot.threads.iter().enumerate() {
         if i > 0 {

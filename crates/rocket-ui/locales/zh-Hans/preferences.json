@@ -132,7 +132,7 @@
   "custom commands program arguments script scope repository commit file branch submodule": "自定义命令 命令 程序 参数 脚本 范围 作用域 仓库 提交 文件 分支 子模块",
   "external editor diff merge program arguments profile placeholder beyond compare kdiff3 winmerge vs code visual studio code meld p4merge tortoisegitmerge sublime notepad++ araxis": "外部 编辑器 差异 比较 合并 程序 参数 配置 占位符 beyond compare kdiff3 winmerge vs code visual studio code meld p4merge tortoisegitmerge sublime notepad++ araxis",
   "git executable instance path program global name email identity": "git 可执行文件 实例 路径 程序 全局 姓名 名称 邮箱 电子邮件 身份",
-  "hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea server profile connect": "托管 账户 登录 浏览器 token 令牌 github enterprise 企业版 gitlab bitbucket azure devops gitea 服务器 配置 连接",
+  "hosting accounts sign in browser token github enterprise gitlab bitbucket azure devops gitea forgejo codeberg server profile connect": "托管 账户 登录 浏览器 token 令牌 github enterprise 企业版 gitlab bitbucket azure devops gitea forgejo codeberg 服务器 配置 连接",
   "keyboard shortcuts keys keybindings hotkeys mouse buttons wheel gestures": "键盘 快捷键 按键 键位 键绑定 热键 鼠标 按钮 滚轮 手势",
   "lua scripts integrations jira extensions plugins packages install update custom ui panels connections accounts permissions playground": "lua 脚本 集成 jira 扩展 插件 包 安装 更新 自定义 ui 界面 面板 连接 账户 权限 playground",
   "mcp server port token endpoint fixture test repositories automation": "mcp 服务器 端口 token 令牌 端点 fixture 测试夹具 测试仓库 自动化",

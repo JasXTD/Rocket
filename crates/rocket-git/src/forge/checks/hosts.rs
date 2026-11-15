@@ -1,5 +1,7 @@
-//! CI reads for GitLab, Gitea, Bitbucket Cloud and Azure DevOps. GitLab and
-//! Gitea can re-run; Bitbucket and Azure only show results.
+//! CI reads for GitLab, Gitea, Forgejo, Bitbucket Cloud and Azure DevOps. GitLab,
+//! Gitea and Forgejo can re-run; Bitbucket and Azure only show results. Forgejo keeps
+//! Gitea's commit statuses, but its runs have their own shape, and its API grew in
+//! steps: runs from Forgejo 12, a run's jobs from 16, re-running a job from 17.
 use super::*;
 
 impl ForgeSession {
@@ -52,7 +54,7 @@ impl ForgeSession {
     fn host_statuses(&self, repo: &ForgeRepository, sha: &str, c: &CancellationToken) -> Result<Option<Vec<ForgeCheck>>> {
         let p = self.config.provider();
         let (path, key, fields) = match p {
-            ForgeProvider::Gitea => (format!("/repos/{}/commits/{sha}/status", repo.encoded()), "statuses", ("context", "status", "description", "target_url")),
+            ForgeProvider::Gitea | ForgeProvider::Forgejo => (format!("/repos/{}/commits/{sha}/status", repo.encoded()), "statuses", ("context", "status", "description", "target_url")),
             ForgeProvider::Bitbucket => (format!("{}/commit/{sha}/statuses?pagelen=50", self.prefix(repo)), "values", ("name", "state", "description", "url")),
             ForgeProvider::Azure | ForgeProvider::AzureServer => (self.versioned_path(&format!("{}/commits/{sha}/statuses?latestOnly=true&$top=100", self.prefix(repo))), "value", ("genre", "state", "description", "targetUrl")),
             _ => return fail(ForgeFailure::Unsupported),
@@ -67,7 +69,7 @@ impl ForgeSession {
         for row in rows {
             let check = match p {
                 // Gitea's statuses name their state "status"; older servers "state".
-                ForgeProvider::Gitea => status_check(row, &self.config, fields.0, if row.get("status").is_some() { "status" } else { "state" }, fields.2, fields.3),
+                ForgeProvider::Gitea | ForgeProvider::Forgejo => status_check(row, &self.config, fields.0, if row.get("status").is_some() { "status" } else { "state" }, fields.2, fields.3),
                 // Azure names a status by its context: genre/name.
                 ForgeProvider::Azure | ForgeProvider::AzureServer => azure_status(row, &self.config),
                 _ => status_check(row, &self.config, fields.0, fields.1, fields.2, fields.3).or_else(|| status_check(row, &self.config, "key", fields.1, fields.2, fields.3)),
@@ -89,6 +91,14 @@ impl ForgeSession {
                     Err(e) => self.keep_failure(out, e)?,
                 }
                 self.gitea_runs(out, c)
+            }
+            ForgeProvider::Forgejo => {
+                match self.host_statuses(&repo, &sha, c) {
+                    Ok(Some(checks)) => out.checks = checks,
+                    Ok(None) => {}
+                    Err(e) => self.keep_failure(out, e)?,
+                }
+                self.forgejo_runs(out, c)
             }
             _ => {
                 match self.host_statuses(&repo, &sha, c) {
@@ -229,7 +239,65 @@ impl ForgeSession {
         }
         Ok(())
     }
-    /// One page of the repository's runs on GitHub, Gitea, GitLab, Bitbucket
+    /// Forgejo's runs of this commit, with each failed run's failed jobs for a re-run.
+    /// What an older Forgejo lacks answers 404: no runs before 12 (statuses only),
+    /// no jobs before 16, so nothing to re-run.
+    fn forgejo_runs(&self, out: &mut ForgeCommitChecks, c: &CancellationToken) -> Result<()> {
+        let repo = out.repository.clone();
+        let base = format!("/repos/{}", repo.encoded());
+        let rows = match self.request(DETAILS, "read_ci_runs", "GET", &format!("{base}/actions/runs?head_sha={}&limit=20&page=1", out.commit), None, false, c) {
+            Ok((j, _)) => j.get("workflow_runs").and_then(Json::array).filter(|a| a.len() <= 20).ok_or(Error::Forge(ForgeFailure::InvalidResponse))?.to_vec(),
+            Err(Error::Forge(ForgeFailure::NotFound)) => {
+                if out.checks.iter().any(|c| c.state == ForgeCheckState::Failed) {
+                    out.rerun = Some(ForgeRerunBlock::Unsupported);
+                }
+                return Ok(());
+            }
+            Err(e) => return self.keep_failure(out, e),
+        };
+        let mut no_jobs = false;
+        for row in &rows {
+            let mut run = forgejo_run(row, &self.config).ok_or(Error::Forge(ForgeFailure::InvalidResponse))?;
+            if run.commit.as_deref() != Some(out.commit.as_str()) {
+                return fail(ForgeFailure::InvalidResponse);
+            }
+            if run.state == ForgeCheckState::Failed {
+                match self.request(DETAILS, "read_ci_jobs", "GET", &format!("{base}/actions/runs/{}/jobs", run.id), None, false, c) {
+                    Ok((j, _)) => {
+                        let jobs = j.array().ok_or(Error::Forge(ForgeFailure::InvalidResponse))?;
+                        for row in jobs.iter().take(CHECK_LIMIT) {
+                            let (job, id, attempt) = forgejo_job(row, &self.config).ok_or(Error::Forge(ForgeFailure::InvalidResponse))?;
+                            run.attempt = run.attempt.max(attempt);
+                            if job.state == ForgeCheckState::Failed {
+                                run.failed_jobs.push((id, job.name.clone()));
+                                run.failed.push(job.name);
+                            }
+                        }
+                    }
+                    // Forgejo lists a run's jobs from 16 on; without them nothing is re-run.
+                    Err(Error::Forge(ForgeFailure::NotFound)) => no_jobs = true,
+                    Err(e) => self.keep_failure(out, e)?,
+                }
+            }
+            out.runs.push(run);
+        }
+        if out.failed_runs().next().is_none() {
+            // Only a server without the job list can't re-run here; a failed read says itself.
+            if no_jobs {
+                out.rerun = Some(ForgeRerunBlock::Unsupported);
+            }
+            return Ok(());
+        }
+        match self.rerun_access(DETAILS, &repo, c)? {
+            Ok(access) => out.rerun = rerun_block(&out.runs, ci_now(), false).or(access),
+            Err(e) => {
+                self.keep_failure(out, e)?;
+                out.rerun = Some(ForgeRerunBlock::Unverified);
+            }
+        }
+        Ok(())
+    }
+    /// One page of the repository's runs on GitHub, Gitea, Forgejo, GitLab, Bitbucket
     /// Cloud or Azure DevOps.
     pub(super) fn host_runs(&self, list: &mut ForgeRunList, branch: Option<&str>, c: &CancellationToken) -> Result<()> {
         let repo = list.repository.clone();
@@ -246,6 +314,30 @@ impl ForgeSession {
             let rows = j.get("workflow_runs").and_then(Json::array).filter(|a| a.len() <= CI_RUN_PAGE).ok_or_else(invalid)?;
             for row in rows {
                 list.runs.push(github_run(row, &self.config, &repo).ok_or_else(invalid)?);
+            }
+            list.more = j.u64("total_count").is_some_and(|t| t > (page * CI_RUN_PAGE) as u64);
+        } else if p == ForgeProvider::Forgejo {
+            let mut path = format!("/repos/{}/actions/runs?limit={CI_RUN_PAGE}&page={page}", repo.encoded());
+            if let Some(b) = branch {
+                path.push_str(&format!("&ref={}", encode(&format!("refs/heads/{b}"))));
+            }
+            let j = match self.request(RUNS, "read_ci_run_list", "GET", &path, None, false, c) {
+                Ok((j, _)) => j,
+                // Forgejo lists runs from 12 on. A repository that can be read but has no
+                // runs list is such a server; one that can't be read stays not found.
+                Err(Error::Forge(ForgeFailure::NotFound)) => {
+                    self.request(RUNS, "read_ci_repository", "GET", &format!("/repos/{}", repo.encoded()), None, false, c)?;
+                    return fail(ForgeFailure::Unsupported);
+                }
+                Err(e) => return Err(e),
+            };
+            let rows = j.get("workflow_runs").and_then(Json::array).filter(|a| a.len() <= CI_RUN_PAGE).ok_or_else(invalid)?;
+            for row in rows {
+                let run = forgejo_run(row, &self.config).ok_or_else(invalid)?;
+                // Forgejo before 15 ignores `ref`: keep only the branch's runs.
+                if branch.is_none_or(|b| run.branch.as_deref() == Some(b)) {
+                    list.runs.push(run);
+                }
             }
             list.more = j.u64("total_count").is_some_and(|t| t > (page * CI_RUN_PAGE) as u64);
         } else if p == ForgeProvider::GitLab {
@@ -298,9 +390,16 @@ impl ForgeSession {
         let id = out.run.id;
         let invalid = || Error::Forge(ForgeFailure::InvalidResponse);
         // (the run's own path, the jobs' path) for this host
-        let (run_path, jobs_path) = if p.is_github() || p == ForgeProvider::Gitea {
+        let (run_path, jobs_path) = if p.is_github() || p.is_gitea() {
             let base = format!("/repos/{}/actions/runs/{id}", repo.encoded());
-            let jobs = if p.is_github() { format!("{base}/jobs?filter=latest&per_page={CHECK_LIMIT}") } else { format!("{base}/jobs?limit={CHECK_LIMIT}&page=1") };
+            let jobs = if p.is_github() {
+                format!("{base}/jobs?filter=latest&per_page={CHECK_LIMIT}")
+            } else if p == ForgeProvider::Forgejo {
+                // Forgejo lists all of a run's jobs at once.
+                format!("{base}/jobs")
+            } else {
+                format!("{base}/jobs?limit={CHECK_LIMIT}&page=1")
+            };
             (base, jobs)
         } else if p == ForgeProvider::GitLab {
             let base = format!("{}/pipelines/{id}", self.prefix(&repo));
@@ -321,6 +420,7 @@ impl ForgeSession {
                     ForgeProvider::GitLab => gitlab_run(&j, &self.config),
                     ForgeProvider::Bitbucket => bitbucket_run(&j, &self.config, &repo),
                     ForgeProvider::Azure | ForgeProvider::AzureServer => azure_run(&j, &self.config),
+                    ForgeProvider::Forgejo => forgejo_run(&j, &self.config),
                     _ => github_run(&j, &self.config, &repo),
                 }
                 .ok_or_else(invalid)?;
@@ -334,10 +434,14 @@ impl ForgeSession {
         let group = out.run.title();
         let (j, headers) = match self.request(RUN, "read_ci_jobs", "GET", &jobs_path, None, false, c) {
             Ok(r) => r,
+            // Forgejo lists a run's jobs from 16 on: an older server has no list to show.
+            Err(Error::Forge(ForgeFailure::NotFound)) if p == ForgeProvider::Forgejo => {
+                return self.keep(&mut out.error, &mut out.missing, Error::Forge(ForgeFailure::Unsupported));
+            }
             Err(e) => return self.keep(&mut out.error, &mut out.missing, e),
         };
         let key = match p {
-            ForgeProvider::GitLab => None,
+            ForgeProvider::GitLab | ForgeProvider::Forgejo => None,
             ForgeProvider::Bitbucket => Some("values"),
             ForgeProvider::Azure | ForgeProvider::AzureServer => Some("records"),
             _ => Some("jobs"),
@@ -348,7 +452,9 @@ impl ForgeSession {
         };
         // Pages are bounded by the page size asked for. A timeline lists stages,
         // phases and tasks too; only its first 100 jobs are kept.
-        let rows = rows.filter(|a| p.is_azure() || a.len() <= CHECK_LIMIT).ok_or_else(invalid)?;
+        let rows = rows.filter(|a| p.is_azure() || p == ForgeProvider::Forgejo || a.len() <= CHECK_LIMIT).ok_or_else(invalid)?;
+        let mut failed_jobs = Vec::new();
+        let mut attempt = None;
         for row in rows {
             if p.is_azure() && row.str("type") != Some("Job") {
                 continue;
@@ -361,6 +467,13 @@ impl ForgeSession {
                 ForgeProvider::GitLab => gitlab_job(row, &self.config, &group, id),
                 ForgeProvider::Bitbucket => bitbucket_step(row, out.run.link.clone()),
                 ForgeProvider::Azure | ForgeProvider::AzureServer => azure_job(row, out.run.link.clone()),
+                ForgeProvider::Forgejo => forgejo_job(row, &self.config).map(|(job, job_id, job_attempt)| {
+                    attempt = attempt.max(job_attempt);
+                    if job.state == ForgeCheckState::Failed {
+                        failed_jobs.push((job_id, job.name.clone()));
+                    }
+                    job
+                }),
                 _ => github_check_run(row, &self.config, &repo),
             }
             .ok_or_else(invalid)?;
@@ -368,7 +481,13 @@ impl ForgeSession {
             job.run = Some(id);
             out.jobs.push(job);
         }
+        if p == ForgeProvider::Forgejo {
+            // A run's attempt is its jobs' newest; a re-run is sent per failed job.
+            out.run.attempt = attempt;
+            out.run.failed_jobs = failed_jobs;
+        }
         out.limited |= match p {
+            ForgeProvider::Forgejo => rows.len() > CHECK_LIMIT,
             ForgeProvider::GitLab => header(&headers, "x-next-page").is_some_and(|v| !v.trim().is_empty()),
             ForgeProvider::Bitbucket => j.get("next").is_some_and(|n| *n != Json::Null),
             ForgeProvider::Azure | ForgeProvider::AzureServer => false,

@@ -1537,7 +1537,7 @@ fn branch_field(
 fn self_hosted(provider: ForgeProvider) -> bool {
     matches!(
         provider,
-        ForgeProvider::GitHubEnterprise | ForgeProvider::BitbucketServer | ForgeProvider::AzureServer | ForgeProvider::Gitea
+        ForgeProvider::GitHubEnterprise | ForgeProvider::BitbucketServer | ForgeProvider::AzureServer | ForgeProvider::Gitea | ForgeProvider::Forgejo
     )
 }
 
@@ -1715,19 +1715,24 @@ fn account_form(
             ui.add_enabled_ui(!busy, |ui| {
                 ui.spacing_mut().item_spacing.y = 6.0;
                 for (group, own_server) in [(tr("Cloud"), false), (tr("Self-hosted"), true)] {
-                    ui.horizontal_wrapped(|ui| {
+                    // The group's name, then its buttons in a column of their own, so a row
+                    // that wraps goes on under its first button rather than under the name.
+                    ui.horizontal_top(|ui| {
                         ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
                         let (rect, _) = ui.allocate_exact_size(vec2(80.0, 24.0), Sense::hover());
                         ui.painter().text(rect.left_center(), Align2::LEFT_CENTER, group, FontId::proportional(12.5), HINT());
-                        for p in ForgeProvider::ALL.into_iter().filter(|p| self_hosted(*p) == own_server) {
-                            let r = ui.add(Button::new(RichText::new(p.label()).size(12.5))
-                                .selected(p == s.provider).corner_radius(5)
-                                .wrap_mode(TextWrapMode::Extend));
-                            control(widgets, format!("hosting-provider-{}", p.key()), &r, ui.clip_rect());
-                            if r.clicked() {
-                                picked = Some(p);
+                        ui.horizontal_wrapped(|ui| {
+                            ui.spacing_mut().item_spacing = vec2(6.0, 6.0);
+                            for p in ForgeProvider::ALL.into_iter().filter(|p| self_hosted(*p) == own_server) {
+                                let r = ui.add(Button::new(RichText::new(p.label()).size(12.5))
+                                    .selected(p == s.provider).corner_radius(5)
+                                    .wrap_mode(TextWrapMode::Extend));
+                                control(widgets, format!("hosting-provider-{}", p.key()), &r, ui.clip_rect());
+                                if r.clicked() {
+                                    picked = Some(p);
+                                }
                             }
-                        }
+                        });
                     });
                 }
             });
@@ -1811,7 +1816,7 @@ fn account_form(
                 ForgeProvider::BitbucketServer => tr("Personal HTTP access token. Include any context path in the server URL."),
                 ForgeProvider::AzureServer => tr("The collection URL with any virtual directory, and a PAT from that server."),
                 ForgeProvider::Azure => tr("PAT with Code (Read) and Work Items (Read); Code (Read & write) to create pull requests."),
-                ForgeProvider::Gitea => tr("Token with repository and issue read access; repository write access to create pull requests."),
+                ForgeProvider::Gitea | ForgeProvider::Forgejo => tr("Token with repository and issue read access; repository write access to create pull requests."),
             };
             pages::with_guide_link(ui, &[scopes], 12.5, HINT(), widgets, "hosting-guide");
             let r = ui.add_enabled(!busy, checkbox(&mut s.remember, tr("Remember on this computer")));
@@ -2064,7 +2069,7 @@ mod tests {
     #[test]
     fn provider_accounts_fit_compact_widths() {
         for width in [440.0, 700.0, 1200.0] {
-            for provider in [ForgeProvider::Bitbucket, ForgeProvider::BitbucketServer, ForgeProvider::GitHubEnterprise, ForgeProvider::AzureServer] {
+            for provider in [ForgeProvider::Bitbucket, ForgeProvider::BitbucketServer, ForgeProvider::GitHubEnterprise, ForgeProvider::AzureServer, ForgeProvider::Forgejo] {
                 let ctx=Context::default();
                 crate::style::install(&ctx);
                 let mut s=State { provider, server:provider.default_server().into(), ..Default::default() };
@@ -2087,8 +2092,15 @@ mod tests {
                         assert!(widgets[id].rect.right() <= width + 1.0, "{id} exceeds {width}");
                     }
                 }
-                for id in ["hosting-provider-bitbucket-server","hosting-provider-gitea","hosting-connect"] {
+                for id in ["hosting-provider-bitbucket-server","hosting-provider-gitea","hosting-provider-forgejo","hosting-connect"] {
                     let c=&widgets[id];assert!(c.rect.width()>20.0&&c.rect.height()>18.0,"{id} clipped at {width}: {:?}",c.rect);
+                }
+                // A provider row that wraps goes on under its first button, not under its name.
+                for (first, rest) in [("github", &["gitlab", "bitbucket", "azure"][..]), ("github-enterprise", &["bitbucket-server", "azure-server", "gitea", "forgejo"][..])] {
+                    let left = widgets[&format!("hosting-provider-{first}")].rect.left();
+                    for p in rest {
+                        assert!(widgets[&format!("hosting-provider-{p}")].rect.left() >= left - 0.5, "{p} wraps left of {first} at {width}");
+                    }
                 }
             }
         }
@@ -2193,6 +2205,34 @@ mod flow_tests {
     use rocket_git::ForgeProvider;
 
     #[test]
+    fn a_codeberg_remote_asks_for_a_forgejo_account_on_actions() {
+        common::isolated(
+            "ROCKET_HOSTING_UI_CASE",
+            "forge::flow_tests::a_codeberg_remote_asks_for_a_forgejo_account_on_actions",
+            || {
+                let f = common::Fixture::new();
+                f.write("a.txt", "1\n");
+                f.commit("base");
+                f.run(&["remote", "add", "origin", "https://codeberg.org/team/web.git"]);
+                let ctx = Context::default();
+                let mut app = open(&ctx, &f);
+                app.dispatch(Intent::View(crate::app::View::Actions));
+                // Codeberg runs Forgejo: once the remembered accounts are read (none here),
+                // Actions names Codeberg's Forgejo and offers Connect, as for any host it reads.
+                let forgejo = Some(crate::actions::Reach::NoAccount { host: ForgeProvider::Forgejo, server: "https://codeberg.org".into(), path: "team/web".into() });
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+                while app.tabs[app.active].actions.reach != forgejo {
+                    assert!(std::time::Instant::now() < deadline, "Actions stayed at {:?}", app.tabs[app.active].actions.reach);
+                    app.poll(&ctx);
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                }
+                assert!(enabled(&ctx, &mut app, "actions-connect"));
+                assert_eq!(app.tabs[app.active].actions.reach, forgejo);
+            },
+        );
+    }
+
+    #[test]
     fn signed_out_lists_point_to_accounts_and_the_form_keeps_its_controls() {
         common::isolated(
             "ROCKET_HOSTING_UI_CASE",
@@ -2225,6 +2265,9 @@ mod flow_tests {
                 ] {
                     assert_eq!(enabled(&ctx, &mut app, key), on, "{key}");
                 }
+                // Forgejo sits with the self-hosted servers and starts at Codeberg.
+                click(&ctx, &mut app, "hosting-provider-forgejo");
+                assert_eq!((app.forge.provider, app.forge.server.as_str()), (ForgeProvider::Forgejo, "https://codeberg.org"));
                 // Closing Preferences goes back to Hosting at its lists; the header's
                 // Accounts (and the old tab's name) open Preferences again.
                 click(&ctx, &mut app, "dialog-cancel");

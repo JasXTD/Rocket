@@ -95,7 +95,7 @@ pub struct ForgeCheck {
     /// "Failed after 4m 41s", "2m 28s", a status description.
     pub detail: String,
     pub link: Option<ForgeCheckLink>,
-    /// The CI run it belongs to, when the host has runs (GitHub Actions, GitLab, Gitea).
+    /// The CI run it belongs to, when the host has runs (GitHub Actions, GitLab, Gitea, Forgejo).
     pub run: Option<u64>,
 }
 /// Why a run's failed jobs can't be re-run now.
@@ -150,10 +150,13 @@ pub struct ForgeCiRun {
     uuid: Option<String>,
     created: Option<u64>,
     started: Option<u64>,
+    /// Forgejo re-runs one job, and the jobs that need it, per request: the failed
+    /// jobs' IDs and names, read with the run's jobs.
+    failed_jobs: Vec<(u64, String)>,
 }
 impl ForgeCiRun {
     fn new(id: u64, name: String, state: ForgeCheckState) -> Self {
-        Self { id, name, number: None, attempt: None, state, link: None, failed: Vec::new(), branch: None, event: None, commit: None, subject: None, took: None, build: None, uuid: None, created: None, started: None }
+        Self { id, name, number: None, attempt: None, state, link: None, failed: Vec::new(), branch: None, event: None, commit: None, subject: None, took: None, build: None, uuid: None, created: None, started: None, failed_jobs: Vec::new() }
     }
     /// "CI · run 812"
     pub fn title(&self) -> String {
@@ -339,7 +342,7 @@ impl ForgeSession {
                     ForgeProvider::BitbucketServer => return fail(ForgeFailure::Unsupported),
                     _ => {
                         let mut asked = asked.clone();
-                        let per_commit = matches!(self.config.provider(), ForgeProvider::Gitea | ForgeProvider::Bitbucket);
+                        let per_commit = matches!(self.config.provider(), ForgeProvider::Gitea | ForgeProvider::Forgejo | ForgeProvider::Bitbucket);
                         let limited_hosts = per_commit && asked.len() > CI_MARK_REQUEST_LIMIT;
                         if per_commit {
                             asked.truncate(CI_MARK_REQUEST_LIMIT);
@@ -515,7 +518,15 @@ impl ForgeSession {
     /// host answered for another repository, which fails the whole read.
     fn rerun_access(&self, op: &'static str, repo: &ForgeRepository, c: &CancellationToken) -> Result<Result<Option<ForgeRerunBlock>>> {
         let p = self.config.provider();
-        if p.is_github() || p == ForgeProvider::Gitea {
+        // Forgejo re-runs a job through its API from version 17 on.
+        if p == ForgeProvider::Forgejo {
+            match self.request(op, "read_server_version", "GET", "/version", None, false, c) {
+                Ok((j, _)) if !forgejo_reruns(j.str("version")) => return Ok(Ok(Some(ForgeRerunBlock::Unsupported))),
+                Ok(_) => {}
+                Err(e) => return Ok(Err(e)),
+            }
+        }
+        if p.is_github() || p.is_gitea() {
             let (j, headers) = match self.request(op, "read_ci_permissions", "GET", &format!("/repos/{}", repo.encoded()), None, false, c) {
                 Ok(answer) => answer,
                 Err(e) => return Ok(Err(e)),
@@ -523,7 +534,7 @@ impl ForgeSession {
             if !j.str("full_name").is_some_and(|n| n.eq_ignore_ascii_case(repo.path())) {
                 return fail(ForgeFailure::InvalidResponse);
             }
-            // GitHub must say the repository isn't archived; Gitea may leave it out.
+            // GitHub must say the repository isn't archived; Gitea and Forgejo may leave it out.
             let archived = if p.is_github() { j.bool("archived") != Some(false) } else { j.bool("archived") == Some(true) };
             if archived || j.get("permissions").and_then(|p| p.bool("push")) != Some(true) {
                 return Ok(Ok(Some(ForgeRerunBlock::NoWriteAccess)));
@@ -612,6 +623,9 @@ impl ForgeSession {
         })
     }
     fn send_rerun(&self, repo: &ForgeRepository, run: &ForgeCiRun, c: &CancellationToken) -> Result<Option<u64>> {
+        if self.config.provider() == ForgeProvider::Forgejo {
+            return self.send_forgejo_rerun(repo, run, c);
+        }
         let path = match self.config.provider() {
             p if p.is_github() => format!("/repos/{}/actions/runs/{}/rerun-failed-jobs", repo.encoded(), run.id),
             ForgeProvider::Gitea => format!("/repos/{}/actions/runs/{}/rerun-failed-jobs", repo.encoded(), run.id),
@@ -630,6 +644,33 @@ impl ForgeSession {
             }
             _ => run.attempt.map(|a| a + 1),
         })
+    }
+    /// Forgejo has no "failed jobs" re-run: each failed job is re-run on its own, and
+    /// Forgejo also runs the jobs that need it again. One at a time; once one has
+    /// started, a later refusal names what started and what wasn't sent.
+    fn send_forgejo_rerun(&self, repo: &ForgeRepository, run: &ForgeCiRun, c: &CancellationToken) -> Result<Option<u64>> {
+        if run.failed_jobs.is_empty() {
+            return fail(ForgeFailure::Unsupported);
+        }
+        for (i, (job, name)) in run.failed_jobs.iter().enumerate() {
+            c.check()?;
+            let path = format!("/repos/{}/actions/jobs/{job}/rerun", repo.encoded());
+            match self.request(RERUN, "send_ci_rerun", "POST", &path, Some("{}"), true, c) {
+                Ok(_) => {}
+                Err(Error::Forge(f)) if i > 0 && f != ForgeFailure::OutcomeUnknown => {
+                    let done = run.failed_jobs[..i].iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join(", ");
+                    // A job that needs one already re-run is running again, which Forgejo refuses.
+                    let why = if matches!(f, ForgeFailure::Forbidden | ForgeFailure::Rejected) {
+                        format!("Forgejo refused it ({}). It may already be running again with the jobs it needs; refresh the run, and check the token's permissions if it isn't", f.code())
+                    } else {
+                        format!("{} ({})", f.guidance().trim_end_matches('.'), f.code())
+                    };
+                    return Err(invalid(&format!("In {}, {done} started again, but {name} wasn't sent: {why}.", run.title())));
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(run.attempt.map(|a| a + 1))
     }
     fn github_marks(&self, repo: &ForgeRepository, asked: &[String], c: &CancellationToken) -> Result<Vec<(String, ForgeCiState)>> {
         let (owner, name) = repo.parts();
@@ -1019,6 +1060,76 @@ fn github_run(row: &Json, config: &ForgeConfig, _repo: &ForgeRepository) -> Opti
     }
     Some(run)
 }
+/// A Forgejo Actions run (Forgejo 12 and later), which isn't shaped like GitHub's:
+/// `commit_sha`, `title`, `prettyref` ("main", or "#12" for a pull request),
+/// `index_in_repo` and Forgejo's own status words.
+fn forgejo_run(row: &Json, config: &ForgeConfig) -> Option<ForgeCiRun> {
+    let id = row.u64("id").filter(|n| *n > 0)?;
+    let status = row.str("status")?;
+    let state = forgejo_state(status)?;
+    let file = row.str("workflow_id").and_then(|p| p.rsplit('/').next()).filter(|f| !f.trim().is_empty()).map(|f| crate::display_text::bounded(f, 128).text);
+    let mut run = ForgeCiRun::new(id, file.unwrap_or_else(|| "Workflow".into()), state);
+    run.number = row.u64("index_in_repo").filter(|n| *n > 0);
+    run.link = link(row.str("html_url"), config);
+    let pretty = row.str("prettyref");
+    let pull = pretty.and_then(|r| r.strip_prefix('#')).and_then(|n| n.parse::<u64>().ok());
+    if pull.is_none() {
+        run.branch = branch_name(pretty);
+    }
+    run.event = row.str("event").map(|e| match e {
+        "push" => "push".into(),
+        "pull_request" | "pull_request_target" => pull.map_or_else(|| "pull request".into(), |n| format!("pull request #{n}")),
+        "schedule" => "schedule".into(),
+        "workflow_dispatch" => "manual".into(),
+        other => words(other),
+    });
+    run.commit = row.str("commit_sha").and_then(oid);
+    run.subject = row.str("title").and_then(first_line);
+    run.created = row.str("created").and_then(timestamp);
+    run.started = row.str("started").and_then(timestamp);
+    if matches!(status, "success" | "failure" | "cancelled" | "skipped") {
+        // Nanoseconds, the time of every attempt together; the last attempt's span first.
+        run.took = span(run.started, row.str("stopped").and_then(timestamp))
+            .or_else(|| row.u64("duration").map(|ns| ns / 1_000_000_000));
+    }
+    Some(run)
+}
+/// Forgejo's status words, for runs and jobs alike.
+fn forgejo_state(status: &str) -> Option<ForgeCheckState> {
+    Some(match status {
+        "success" => ForgeCheckState::Passed,
+        "failure" => ForgeCheckState::Failed,
+        "cancelled" => ForgeCheckState::Cancelled,
+        "skipped" => ForgeCheckState::Skipped,
+        "running" => ForgeCheckState::Running,
+        "waiting" | "blocked" | "unknown" => ForgeCheckState::Queued,
+        _ => return None,
+    })
+}
+/// One Forgejo job (Forgejo 16 and later): its check, ID and attempt.
+fn forgejo_job(row: &Json, config: &ForgeConfig) -> Option<(ForgeCheck, u64, Option<u64>)> {
+    let id = row.u64("id").filter(|n| *n > 0)?;
+    let name = text(row, "name", 256)?;
+    let status = row.str("status")?;
+    let state = forgejo_state(status)?;
+    let detail = match status {
+        "success" => "Passed",
+        "failure" => "Failed",
+        "cancelled" => "Cancelled",
+        "skipped" => "Skipped",
+        "running" => "Running",
+        "waiting" => "Waiting",
+        "blocked" => "Blocked",
+        _ => "Queued",
+    };
+    let check = ForgeCheck { name, group: String::new(), state, detail: detail.into(), link: link(row.str("html_url"), config), run: None };
+    Some((check, id, row.u64("attempt")))
+}
+/// Whether this Forgejo re-runs jobs through its API: version 17 or later
+/// ("17.0.0+gitea-1.22.0", or a build such as "17.0.0-100-2254cb0+gitea-1.22.0").
+fn forgejo_reruns(version: Option<&str>) -> bool {
+    version.and_then(|v| v.split(['.', '-', '+']).next()).and_then(|major| major.parse::<u64>().ok()).is_some_and(|major| major >= 17)
+}
 /// A branch name a host reported, without "refs/heads/".
 fn branch_name(value: Option<&str>) -> Option<String> {
     let name = value?;
@@ -1053,6 +1164,22 @@ fn status_check(row: &Json, config: &ForgeConfig, name: &str, state: &str, descr
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn forgejo_reruns_jobs_from_version_17() {
+        for (version, reruns) in [
+            ("17.0.0+gitea-1.22.0", true),
+            ("17.0.0-100-2254cb0+gitea-1.22.0", true),
+            ("18.1.3", true),
+            ("16.0.2+gitea-1.22.0", false),
+            ("11.0.1+gitea-1.22.0", false),
+            ("1.22.0", false),
+            ("", false),
+            ("dev", false),
+        ] {
+            assert_eq!(forgejo_reruns(Some(version)), reruns, "{version}");
+        }
+        assert!(!forgejo_reruns(None));
+    }
     #[test]
     fn timestamps_and_durations() {
         assert_eq!(timestamp("1970-01-01T00:00:00Z"), Some(0));

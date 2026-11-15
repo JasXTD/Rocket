@@ -58,7 +58,7 @@ message. Bitbucket Cloud/Server and Azure Services/Server likewise require one
 single-line comment and an empty separate message. Server PR versions and Azure
 iteration identities are included in `inline_context.diff_revision`; preserve
 that value unchanged. Azure paths retain their leading `/` as API paths.
-Gitea accepts up to 32 single-line comments in one review. GitHub/GHES
+Gitea and Forgejo accept up to 32 single-line comments in one review. GitHub/GHES
 also accept ranges within one complete hunk. Binary, oversized, missing or
 incomplete patches do not authorize comments. Editing or refreshing a draft does
 not submit it. The file is user-managed; Rocket reads it without modifying it.
@@ -66,7 +66,7 @@ not submit it. The file is user-managed; Rocket reads it without modifying it.
 JSON writes report `remote_outcome`: `not_attempted` for preview/pin refusal,
 `confirmed` for verified success, `not_confirmed` for a definite failure, or
 `unknown` when an interrupted/unverifiable submission might have succeeded or
-saved partial pending comments (Gitea). Gitea submissions also refuse an existing
+saved partial pending comments (Gitea, Forgejo). Gitea and Forgejo submissions also refuse an existing
 pending review for the same account or an incomplete pending-review scan.
 Inspect the same PR before retrying an unknown write. There are no automatic
 retries. Token values and API response bodies are omitted from errors/logs;
@@ -522,7 +522,7 @@ History JSON adds `data.order`; its existing `commits` and `has_more` stay uncha
 `commit-url` resolves the revision locally and prints one URL without opening a
 browser or contacting the host. With multiple matching remotes, choose `--remote`.
 Custom hosts require `--provider` (`github`, `github-enterprise`, `gitlab`,
-`bitbucket`, `bitbucket-server`, `azure`, `azure-server`, `gitea`) and `--server`
+`bitbucket`, `bitbucket-server`, `azure`, `azure-server`, `gitea`, `forgejo`) and `--server`
 together. Azure DevOps Server uses its HTTPS collection URL, including any
 virtual directory. The validated server
 must match the remote; credentials, arbitrary schemes and unknown-host guesses

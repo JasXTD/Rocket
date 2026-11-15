@@ -604,7 +604,7 @@ fn gitlab_saved_as(returned: Option<&str>, sent: &str) -> bool {
 /// Request changes without one even when comments come with it ("review event
 /// REQUEST_CHANGES requires a body"), and accepts a review of only comments.
 fn comments_replace_message(p: ForgeProvider, action: ForgeReviewAction, has_comments: bool) -> bool {
-    has_comments && !(p == ForgeProvider::Gitea && action == ForgeReviewAction::RequestChanges)
+    has_comments && !(p.is_gitea() && action == ForgeReviewAction::RequestChanges)
 }
 fn string(j: &Json, k: &str, max: usize) -> Option<String> {
     j.str(k)

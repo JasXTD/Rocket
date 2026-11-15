@@ -211,6 +211,21 @@ mod tests {
     }
     #[test]
     #[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
+    fn forgejo_profile_roundtrips_under_its_own_key() {
+        let dir = std::env::temp_dir().join(format!("rocket-forgejo-vault-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
+        fs::create_dir(&dir).unwrap();
+        let a = Account { label: "Codeberg".into(), provider: ForgeProvider::Forgejo, server: "https://forge.example.org/git".into(),
+            username: String::new(), token: "disposable-forgejo-fixture".into(), azure_api_version: None };
+        let saved = save(&dir, vec![a], None).unwrap();
+        let plain = protect(saved.snapshot.as_ref().unwrap(), false).unwrap();
+        let value: Value = serde_json::from_slice(&plain).unwrap();
+        assert_eq!(value["accounts"][0]["provider"], json!("forgejo"));
+        let loaded = load(&dir).unwrap();
+        assert_eq!((loaded.accounts[0].provider, loaded.accounts[0].server.as_str()), (ForgeProvider::Forgejo, "https://forge.example.org/git"));
+        fs::remove_file(dir.join(FILE)).unwrap(); fs::remove_dir(&dir).unwrap();
+    }
+    #[test]
+    #[cfg_attr(target_os = "linux", ignore = "needs an unlocked desktop keyring")]
     fn user_protection_roundtrip_and_tampering() {
         let raw = b"disposable-hosting-token-ONLY";
         let enc = protect(raw, true).unwrap();

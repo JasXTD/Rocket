@@ -3,7 +3,7 @@
 // host menu; gitlab.com without an account (no Authorization header, whole namespaces,
 // sizes unknown, Load more, Sort); GitHub's search words pointed out instead of sent and
 // Search without them; a rate limit with its countdown keeping results and sending
-// nothing; Open on GitLab recorded; a preview of a GitLab result; Codeberg on Gitea's API
+// nothing; Open on GitLab recorded; a preview of a GitLab result; Codeberg (Forgejo) on Gitea's API
 // (language greyed out, a server that wants a sign-in, Add account into Preferences →
 // Accounts and back); a remembered GitLab account (its token, sizes, private projects,
 // the account replacing gitlab.com without one); a refused token not tried again; and
@@ -51,7 +51,7 @@ function home() {
 }
 const plain = p => p.replace(/^\\\\\?\\/, '');
 
-// ---- Fake GitLab (/gitlab) and Gitea (/gitea) APIs ------------------------------------
+// ---- Fake GitLab (/gitlab) and Gitea (/gitea, /forgejo: Forgejo kept Gitea's search) APIs
 let mode = 'ok', port = 0; const requests = [];
 const project = (name, extra = {}) => ({ path_with_namespace: name, description: 'Fuzzy finder ' + name, star_count: 12, forks_count: 1,
   open_issues_count: 2, topics: ['cli'], default_branch: 'main', last_activity_at: '2026-11-15T03:12:44.123Z', visibility: 'public',
@@ -77,7 +77,7 @@ const server = http.createServer((req, res) => {
       ...Array.from({ length: 27 }, (_, i) => project('fillers/item-' + i)),
     ], { 'X-Total': '35', 'X-Next-Page': '2' });
   }
-  if (route === '/gitea/repos/search') {
+  if (route === '/gitea/repos/search' || route === '/forgejo/repos/search') {
     if (mode === 'closed' && !auth) return send(403, { message: 'Only signed in user is allowed to call APIs.' });
     return send(200, { ok: true, data: [
       { full_name: 'sample-user/blog-builder', description: 'A small static site generator', stars_count: 42, forks_count: 6, open_issues_count: 3,
@@ -138,7 +138,7 @@ async function gitlabWithoutAccount(f) {
   await client.tool('rocket_open', { path: f.repo }); await settle(); await resize(1480, 920);
   if (control('console-close')) await click('console-close');
   await openExplore();
-  assert.deepEqual(explore().hosts.map(h => h.key), ['github', 'public:gitlab|https://gitlab.com', 'public:gitea|https://codeberg.org']);
+  assert.deepEqual(explore().hosts.map(h => h.key), ['github', 'public:gitlab|https://gitlab.com', 'public:forgejo|https://codeberg.org']);
   assert.equal(explore().host_kind, 'github');
   await click('explore-host'); await until(s => s.controls.some(c => c.id === 'explore-host-2'), 'Host menu'); await stable();
   for (const id of ['explore-host-0', 'explore-host-1', 'explore-host-2', 'explore-host-accounts']) assert(control(id)?.enabled, id);
@@ -203,24 +203,25 @@ async function previewing() {
 }
 
 async function codeberg() {
-  await openExplore(); await chooseHost('public:gitea|https://codeberg.org');
+  await openExplore(); await chooseHost('public:forgejo|https://codeberg.org');
   await until(s => !s.explore.running && s.explore.result_count === 2, 'Codeberg results');
-  const r = searches('/gitea/repos/search').at(-1);
-  assert.equal(r.url, '/gitea/repos/search?q=fuzzy&includeDesc=true&sort=updated&order=desc&limit=30&page=1'); assert(r.anonymous);
-  assert.equal(control('explore-language')?.enabled, false, 'Gitea can\'t filter by language');
+  assert(!searches('/gitea/').length, 'Codeberg is searched as Forgejo');
+  const r = searches('/forgejo/repos/search').at(-1);
+  assert.equal(r.url, '/forgejo/repos/search?q=fuzzy&includeDesc=true&sort=updated&order=desc&limit=30&page=1'); assert(r.anonymous);
+  assert.equal(control('explore-language')?.enabled, false, 'Forgejo can\'t filter by language');
   const [blog, hugo] = explore().results;
   assert.equal(blog.name, 'sample-user/blog-builder'); assert.equal(blog.language, 'Go'); assert.equal(blog.size_kb, 12288);
   assert.equal(blog.web_url, 'https://codeberg.org/sample-user/blog-builder'); assert(hugo.mirror);
   await capture('06-codeberg');
-  passed('Choosing Codeberg searches Gitea\'s API at once with the words in the box, includes descriptions, greys out Language and lists sizes, languages and mirrors');
+  passed('Choosing Codeberg searches it as Forgejo, with Gitea\'s search API, at once with the words in the box, includes descriptions, greys out Language and lists sizes, languages and mirrors');
 
   mode = 'closed'; await click('explore-search'); await until(s => !s.explore.running && s.explore.problem === 'sign_in_required', 'Sign-in required');
   await capture('07-sign-in-required');
   await click('explore-problem-add-account');
-  await until(s => s.preferences.page === 'accounts' && s.hosting.provider === 'gitea' && !s.explore.open, 'Accounts for Codeberg');
+  await until(s => s.preferences.page === 'accounts' && s.hosting.provider === 'forgejo' && !s.explore.open, 'Accounts for Codeberg');
   await click('dialog-close'); await until(s => s.explore.open && !s.dialog?.kind?.startsWith('pref'), 'Back to Explore');
   mode = 'ok';
-  passed('A server that lets only signed-in users search says so; Add account opens Preferences → Accounts with Gitea chosen, and closing it comes back to Explore');
+  passed('A server that lets only signed-in users search says so; Add account opens Preferences → Accounts with Forgejo chosen, and closing it comes back to Explore');
 }
 
 async function account() {

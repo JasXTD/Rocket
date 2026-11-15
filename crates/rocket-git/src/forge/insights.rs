@@ -97,7 +97,7 @@ fn median(values: &mut [u64]) -> Option<u64> {
 }
 
 /// Whether a host's pull request list is read newest-updated first: the list paths in
-/// adapter.rs sort GitHub, GitLab, Gitea and Bitbucket Cloud by update time. Azure
+/// adapter.rs sort GitHub, GitLab, Gitea, Forgejo and Bitbucket Cloud by update time. Azure
 /// DevOps and Bitbucket Server don't promise an order, so a partial sample of theirs
 /// can't say how far back it is complete.
 pub fn list_sorted_by_update(provider: ForgeProvider) -> bool {
@@ -107,6 +107,7 @@ pub fn list_sorted_by_update(provider: ForgeProvider) -> bool {
             | ForgeProvider::GitHubEnterprise
             | ForgeProvider::GitLab
             | ForgeProvider::Gitea
+            | ForgeProvider::Forgejo
             | ForgeProvider::Bitbucket
     )
 }
@@ -351,7 +352,7 @@ pub(super) fn timing(provider: ForgeProvider, v: &Json) -> ForgePullTiming {
         _ => "created_at",
     };
     let is_merged = match provider {
-        ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea => {
+        ForgeProvider::GitHub | ForgeProvider::GitHubEnterprise | ForgeProvider::Gitea | ForgeProvider::Forgejo => {
             v.str("merged_at").is_some_and(|s| !s.is_empty())
                 || v.get("merged") == Some(&Json::Bool(true))
         }
@@ -491,7 +492,7 @@ pub(super) fn review_requests(
                 known &= put(&mut waiting, name.as_deref(), true);
             }
         }
-        ForgeProvider::Gitea => {
+        ForgeProvider::Gitea | ForgeProvider::Forgejo => {
             // Gitea's list fills `requested_reviewers` with everyone whose latest review
             // is a request, an approval or a rejection, and leaves the teams out, so it
             // names reviewers without saying who still waits.
@@ -585,7 +586,7 @@ impl ForgeProvider {
     /// Whether Read reviews can time a first review on this host: its reviews carry
     /// the time each was submitted.
     pub fn times_reviews(self) -> bool {
-        self.is_github() || self == Self::Gitea
+        self.is_github() || self.is_gitea()
     }
 }
 
@@ -644,7 +645,7 @@ impl ForgeSession {
             return Err(invalid("Select a valid pull request."));
         }
         let created = item.timing.as_ref().and_then(|t| t.created).filter(|c| *c <= now);
-        let gitea = provider == ForgeProvider::Gitea;
+        let gitea = provider.is_gitea();
         let (size, pages) = if gitea { (50, 2) } else { (100, 3) };
         let (mut out, mut later) = (ForgeFirstReview::default(), false);
         for page in 1..=pages {
@@ -702,7 +703,7 @@ fn note_review(
     now: u64,
 ) -> Result<bool> {
     let state = row.str("state").ok_or(Error::Forge(ForgeFailure::InvalidResponse))?;
-    let counted = if provider == ForgeProvider::Gitea {
+    let counted = if provider.is_gitea() {
         match state {
             "APPROVED" | "REQUEST_CHANGES" | "COMMENT" => true,
             "PENDING" | "REQUEST_REVIEW" => false,
@@ -1096,6 +1097,7 @@ mod tests {
             ForgeProvider::GitHub,
             ForgeProvider::GitHubEnterprise,
             ForgeProvider::Gitea,
+            ForgeProvider::Forgejo,
             ForgeProvider::GitLab,
         ] {
             let mut t = timing(p, &github);
@@ -1130,7 +1132,7 @@ mod tests {
         assert_eq!(server.updated, Some(999));
         assert_eq!(bb.updated, date("2024-03-01T10:00:00Z"));
         let updated = parse(r#"{"state":"open","created_at":"2024-02-28T10:00:00Z","updated_at":"2024-03-02T10:00:00Z"}"#);
-        for p in [ForgeProvider::GitHub, ForgeProvider::GitHubEnterprise, ForgeProvider::Gitea, ForgeProvider::GitLab] {
+        for p in [ForgeProvider::GitHub, ForgeProvider::GitHubEnterprise, ForgeProvider::Gitea, ForgeProvider::Forgejo, ForgeProvider::GitLab] {
             assert_eq!(timing(p, &updated).updated, date("2024-03-02T10:00:00Z"), "{p:?}");
         }
         for p in [ForgeProvider::Azure, ForgeProvider::AzureServer] {
@@ -1153,7 +1155,7 @@ mod tests {
     #[test]
     fn insights_coverage_reaches_back_to_the_oldest_update_on_hosts_that_sort_by_it() {
         let rows = [dated(1, 50, None, Some(900)), dated(2, 10, Some(40), Some(400))];
-        for p in [ForgeProvider::GitHub, ForgeProvider::GitHubEnterprise, ForgeProvider::GitLab, ForgeProvider::Gitea, ForgeProvider::Bitbucket] {
+        for p in [ForgeProvider::GitHub, ForgeProvider::GitHubEnterprise, ForgeProvider::GitLab, ForgeProvider::Gitea, ForgeProvider::Forgejo, ForgeProvider::Bitbucket] {
             assert_eq!(ForgePullCoverage::of(&rows, p, true), ForgePullCoverage::After(400), "{p:?}");
             assert_eq!(ForgePullCoverage::of(&rows, p, false), ForgePullCoverage::Complete);
         }
