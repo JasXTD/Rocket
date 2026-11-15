@@ -81,11 +81,18 @@ impl Rocket {
                         ui.add_space(16.0);
                         pages::caption(ui, tr("Explore"));
                         ui.add_space(4.0);
-                        // Enter opens Explore with this search or address.
+                        // Enter opens Explore with this search or address, on the host
+                        // Explore searches now.
+                        let host = self.explore_host();
+                        let hint = if host.is_github() {
+                            tr("Search GitHub or paste a repository address").to_owned()
+                        } else {
+                            crate::i18n::trf!("Search {host} or paste a repository address", host = host.name())
+                        };
                         let explore = ui.add_enabled(
                             ready,
                             TextEdit::singleline(&mut self.explore.query)
-                                .hint_text(tr("Search GitHub or paste a repository address"))
+                                .hint_text(hint)
                                 .desired_width(width)
                                 .margin(Margin::symmetric(10, 7)),
                         );

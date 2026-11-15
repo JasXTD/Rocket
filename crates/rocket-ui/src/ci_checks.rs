@@ -21,7 +21,7 @@ use std::{
 /// While a mark shows Running, and Rocket is in front.
 const RUNNING_EVERY: Duration = Duration::from_secs(30);
 const IDLE_EVERY: Duration = Duration::from_secs(300);
-const AFTER_ERROR: Duration = Duration::from_secs(120);
+pub(crate) const AFTER_ERROR: Duration = Duration::from_secs(120);
 const AFTER_RATE_LIMIT: Duration = Duration::from_secs(600);
 /// After a re-run starts, look again soon so the marks turn running.
 const AFTER_RERUN: Duration = Duration::from_secs(8);
@@ -189,13 +189,65 @@ pub struct Shared {
     pub rerun: Option<Rerun>,
     /// The saved-account file Hosting last read or wrote, so an edit there is seen.
     seen_accounts: Option<u64>,
+    /// Explore lists the accounts' servers, so it has them read without a repository.
+    wanted: bool,
+    /// Counts changes to the account list, so work started before one is not kept.
+    generation: u64,
+    /// Accounts whose token a host refused (401), by key: Explore doesn't send it again
+    /// until the account changes. Other sign-in failures are only in `refused`.
+    tokens_refused: HashSet<String>,
 }
 impl Shared {
     pub fn signing_in(&self) -> bool {
         self.connecting.is_some()
     }
+    /// The remembered accounts, once read.
+    pub(crate) fn remembered(&self) -> &[Account] {
+        self.accounts.as_deref().unwrap_or(&[])
+    }
+    /// Have the remembered accounts read, as a repository with a remote does.
+    pub(crate) fn want_accounts(&mut self) {
+        self.wanted = true;
+    }
+    /// The verified session of the account `key` ([`account_key`]).
+    pub(crate) fn session(&self, key: &str) -> Option<Arc<ForgeSession>> {
+        self.sessions.iter().find(|(k, _)| k == key).map(|(_, s)| s.clone())
+    }
+    /// A session Explore signed in, kept for the marks too.
+    pub(crate) fn keep_session(&mut self, key: String, session: Arc<ForgeSession>) {
+        if self.session(&key).is_none() {
+            self.refused.remove(&key);
+            self.sessions.push((key, session));
+        }
+    }
+    /// The account's sign-in failed: `None` waits for the account to change, a time
+    /// tries again after it (the server couldn't be reached).
+    pub(crate) fn refuse(&mut self, key: String, retry: Option<Instant>) {
+        self.sessions.retain(|(k, _)| *k != key);
+        self.refused.insert(key, retry);
+    }
+    /// The host refused the account's token: neither the marks nor Explore send it
+    /// again until the account changes.
+    pub(crate) fn refuse_token(&mut self, key: String) {
+        self.tokens_refused.insert(key.clone());
+        self.refuse(key, None);
+    }
+    /// Whether a host refused the account's token since the account last changed.
+    pub(crate) fn token_refused(&self, key: &str) -> bool {
+        self.tokens_refused.contains(key)
+    }
+    /// Changes whenever the account list does.
+    pub(crate) fn generation(&self) -> u64 {
+        self.generation
+    }
+    /// The remembered accounts as if read from the file, for tests.
+    #[cfg(test)]
+    pub(crate) fn remember_for_test(&mut self, accounts: Vec<Account>) {
+        self.accounts = Some(accounts);
+        self.generation += 1;
+    }
 }
-fn account_key(a: &Account) -> String {
+pub(crate) fn account_key(a: &Account) -> String {
     format!("{}|{}|{}", a.provider.key(), a.server, a.label)
 }
 fn hash<T: Hash>(value: &T) -> u64 {
@@ -587,7 +639,9 @@ impl Rocket {
             self.ci.seen_accounts = saved;
             self.ci.accounts = Some(self.forge.accounts.clone());
             self.ci.refused.clear();
+            self.ci.tokens_refused.clear();
             self.ci.sessions.clear();
+            self.ci.generation += 1;
             return;
         }
         if self.ci.accounts.is_some() || self.ci.loading.is_some() {
@@ -596,12 +650,13 @@ impl Rocket {
             {
                 self.ci.loading = None;
                 self.ci.accounts = Some(result.map(|l| l.accounts).unwrap_or_default());
+                self.ci.generation += 1;
             }
             return;
         }
         // Only a repository with a remote on a known host or a remembered server
         // reads the account file, once per run.
-        let wants = self.tabs.iter().any(|t| t.snapshot.as_ref().is_some_and(|s| !s.remotes.is_empty()));
+        let wants = self.ci.wanted || self.tabs.iter().any(|t| t.snapshot.as_ref().is_some_and(|s| !s.remotes.is_empty()));
         if !wants {
             return;
         }
@@ -1152,7 +1207,7 @@ fn start_details(ctx: &Context, backend: Option<crate::backend::Backend>, sessio
     let backend = backend?;
     crate::read_task::spawn(ctx, move |cancel| backend.forge_request("hosting-ci-details", &session, |s| s.commit_checks(&repository, &commit, &cancel))).ok()
 }
-fn account_config(a: &Account, fixture: Option<u16>) -> rocket_git::Result<ForgeConfig> {
+pub(crate) fn account_config(a: &Account, fixture: Option<u16>) -> rocket_git::Result<ForgeConfig> {
     let mut config = ForgeConfig::new(a.provider, &a.server)?;
     if let Some(version) = &a.azure_api_version {
         config = config.with_azure_api_version(version)?;

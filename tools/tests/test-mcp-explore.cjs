@@ -193,7 +193,7 @@ async function searching(f) {
   const text = await refused('rocket_type', { target: 'explore-query', text: 'https://gitlab.com/acme/app' });
   assert(text.includes('local paths'), text); assert.equal(explore().query, 'fuzzy finder');
   await typeQuery(fuzzy);
-  assert.deepEqual(explore().address, { name: 'fuzzy-finder', host: 'this computer', url: fuzzy });
+  assert.deepEqual(explore().address, { name: 'fuzzy-finder', host: 'this computer', url: fuzzy, short: false, unknown_server: false });
   await capture('05-explore-address');
   passed('A pasted local repository shows its address card; MCP refuses a non-local address before typing');
   await search('fuzzy finder');

@@ -27,8 +27,10 @@ pub struct PreviewRequest {
     /// "owner/name", or a folder's name.
     pub name: String,
     pub host: String,
-    /// A github.com page, for Open on GitHub.
+    /// The repository's page on its host, for Open on GitHub, GitLab or Gitea.
     pub web: Option<String>,
+    /// The host's name for that page: GitHub, GitLab, Gitea or Codeberg.
+    pub site: &'static str,
     /// GitHub's size of the whole repository, when known.
     pub size_kb: Option<u64>,
     /// The default branch, when GitHub said, for "Download the files of main".
@@ -502,7 +504,7 @@ impl Rocket {
         if card.open
             && let Some(web) = web
         {
-            self.open_github(&web);
+            self.open_host_page(&web);
         }
         if card.edit {
             self.dispatch(Intent::CloseTab(id));
@@ -839,7 +841,7 @@ fn failed_card(
                     card.retry = Some(false);
                 }
                 if preview.request.web.is_some() {
-                    let r = pages::tool(ui, Icon::External, "Open on GitHub", true);
+                    let r = pages::tool(ui, Icon::External, &format!("Open on {}", preview.request.site), true);
                     control(widgets, "preview-open-github", &r, ui.clip_rect());
                     card.open = r.clicked();
                 }
@@ -1159,6 +1161,7 @@ mod refusal_tests {
                         name: "fixture".into(),
                         host: "this computer".into(),
                         web: None,
+                        site: "GitHub",
                         size_kb: None,
                         branch: None,
                     },

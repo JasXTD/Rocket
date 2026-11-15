@@ -907,6 +907,7 @@ fn repositories_section(
                         name: r.remote.full_name(),
                         host: "github.com".into(),
                         web: Some(r.html_url.clone()),
+                        site: "GitHub",
                         size_kb: None,
                         branch: Some(r.default_branch.clone()),
                     });

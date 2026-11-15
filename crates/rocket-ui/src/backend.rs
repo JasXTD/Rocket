@@ -1792,6 +1792,10 @@ impl Backend {
     pub fn forge_connect(&self, config: ForgeConfig, username: &str, token: &str, cancel: &CancellationToken) -> Result<ForgeSession> {
         self.request("hosting-connect", false, |git| git.forge_session(config, username, token, cancel))
     }
+    /// A GitLab or Gitea session without an account, for Explore's public search.
+    pub fn forge_public(&self, config: ForgeConfig) -> Result<ForgeSession> {
+        self.client.forge_public_session(config)
+    }
     pub fn forge_browser_connect(&self, config: ForgeConfig, cancel: &CancellationToken) -> Result<(ForgeSession,String)> {
         self.request("hosting-browser-sign-in", true, |git| git.forge_browser_session(config,cancel))
     }

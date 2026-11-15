@@ -133,7 +133,8 @@ the UI framework. See the [release notes](docs/releases/0.92.4.md).
 
 - Tabs, automatic refresh, and a **Repository manager** with folders and nested workspaces.
 - **Scan folder**, every repository's status at a glance, **Fetch all** and **Pull all**.
-- **Explore**: search GitHub or paste an address, preview read-only, then Keep or Discard.
+- **Explore**: search GitHub, GitLab or Gitea, or paste an address, preview read-only, then
+  Keep or Discard.
 - Worktrees (move, repair, prune), submodules, Git LFS (objects, tracking rules, locks) and
   ignore rules.
 

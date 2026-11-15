@@ -1032,6 +1032,8 @@ fn operation_label(value: &str) -> &'static str {
         "github-pulls",
         "github-open",
         "github-search",
+        "explore-search",
+        "explore-open",
         "preview-open",
         "preview-sign-in",
         "keep-preview",

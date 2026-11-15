@@ -154,6 +154,7 @@ const NAMES: &[(&str, &str, &str)] = &[
 const READS: &[(&str, &str)] = &[
     ("status", crate::i18n::mark("Read status")),
     ("github-search", crate::i18n::mark("Search GitHub")),
+    ("explore-search", crate::i18n::mark("Search repositories")),
     ("hosting-issue-text", crate::i18n::mark("Read issue")),
     ("diff", crate::i18n::mark("Read diff")),
     ("diff-words", crate::i18n::mark("Read diff words")),
@@ -235,6 +236,7 @@ const OTHERS: &[(&str, &str)] = &[
     ("github-sign-in", crate::i18n::mark("GitHub sign-in")),
     ("preview-open", crate::i18n::mark("Open preview")),
     ("preview-sign-in", crate::i18n::mark("Sign in for a preview")),
+    ("explore-open", crate::i18n::mark("Open repository page")),
     ("hosting-browser-sign-in", crate::i18n::mark("Browser sign-in")),
     ("hosting-connect", crate::i18n::mark("Connect hosting account")),
     ("hosting-create", crate::i18n::mark("Create pull request")),

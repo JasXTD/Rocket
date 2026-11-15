@@ -275,7 +275,9 @@ impl Ui {
                 .and_then(|i| explore.results.get(i))
                 .map(|r| r.clone_url.clone())
                 .ok_or_else(|| "Select a result first".to_owned()),
-            "explore-address-preview" => rocket_ui::explore::address(&explore.query)
+            "explore-address-preview" => self
+                .app
+                .explore_address()
                 .map(|a| text(&a.source))
                 .ok_or_else(|| "Type a repository address first".to_owned()),
             "github-repository-preview" => self
@@ -3594,12 +3596,23 @@ fn explore_state(app: &Rocket) -> Value {
         Problem::Refused => "refused",
         Problem::NoResults => "no_results",
         Problem::Failed(_) => "failed",
+        Problem::SignInRequired => "sign_in_required",
+        Problem::TokenRefused => "token_refused",
+        Problem::GitHubWords(_) => "github_words",
     });
+    let host = app.explore_host();
+    let kind = |h: &rocket_ui::explore::Host| match h.kind {
+        rocket_ui::explore::HostKind::GitHub => "github",
+        rocket_ui::explore::HostKind::Account { .. } => "account",
+        rocket_ui::explore::HostKind::Live => "live",
+        rocket_ui::explore::HostKind::Public => "public",
+    };
     let mut value = json!({"open":app.page() == Some(rocket_ui::pages::Page::Explore),"running":s.running(),
         "result_count":s.results.len(),"total":s.total,"incomplete":s.incomplete,"more":s.next_page.is_some(),
         "selected":s.selected,"remaining":s.remaining,"wait_seconds":s.wait_seconds(),"problem":problem,
         "signed_in":app.github.is_some(),"anonymous":s.anonymous.is_some(),"confirm_large":s.confirm_large,
-        "sort":format!("{:?}", s.sort),"language":s.language,"limit":app.preview_limit});
+        "sort":format!("{:?}", s.sort),"forge_sort":format!("{:?}", s.forge_sort),"language":s.language,"limit":app.preview_limit,
+        "host_kind":kind(&host),"host_provider":host.provider.key()});
     if !live {
         value["query"] = json!(s.query);
         value["searched"] = json!(s.searched);
@@ -3607,10 +3620,18 @@ fn explore_state(app: &Rocket) -> Value {
             Some(Problem::Failed(error)) => Some(error),
             _ => None,
         });
-        value["results"] = json!(s.results.iter().take(200).map(|r| json!({"name":r.remote.full_name(),
-            "stars":r.stars,"language":r.language,"size_kb":r.size_kb,"clone_url":r.clone_url,
-            "archived":r.archived,"fork":r.fork})).collect::<Vec<_>>());
-        value["address"] = json!(rocket_ui::explore::address(&s.query).map(|a| json!({"name":a.name,"host":a.host,"url":a.url})));
+        value["words"] = json!(match &s.problem {
+            Some(Problem::GitHubWords(words)) => Some(words),
+            _ => None,
+        });
+        value["host"] = json!({"key":host.key,"site":host.site(),"label":host.label()});
+        value["hosts"] = json!(app.explore_hosts().iter().map(|h| json!({"key":h.key,"kind":kind(h),
+            "provider":h.provider.key(),"site":h.site(),"label":h.label()})).collect::<Vec<_>>());
+        value["results"] = json!(s.results.iter().take(200).map(|r| json!({"name":r.path,
+            "stars":r.stars,"language":r.language,"size_kb":r.size_kb,"clone_url":r.clone_url,"web_url":r.web_url,
+            "archived":r.archived,"fork":r.fork,"mirror":r.mirror,"private":r.private})).collect::<Vec<_>>());
+        value["address"] = json!(app.explore_address().map(|a| json!({"name":a.name,"host":a.host,"url":a.url,
+            "short":a.short,"unknown_server":a.unknown_server})));
     }
     value
 }

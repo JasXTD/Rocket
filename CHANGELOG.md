@@ -37,6 +37,15 @@ keep detailed test evidence in `VALIDATION.md`.
   head, and Integrate pushes back to its branch as a fast-forward through the Push
   dialog. Tasks can be saved and managed (state format v33). Issue text is read from
   GitHub, GitHub Enterprise Server, GitLab, Gitea and Azure DevOps work items.
+- Explore searches GitLab and Gitea too, Codeberg included. A menu at the start of the
+  search row picks GitHub, the server of each GitLab or Gitea account in Preferences →
+  Accounts, or gitlab.com and Codeberg without an account (public repositories only).
+  Sort offers Stars and Updated there, and Language filters on GitLab. A rate limit's
+  wait belongs to its host, so another host can be searched meanwhile. GitHub's search
+  words (language:, stars: and the like) typed for another host are pointed out, with
+  Search without them, instead of being sent. The short SSH address
+  (`git@host:group/project.git`) opens as `ssh://` on hosts Rocket knows, and a pasted
+  address keeps its whole path as its name.
 
 ## 0.92.4 — Insights, Agents and repository maps
 

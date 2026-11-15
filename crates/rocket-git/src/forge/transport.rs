@@ -10,10 +10,17 @@ thread_local! {
     /// (X-Accepted-GitHub-Permissions). Requests run synchronously on their
     /// worker thread, so a caller reads it right after its own refusal.
     static REFUSAL: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+    /// The wait, in seconds, the host named (Retry-After) when it last limited a
+    /// request on this thread.
+    static RETRY_AFTER: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
 }
 /// Takes what GitHub said the last refused request on this thread needed.
 pub(super) fn take_refusal() -> Option<String> {
     REFUSAL.with(|r| r.borrow_mut().take())
+}
+/// Takes the wait the host named for the last rate-limited request on this thread.
+pub(super) fn take_retry_after() -> Option<u64> {
+    RETRY_AFTER.with(std::cell::Cell::take)
 }
 fn credential_text(s: &str) -> bool {
     !s.is_empty()
@@ -191,6 +198,36 @@ impl GitClient {
         }
         Ok(session)
     }
+    /// A session without a token, for Explore's search of public repositories on a
+    /// GitLab or Gitea host. It sends no Authorization header, reads no account and
+    /// refuses everything but a GET.
+    pub fn forge_public_session(&self, config: ForgeConfig) -> Result<ForgeSession> {
+        if !config.provider().searches_repositories()
+            || config.account_check_only()
+            || config.publish_check_repository().is_some()
+        {
+            return Err(invalid("Searching without an account is for GitLab and Gitea hosts."));
+        }
+        let mut runner = self.runner.clone();
+        runner.limits = CommandLimits {
+            timeout: Duration::from_secs(60),
+            stdout_bytes: 8 * 1024 * 1024,
+            stderr_bytes: 64 * 1024,
+        };
+        Ok(ForgeSession {
+            curl: find_curl(&runner.executable).ok_or(Error::Forge(ForgeFailure::Unavailable))?,
+            cwd: neutral_directory()?,
+            runner,
+            config,
+            authorization: Arc::from(""),
+            login: String::new(),
+            account_identity: None,
+            enterprise_version: None,
+            browser_auth: false,
+            id: SESSION.fetch_add(1, Ordering::Relaxed),
+            publish_fixture_root: None,
+        })
+    }
 }
 impl ForgeSession {
     #[allow(clippy::too_many_arguments)]
@@ -215,14 +252,19 @@ impl ForgeSession {
         path: &str, body: Option<&str>, mutation: bool, text: bool, cancel: &CancellationToken,
     ) -> Result<(Json, Vec<(String, String)>)> {
         let run = || self.runner.step(operation,step,||{
-            // A refusal names only its own request's permission.
+            // A refusal names only its own request's permission, and its own wait.
             REFUSAL.with(|r|*r.borrow_mut()=None);
+            RETRY_AFTER.with(|r| r.set(None));
             cancel.check()?;
             if !self.config.allows_request(method, path, body.is_some(), mutation) {
                 return Err(invalid("hosting_account_check_only: this live test session only permits GET /user; repository requests and writes are disabled."));
             }
             if !self.config.allows_publish_request(method, path, body, mutation) {
                 return Err(invalid("hosting_publish_scope: this live session only permits account verification and private creation/inspection of its single disposable repository."));
+            }
+            // A session without a token only reads public repositories.
+            if self.authorization.is_empty() && (method != "GET" || body.is_some() || mutation) {
+                return Err(invalid("hosting_public_session: a session without an account can only read."));
             }
             if !path.starts_with('/')||!path.is_ascii()||path.bytes().any(|b|b<=32||matches!(b,b'"'|b'\\'|b'#')){return Err(invalid("Invalid hosting request path."));}
             let url = if path == "/graphql" && self.config.provider().is_github() {
@@ -234,8 +276,10 @@ impl ForgeSession {
             } else { format!("{}{path}",self.config.api()) };
             // Config escaping is separate from JSON escaping. Body and auth only
             // travel on stdin. No response body/stderr is ever included in an error.
-            let mut config=format!("url = {}\nrequest = {}\nheader = {}\nheader = \"Accept: application/json\"\nheader = \"Content-Type: application/json; charset=utf-8\"\nheader = \"X-GitHub-Api-Version: 2022-11-28\"\nuser-agent = \"Rocket/{}\"\n",
-                quote(&url),quote(method),quote(&format!("Authorization: {}",self.authorization)),env!("CARGO_PKG_VERSION"));
+            // A session without a token sends no Authorization header at all.
+            let authorization = if self.authorization.is_empty() { String::new() } else { format!("header = {}\n", quote(&format!("Authorization: {}",self.authorization))) };
+            let mut config=format!("url = {}\nrequest = {}\n{authorization}header = \"Accept: application/json\"\nheader = \"Content-Type: application/json; charset=utf-8\"\nheader = \"X-GitHub-Api-Version: 2022-11-28\"\nuser-agent = \"Rocket/{}\"\n",
+                quote(&url),quote(method),env!("CARGO_PKG_VERSION"));
             if text { config = config.replace("Accept: application/json", "Accept: text/plain"); }
             // The MCP fixture must stay on loopback even when the host has a proxy configured.
             if self.config.fixture_port().is_some() { config.push_str("noproxy = \"*\"\n"); }
@@ -268,6 +312,10 @@ impl ForgeSession {
                 if f==ForgeFailure::Forbidden && self.config.provider().is_github() {
                     let named=header(&response.headers,"x-accepted-github-permissions").filter(|v|v.len()<=256&&v.is_ascii()).map(str::to_owned);
                     REFUSAL.with(|r|*r.borrow_mut()=named);
+                }
+                if f==ForgeFailure::RateLimited {
+                    let wait=header(&response.headers,"retry-after").and_then(|v|v.trim().parse::<u64>().ok());
+                    RETRY_AFTER.with(|r| r.set(wait));
                 }
                 return fail(f);
             }

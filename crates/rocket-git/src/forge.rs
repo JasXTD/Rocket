@@ -14,6 +14,8 @@ mod adapter;
 mod azure_server;
 mod checks;
 pub use checks::*;
+mod explore_search;
+pub use explore_search::*;
 mod insights;
 pub use insights::*;
 mod issue_text;

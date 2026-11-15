@@ -187,6 +187,8 @@ pub struct State {
     /// Accounts was opened from the Hosting page: closing Preferences, or connecting,
     /// goes back there.
     pub hosting_return: bool,
+    /// Accounts was opened from Explore: closing Preferences goes back there.
+    pub explore_return: bool,
     /// The page whose first reads (saved accounts, SSH profiles) were started; once per
     /// visit, so a failed read is not retried every frame.
     started: Option<Page>,
@@ -630,6 +632,7 @@ impl Rocket {
         self.preferences.shortcut_filter.clear();
         self.preferences.unsaved_warning = false;
         self.preferences.hosting_return = false;
+        self.preferences.explore_return = false;
         self.preferences.started = None;
         self.show_dialog(DialogKind::Preferences);
     }
@@ -993,6 +996,8 @@ impl Rocket {
                 self.preferences.started = None;
                 if std::mem::take(&mut self.preferences.hosting_return) {
                     self.return_to_hosting();
+                } else if std::mem::take(&mut self.preferences.explore_return) {
+                    self.open_explore(None);
                 }
             }
         } else if self.preferences.hosting_return

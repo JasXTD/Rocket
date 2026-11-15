@@ -23,6 +23,8 @@ mod insights_reviews_tests;
 mod provider_contract_tests;
 #[path = "forge/issue_text.rs"]
 mod issue_text_tests;
+#[path = "forge/explore_search.rs"]
+mod explore_search_tests;
 use common::{Fixture, isolated};
 use rocket_git::*;
 use std::{
