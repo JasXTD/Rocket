@@ -92,7 +92,6 @@
   "Tool finished": "ツール終了",
   "Tool running": "ツール実行中",
   "Upload this branch's commits": "このブランチのコミットをアップロードします",
-  "View stashes": "スタッシュを表示",
   "Working with SSH keys": "SSH キーを処理中",
   "between commits, with changes that aren't committed. Commit or stash them, or Abort.": "コミットの合間ですが、コミットされていない変更があります。コミットまたはスタッシュするか、「中止」してください。",
   "between commits. Continue does the rest, or Abort ends it.": "コミットの合間です。「続行」で残りを実行するか、「中止」で終了します。",

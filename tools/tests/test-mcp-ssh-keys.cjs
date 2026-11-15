@@ -77,7 +77,7 @@ async function run(){
  await click('ssh-unlock',false);await until(s=>s.ssh.prompt==='Unlock');await send();await settled();assert(!state.ssh.error,state.ssh.error);assert(state.ssh.profiles[0].loaded);
  assert.deepEqual(agent(),[...initialAgent,personal.fingerprint].sort());await click('ssh-unload');assert.deepEqual(agent(),initialAgent);
  pass('load and unload only selected disposable identity');
- await click('ssh-copy');assert.match(state.ssh.notice,/Public key copied/);
+ await click('ssh-copy');assert.deepEqual(state.ssh.copied,{what:'public-key',key:state.ssh.profiles[0].fingerprint});
  await click('ssh-review');assert(state.ssh.review);await capture('04-binding-review');await click('ssh-back');
  assert.deepEqual(fs.readFileSync(cfg),originalConfig);
  await click('ssh-review');await click('ssh-apply');assert(!state.ssh.error,state.ssh.error);assert.match(git(['config','--get','core.sshCommand']),/OpenSSH.*-F.*rocket-personal/);
@@ -90,7 +90,8 @@ async function run(){
  pass('externally edited SSH config rejected before OpenSSH parses it');
  const found=path.join(root,'ssh-home/id_found');cp.execFileSync('C:/Windows/System32/OpenSSH/ssh-keygen.exe',['-q','-t','ed25519','-N',secret,'-C','rocket-found-fixture','-f',found],{env,windowsHide:true,stdio:['ignore','pipe','pipe']});generated.push(found);const foundPub=fs.readFileSync(found+'.pub');
  await click('ssh-scan');assert.equal(state.ssh.discovery.keys.length,1);await click('ssh-found-0');assert.equal(state.ssh.found,0);assert.equal(state.ssh.selected,null);await capture('07-found-key');
- await click('ssh-copy');assert.match(state.ssh.notice,/Public key copied/);const foundFingerprint=state.ssh.discovery.keys[0].fingerprint;
+ const foundFingerprint=state.ssh.discovery.keys[0].fingerprint;await click('ssh-copy');assert.deepEqual(state.ssh.copied,{what:'public-key',key:foundFingerprint});
+ await click('ssh-copy-fingerprint');assert.deepEqual(state.ssh.copied,{what:'fingerprint',key:foundFingerprint});
  fs.appendFileSync(found+'.pub','\n');await click('ssh-unlock');assert.match(state.ssh.error,/ssh_external_change/);assert.deepEqual(agent(),initialAgent);fs.writeFileSync(found+'.pub',foundPub);
  await click('ssh-unlock',false);await until(s=>s.ssh.prompt==='Unlock'||s.ssh.error,'found key prompt');assert.equal(state.ssh.prompt,'Unlock',state.ssh.error);await send();await settled();assert(!state.ssh.error,state.ssh.error);assert(state.ssh.discovery.keys[0].loaded);
  assert.deepEqual(agent(),[...initialAgent,foundFingerprint].sort());await capture('08-found-unlocked');await click('ssh-unload');assert.deepEqual(agent(),initialAgent);assert.equal(state.ssh.profiles.filter(p=>p.fingerprint===foundFingerprint).length,0);

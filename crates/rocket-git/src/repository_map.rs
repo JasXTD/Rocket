@@ -4,15 +4,21 @@ use crate::{parse, repository::commit_revision_args, runner::args, *};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 mod cargo;
+mod code_map;
 mod golang;
 mod javascript;
 mod mermaid;
 mod modules;
+mod owners;
 mod packages;
 mod python;
 mod rust;
 mod units;
+pub use code_map::{
+    CODE_HISTORY_COMMITS, CODE_MAP_FILES, ChangesOutcome, CodeChanges, CodeEnd, CodeHistory, CodeLink, CodeLinks, FileKind, HistoryCommit, OwnerRules, file_kind,
+};
 pub use mermaid::map_mermaid;
+pub use owners::{CODEOWNERS_BYTES, CODEOWNERS_FILES, CodeOwners, Ownership};
 
 pub const MAP_COMMITS: usize = 500;
 pub const MAP_HISTORY_MAX: usize = 2000;
@@ -641,6 +647,10 @@ impl Repository {
                         },
                     );
                     n.path = Some(prefix.clone());
+                    // A file's size in bytes, which the code map's Kind shares count.
+                    if !folder && fields[1] == b"blob" {
+                        n.count = std::str::from_utf8(fields[3]).ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(0);
+                    }
                     let at = map.nodes.len();
                     map.nodes.push(n);
                     index.insert(prefix.clone(), at);

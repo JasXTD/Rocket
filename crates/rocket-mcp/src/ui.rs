@@ -582,7 +582,7 @@ impl Ui {
                 "base":self.policy.private_state_allowed().then_some(&f.record.base),"branch":self.policy.private_state_allowed().then_some(&f.record.branch),
                 "picker":{"busy":f.picker.busy(),"results":f.picker.results.len(),"error":f.picker.error},
                 "briefing":f.briefing.as_ref().map(|b|json!({"kind":b.origin.kind.key(),"number":b.origin.number,"reading":b.reading(),"ready":b.ready(),"error":b.error,"without":b.without,
-                    "task":format!("{:?}",b.choice),"include":{"comments":b.include.comments,"checks":b.include.checks,"description":b.include.description,"discussion":b.include.discussion,"resolved":b.include.resolved},
+                    "task":format!("{:?}",b.choice),"reviewed":b.reviewed(),"include":{"comments":b.include.comments,"checks":b.include.checks,"description":b.include.description,"discussion":b.include.discussion,"resolved":b.include.resolved},
                     "left_out_comments":b.built.left_out.comments.len(),"left_out_hidden":b.built.left_out.hidden.iter().map(|(_,n)|n).sum::<usize>(),"cut":b.built.cut.map(|c|json!({"kept":c.kept,"total":c.total})),
                     "secret_line":b.secret.map(|(_,line)|line),"push":b.origin.push.is_some(),"message_lines":b.message.lines().count(),
                     "message":self.policy.private_state_allowed().then(||bounded_agent_tail(b.message.clone()))}))})),
@@ -2318,7 +2318,7 @@ impl Ui {
                             | "file-path"
                             | "tree-revision"
                             | "files-search" | "files-search-path" | "commit-search-path"
-                            | "map-revision" | "map-search" | "map-base" | "map-path-scope" | "map-export-folder" | "map-export-name" | "crash-export-folder" | "crash-export-name"
+                            | "map-revision" | "map-search" | "map-base" | "map-code-base" | "map-path-scope" | "map-export-folder" | "map-export-name" | "crash-export-folder" | "crash-export-name"
                             | "insights-export-folder" | "insights-export-name"
                             | "compare-base" | "compare-target" | "compare-filter"
                             | "review-base" | "review-target" | "review-base-pick-filter" | "review-target-pick-filter" | "review-choose-filter"
@@ -3713,6 +3713,7 @@ fn ssh_state(app: &Rocket) -> Value {
         "restoring":s.preview.as_ref().is_some_and(|p|p.restoring),"agent_running":s.agent_running,
         "stopping":s.stopping,"prompt":s.prompt.map(|p|format!("{p:?}")),"invalid":s.invalid,
         "error":s.error,"notice":s.notice,"discovery_error":s.discovery_error,"using_discovered":s.discovered_choice.is_some(),
+        "copied":s.copied.as_ref().map(|c|json!({"what":c.what,"key":c.key})),
         "discovery":s.discovery.as_ref().map(|d|json!({"directory":d.directory,"skipped":d.skipped,"truncated":d.truncated,
             "keys":d.keys.iter().map(|k|json!({"name":k.key.file_name().unwrap_or_default().to_string_lossy(),"path":k.key,
                 "kind":k.kind,"fingerprint":k.fingerprint,"used":s.profiles.iter().any(|p|p.fingerprint==k.fingerprint),
@@ -4064,7 +4065,30 @@ fn repository_map_state(state:&rocket_ui::repository_map::State)->Value {
         "projected_links":p.projected_links.iter().take(12000).map(|e|json!({"from":e.from,"to":e.to,"kind":format!("{:?}",e.kind),"weight":e.weight})).collect::<Vec<_>>(),
         "export":p.export.as_ref().map(|e|json!({"dir":e.dir,"name":e.name,"nodes":e.nodes,"links":e.links,"bytes":e.text.len(),"running":e.running(),"stopping":e.stopping,"error":e.error,"notice":e.notice})),
         "error":p.error,"notice":p.notice,"stale":p.stale,"selected":p.selected,"show_details":p.show_details,"zoom":p.zoom,
-        "visible":p.visible,"file_groups":p.file_groups.iter().map(|g|json!({"folder":g.folder,"files":g.files,"more":g.more.map(|m|format!("{m:?}"))})).collect::<Vec<_>>(),"display_offset":p.display_offset,"view_total":p.view_total,"data":data})
+        "visible":p.visible,"file_groups":p.file_groups.iter().map(|g|json!({"folder":g.folder,"files":g.files,"more":g.more.map(|m|format!("{m:?}"))})).collect::<Vec<_>>(),"display_offset":p.display_offset,"view_total":p.view_total,"data":data,
+        "code_map":code_map_state(p)})
+}
+
+/// Code → Folders as a code map: its reads, colour and what is drawn. An item is a node
+/// index, or "files:<folder node>" ("files:top") for a folder's own files on one card.
+fn code_map_state(p:&rocket_ui::repository_map::MapPage)->Value {
+    let c=&p.code;
+    let item=|i:&rocket_ui::repository_map::CodeItem|->Value{match i{
+        rocket_ui::repository_map::CodeItem::Node(n)=>json!(n),
+        rocket_ui::repository_map::CodeItem::Files(Some(f))=>json!(format!("files:{f}")),
+        rocket_ui::repository_map::CodeItem::Files(None)=>json!("files:top")}};
+    let picture=c.layout.as_ref().map(|l|json!({
+        "placed":l.placed.iter().map(|q|json!({"item":item(&q.item),"open":q.open,"parent":q.parent,"chain":q.chain,"sub":q.paint.sub,"badge":q.paint.badge.map(|b|b.to_string()),"hatched":q.paint.hatched,"dashed":q.paint.dashed,"bands":q.paint.band.len()})).collect::<Vec<_>>(),
+        "arrows":l.arrows.iter().map(|a|json!({"from":item(&l.placed[a.from].item),"to":item(&l.placed[a.to].item),"files":a.files,"links":a.links,"up":a.up})).collect::<Vec<_>>(),
+        "captions":l.captions.len(),"cut":l.cut,
+        "legend":json!({"kinds":l.legend.kinds.iter().map(|k|format!("{k:?}")).collect::<Vec<_>>(),"most":l.legend.most,"owners":l.legend.owners.iter().map(|(_,n)|n.clone()).collect::<Vec<_>>(),"owners_from":l.legend.owners_from,"added":l.legend.added,"changed":l.legend.changed,"uses":l.legend.uses})}));
+    json!({"colour":format!("{:?}",c.colour),"period":c.period.key(),"base":c.base,"changed_only":c.changed_only,
+        "group":c.group.map(|g|g.map_or(json!("top"),|f|json!(f))),"running":c.running(),"reading_links":c.reading_links(),"error":c.error(),"stopped":c.stopped,"too_large":c.too_large.len(),
+        "links":c.links.as_ref().map(|l|json!({"ends":l.ends.len(),"links":l.links.len(),"files":l.files,"packages":l.packages.len(),"unread":l.unread.len(),"limited":l.limited,"sources_limited":l.sources_limited,"owners_limited":l.owners_limited,
+            "owners":l.owners.as_ref().map(|o|json!({"file":rocket_ui::tree::path_label(&o.file),"gitlab":o.gitlab,"rules":o.rules,"sets":o.sets.len()}))})),
+        "history":c.history.as_ref().map(|h|json!({"commits":h.commits.len(),"authors":h.authors.len(),"limited":h.limited})),
+        "changes":c.changes.as_ref().map(|x|json!({"outcome":format!("{:?}",x.outcome),"files":x.files.len(),"commits":x.commits,"splits":x.splits.len()})),
+        "picture":picture})
 }
 
 fn force_push_state_value(s: &rocket_ui::force_push::DialogState) -> Value {

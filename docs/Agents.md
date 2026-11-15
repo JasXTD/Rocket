@@ -184,6 +184,14 @@ cannot be reviewed until that line, which is marked, is removed. If the item can
 **Try again**; an issue can also **Start without its text**, with the task's words only. A pull
 request's session needs its head, so it has no such option.
 
+The session review requires an explicit acknowledgment for the exact host-sourced
+message before starting. Changing the message or rebuilding it clears that approval.
+Quoted text can still influence an AI agent: stripping hidden characters and adding
+delimiters do not prevent prompt injection. Inspect descriptions, comments and CI
+output for instructions unrelated to your task. Worktrees separate Git changes;
+they do not isolate the agent from your files, credentials or network. Keep the
+provider's permission prompts enabled and use Plan where appropriate.
+
 The message is put in the agent's input when its program starts and waits there: nothing is
 sent until **Send** (or Ctrl+Enter). **Clear** empties it. It is not saved, so restarting a
 session never sends it again. Send pastes it with the program's bracketed paste; if the program

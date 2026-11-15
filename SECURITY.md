@@ -14,8 +14,9 @@ problem publicly.
 
 ## Supported versions
 
-Rocket has no public release yet, so security fixes go to `main`. Once releases exist, the
-latest release receives them.
+Security fixes are delivered in the latest [published release](https://github.com/JasXTD/Rocket/releases/latest).
+Please update before reporting an issue. Fixes on `main` are not available in an
+older package until a new release is published.
 
 ## Scope
 
@@ -29,7 +30,29 @@ hosting service belong with those projects, unless Rocket makes them worse.
 The rest of this file records how Rocket's safeguards work and where they stop, feature by
 feature. The [README](README.md) gives an overview.
 
-## Credential request directories (unreleased, 2026-11-10)
+The credential and Linux safeguards described below are included in the 0.92.4
+release; their former development-status labels did not reflect publication.
+
+## Repository input hardening for the next release
+
+Code Map applies one 10,000-file / 64 MiB budget to source reads, including Rust
+`#[path]` follow-ups. CODEOWNERS matching has a separate bounded work allowance,
+including wildcard steps, with cancellation checks inside the matcher. An
+incomplete ownership evaluation is discarded and reported, rather than assigning
+incorrect owners. These are resource bounds, not a parser correctness guarantee.
+
+Installer packaging validates archive metadata without executing archive binaries.
+Its input hash and internal manifest establish consistency, not publisher identity;
+packagers must select a trusted build and its independent verification record.
+
+Host-sourced Agents messages require acknowledgment tied to the exact reviewed
+text before session creation. The first message still waits for explicit Send.
+Quoting and removing invisible controls do not prevent prompt injection in an AI
+provider. Agents retain the user's ordinary file/network permissions; a worktree
+does not sandbox them. Keep provider permission checks enabled and review all
+instructions and resulting changes. See [Agents](docs/Agents.md).
+
+## Credential request directories
 
 Hosting requests, browser credential lookup and repository-preview sign-in use
 a fresh directory named with 128 bits from the OS random generator. Creation is
@@ -53,7 +76,7 @@ exit can leave an unused directory. Old predictable request folders are neither
 reused nor automatically removed. No personal Git configuration or credential
 store is changed by this fix.
 
-## macOS credential preparation (unreleased)
+## macOS credential preparation
 
 The macOS port seals local credentials with XChaCha20-Poly1305 and a wrapping key
 in the default file-based Keychain. It uses Security.framework directly, disables
@@ -82,7 +105,7 @@ see the reports for the first pass in `work/security-remediation-20261023/REPORT
 and the follow-up in `work/security-remediation-20261024-v2/REPORT.md` for tested
 artifacts and limits.
 
-## Linux state storage and preview ownership (unreleased, 2026-11-08)
+## Linux state storage and preview ownership
 
 Rocket fails closed when its XDG state root is unavailable or unsafe. It checks each
 path component from the filesystem root before creating/using the next: real
@@ -106,7 +129,7 @@ Unix cleanup/discard retains that lock through deletion. A second process leaves
 live previews alone; process exit/crash releases ownership so later cleanup can
 remove stale slots. Windows retains its exclusive share-mode behavior.
 
-## Direct SSH and Preview audit fixes (unreleased, 2026-11-06)
+## Direct SSH and Preview audit fixes
 
 Direct SSH accepts exactly one fixed Git service and one shell-quoted repository
 path; only Git's escaped apostrophe/exclamation continuations are permitted
@@ -135,7 +158,7 @@ passed to fetch or published as a kept repository.
 Protocol references: [Git shell quoting](https://github.com/git/git/blob/v2.56.0/quote.c)
 and [Git LFS SSH request construction](https://github.com/git-lfs/git-lfs/blob/main/ssh/ssh.go).
 
-## Linux privilege and file publication (unreleased, 2026-11-06)
+## Linux privilege and file publication
 
 On Linux and other Unix systems, the shared privilege boundary refuses a process whose
 real or effective user ID is 0 (root, `sudo` or a set-user-ID launch), as Windows refuses
@@ -154,7 +177,7 @@ where Windows refuses reparse points. Linux has no handle that keeps folders fro
 renamed during an operation, as Windows handles do; the checks before and after
 publication still apply.
 
-## Linux file checks: OSV-Scanner, bisect and LFS cleanup (unreleased, 2026-11-07)
+## Linux file checks: OSV-Scanner, bisect and LFS cleanup
 
 **SHA-256.** On Linux, files are hashed with RustCrypto's sha2, with the same size limit
 and cancellation as BCrypt on Windows.
@@ -186,7 +209,7 @@ reports the change. Recovery copies in a local remote are checked the same way a
 open while the cleanup runs, but Linux cannot stop another program from removing them
 meanwhile, as Windows can.
 
-## Linux terminal, SSH keys, MCP control and credentials (unreleased, 2026-11-07)
+## Linux terminal, SSH keys, MCP control and credentials
 
 **Terminal.** The terminal's pseudoterminal is opened with `posix_openpt` and
 `TIOCGPTPEER`, both close-on-exec. The shell starts by its full path; a bare name is never
@@ -230,7 +253,7 @@ users and offline copies, not from programs running as the same user.
 Hunspell dictionaries, so no C dictionary parser runs in Rocket. Dictionaries are read
 only from the system folders, and added words are kept in a 0600 file in Rocket's folder.
 
-## Linux Lua worker isolation (unreleased, 2026-11-07)
+## Linux Lua worker isolation
 
 On Linux x86_64, Lua runs in the same hash-bound worker as on Windows, with the same
 input, output, time and Lua VM limits. Windows starts the worker inside its container.
@@ -299,7 +322,7 @@ restricts the available calls and arguments, subject to the kernel exceptions ab
 A system that forbids executable memory files (`vm.memfd_noexec=2`) can't
 start the worker.
 
-## Linux app updates (unreleased, 2026-11-07)
+## Linux app updates
 
 On Linux x86_64 the updater follows the Windows flow: public GitHub releases only, no
 credentials, and an install only after you approve it. What differs:
@@ -335,7 +358,7 @@ else, whatever the archive said. Linux can't lock the installation folder agains
 renames, as Windows does, so the swap relies on its checks of both folders' contents just
 before it.
 
-## Linux hosting and extension requests (unreleased, 2026-11-07)
+## Linux hosting and extension requests
 
 On Linux, GitHub sign-in and reads, the other hosting services and the Lua extensions' web
 requests run only the system's `/usr/bin/curl`. It must pass the check app updates use,

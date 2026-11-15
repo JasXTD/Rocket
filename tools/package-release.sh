@@ -44,7 +44,7 @@ source="$root/target/release"
 # The update checks need every one of these (BINARIES in crates/rocket-ui/src/app_updates).
 binaries="rocket rocket-mcp rocket-cli rocket-rebase-editor rocket-lua-host rocket-ssh"
 documents="CHANGELOG.md CLI.md DEPENDENCIES.md HOSTING.md INTEGRATIONS.md LICENSE-APACHE
-LICENSE-MIT README.md SECURITY.md THIRD-PARTY-NOTICES.txt docs/images/rocket-logo.png
+LICENSE-MIT README.md SECURITY.md THIRD-PARTY-NOTICES.md docs/images/rocket-logo.png
 crates/rocket-ui/src/guide.md tools/README.md"
 # User-facing wiki pages ship with the app, as on Windows.
 documents="$documents $(cd "$root" && ls docs/wiki/*.md)"

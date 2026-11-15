@@ -131,6 +131,13 @@ palette! {
     ORANGE orange: rgb(255, 156, 66), rgb(255, 156, 66), rgb(196, 96, 0), rgb(224, 177, 90), rgb(160, 112, 15);
     PINK pink: rgb(242, 80, 143), rgb(242, 80, 143), rgb(200, 40, 110), rgb(232, 122, 164), rgb(194, 56, 122);
     TEAL teal: rgb(92, 198, 212), rgb(92, 198, 212), rgb(0, 122, 140), rgb(107, 197, 184), rgb(15, 128, 115);
+    /// Marks told apart by colour on the code map (kinds, owners): three hues that stay
+    /// apart for colour-blind readers against each other and the map, checked on each
+    /// theme's map background. Dark themes need their own steps; Clay light's are its
+    /// VIOLET, ORANGE and PINK.
+    MARK_1 mark_1: rgb(114, 121, 218), rgb(114, 121, 218), rgb(90, 98, 200), rgb(114, 121, 218), rgb(90, 98, 200);
+    MARK_2 mark_2: rgb(201, 133, 0), rgb(201, 133, 0), rgb(160, 112, 15), rgb(201, 133, 0), rgb(160, 112, 15);
+    MARK_3 mark_3: rgb(213, 81, 129), rgb(213, 81, 129), rgb(194, 56, 122), rgb(213, 81, 129), rgb(194, 56, 122);
     /// The warning that Secret protection is off.
     WARNING warning: rgb(245, 177, 63), rgb(245, 177, 63), rgb(163, 94, 0), rgb(242, 184, 75), rgb(163, 94, 0);
     GREEN_TEXT green_text: rgb(127, 224, 189), rgb(127, 224, 189), rgb(12, 110, 76), rgb(143, 217, 160), rgb(31, 107, 55);

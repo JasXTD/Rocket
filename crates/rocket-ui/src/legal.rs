@@ -1,5 +1,5 @@
 //! About › Legal: Rocket's license and the notices of the software it includes, from
-//! `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-NOTICES.txt` at the workspace root.
+//! `LICENSE-MIT`, `LICENSE-APACHE` and `THIRD-PARTY-NOTICES.md` at the workspace root.
 //! The notices cover Windows, Linux and macOS; Legal lists the running platform's entries.
 //! After changing dependencies, regenerate the notices with
 //! `cargo run -p rocket-ui --example third_party_notices`.
@@ -13,7 +13,7 @@ use std::{collections::HashMap, sync::OnceLock};
 
 const LICENSE_MIT: &str = include_str!("../../../LICENSE-MIT");
 const LICENSE_APACHE: &str = include_str!("../../../LICENSE-APACHE");
-const NOTICES: &str = include_str!("../../../THIRD-PARTY-NOTICES.txt");
+const NOTICES: &str = include_str!("../../../THIRD-PARTY-NOTICES.md");
 /// Opens and closes each entry's header in the notices file.
 const SEPARATOR: &str = "########################################################################";
 /// Where the open dialog keeps its choices, in egui's memory.
@@ -30,7 +30,7 @@ const PLATFORM: Option<&str> = if cfg!(windows) {
     None
 };
 
-/// One entry of THIRD-PARTY-NOTICES.txt.
+/// One entry of THIRD-PARTY-NOTICES.md.
 pub(crate) struct Notice {
     /// `crate`, `font` or `runtime`.
     pub kind: String,
@@ -394,7 +394,7 @@ mod tests {
             if n.kind == "crate" {
                 assert!(
                     lock.contains(&format!("name = \"{}\"\nversion = \"{}\"", n.name, n.version)),
-                    "{} {} is not in Cargo.lock; regenerate THIRD-PARTY-NOTICES.txt",
+                    "{} {} is not in Cargo.lock; regenerate THIRD-PARTY-NOTICES.md",
                     n.name,
                     n.version
                 );

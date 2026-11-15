@@ -1,4 +1,4 @@
-Third-party notices for Rocket
+# Third-party notices for Rocket
 
 Rocket includes the software below. Each entry names its license and the platforms
 whose builds include it, and carries the notice its authors ship with it. Where a

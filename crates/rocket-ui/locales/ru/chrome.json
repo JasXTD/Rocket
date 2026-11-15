@@ -92,7 +92,6 @@
   "Tool finished": "Инструмент завершил работу",
   "Tool running": "Инструмент работает",
   "Upload this branch's commits": "Выгрузить коммиты этой ветки",
-  "View stashes": "Показать спрятанное",
   "Working with SSH keys": "Работа с SSH-ключами",
   "between commits, with changes that aren't committed. Commit or stash them, or Abort.": "между коммитами, есть незакоммиченные изменения. Закоммитьте или спрячьте их либо нажмите «Прервать».",
   "between commits. Continue does the rest, or Abort ends it.": "между коммитами. «Продолжить» выполнит остальное, «Прервать» — завершит операцию.",

@@ -802,31 +802,27 @@ fn reach_state(ui: &mut Ui, reach: &Reach, intents: &mut Vec<Intent>, widgets: &
     }
 }
 
-/// A centred card: an icon tile, a title, a sentence, its buttons and the guide link.
+/// The page with no runs to show: an icon tile, a title, a sentence, its button and the
+/// guide link, centred in the rest of the page as Agents' empty state is, with no card.
 fn empty_state(ui: &mut Ui, image: Icon, title: &str, text: &str, widgets: &mut HashMap<String, UiControl>, buttons: impl FnOnce(&mut Ui, &mut HashMap<String, UiControl>)) {
     let area = ui.available_rect_before_wrap();
-    let width = (area.width() - 32.0).clamp(240.0, 560.0);
-    let height = 300.0_f32.min(area.height() - 24.0).max(200.0);
-    let rect = Rect::from_center_size(pos2(area.center().x, area.top() + 16.0 + height / 2.0), vec2(width, height));
-    ui.painter().rect(rect, 8.0, VIEW_BG(), Stroke::new(1.0, CARD_STROKE()), StrokeKind::Inside);
-    let mut child = ui.new_child(UiBuilder::new().max_rect(rect.shrink2(vec2(32.0, 24.0))).layout(Layout::top_down(Align::Center)));
-    child.spacing_mut().item_spacing.y = 10.0;
-    let content = child.available_rect_before_wrap();
-    // Centre the content: a tile, two lines and a row of buttons, about 200 points.
-    child.add_space(((content.height() - 180.0) / 2.0).max(0.0));
-    let (tile, _) = child.allocate_exact_size(vec2(44.0, 44.0), Sense::hover());
-    child.painter().rect_filled(tile, 12.0, RAISED());
-    icon(child.painter(), tile.shrink(12.0), image, BLUE());
-    child.label(RichText::new(title).font(semibold(15.0)));
-    child.add(Label::new(RichText::new(text).size(12.5).color(MUTED())).wrap());
-    // One button, centred like the lines above it.
-    buttons(&mut child, widgets);
-    let r = child.add(Label::new(RichText::new(crate::i18n::tr("How CI checks work")).size(12.0).color(BLUE())).sense(Sense::click())).on_hover_cursor(CursorIcon::PointingHand);
-    control(widgets, "actions-guide", &r, child.clip_rect());
-    if r.clicked() {
-        crate::guide::request(child.ctx());
-    }
-    ui.allocate_rect(rect, Sense::hover());
+    let clip = ui.clip_rect();
+    // Under the lines: the button, then the link, a frameless button but still a control tall.
+    pages::empty_state(ui, area, image, BLUE(), title, text, 14.0 + CONTROL + 8.0 + CONTROL, |ui| {
+        ui.add_space(14.0);
+        buttons(ui, widgets);
+        ui.add_space(8.0);
+        let link = ui.add(
+            Button::new(RichText::new(crate::i18n::tr("How CI checks work")).size(12.5).color(ACCENT_TEXT()))
+                .frame(false)
+                .min_size(vec2(0.0, 22.0)),
+        );
+        control(widgets, "actions-guide", &link, clip);
+        if link.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+            crate::guide::request(ui.ctx());
+        }
+    });
+    ui.allocate_rect(area, Sense::hover());
 }
 
 /// The first read: rows that stand in for runs, and what is happening.
@@ -1260,5 +1256,69 @@ fn details_card(ui: &mut Ui, rect: Rect, a: &mut State, host: ForgeProvider, sub
         }
         None if reading => pages::busy_line(ui, crate::i18n::tr("Reading jobs")),
         None => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// One frame of the page: what it registered, the text it painted with where, and
+    /// every outlined rectangle.
+    struct Page {
+        widgets: HashMap<String, UiControl>,
+        texts: Vec<(String, Rect)>,
+        outlines: Vec<Rect>,
+    }
+
+    fn page(ctx: &Context, tab: &mut Tab, height: f32) -> Page {
+        fn walk(shape: &Shape, texts: &mut Vec<(String, Rect)>, outlines: &mut Vec<Rect>) {
+            match shape {
+                Shape::Text(text) => texts.push((text.galley.text().to_owned(), text.visual_bounding_rect())),
+                Shape::Rect(rect) if rect.stroke.width > 0.0 && rect.stroke.color.a() > 0 => outlines.push(rect.rect),
+                Shape::Vec(shapes) => shapes.iter().for_each(|shape| walk(shape, texts, outlines)),
+                _ => {}
+            }
+        }
+        let mut widgets = HashMap::new();
+        let (mut texts, mut outlines) = (Vec::new(), Vec::new());
+        for _ in 0..2 {
+            widgets.clear();
+            let mut output = ctx.run_ui(
+                RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, height))), ..Default::default() },
+                |ui| view(ui, tab, &mut Vec::new(), &mut widgets),
+            );
+            output.textures_delta.clear();
+            texts.clear();
+            outlines.clear();
+            for clipped in &output.shapes {
+                walk(&clipped.shape, &mut texts, &mut outlines);
+            }
+        }
+        Page { widgets, texts, outlines }
+    }
+
+    #[test]
+    fn an_empty_state_sits_in_the_middle_of_the_page_without_a_card() {
+        let ctx = Context::default();
+        crate::style::install(&ctx);
+        let mut tab = Tab::new(std::path::PathBuf::from("synthetic"), None);
+        tab.actions.reach = Some(Reach::NoRemote);
+        let title = crate::i18n::tr("No remote on a host Rocket reads");
+        let find = |texts: &[(String, Rect)]| {
+            texts.iter().find(|(text, _)| text == title).map(|(_, rect)| *rect).unwrap_or_else(|| panic!("{title:?} is not painted: {texts:?}"))
+        };
+        let low = page(&ctx, &mut tab, 600.0);
+        let high = page(&ctx, &mut tab, 900.0);
+        let (short, tall) = (find(&low.texts), find(&high.texts));
+        // Centred in the rest of the page, as on Agents: 300 more points of page move the
+        // message down by half of them. A card at the top would not move.
+        assert!((tall.center().y - short.center().y - 150.0).abs() < 2.0, "{short:?} in 600 points, {tall:?} in 900");
+        // No card around it; its button is outlined, but beside the title, not around it.
+        let around: Vec<&Rect> = low.outlines.iter().filter(|outline| outline.contains_rect(short)).collect();
+        assert!(around.is_empty(), "an outline around the message: {around:?}");
+        for id in ["actions-remotes", "actions-guide"] {
+            assert!(low.widgets.contains_key(id), "{id} is missing: {:?}", low.widgets.keys());
+        }
     }
 }

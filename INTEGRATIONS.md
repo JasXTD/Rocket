@@ -392,7 +392,7 @@ node tools/tests/test-mcp-integration-workflows.cjs
 The MCP runner uses temporary dirty repositories, synthetic credentials and a
 loopback Jira-shaped API. It does not authenticate to Jira or any real service.
 Keep `rocket-lua-host.exe` beside Rocket/MCP when distributing a build. Ship
-`THIRD-PARTY-NOTICES.txt`; Lua's C source license is included in generated notices.
+`THIRD-PARTY-NOTICES.md`; Lua's C source license is included in generated notices.
 
 ## Native runtime trust review (2026-10-29)
 

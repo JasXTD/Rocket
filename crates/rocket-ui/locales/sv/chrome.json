@@ -92,7 +92,6 @@
   "Tool finished": "Verktyget är klart",
   "Tool running": "Verktyget körs",
   "Upload this branch's commits": "Ladda upp den här grenens commits",
-  "View stashes": "Visa stashar",
   "Working with SSH keys": "Arbetar med SSH-nycklar",
   "between commits, with changes that aren't committed. Commit or stash them, or Abort.": "mellan commits, med ändringar som inte är committade. Committa eller stasha dem, eller välj Avbryt.",
   "between commits. Continue does the rest, or Abort ends it.": "mellan commits. Fortsätt gör resten, eller Avbryt avslutar.",

@@ -131,8 +131,11 @@ struct Out {
     /// A key's tick: unlock it, or remove it from ssh-agent when it is unlocked.
     tick: Option<(Source, bool)>,
     form: Option<Form>,
-    copy: Option<(String, &'static str)>,
+    /// The text, what it is ("public-key" or "fingerprint") and the key's fingerprint.
+    copy: Option<(String, &'static str, String)>,
     reveal: Option<PathBuf>,
+    /// The room the key card left empty above its repository box, to tell what it needs.
+    spare: f32,
 }
 enum Form {
     New,
@@ -168,9 +171,11 @@ impl Rocket {
                 None => (None, None),
             };
         }
-        status_row(ui, s, widgets, busy, &mut out);
-        messages(ui, s);
         let open = s.creating || s.prompt.is_some() || s.preview.is_some();
+        // The first read shows its own loading state below, so the status row stays quiet.
+        let first_read = keys.is_empty() && !open && !s.loaded;
+        status_row(ui, s, widgets, busy, !first_read, &mut out);
+        messages(ui, s);
         if keys.is_empty() && !open {
             if s.loaded {
                 empty_state(ui, s, widgets, &repository, busy, &mut out);
@@ -178,18 +183,27 @@ impl Rocket {
                 pages::loading(ui, crate::i18n::tr("Looking for SSH keys"));
             }
         } else if ui.available_width() >= 620.0 {
-            // The list beside the chosen key, together as tall as the page.
-            let height = (ui.available_height() - 2.0).max(430.0);
+            // The list beside the chosen key, together as tall as the page and never shorter
+            // than the right side needed last frame: both end on one line, and a window too
+            // short for them scrolls the page instead.
+            let height = (ui.available_height() - 2.0).max(430.0).max(s.card_need);
+            let mut need = 0.0;
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
                 ui.allocate_ui_with_layout(vec2(262.0, height), Layout::top_down(Align::Min), |ui| {
                     list_card(ui, s, widgets, &keys, busy, height, &mut out);
                 });
                 let width = ui.available_width();
-                ui.allocate_ui_with_layout(vec2(width, height), Layout::top_down(Align::Min), |ui| {
+                let side = ui.allocate_ui_with_layout(vec2(width, height), Layout::top_down(Align::Min), |ui| {
                     right_side(ui, s, widgets, &keys, &repository, busy, Some(height), &mut out);
                 });
+                // The key card stretches to `height`; it needs that less the room it left empty.
+                need = side.response.rect.height() - out.spare;
             });
+            if (need - s.card_need).abs() > 0.5 {
+                s.card_need = need;
+                ui.ctx().request_repaint();
+            }
         } else {
             // A narrow window: the list above the chosen key.
             let height = 36.0 + 48.0 + 52.0 * keys.len().clamp(1, 4) as f32 + 4.0;
@@ -233,10 +247,11 @@ impl Rocket {
             }
             None => {}
         }
-        if let Some((text, notice)) = out.copy {
+        if let Some((text, what, key)) = out.copy {
             ui.ctx().copy_text(text);
-            s.notice = Some(notice.into());
-            s.error = None;
+            // The pressed button reads Copied for a moment. No line is added above the cards
+            // and none is taken away, so nothing moves under the pointer.
+            s.copied = Some(Copied { what, key, at: Instant::now() });
         }
         if let Some(folder) = out.reveal {
             self.show_folder(&folder);
@@ -247,18 +262,32 @@ impl Rocket {
     }
 }
 
-/// ssh-agent's state, what is running, and Rescan.
-fn status_row(ui: &mut Ui, s: &State, widgets: &mut HashMap<String, UiControl>, busy: bool, out: &mut Out) {
+/// ssh-agent's state and Rescan. While something runs, a spinner and what is running take
+/// the state's place, so no row appears and nothing below moves; `spinner` is false while
+/// the page shows its own loading state.
+fn status_row(ui: &mut Ui, s: &State, widgets: &mut HashMap<String, UiControl>, busy: bool, spinner: bool, out: &mut Out) {
     ui.horizontal_top(|ui| {
         ui.spacing_mut().item_spacing.x = 10.0;
-        // Reserve the action before laying out status text. The busy message
-        // gets its own row so compact windows cannot paint it over Rescan.
+        // Reserve the action before laying out status text, so a long message wraps in
+        // its own room instead of painting over Rescan in a compact window.
         let width = (ui.available_width() - 104.0).max(120.0);
         ui.allocate_ui_with_layout(
             vec2(width, 28.0),
             Layout::left_to_right(Align::Center).with_main_wrap(true),
             |ui| {
-                if s.loaded {
+                if busy {
+                    if spinner {
+                        ui.add(Spinner::new().size(14.0));
+                        let text = if s.stopping {
+                            crate::i18n::tr("Stopping OpenSSH and checking the result")
+                        } else if matches!(s.operation, "ssh-list" | "ssh-discover") {
+                            crate::i18n::tr("Looking for keys")
+                        } else {
+                            crate::i18n::tr("Working. OpenSSH may ask for a passphrase.")
+                        };
+                        ui.label(RichText::new(text).size(12.5).color(MUTED()));
+                    }
+                } else if s.loaded {
                     if s.agent_running {
                         let text = match s.loaded_keys.len() {
                             0 => crate::i18n::tr("ssh-agent running").to_owned(),
@@ -278,19 +307,6 @@ fn status_row(ui: &mut Ui, s: &State, widgets: &mut HashMap<String, UiControl>, 
             out.action = Some("scan");
         }
     });
-    if busy {
-        ui.horizontal_wrapped(|ui| {
-            ui.add(Spinner::new().size(14.0));
-            let text = if s.stopping {
-                crate::i18n::tr("Stopping OpenSSH and checking the result")
-            } else if matches!(s.operation, "ssh-list" | "ssh-discover") {
-                crate::i18n::tr("Looking for keys")
-            } else {
-                crate::i18n::tr("Working. OpenSSH may ask for a passphrase.")
-            };
-            ui.label(RichText::new(text).size(12.5).color(MUTED()));
-        });
-    }
 }
 
 /// Problems and results, then what the last scan couldn't use.
@@ -581,18 +597,30 @@ fn key_card(
                 }
             }
         });
+        // A Copy just pressed for this key reads Copied; the page draws again when that ends.
+        let copied = s
+            .copied
+            .as_ref()
+            .filter(|c| c.key == k.fingerprint)
+            .and_then(|c| COPIED_FOR.checked_sub(c.at.elapsed()).map(|left| (c.what, left)));
+        if let Some((_, left)) = copied {
+            ui.ctx().request_repaint_after(left);
+        }
+        let copied = copied.map(|(what, _)| what);
         Frame::new().inner_margin(Margin { left: 16, right: 16, top: 14, bottom: 14 }).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.spacing_mut().item_spacing.y = 10.0;
+            ui.spacing_mut().item_spacing.y = 8.0;
             let path = crate::views::display_path(&k.path);
             let folder_hint = if cfg!(target_os = "macos") { crate::i18n::tr("Show in Finder") }
                 else if cfg!(windows) { crate::i18n::tr("Show in File Explorer") }
                 else { crate::i18n::tr("Show in file manager") };
-            if info_row(ui, widgets, crate::i18n::tr("Location"), &path, ("ssh-show-folder", Icon::Folder, folder_hint)) {
+            if info_row(ui, widgets, crate::i18n::tr("Location"), &path, ("ssh-show-folder", Icon::Folder, folder_hint, false)) {
                 out.reveal = k.path.parent().map(Path::to_path_buf);
             }
-            if info_row(ui, widgets, crate::i18n::tr("Fingerprint"), &k.fingerprint, ("ssh-copy-fingerprint", Icon::Copy, crate::i18n::tr("Copy fingerprint"))) {
-                out.copy = Some((k.fingerprint.clone(), crate::i18n::tr("Fingerprint copied.")));
+            let fingerprint = copied == Some("fingerprint");
+            let (image, hint) = if fingerprint { (Icon::Check, crate::i18n::tr("Copied")) } else { (Icon::Copy, crate::i18n::tr("Copy fingerprint")) };
+            if info_row(ui, widgets, crate::i18n::tr("Fingerprint"), &k.fingerprint, ("ssh-copy-fingerprint", image, hint, fingerprint)) {
+                out.copy = Some((k.fingerprint.clone(), "fingerprint", k.fingerprint.clone()));
             }
             ui.label(RichText::new(crate::i18n::tr("Public key")).size(12.0).color(HINT()));
             // Read-only, so it can be selected; an RSA key scrolls instead of growing.
@@ -607,16 +635,28 @@ fn key_card(
             });
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 12.0;
-                let r = icon_btn(ui, Icon::Copy, crate::i18n::tr("Copy public key"), true, true, 0.0);
+                let (image, label) = if copied == Some("public-key") {
+                    (Icon::Check, crate::i18n::tr("Copied"))
+                } else {
+                    (Icon::Copy, crate::i18n::tr("Copy public key"))
+                };
+                // As wide as its longer label, so reading Copied moves nothing.
+                let widest = [crate::i18n::tr("Copy public key"), crate::i18n::tr("Copied")]
+                    .map(|t| ui.painter().layout_no_wrap(t.to_owned(), semibold(13.0), TEXT()).size().x)
+                    .into_iter()
+                    .fold(0.0, f32::max);
+                let r = icon_btn(ui, image, label, true, true, widest + 13.0 + 6.0 + 22.0);
                 control(widgets, "ssh-copy", &r, ui.clip_rect());
                 if r.clicked() {
-                    out.copy = Some((k.public_key.clone(), crate::i18n::tr("Public key copied. The private key was not copied.")));
+                    out.copy = Some((k.public_key.clone(), "public-key", k.fingerprint.clone()));
                 }
                 ui.add(Label::new(RichText::new(crate::i18n::tr("Paste it into your Git host's SSH key settings.")).size(12.0).color(HINT())).truncate());
             });
             ui.separator();
-            ui.label(RichText::new(crate::i18n::tr("Use this key through")).font(semibold(13.0)));
+            // The choice beside its heading, or under it when the card is too narrow.
             ui.horizontal_wrapped(|ui| {
+                ui.label(RichText::new(crate::i18n::tr("Use this key through")).font(semibold(13.0)));
+                ui.add_space(6.0);
                 for (id,label,mode) in [("ssh-mode-agent",if cfg!(windows) {crate::i18n::tr("Windows agent")} else {"ssh-agent"},SshAuthentication::Agent),("ssh-mode-direct",crate::i18n::tr("Direct key"),SshAuthentication::Direct)] {
                     let r=ui.selectable_value(&mut s.authentication,mode,label);
                     control(widgets,id,&r,ui.clip_rect());
@@ -638,24 +678,34 @@ fn key_card(
             } else {
                 ui.label(RichText::new(if cfg!(windows) {crate::i18n::tr("The key's tick controls Windows ssh-agent. Rocket does not save its passphrase in this mode.")} else {crate::i18n::tr("The key's tick controls ssh-agent. Rocket does not save its passphrase in this mode.")}).size(12.0).color(HINT()));
             }
-            // The repository box sits at the card's foot when the card fills the page. Its
+            // The repository box sits at the card's foot when the card fills the page, in the
+            // room it took last frame: guessing it short (its Restore link is a full-height
+            // button) made the card, and so the page, a little too tall at every size. Its
             // buttons go beside the repository when they fit, otherwise under it.
             let beside = buttons_beside(ui, k);
+            let room = ui.scope_id().with("ssh-repository-box");
+            let reserve = ui.ctx().data(|d| d.get_temp::<f32>(room)).unwrap_or(if beside.is_some() { 86.0 } else { 124.0 });
             if height.is_some() {
-                ui.add_space((ui.available_height() - if beside.is_some() { 82.0 } else { 120.0 }).max(0.0));
+                out.spare = (ui.available_height() - reserve).max(0.0);
+                ui.add_space(out.spare);
             }
-            repository_box(ui, s, widgets, k, repository, beside, out);
+            let used = repository_box(ui, s, widgets, k, repository, beside, out);
+            if (used - reserve).abs() > 0.5 {
+                ui.ctx().data_mut(|d| d.insert_temp(room, used));
+                ui.ctx().request_repaint();
+            }
         });
     });
 }
 
-/// A labelled value on one line with an icon button after it. True when it was clicked.
+/// A labelled value on one line with an icon button after it, in the accent colour when `done`
+/// (as a Copy that just worked). True when it was clicked.
 fn info_row(
     ui: &mut Ui,
     widgets: &mut HashMap<String, UiControl>,
     label: &str,
     value: &str,
-    (key, image, hint): (&str, Icon, &str),
+    (key, image, hint, done): (&str, Icon, &str, bool),
 ) -> bool {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
@@ -667,7 +717,7 @@ fn info_row(
             ui.add(Label::new(RichText::new(value).monospace().size(12.5)).truncate())
                 .on_hover_text(value);
         });
-        let r = crate::chrome::icon_button(ui, image, true, false, 26.0).on_hover_text(hint);
+        let r = crate::chrome::icon_button(ui, image, true, done, 26.0).on_hover_text(hint);
         control(widgets, key, &r, ui.clip_rect());
         r.clicked()
     })
@@ -690,7 +740,8 @@ fn buttons_beside(ui: &Ui, k: &Listed) -> Option<f32> {
     (room >= width(crate::i18n::tr("Restore previous setting"), 12.0) + buttons).then_some(buttons)
 }
 
-/// The open repository and this key: Use only this key, Check settings, Restore.
+/// The open repository and this key: Use only this key, Check settings, Restore. Returns the
+/// height the box took.
 #[allow(clippy::too_many_arguments)]
 fn repository_box(
     ui: &mut Ui,
@@ -700,7 +751,7 @@ fn repository_box(
     repository: &Option<String>,
     beside: Option<f32>,
     out: &mut Out,
-) {
+) -> f32 {
     let about = |ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, out: &mut Out| {
         ui.spacing_mut().item_spacing.y = 2.0;
         ui.label(RichText::new(crate::i18n::tr("THIS REPOSITORY")).font(semibold(11.0)).color(FAINT()));
@@ -756,7 +807,10 @@ fn repository_box(
                     ui.horizontal(|ui| buttons(ui, widgets, out));
                 }
             }
-        });
+        })
+        .response
+        .rect
+        .height()
 }
 
 /// New key, Add key file, or a found key's settings before the repository uses it.
@@ -1198,7 +1252,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn page_lists_each_found_key_once_and_copies_its_public_key() {
-        use eframe::egui::{Context, Event, Modifiers, OutputCommand, PointerButton, Pos2, RawInput, Rect, Vec2, vec2};
+        use eframe::egui::{Context, Event, Modifiers, OutputCommand, PointerButton, Pos2, RawInput, Rect, Shape, Vec2, vec2};
         use std::{
             os::windows::process::CommandExt,
             process::Command,
@@ -1308,8 +1362,43 @@ mod tests {
                 let edge = app.frame_widgets["ssh-copy-fingerprint"].rect.right();
                 assert!((review.right() - edge).abs() < 24.0, "Use only this key at {review:?}, card edge {edge}");
                 let public = std::fs::read_to_string(folder.join("id_found.pub")).unwrap();
+                let fingerprint = app.ssh.discovery.as_ref().unwrap().keys[0].fingerprint.clone();
+                // The words drawn on a control, to read a button's label.
+                let words = |app: &mut Rocket, key: &str| {
+                    app.poll(&ctx);
+                    app.frame_widgets.clear();
+                    let raw = RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, wide)), ..Default::default() };
+                    let mut out = ctx.run_ui(raw, |ui| app.dialog_ui(ui.ctx()));
+                    out.textures_delta.clear();
+                    let rect = app.frame_widgets[key].rect;
+                    fn find(shape: &Shape, rect: Rect, found: &mut Vec<String>) {
+                        match shape {
+                            Shape::Text(t) if !t.galley.job.text.is_empty() && rect.contains(t.pos + t.galley.size() / 2.0) => {
+                                found.push(t.galley.job.text.clone())
+                            }
+                            Shape::Vec(v) => v.iter().for_each(|s| find(s, rect, found)),
+                            _ => {}
+                        }
+                    }
+                    let mut found = Vec::new();
+                    for s in &out.shapes {
+                        find(&s.shape, rect, &mut found);
+                    }
+                    (found.join(" "), rect)
+                };
+                let (label, before) = words(&mut app, "ssh-copy");
+                assert_eq!(label, "Copy public key");
                 assert_eq!(click(&mut app, "ssh-copy"), vec![public.trim().to_owned()]);
-                assert!(app.ssh.notice.as_deref().is_some_and(|n| n.starts_with("Public key copied")));
+                // The button reads Copied for a moment, in the same place and size; no line is
+                // added above the cards.
+                assert!(app.ssh.copied.as_ref().is_some_and(|c| c.what == "public-key" && c.key == fingerprint));
+                assert_eq!(app.ssh.notice, None);
+                assert_eq!(words(&mut app, "ssh-copy"), ("Copied".to_owned(), before));
+                app.ssh.copied.as_mut().unwrap().at = Instant::now() - Duration::from_secs(2);
+                assert_eq!(words(&mut app, "ssh-copy").0, "Copy public key", "Copied lasts 1.6 s");
+                assert_eq!(click(&mut app, "ssh-copy-fingerprint"), vec![fingerprint.clone()]);
+                assert!(app.ssh.copied.as_ref().is_some_and(|c| c.what == "fingerprint" && c.key == fingerprint));
+                assert_eq!(words(&mut app, "ssh-copy").0, "Copy public key", "only the fingerprint's button changes");
 
                 // Set up with Add key file, the key is listed once, as the profile.
                 app.ssh.use_existing = true;
@@ -1400,6 +1489,140 @@ mod tests {
                 frames(&mut app);
                 assert!(app.frame_widgets.contains_key("ssh-found-0"), "the found key is listed");
                 restore(&app, "the key card");
+            },
+        );
+    }
+
+    /// With a repository open, the page has no scroll bar where it fits (full size and a
+    /// 720-point window), and the list and the key card always end on one line, also in a
+    /// window too short for them, where the page scrolls instead. Each run makes a new key,
+    /// and text wraps at a base64 key's '+' and '/', so its public key takes three or four
+    /// lines: 720 points fits either (three lines fit from 690).
+    #[cfg(windows)]
+    #[test]
+    fn page_fits_its_area_and_both_cards_end_level() {
+        use eframe::egui::{Context, Event, Modifiers, MouseWheelSource, MouseWheelUnit, Pos2, RawInput, Rect, Shape, TouchPhase, Vec2, vec2};
+        use std::{
+            os::windows::process::CommandExt,
+            process::Command,
+            time::{Duration, Instant},
+        };
+        crate::test_common::isolated(
+            "ROCKET_SSH_FIT_CASE",
+            "ssh_keys::page::tests::page_fits_its_area_and_both_cards_end_level",
+            || {
+                let f = crate::test_common::Fixture::new();
+                f.write("file", "first");
+                f.commit("first");
+                let ctx = Context::default();
+                let mut app = crate::batch::flow_tests::open(&ctx, &f);
+                // A disposable SSH folder: nothing of the user's own is read.
+                let base = std::fs::canonicalize(&f.root).unwrap();
+                let folder = PathBuf::from(base.to_string_lossy().trim_start_matches(r"\\?\")).join("ssh");
+                std::fs::create_dir(&folder).unwrap();
+                app.ssh.scan_directory = folder.clone();
+                app.ssh.root = folder.join("rocket-keys");
+                app.ssh.loaded = true;
+                let keygen = PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("System32/OpenSSH/ssh-keygen.exe");
+                let out = Command::new(keygen)
+                    .args(["-q", "-t", "ed25519", "-N", "disposable-fit-passphrase", "-C", "rocket-fit-fixture", "-f"])
+                    .arg(folder.join("id_fit"))
+                    .creation_flags(0x0800_0000)
+                    .output()
+                    .unwrap();
+                assert!(out.status.success(), "generate disposable key");
+                app.ssh_action("scan");
+                let deadline = Instant::now() + Duration::from_secs(30);
+                while app.ssh.running() {
+                    app.poll(&ctx);
+                    assert!(Instant::now() < deadline, "the scan did not finish");
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+                app.show_preferences(crate::preferences::Page::SshKeys);
+                let frame = |app: &mut Rocket, size: Vec2, events: Vec<Event>| {
+                    app.poll(&ctx);
+                    app.frame_widgets.clear();
+                    let raw = RawInput { screen_rect: Some(Rect::from_min_size(Pos2::ZERO, size)), events, ..Default::default() };
+                    let mut out = ctx.run_ui(raw, |ui| app.dialog_ui(ui.ctx()));
+                    out.textures_delta.clear();
+                    out.shapes
+                };
+                // The two cards as drawn, list first; shapes are not clipped to the page.
+                fn cards(shape: &Shape, found: &mut Vec<Rect>) {
+                    match shape {
+                        Shape::Rect(r) if r.fill == PANEL() && r.stroke.color == CARD_STROKE() && r.rect.height() > 100.0 => found.push(r.rect),
+                        Shape::Vec(v) => v.iter().for_each(|s| cards(s, found)),
+                        _ => {}
+                    }
+                }
+                // The cards of a frame drawn at `size`, after a few frames to settle (a dialog's
+                // first frame only measures it).
+                let drawn = |app: &mut Rocket, size: Vec2, events: Vec<Event>| {
+                    let mut found = Vec::new();
+                    for s in frame(app, size, events) {
+                        cards(&s.shape, &mut found);
+                    }
+                    found.sort_by(|a, b| a.left().total_cmp(&b.left()));
+                    assert_eq!(found.len(), 2, "the list and the key card at {size:?}: {found:?}");
+                    (found[0], found[1])
+                };
+                // Background work (the fixture repository's reads) finished, then a few frames:
+                // a dialog's first frame only measures it.
+                let settle = |app: &mut Rocket, size: Vec2| {
+                    let deadline = Instant::now() + Duration::from_secs(30);
+                    while app.busy() || app.ssh.running() {
+                        app.poll(&ctx);
+                        assert!(Instant::now() < deadline, "Rocket did not settle");
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    for _ in 0..3 {
+                        frame(app, size, vec![]);
+                    }
+                };
+                // Wheels the page down and returns how far the key card moved within the page
+                // area: 0 when the page doesn't scroll.
+                let scrolled = |app: &mut Rocket, size: Vec2| {
+                    settle(app, size);
+                    let (_, before) = drawn(app, size, vec![]);
+                    let area = app.frame_widgets["prefs-scroll"].rect;
+                    let wheel = Event::MouseWheel {
+                        unit: MouseWheelUnit::Point,
+                        delta: vec2(0.0, -400.0),
+                        phase: TouchPhase::Move,
+                        modifiers: Modifiers::NONE,
+                        source: MouseWheelSource::Unknown,
+                    };
+                    drawn(app, size, vec![Event::PointerMoved(area.center()), wheel]);
+                    let mut after = before;
+                    for _ in 0..30 {
+                        after = drawn(app, size, vec![]).1;
+                    }
+                    let now = app.frame_widgets["prefs-scroll"].rect;
+                    let moved = (before.top() - area.top()) - (after.top() - now.top());
+                    if moved.abs() >= 0.5 {
+                        eprintln!("moved {moved}: key card {before:?} → {after:?}, page area {area:?} → {now:?}, busy {}, notice {:?}, error {:?}", app.busy(), app.ssh.notice, app.ssh.error);
+                    }
+                    moved
+                };
+                let level = |app: &mut Rocket, size: Vec2, case: &str| {
+                    settle(app, size);
+                    let (list, key) = drawn(app, size, vec![]);
+                    assert!((list.bottom() - key.bottom()).abs() < 0.5, "{case} at {size:?}: the list ends at {}, the key card at {}", list.bottom(), key.bottom());
+                };
+                for (direct, case) in [(false, "Windows agent"), (true, "Direct key")] {
+                    app.ssh.authentication = if direct { SshAuthentication::Direct } else { SshAuthentication::Agent };
+                    for size in [vec2(1280.0, 860.0), vec2(1280.0, 720.0)] {
+                        level(&mut app, size, case);
+                        let moved = scrolled(&mut app, size);
+                        assert!(moved.abs() < 0.5, "{case} at {size:?}: the page scrolls by {moved} points");
+                    }
+                }
+                // Too short for the cards: the page scrolls, with both cards still level.
+                app.ssh.authentication = SshAuthentication::Agent;
+                let short = vec2(1280.0, 620.0);
+                level(&mut app, short, "Windows agent");
+                assert!(scrolled(&mut app, short) > 10.0, "a 620-point window scrolls the page");
+                level(&mut app, short, "Windows agent, scrolled");
             },
         );
     }

@@ -9,7 +9,7 @@ Download Engine's file, unchanged. Its changes to `src/text/text_layout.rs` were
 for epaint 0.36.2; egui 0.37 reworked that file's font handling, so Rocket re-applied them
 by hand on 2026-11-12, and the two `text_layout.rs` files no longer compare line for line.
 epaint is licensed under MIT OR Apache-2.0, and Rocket uses it under MIT, as
-`THIRD-PARTY-NOTICES.txt` lists.
+`THIRD-PARTY-NOTICES.md` lists.
 
 ## Why
 

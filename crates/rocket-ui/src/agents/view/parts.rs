@@ -229,41 +229,8 @@ pub(super) fn strip(ui: &mut Ui, color: Color32, image: Icon, text: &str, close:
     closed
 }
 
-/// A pane with nothing to list yet: an icon tile, a title, a line under it and `below`
-/// (`extra` points tall), centred in `rect`.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn centered(
-    ui: &mut Ui,
-    rect: Rect,
-    image: Icon,
-    tint: Color32,
-    title: &str,
-    text: &str,
-    extra: f32,
-    below: impl FnOnce(&mut Ui),
-) {
-    let width = (rect.width() - 48.0).clamp(80.0, 420.0);
-    let about = ui
-        .painter()
-        .layout(text.to_owned(), FontId::proportional(13.0), MUTED(), width);
-    let group = 44.0 + 12.0 + 20.0 + 6.0 + about.size().y + extra;
-    let column = Rect::from_center_size(rect.center(), vec2(width, group.min(rect.height())));
-    let mut ui = ui.new_child(
-        UiBuilder::new()
-            .max_rect(column)
-            .layout(Layout::top_down(Align::Center)),
-    );
-    ui.set_clip_rect(rect.intersect(ui.clip_rect()));
-    ui.spacing_mut().item_spacing.y = 0.0;
-    let (tile, _) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::hover());
-    ui.painter().rect_filled(tile, 11.0, RAISED());
-    icon(ui.painter(), tile.shrink(12.0), image, tint);
-    ui.add_space(12.0);
-    ui.label(RichText::new(title).font(semibold(15.0)));
-    ui.add_space(6.0);
-    ui.add(Label::new(RichText::new(text).size(13.0).color(MUTED())).wrap().halign(Align::Center));
-    below(&mut ui);
-}
+// A pane with nothing to list yet: the empty state every page draws (Actions too).
+pub(super) use crate::pages::empty_state as centered;
 
 /// A small copy button beside a value. Returns its response for the caller to name.
 pub(super) fn copy(ui: &mut Ui, value: &str) -> Response {

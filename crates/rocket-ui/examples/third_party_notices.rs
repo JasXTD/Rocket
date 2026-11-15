@@ -1,4 +1,4 @@
-//! Writes `THIRD-PARTY-NOTICES.txt` at the workspace root: the notices of every crate
+//! Writes `THIRD-PARTY-NOTICES.md` at the workspace root: the notices of every crate
 //! compiled into Rocket's programs on Windows, Linux or macOS, the embedded fonts and the
 //! bundled ConPTY runtime. Each entry names the platforms whose builds include it, so one
 //! file ships with every package and About › Legal shows the running platform's entries.
@@ -24,7 +24,7 @@ const TARGETS: [(&str, &str); 4] = [("Windows", "x86_64-pc-windows-msvc"), ("Lin
 const CRATES_IO: &str = "registry+https://github.com/rust-lang/crates.io-index";
 /// Opens and closes each entry's header; the Legal page splits the file on it.
 const SEPARATOR: &str = "########################################################################";
-const FILE_NAME: &str = "THIRD-PARTY-NOTICES.txt";
+const FILE_NAME: &str = "THIRD-PARTY-NOTICES.md";
 
 /// The MIT license after its copyright line.
 const MIT: &str = "Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -395,7 +395,7 @@ fn conpty(root: &Path) -> Entry {
 fn render(entries: &[Entry]) -> String {
     let targets = TARGETS.map(|(platform, target)| format!("{target} ({platform})")).join(" and ");
     let mut out = format!(
-        "Third-party notices for Rocket\n\n\
+        "# Third-party notices for Rocket\n\n\
          Rocket includes the software below. Each entry names its license and the platforms\n\
          whose builds include it, and carries the notice its authors ship with it. Where a\n\
          crate offers MIT among other licenses, Rocket uses it under MIT. Generated from\n\

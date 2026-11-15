@@ -1589,6 +1589,45 @@ pub(crate) fn empty(ui: &mut Ui, text: &str) {
     ui.label(RichText::new(text).color(FAINT()));
 }
 
+/// A page or pane with nothing to show yet: an icon tile, a title, a line under it and
+/// `below` (`extra` points tall), centred in `rect` as one group, on the page itself
+/// with no card around it. Agents and Actions draw their empty states with it.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn empty_state(
+    ui: &mut Ui,
+    rect: Rect,
+    image: Icon,
+    tint: Color32,
+    title: &str,
+    text: &str,
+    extra: f32,
+    below: impl FnOnce(&mut Ui),
+) {
+    let width = (rect.width() - 48.0).clamp(80.0, 420.0);
+    // A long title, such as one naming a repository, wraps like the line under it.
+    let heading = ui.painter().layout(title.to_owned(), semibold(15.0), TEXT(), width);
+    let about = ui
+        .painter()
+        .layout(text.to_owned(), FontId::proportional(13.0), MUTED(), width);
+    let group = 44.0 + 12.0 + heading.size().y + 6.0 + about.size().y + extra;
+    let column = Rect::from_center_size(rect.center(), vec2(width, group.min(rect.height())));
+    let mut ui = ui.new_child(
+        UiBuilder::new()
+            .max_rect(column)
+            .layout(Layout::top_down(Align::Center)),
+    );
+    ui.set_clip_rect(rect.intersect(ui.clip_rect()));
+    ui.spacing_mut().item_spacing.y = 0.0;
+    let (tile, _) = ui.allocate_exact_size(vec2(44.0, 44.0), Sense::hover());
+    ui.painter().rect_filled(tile, 11.0, RAISED());
+    icon(ui.painter(), tile.shrink(12.0), image, tint);
+    ui.add_space(12.0);
+    ui.add(Label::new(RichText::new(title).font(semibold(15.0))).wrap().halign(Align::Center));
+    ui.add_space(6.0);
+    ui.add(Label::new(RichText::new(text).size(13.0).color(MUTED())).wrap().halign(Align::Center));
+    below(&mut ui);
+}
+
 /// Pill colors used across pages.
 #[allow(non_snake_case)]
 pub(crate) fn OK() -> Color32 {

@@ -561,6 +561,9 @@ impl State {
         // what looks like a secret in it.
         let first = match (&f.briefing, plan.mode) {
             (Some(b), Mode::Create) => {
+                if !b.ready() || !b.reviewed() {
+                    return Err(model::invalid("Review the host-sourced message and acknowledge the agent's access before starting."));
+                }
                 if rocket_git::scan_text_for_secret(&b.message).is_some() {
                     return Err(model::invalid("Remove what looks like a secret from the first message first."));
                 }

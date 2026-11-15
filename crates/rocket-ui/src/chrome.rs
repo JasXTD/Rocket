@@ -1231,19 +1231,17 @@ impl Rocket {
             self.frame_widgets
                 .insert("toolbar-stash".into(), (&stash).into());
             Popup::menu(&stash).show(|ui| {
-                if ui
-                    .add_enabled(writable, Button::new(tr("Save changes to stash")))
-                    .clicked()
-                {
+                // The menu bar's rows and words (Repository → Stash), as the Branch menu has.
+                let save = crate::menus::item_response(ui, tr("Save Changes…"), "", writable);
+                crate::pages::control(&mut self.frame_widgets, "toolbar-stash-save", &save, ui.clip_rect());
+                if save.clicked() {
                     intents.push(Intent::Dialog(DialogKind::Stash));
-                    ui.close();
                 }
-                if ui
-                    .add_enabled(self.tab().is_some(), Button::new(tr("View stashes")))
-                    .clicked()
-                {
+                let opened = self.tab().is_some();
+                let view = crate::menus::item_response(ui, tr("View Stashes"), "", opened);
+                crate::pages::control(&mut self.frame_widgets, "toolbar-stash-view", &view, ui.clip_rect());
+                if view.clicked() {
                     intents.push(Intent::View(View::Stashes));
-                    ui.close();
                 }
             });
             let branch = tool_button(

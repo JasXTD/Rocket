@@ -24,6 +24,8 @@ function fixture(fn,arch='arm64'){
 test('Complete Unicode-path bundle has exact metadata, existing artwork and five sibling helpers',()=>fixture(f=>{
   f.seal();const data=b.verify(f.out);assert.equal(data.lua,'disabled');assert.equal(data.minimum_macos,'15.0');
   assert.equal(data.version,b.version());assert.equal(data.identity,'io.github.jasxtd.rocket');
+  assert(fs.existsSync(path.join(f.out,'Rocket.app/Contents/Resources/THIRD-PARTY-NOTICES.md')));
+  assert(!fs.existsSync(path.join(f.out,'Rocket.app/Contents/Resources/THIRD-PARTY-NOTICES.txt')));
   const dir=path.join(f.out,'Rocket.app/Contents/MacOS');assert.deepEqual(fs.readdirSync(dir).sort(),names);
   for(const name of names)assert(fs.readFileSync(path.join(dir,name)).equals(fs.readFileSync(path.join(f.bins,name))));
   const plist=fs.readFileSync(path.join(f.out,'Rocket.app/Contents/Info.plist'),'utf8');

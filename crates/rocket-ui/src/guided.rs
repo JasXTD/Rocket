@@ -306,7 +306,7 @@ pub fn summary(
             if button(ui, widgets, "summary-refresh", "Refresh", idle) { intents.push(Intent::Refresh); }
         });
         Frame::new().inner_margin(Margin { left: 24, right: 24, top: 4, bottom: 24 }).show(ui, |ui| {
-            ui.set_width(ui.available_width().min(960.0));
+            ui.set_width(ui.available_width());
             ui.spacing_mut().item_spacing.y = 12.0;
             if refreshing(tab) {
                 pages::busy_line(ui, "Refreshing; the numbers below may be out of date.");

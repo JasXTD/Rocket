@@ -92,7 +92,6 @@
   "Tool finished": "工具已结束",
   "Tool running": "工具运行中",
   "Upload this branch's commits": "上传此分支的提交",
-  "View stashes": "查看储藏",
   "Working with SSH keys": "正在处理 SSH 密钥",
   "between commits, with changes that aren't committed. Commit or stash them, or Abort.": "停在两个提交之间，且有未提交的更改。请提交或储藏这些更改，或中止。",
   "between commits. Continue does the rest, or Abort ends it.": "停在两个提交之间。“继续”会完成其余步骤，“中止”则结束操作。",

@@ -12,6 +12,12 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Security: bound Code Map's Rust path-follow-up reads and CODEOWNERS matching work,
+  including cancellation inside wildcard matching. Installer packaging no longer
+  executes binaries from its input archive. Host-sourced Agents messages require
+  explicit acknowledgment bound to the reviewed text; quoting alone is not a
+  prompt-injection defense, and agents still run with the user's access.
+
 - Hosting supports **Forgejo**, which Codeberg runs, as its own provider: Preferences →
   Accounts lists it with the self-hosted servers, starting at https://codeberg.org, and
   codeberg.org remotes are recognised for commit links, CI marks and Actions. It uses
@@ -36,6 +42,12 @@ keep detailed test evidence in `VALIDATION.md`.
   uninstall. Packaging checks the exact verified payload for credential material.
   Local install, upgrade, cancellation and uninstall acceptance passed; the new
   installer artifact is not published yet.
+- Map → Code → Folders is a code map: open folders become boxes, and arrows between
+  cards show which files use which across the repository's Rust, JavaScript and
+  TypeScript, Python and Go packages, numbered by the files that use. **Colour** shows
+  kind, commit activity, owner (CODEOWNERS, else most commits) or what the snapshot
+  changes since it split from a base, with **Changed only**. Read from committed files;
+  nothing is compiled or run.
 - Agents can start a session from an issue, a pull request or a failed CI run: Start
   agent on Hosting's open issues and in a pull request's details (Address review
   comments, Fix failing checks or Your own task), Fix with agent on a failed run in
@@ -48,6 +60,21 @@ keep detailed test evidence in `VALIDATION.md`.
   head, and Integrate pushes back to its branch as a fast-forward through the Push
   dialog. Tasks can be saved and managed (state format v33). Issue text is read from
   GitHub, GitHub Enterprise Server, GitLab, Gitea and Azure DevOps work items.
+- Summary uses the whole width of the window. Its tiles and cards used to stop at
+  960 points and leave the right side of a wide window empty.
+- Actions' empty states (Connect, no runs yet and the others) sit in the middle of the
+  page without a card, as Agents' does. The Repository map's export is an **Export**
+  button instead of an unlabelled arrow and says why while it is greyed out. The
+  toolbar's Stash menu has the menu bar's rows and words (Save Changes, View Stashes),
+  like the Branch menu beside it.
+- Preferences → SSH keys no longer shows a scroll bar at every window size: with a
+  repository open the page was 2 points too tall, because the repository box took more
+  room than the key card kept for it. The key card is shorter ("Use this key through"
+  shares a row with its choice, rows 8 points apart), so with ssh-agent the page fits
+  from a 690-point window instead of never (about 705 when the public key takes four
+  lines, as RSA keys do), and the list and the key card always end on one line. Copy public key and Copy fingerprint say Copied on the button for a moment
+  instead of adding a line above the cards, and a scan's spinner takes the status
+  pill's place instead of adding a row, so nothing moves under the pointer.
 - Explore searches GitLab and Gitea too, Codeberg included. A menu at the start of the
   search row picks GitHub, the server of each GitLab or Gitea account in Preferences →
   Accounts, or gitlab.com and Codeberg without an account (public repositories only).
@@ -285,7 +312,7 @@ requirements and validation limits.
   - The MCP server and the example probes take screenshots through egui's new callback;
     the diff overview hands its scroll target to the next frame, because a scroll
     area's stored offset is no longer writable.
-  - `THIRD-PARTY-NOTICES.txt` is regenerated (unicode-properties and egui's small icon
+  - `THIRD-PARTY-NOTICES.md` is regenerated (unicode-properties and egui's small icon
     font are new entries). Its generator now asks Cargo once per release target, so it
     no longer needs crates that only a web build of egui uses.
   - eframe's new `system_fonts` feature (installed fonts and colour emoji on demand) is
@@ -729,7 +756,7 @@ labels and outstanding live-service acceptance limits still apply.
   to Rocket's word list for the language.
 - Cargo.lock adds 15 Linux-only packages: chacha20poly1305 0.11.0 and spellbook 0.4.2 with
   their dependencies (see DEPENDENCIES.md). Windows and macOS builds compile nothing new.
-- THIRD-PARTY-NOTICES.txt covers Linux builds too, and each entry names the platforms
+- THIRD-PARTY-NOTICES.md covers Linux builds too, and each entry names the platforms
   whose builds include it. About › Legal lists what the running build includes. On Linux
   that includes spellbook's MPL-2.0 license and where its source is, and there is no
   ConPTY runtime section.

@@ -16,8 +16,11 @@ use std::{
     sync::Arc,
 };
 
+mod code_map;
 mod details;
 mod drawing;
+/// A card or box of the code map, for MCP state.
+pub use code_map::Item as CodeItem;
 mod export;
 mod lists;
 mod modules;
@@ -48,6 +51,10 @@ pub enum MapIntent {
     Modules(Option<PackageRef>),
     /// Code → Packages (true) or Folders (false), from Modules.
     CodeView(bool),
+    /// Code → Folders: a read the code map needs.
+    CodeRead(code_map::CodeRead),
+    /// Code → Folders: Changes was chosen without a base; start from the main branch.
+    ChangesBase,
 }
 #[derive(Default)]
 pub struct State {
@@ -122,6 +129,8 @@ pub struct MapPage {
     /// Code → Folders opens at this path once its data is read.
     pending_path: Option<Vec<u8>>,
     topology: Option<Arc<lists::Topology>>,
+    /// Code → Folders: the code map's reads, colours and layout.
+    pub code: code_map::CodeMap,
 }
 impl Default for MapPage {
     fn default() -> Self {
@@ -174,6 +183,7 @@ impl Default for MapPage {
             loading_more: false,
             pending_path: None,
             topology: None,
+            code: code_map::CodeMap::default(),
         }
     }
 }
@@ -246,6 +256,9 @@ impl MapPage {
                     {
                         self.neighbor_anchor = None;
                     }
+                    if data.kind == MapKind::Code {
+                        self.code.renew(data.tip.as_ref());
+                    }
                     if first && data.kind == MapKind::Code {
                         self.alternate = data.nodes.iter().any(|n| n.kind == MapNodeKind::Crate);
                         // Folders open one at a time: start with every folder closed.
@@ -289,12 +302,13 @@ impl MapPage {
         self.loading_more = false;
     }
     pub fn running(&self) -> bool {
-        self.task.is_some()
+        self.task.is_some() || self.code.running()
     }
     fn stop(&mut self) {
         if let Some(e) = &mut self.export {
             e.stop();
         }
+        self.code.stop();
         if let Some(t) = &self.task {
             t.cancel();
             self.cancelling = true;
@@ -511,6 +525,19 @@ impl Rocket {
                 }
             }
             MapIntent::BrowseExport | MapIntent::InspectCommit(_) => unreachable!(),
+            MapIntent::CodeRead(read) => {
+                let p = &mut tab.map.pages[index(MapKind::Code)];
+                if let Some(tip) = p.data.as_ref().and_then(|d| d.tip.clone()) {
+                    p.code.start(read, tip, &self.context, backend.clone(), repo.clone());
+                }
+            }
+            MapIntent::ChangesBase => {
+                let base = code_map::default_base(tab);
+                let p = &mut tab.map.pages[index(MapKind::Code)];
+                if p.code.base.trim().is_empty() {
+                    p.code.base = base;
+                }
+            }
             MapIntent::Cancel => tab.map.page_mut().stop(),
             MapIntent::Switch(kind) => {
                 tab.map.page_mut().stop();
@@ -619,6 +646,7 @@ impl Rocket {
                 if let Some(result) = p.task.as_mut().and_then(ReadTask::try_finish) {
                     p.finish(result);
                 }
+                p.code.poll();
                 if p.data.is_some() && p.loaded_refresh != tab.refresh_count {
                     p.stale = true;
                 }
@@ -847,8 +875,17 @@ fn header_actions(
 ) {
     ui.spacing_mut().item_spacing.x = 8.0;
     let ready = s.data.is_some() && !s.visible.is_empty() && !s.running();
-    let r = crate::chrome::icon_button(ui, Icon::External, ready, false, 28.)
-        .on_hover_text(tr("Export as Mermaid"));
+    // A worded button like Insights' Export; greyed out, its tooltip says why. While a
+    // read runs the old map still shows, so that case has its own reason.
+    let why = if s.running() {
+        tr("Export as Mermaid, once this read finishes")
+    } else {
+        tr("Export as Mermaid, once the map shows something")
+    };
+    let r = ui
+        .add_enabled(ready, Button::new(tr("Export")))
+        .on_hover_text(tr("Export as Mermaid"))
+        .on_disabled_hover_text(why);
     register(ui, widgets, "map-export", &r);
     if r.clicked() {
         emit(intents, MapIntent::Export);
@@ -1118,6 +1155,12 @@ fn controls(
             }
             if modules {
                 modules::package_picker(ui, s, &views.list, intents, widgets);
+            } else if !s.alternate && s.data.is_some() {
+                let before = s.code.colour;
+                code_map::colour_menu(ui, s, widgets);
+                if s.code.colour == code_map::Colour::Changes && before != s.code.colour && s.code.base.trim().is_empty() {
+                    emit(intents, MapIntent::ChangesBase);
+                }
             }
         }
         MapKind::History => {
@@ -1165,7 +1208,16 @@ fn controls(
         (kind, s.alternate, s.condensed),
         (MapKind::Code, _, _) | (MapKind::People, true, _) | (MapKind::History, _, false)
     );
-    if graph {
+    if graph && code_map::changed_only_chip(s) {
+        // Changes: Changed only, in place of Connected only.
+        room(ui, text_width(ui, tr("Changed only")) + 22.);
+        let on = s.code.changed_only;
+        let r = crate::activity_history::chip(ui, tr("Changed only"), None, on, CONTROL).on_hover_text(tr("Show the changed files, the files that use them and their folders"));
+        register(ui, widgets, "map-changed-only", &r);
+        if r.clicked() {
+            s.code.changed_only = !on;
+        }
+    } else if graph {
         room(ui, text_width(ui, tr("Connected only")) + 22.);
         let on = s.neighbor_anchor.is_some();
         let enabled = s.selected.is_some();
@@ -1364,6 +1416,7 @@ fn body(
         MapKind::History => lists::commits(ui, s, content, covered, widgets),
         MapKind::People if !s.alternate => lists::grid(ui, s, content, covered, widgets),
         MapKind::Modules => modules::body(ui, s, content, covered, compact, intents, widgets),
+        MapKind::Code if !s.alternate => code_map::canvas(ui, s, content, covered, intents, widgets),
         _ => drawing::canvas(ui, s, content, covered, widgets),
     }
     let downloading = s.running() && preview.is_some_and(|d| d.status.running);

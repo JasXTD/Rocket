@@ -60,6 +60,77 @@ fn branch_toolbar_opens_existing_reviews_and_gates_integration() {
     );
 }
 
+/// The toolbar's Stash menu is drawn like the Branch menu beside it: the menu bar's rows,
+/// the same size, with the menu bar's words for its commands.
+#[test]
+fn stash_toolbar_menu_matches_the_branch_menu() {
+    common::isolated(
+        "ROCKET_SELECTION_CASE",
+        "selection_tests::stash_toolbar_menu_matches_the_branch_menu",
+        || {
+            use crate::{
+                app::{DialogKind, View},
+                batch::flow_tests::{click, frame, open},
+                i18n::tr,
+                style::command_label,
+            };
+            use eframe::egui::{Pos2, RawInput, Rect, Shape, vec2};
+            // One frame of the window, drawn as `frame` draws it, and the text it painted.
+            fn painted(ctx: &Context, app: &mut Rocket) -> Vec<String> {
+                fn texts(shape: &Shape, out: &mut Vec<String>) {
+                    match shape {
+                        Shape::Text(text) => out.push(text.galley.text().to_owned()),
+                        Shape::Vec(shapes) => shapes.iter().for_each(|shape| texts(shape, out)),
+                        _ => {}
+                    }
+                }
+                app.frame_widgets.clear();
+                let screen = Rect::from_min_size(Pos2::ZERO, vec2(1480.0, 1000.0));
+                let mut output = ctx.run_ui(RawInput { screen_rect: Some(screen), ..Default::default() }, |ui| {
+                    let mut intents = Vec::new();
+                    app.shell(ui, &mut intents);
+                    for intent in intents {
+                        app.dispatch(intent);
+                    }
+                    app.dialog_ui(&ui.ctx().clone());
+                });
+                output.textures_delta.clear();
+                let mut out = Vec::new();
+                for clipped in &output.shapes {
+                    texts(&clipped.shape, &mut out);
+                }
+                out
+            }
+            let f = common::Fixture::new();
+            f.write("stash.txt", "original\n");
+            f.commit("original");
+            f.write("stash.txt", "changed\n");
+            let ctx = Context::default();
+            let mut app = open(&ctx, &f);
+            click(&ctx, &mut app, "toolbar-stash");
+            let texts = painted(&ctx, &mut app);
+            for word in [command_label(tr("Save Changes…")), tr("View Stashes")] {
+                assert!(texts.iter().any(|text| text == word), "{word:?} is not in the menu: {texts:?}");
+            }
+            assert!(!texts.iter().any(|text| text == tr("Save changes to stash")));
+            let (save, view) = (app.frame_widgets["toolbar-stash-save"], app.frame_widgets["toolbar-stash-view"]);
+            assert!(save.enabled && view.enabled);
+            click(&ctx, &mut app, "toolbar-stash-save");
+            assert!(matches!(app.dialog.as_ref().unwrap().kind, DialogKind::Stash));
+            app.dialog = None;
+            frame(&ctx, &mut app, vec![]);
+            click(&ctx, &mut app, "toolbar-stash");
+            click(&ctx, &mut app, "toolbar-stash-view");
+            assert_eq!(app.tabs[0].view, View::Stashes);
+            click(&ctx, &mut app, "toolbar-branch");
+            let branch = app.frame_widgets["toolbar-branch-new"];
+            for row in [save, view] {
+                assert_eq!(row.rect.size(), branch.rect.size(), "{:?} is not a row like {:?}", row.rect, branch.rect);
+            }
+        },
+    );
+}
+
 /// Ctrl/Shift-click history rows through the real dispatcher and check the order
 /// a reviewed cherry-pick or revert sequence would use.
 #[test]

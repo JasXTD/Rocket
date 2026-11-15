@@ -61,7 +61,7 @@ pub(super) fn show(ctx: &eframe::egui::Context, w: &mut Widgets, f: &mut Form, i
             parts::strip(ui, RED(), Icon::Warning, e, None);
         }
         if let Some(plan) = &f.plan {
-            review(ui, plan, f.mode, f.briefing.as_ref());
+            review(ui, w, plan, f.mode, f.briefing.as_mut());
         } else {
             ui.add_enabled_ui(f.task.is_none(), |ui| edit(ui, w, f, inputs, action));
         }
@@ -113,6 +113,7 @@ fn footer(ui: &mut Ui, w: &mut Widgets, f: &Form, ready: bool, action: &mut Opti
         return;
     }
     if f.plan.is_some() {
+        let ready = ready && (f.mode != Mode::Create || f.briefing.as_ref().is_none_or(|b| b.ready() && b.reviewed()));
         let r = match f.mode {
             Mode::Remove => pages::danger(ui, ready, tr("Remove clean worktree")),
             Mode::Restart => pages::primary(ui, ready, tr("Start session")),
@@ -156,7 +157,7 @@ fn program(ui: &mut Ui, label: &str, c: &Command) {
 }
 
 /// The checked plan: what is created or removed, and what runs.
-fn review(ui: &mut Ui, plan: &Plan, mode: Mode, briefing: Option<&Briefing>) {
+fn review(ui: &mut Ui, w: &mut Widgets, plan: &Plan, mode: Mode, briefing: Option<&mut Briefing>) {
     ui.add(Label::new(RichText::new(&plan.record.name).font(semibold(14.0))).wrap());
     let what = match mode {
         Mode::Create => "Creates",
@@ -204,9 +205,13 @@ fn review(ui: &mut Ui, plan: &Plan, mode: Mode, briefing: Option<&Briefing>) {
             );
             let lines: Vec<&str> = b.message.lines().collect();
             pages::well(ui, |ui| {
-                for line in lines.iter().take(3) {
-                    ui.add(Label::new(RichText::new(*line).monospace().size(12.0)).truncate());
-                }
+                // Approval must expose the exact host text, including material past
+                // the task's opening lines. Keep it scrollable in compact windows.
+                let out = ScrollArea::vertical().id_salt("agents-reviewed-message")
+                    .max_height(180.0).show(ui, |ui| {
+                        ui.add(Label::new(RichText::new(&b.message).monospace().size(12.0)).wrap());
+                    });
+                pages::region(w, "agents-review-message-scroll", out.inner_rect, ui.is_enabled());
             });
             let mut about = trn!(lines.len(), "{n} line", "{n} lines");
             if !b.read_at.is_empty() && !b.without {
@@ -214,6 +219,12 @@ fn review(ui: &mut Ui, plan: &Plan, mode: Mode, briefing: Option<&Briefing>) {
                 about.push_str(&trf!("from {item} as read at {time}", item = b.origin.short(), time = &b.read_at));
             }
             ui.label(RichText::new(about).size(12.0).color(HINT()));
+            parts::strip(ui, AMBER(), Icon::Warning,
+                tr("Host text can contain malicious instructions. Quoting it does not stop prompt injection. This agent can access your files and network; a worktree is not a sandbox."), None);
+            let mut accepted = b.reviewed();
+            let response = ui.add(checkbox(&mut accepted, tr("I reviewed this message and accept sending it to an agent with my account's access.")));
+            pages::control(w, "agents-acknowledge-host-text", &response, ui.clip_rect());
+            if response.changed() { b.acknowledge(accepted); }
         });
     }
     ui.horizontal(|ui| {

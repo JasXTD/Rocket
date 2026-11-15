@@ -59,10 +59,10 @@ try {
 $metadata=Get-Content -LiteralPath (Join-Path $payload 'rocket-update.json') -Raw|ConvertFrom-Json
 $version=[string]$metadata.version
 if($metadata.schema -ne 1 -or $metadata.platform -cne 'windows-x64' -or $metadata.entrypoint -cne 'rocket.exe' -or $version -notmatch '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$'){throw 'Unexpected update metadata.'}
-$cli=& (Join-Path $payload 'rocket-cli.exe') --json --version
-if($LASTEXITCODE -ne 0){throw 'Packaged CLI version check failed.'}
-$cliVersion=$cli|ConvertFrom-Json
-if(-not $cliVersion.ok -or $cliVersion.version -cne $version -or $cliVersion.data.version -cne $version){throw 'Package binary version differs from metadata.'}
+# Package metadata is data, not proof of publisher identity. Never run executables
+# from an input ZIP here: an archive and its caller-provided digest may both be
+# attacker controlled. Binary version smoke checks belong to the trusted build's
+# acceptance tests, before selecting the ZIP for packaging.
 $auditPath=Join-Path $job 'payload-audit.json'
 $auditArgs=@((Join-Path $PSScriptRoot 'windows/audit-payload.cjs'),$payload,$auditPath)
 if($CompareLocalSshKeys){$auditArgs+='--compare-local-ssh'}

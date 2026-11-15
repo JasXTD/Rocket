@@ -104,13 +104,18 @@ fn top_folder(path: &[u8]) -> &[u8] {
 /// The packages `paths` hold, by language and folder, and whether some were left out
 /// past [`PACKAGES`].
 pub(super) fn find(paths: &[&[u8]]) -> (Vec<Found>, bool) {
+    find_up_to(paths, PACKAGES)
+}
+
+/// As [`find`], with up to `limit` packages a language.
+pub(super) fn find_up_to(paths: &[&[u8]], limit: usize) -> (Vec<Found>, bool) {
     let mut out = Vec::new();
     let mut limited = false;
     let mut add = |mut list: Vec<Found>, out: &mut Vec<Found>| {
         list.retain(|f| !f.files.is_empty());
         list.sort_by(|a, b| a.folder.cmp(&b.folder));
-        limited |= list.len() > PACKAGES;
-        out.extend(list.into_iter().take(PACKAGES));
+        limited |= list.len() > limit;
+        out.extend(list.into_iter().take(limit));
     };
     add(javascript(paths), &mut out);
     add(python(paths), &mut out);

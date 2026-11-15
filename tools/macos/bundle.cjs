@@ -8,7 +8,7 @@ const BINARIES = ['rocket', 'rocket-cli', 'rocket-mcp', 'rocket-rebase-editor', 
 const LUA = require('./lua-helper.cjs');
 const RESOURCES = new Map([
   ['LICENSE-MIT', 'LICENSE-MIT'], ['LICENSE-APACHE', 'LICENSE-APACHE'],
-  ['THIRD-PARTY-NOTICES.txt', 'THIRD-PARTY-NOTICES.txt'],
+  ['THIRD-PARTY-NOTICES.md', 'THIRD-PARTY-NOTICES.md'],
   ['Noto-CJK-LICENSE', 'runtime/fonts/noto-sans-cjk/2.004/LICENSE'],
   ['Noto-CJK-NOTICE', 'runtime/fonts/noto-sans-cjk/2.004/NOTICE'],
   ['Noto-Emoji-LICENSE', 'runtime/fonts/noto-emoji/3.002/LICENSE'],

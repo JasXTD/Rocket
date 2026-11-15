@@ -227,5 +227,7 @@
   "the title": "titeln",
   "More comments weren't read; they are on the host:": "Fler kommentarer lästes inte; de finns hos värden:",
   "That link isn't to {repository}.": "Länken går inte till {repository}.",
-  "Another task has this name. Closing numbers the later one.": "En annan uppgift har det här namnet. När du stänger får den senare ett nummer."
+  "Another task has this name. Closing numbers the later one.": "En annan uppgift har det här namnet. När du stänger får den senare ett nummer.",
+  "Host text can contain malicious instructions. Quoting it does not stop prompt injection. This agent can access your files and network; a worktree is not a sandbox.": "Text från värdtjänsten kan innehålla skadliga instruktioner. Citat stoppar inte promptinjektion. Agenten kan komma åt dina filer och nätverket; ett arbetsträd är ingen sandlåda.",
+  "I reviewed this message and accept sending it to an agent with my account's access.": "Jag har granskat meddelandet och godkänner att det skickas till en agent med mitt kontos åtkomsträttigheter."
 }

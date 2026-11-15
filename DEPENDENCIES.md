@@ -92,7 +92,7 @@ After the download, before the first build:
 - Defender is off on this machine, so the archives had Cargo's SHA-256 check and no
   antivirus scan.
 
-THIRD-PARTY-NOTICES.txt was regenerated with `cargo run -p rocket-ui --example
+THIRD-PARTY-NOTICES.md was regenerated with `cargo run -p rocket-ui --example
 third_party_notices` and passes its `--check`: 220 crates and 8 other entries. It gains
 unicode-properties and "egui-icons (emoji-icon-font subset)", moves the thirteen versions
 and loses nothing. The generator used to ask `cargo metadata` about every locked package
@@ -249,7 +249,7 @@ No package, feature, tool or download was added, and Cargo.lock is unchanged. Th
 answers the notices notes in the two Linux sections below.
 `crates/rocket-ui/examples/third_party_notices.rs` now runs `cargo tree` for both
 x86_64-pc-windows-msvc and x86_64-unknown-linux-gnu, still `--locked --offline`. It writes
-one `THIRD-PARTY-NOTICES.txt` for both, in which each entry gains a `Platforms:` line
+one `THIRD-PARTY-NOTICES.md` for both, in which each entry gains a `Platforms:` line
 (`Windows`, `Linux` or `Windows, Linux`):
 
 - 191 crates: 120 in both builds, 11 only on Windows (the windows-sys family,
@@ -336,7 +336,7 @@ What was checked:
   covered that year's code, not 0.11.
 
 spellbook is MPL-2.0, a file-level copyleft. Shipping it unmodified needs its license and
-source location in the notices. THIRD-PARTY-NOTICES.txt still describes the Windows
+source location in the notices. THIRD-PARTY-NOTICES.md still describes the Windows
 release; a Linux package needs notices generated for the Linux target.
 
 Testing under WSL installed these packages from Ubuntu's signed archive, with the user's
@@ -386,7 +386,7 @@ Checks on 2026-11-07:
 - The newer set Cargo first chose (icu 2.4.0, utf_types 1.0.0, published 8 to 15
   days earlier) was not used.
 
-THIRD-PARTY-NOTICES.txt was regenerated with `cargo run -p rocket-ui --example
+THIRD-PARTY-NOTICES.md was regenerated with `cargo run -p rocket-ui --example
 third_party_notices`. It gains exactly these 20 entries (131 crates) and loses none.
 
 This is a bounded integrity and advisory review, not proof against an undisclosed
@@ -427,7 +427,7 @@ against its Cargo.lock SHA-256. `cargo audit --no-fetch --stale` (cargo-audit 0.
 reported no advisories for the 295 locked packages, against the local RustSec snapshot of
 2026-11-05 (1,409 advisories).
 
-THIRD-PARTY-NOTICES.txt still describes the Windows release. A Linux package will need
+THIRD-PARTY-NOTICES.md still describes the Windows release. A Linux package will need
 notices generated for the Linux target.
 
 The check used Ubuntu 26.04's build-essential 12.12ubuntu2.26.04.2 (gcc 15.2), rustup
@@ -557,7 +557,7 @@ No package, feature, tool or download was added, and `Cargo.lock` is unchanged. 
 crate's manifest now declares `license = "MIT OR Apache-2.0"` through the workspace.
 `LICENSE-APACHE` is byte-identical to apache.org's Apache License 2.0 text (SHA-256
 `cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30`), copied from the
-`kurbo` 0.13.1 package already in the local Cargo registry. `THIRD-PARTY-NOTICES.txt`
+`kurbo` 0.13.1 package already in the local Cargo registry. `THIRD-PARTY-NOTICES.md`
 is written by `crates/rocket-ui/examples/third_party_notices.rs`, which runs
 `cargo tree` and `cargo metadata` with `--locked --offline` for x86_64-pc-windows-msvc
 and reads the license files of the packages already on disk; it uses only the existing

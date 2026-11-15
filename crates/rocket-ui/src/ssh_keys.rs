@@ -15,7 +15,18 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::{Arc, mpsc},
+    time::{Duration, Instant},
 };
+/// How long a Copy button reads Copied.
+const COPIED_FOR: Duration = Duration::from_millis(1600);
+/// What a Copy button on the page put on the clipboard ("public-key" or "fingerprint"), the
+/// key's fingerprint and when. The button reads Copied for a moment instead of a line being
+/// added above the cards, so nothing moves under the pointer.
+pub struct Copied {
+    pub what: &'static str,
+    pub key: String,
+    pub at: Instant,
+}
 enum Done {
     Inventory(SshInventory, Result<SshDiscovery>),
     /// A rescan, with ssh-agent's state when it could be read.
@@ -55,12 +66,17 @@ pub struct State {
     pub invalid: usize,
     pub error: Option<String>,
     pub notice: Option<String>,
+    /// The last Copy, whose button reads Copied for `COPIED_FOR`.
+    pub copied: Option<Copied>,
     pub stopping: bool,
     pub operation: &'static str,
     pub preview: Option<Arc<SshBindingReview>>,
     pub prompt: Option<Prompt>,
     pub passphrase: String,
     pub authentication: SshAuthentication,
+    /// How tall the right side needed to be last frame, so the list beside it is never
+    /// shorter: both cards end on one line.
+    card_need: f32,
     task: Option<WriteTask<Done>>,
     input: Option<mpsc::SyncSender<String>>,
     prompts: Option<mpsc::Receiver<Prompt>>,
@@ -95,12 +111,14 @@ impl Default for State {
             invalid: 0,
             error: None,
             notice: None,
+            copied: None,
             stopping: false,
             operation: "",
             preview: None,
             prompt: None,
             passphrase: String::new(),
             authentication: SshAuthentication::Agent,
+            card_need: 0.0,
             task: None,
             input: None,
             prompts: None,

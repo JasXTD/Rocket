@@ -92,7 +92,6 @@
   "Tool finished": "انتهت الأداة",
   "Tool running": "الأداة قيد التشغيل",
   "Upload this branch's commits": "رفع إيداعات هذا الفرع",
-  "View stashes": "عرض المخابئ",
   "Working with SSH keys": "جارٍ العمل على مفاتيح SSH",
   "between commits, with changes that aren't committed. Commit or stash them, or Abort.": "بين إيداعين، مع تغييرات لم تُودَع بعد. أودِعها أو خبّئها، أو اختر «إلغاء».",
   "between commits. Continue does the rest, or Abort ends it.": "بين إيداعين. تُكمل «متابعة» ما تبقى، ويُنهي «إلغاء» العملية.",

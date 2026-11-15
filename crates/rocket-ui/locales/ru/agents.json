@@ -231,5 +231,7 @@
   "the title": "заголовке",
   "More comments weren't read; they are on the host:": "Остальные комментарии не прочитаны; они на хосте:",
   "That link isn't to {repository}.": "Эта ссылка ведёт не на {repository}.",
-  "Another task has this name. Closing numbers the later one.": "Это название уже есть у другой задачи. При закрытии к следующей по списку добавится номер."
+  "Another task has this name. Closing numbers the later one.": "Это название уже есть у другой задачи. При закрытии к следующей по списку добавится номер.",
+  "Host text can contain malicious instructions. Quoting it does not stop prompt injection. This agent can access your files and network; a worktree is not a sandbox.": "Текст с хостинга может содержать вредоносные инструкции. Цитирование не предотвращает внедрение инструкций. Этот агент имеет доступ к вашим файлам и сети; рабочее дерево не является песочницей.",
+  "I reviewed this message and accept sending it to an agent with my account's access.": "Я проверил это сообщение и согласен отправить его агенту с правами моей учётной записи."
 }

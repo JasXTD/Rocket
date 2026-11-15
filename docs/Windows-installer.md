@@ -67,13 +67,18 @@ from that ZIP's verification record:
 ```
 
 The script validates archive paths and size limits, uses Rocket's trusted release
-verifier, checks the CLI version, audits the exact payload and creates an explicit
+verifier, validates version metadata as data, audits the exact payload and creates an explicit
 Inno file list. It rechecks payload hashes after compilation. It refuses to
 overwrite output. Results are a local `Rocket-<version>-Setup-x64.exe`, its
 `.sha256` sidecar, and `work/installer-build-.../result.json` with the build inputs
 and audit. The portable ZIP is unchanged. Rocket's installer remains unsigned
 unless a separate code-signing step is added; the compiler's signature does not
 sign the generated installer.
+
+Packaging never runs an executable from the input ZIP. Matching archive and manifest
+hashes establish consistency, not publisher identity; select a ZIP from a trusted
+build and its independent verification record. Executable version smoke tests run
+on that trusted build, separately from packaging arbitrary input.
 
 The package audit rejects development folders, profiles, private keys and
 recognized credential shapes. Optional local-key comparison is read-only and

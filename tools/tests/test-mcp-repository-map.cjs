@@ -41,8 +41,9 @@ async function type(target,text){await stable();assert(control(target)?.enabled,
 async function resize(width,height){await client.tool('rocket_resize',{width,height});await until(s=>s.viewport[0]===width&&s.viewport[1]===height&&!s.input_pending);await settle();}
 async function capture(name){await stable();const result=await client.request('tools/call',{name:'rocket_capture',arguments:{}});assert(!result.isError);const img=result.content.find(c=>c.type==='image');assert(img);fs.writeFileSync(path.join(root,name+'.png'),Buffer.from(img.data,'base64'));fs.writeFileSync(path.join(root,name+'.json'),JSON.stringify(state,null,2));}
 async function open(f){if(state?.dialog)await click('dialog-cancel');await client.tool('rocket_open',{path:f.repo});await settle();await resize(1480,920);if(control('console-close'))await click('console-close');await click('view-map');assert.equal(active().view,'Map');}
-// The revision box is in the revision picker's list: open it first.
-async function load(revision){await click('map-revision-pick');await type('map-revision',revision);await click('map-load');}
+// Refresh can leave the revision popup open; only open it when its field is absent.
+async function openRevision(){await stable();if(!control('map-revision'))await click('map-revision-pick');assert(control('map-revision')?.enabled,'Revision picker did not open');}
+async function load(revision){await openRevision();await type('map-revision',revision);await click('map-load');}
 async function closeWindow(){await client.tool('rocket_close');await until(s=>['closed','not_started'].includes(s.window)||s.dialog?.kind==='quit'&&!s.input_pending);if(state.dialog?.kind==='quit'){await client.tool('rocket_click',{target:'dialog-submit',expected_tab:state.active_tab});await until(s=>['closed','not_started'].includes(s.window));}}
 function snapshot(f){const files={};function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){if(e.name==='.git')continue;const p=path.join(dir,e.name);if(e.isDirectory())walk(p);else files[path.relative(f.repo,p)]=hash(p);}}walk(f.repo);return {head:f.git(['rev-parse','HEAD']),index:hash(path.join(f.repo,'.git/index')),config:hash(path.join(f.repo,'.git/config')),files};}
 function checkBounds(){for(const c of state.controls.filter(c=>c.id.startsWith('map-')))assert(c.rect[0]>=0&&c.rect[1]>=0&&c.rect[2]<=state.viewport[0]+1&&c.rect[3]<=state.viewport[1]+1,'Offscreen '+JSON.stringify(c));}
@@ -72,7 +73,7 @@ async function run(){try{
  assert(control('map-details-scroll'),'wide maps keep the details card');assert(control('map-link-0'),'the package card lists what it uses');
  await click('map-show-folders');assert(!map().alternate);assert.equal(map().selected,ui.index);assert(!map().collapsed.includes(map().data.nodes[ui.index].label));await capture('code-folders-from-package');
  // Folders: a file counts on its folder's card; search selects that folder.
- await type('map-search','結果 🚀 é');const src=map().data.nodes.find(n=>n.path==='应用/src');assert(map().visible.includes(src.index));assert.equal(map().selected,src.index);assert(!map().visible.some(i=>map().data.nodes[i].kind==='File'));await capture('code-unicode-search');
+ await type('map-search','結果 🚀 é');const src=map().data.nodes.find(n=>n.path==='应用/src');assert(map().visible.includes(src.index));assert.equal(map().selected,src.index);assert(map().code_map.picture.placed.some(p=>p.open),'an open folder is a box');await capture('code-unicode-search');
  // A file row in the folder card shows the commits that changed it.
  await click('map-path-0');assert.equal(map().kind,'History');assert.equal(map().path_scope,FILE);await until(s=>!map().running,'path history');assert(map().data.nodes.every(n=>n.label!=='PRIVATE_MERGE'||n.count===2));await capture('history-file-scope');
  await type('map-path-scope','');await click('map-apply-scope');await until(s=>!map().running,'whole history');assert.equal(map().path_scope,'');await click('map-view-code');
@@ -152,8 +153,37 @@ async function run(){try{
  await resize(780,620);assert(control('map-module-switcher'),'a narrow window folds the list into a button');checkBounds();await capture('modules-compact');await resize(1480,920);
  await click('map-export');assert.equal(map().export.name,'rocket-modules.mmd');await client.tool('rocket_escape');await settle();assert(!map().export);
  assert.deepEqual(snapshot(mods),beforeModules);passed('Code → Modules: committed module tree with #[path], connections, unlinked files, list, picture, package switch, a TypeScript project and a Go module, Show modules, narrow switcher and export; local changes preserved');
+ // Section 47: Folders is the code map.
+ await click('map-mode-folders');await until(s=>map().kind==='Code'&&!map().alternate&&map().code_map.links&&!map().code_map.running,'code map links');
+ assert.equal(map().code_map.colour,'Kind');assert(map().code_map.links.packages>=4,'Rust, TypeScript and Go packages read: '+JSON.stringify(map().code_map.links));
+ nodes=map().data.nodes;const cratesFolder=nodes.find(n=>n.path==='crates'),uiFolder=nodes.find(n=>n.path==='crates/ui'),sharedFolder=nodes.find(n=>n.path==='crates/shared');
+ if(map().collapsed.includes('crates'))await click('map-toggle-'+cratesFolder.index);
+ const arrows=()=>map().code_map.picture.arrows;
+ assert(arrows().some(a=>a.from===uiFolder.index&&a.to===sharedFolder.index&&a.files>=1),'ui uses shared through #[path]: '+JSON.stringify(arrows()));
+ assert(map().code_map.picture.placed.some(p=>p.item===cratesFolder.index&&p.open),'crates opens as a box');checkBounds();await capture('code-map-kind');
+ await click('map-node-'+uiFolder.index);assert(control('map-link-0'),'Details lists what ui uses');
+ await click('map-colour');await click('map-colour-activity');await until(s=>map().code_map.history&&!map().code_map.running,'code map history');
+ assert.equal(map().code_map.colour,'Activity');assert(map().code_map.picture.placed.some(p=>/commit/.test(p.sub)),'cards count commits');assert(map().code_map.picture.legend.most>=1);await capture('code-map-activity');
+ await click('map-colour');await click('map-colour-owner');assert.equal(map().code_map.picture.legend.owners_from,null,'no CODEOWNERS here');assert(map().code_map.picture.legend.owners.length>=1);
+ await click('map-colour');await click('map-colour-changes');await type('map-code-base','HEAD~1');await click('map-code-compare');
+ await until(s=>map().code_map.changes&&!map().code_map.running,'code map changes');assert.equal(map().code_map.changes.outcome,'Ready');assert(map().code_map.picture.legend.added>=1,'the modules commit adds files');await capture('code-map-changes');
+ await click('map-changed-only');assert(map().code_map.changed_only);
+ assert(map().code_map.picture.placed.filter(p=>typeof p.item==='number'&&nodes[p.item].kind==='File').every(p=>p.badge||p.hatched),'Changed only keeps changed files and those that use them');checkBounds();await capture('code-map-changed-only');
+ await type('map-code-base','PRIVATE_NO_BASE');await click('map-code-compare');await until(s=>map().code_map.changes?.outcome==='BaseNotFound','unknown base');
+ await click('map-changed-only');await click('map-colour');await click('map-colour-kind');
+ assert.deepEqual(snapshot(mods),beforeModules);passed('Code → Folders as a code map: links across Rust, TypeScript and Go packages, #[path] between folders, boxes, Kind, Commit activity, Owner by most commits, Changes since a commit with Changed only, an unknown base; local changes preserved');
  }
 
+ const ownerLimit=fixture('PRIVATE_OWNER_LIMIT');
+ ownerLimit.write('CODEOWNERS',Array.from({length:10000},(_,i)=>`/missing-${i}/** @owner\n`).join(''));
+ for(let i=0;i<200;i++)ownerLimit.write(`src/file-${i}.md`,'data\n');
+ ownerLimit.commit('Bound owner matching');const ownerBefore=snapshot(ownerLimit);
+ await open(ownerLimit);if(control('map-mode-folders'))await click('map-mode-folders');await until(s=>map().code_map.links&&!map().code_map.running,'bounded owners');
+ assert(map().code_map.links.owners_limited&&map().code_map.links.limited);
+ assert.equal(map().code_map.links.owners,null,'partial ownership is discarded');
+ await click('map-colour');await click('map-colour-owner');await until(s=>!map().code_map.running,'owner fallback');
+ await capture('code-map-owner-limit');assert.deepEqual(snapshot(ownerLimit),ownerBefore);
+ passed('CODEOWNERS matching stops at its budget, reports the limit and preserves the repository');
  const empty=fixture('PRIVATE_EMPTY',true);await open(empty);for(const kind of ['code','history','people']){await click('map-view-'+kind);assert.equal(map().data.nodes.length,0);assert(!map().running);await capture('empty-'+kind);}
  const oldRepo=fixture('PRIVATE_OLD');const oldTree=oldRepo.git(['rev-parse','HEAD^{tree}']);
  const oldCommit=cp.execFileSync('git',['-C',oldRepo.repo,'commit-tree',oldTree],{env:{...env,GIT_AUTHOR_DATE:'2000-01-01T00:00:00Z',GIT_COMMITTER_DATE:'2000-01-01T00:00:00Z'},input:'PRIVATE_OLD_COMMIT\n',windowsHide:true,encoding:'utf8'}).trim();oldRepo.git(['update-ref','refs/heads/'+branch,oldCommit]);
@@ -162,21 +192,22 @@ async function run(){try{
  await open(longRepo);await click('map-view-history');const longNode=map().data.nodes.find(n=>n.commit===longCommit);assert(Buffer.byteLength(longNode.label)<=4096);assert(!longNode.label.includes('\ufffd'));assert(map().data.notes.some(n=>n.includes('shortened')));await capture('bounded-long-label-wide');await resize(780,620);await capture('bounded-long-label-compact');checkBounds();
  const big=fixture('PRIVATE_LARGE');const blob=big.git(['hash-object','-w','--stdin'],'PRIVATE_SMALL\n');let records='';for(let i=0;i<50000;i++)records+=`100644 blob ${blob}\tfile-${String(i).padStart(6,'0')}.rs\0`;
  const tree=big.git(['mktree','-z'],records),large=big.git(['commit-tree',tree],'PRIVATE_BIG_TREE');const beforeBig=snapshot(big);
- await open(big);await load(large);assert.equal(map().data.scanned,50000);assert.equal(map().data.node_count,4096);assert(map().data.limited);assert.equal(map().visible.length,0,'files have no cards of their own');assert.deepEqual(map().file_groups,[{folder:null,files:map().data.node_count,more:null}]);assert(map().zoom>=0.75);await capture('bounded-large-code');await click('map-fit');assert(map().zoom>=0.75&&map().zoom<=1);await capture('bounded-large-code-fit');
+ await open(big);await load(large);assert.equal(map().data.scanned,50000);assert.equal(map().data.node_count,4096);assert(map().data.limited);assert.equal(map().visible.length,0,'files share one card');assert.deepEqual(map().code_map.picture.placed.map(p=>p.item),['files:top']);assert(map().zoom>=0.75);await capture('bounded-large-code');await click('map-fit');assert(map().zoom>=0.75&&map().zoom<=1);await capture('bounded-large-code-fit');
  if(edgesOnly){await load('PRIVATE_BAD_REVISION');assert(map().error?.includes('Check the revision'));assert.equal(map().data.tip,large);await load(large);}
  await stable();await client.tool('rocket_click',{target:'map-load',expected_tab:state.active_tab});await until(s=>!s.input_pending&&map().running&&control('map-cancel')?.enabled,'In-flight map read');
  // Exactly one Stop click; no retry conceals a missed cancellation.
  const started=performance.now();await client.tool('rocket_click',{target:'map-cancel',expected_tab:state.active_tab});await until(s=>!s.input_pending&&(map().cancelling||!map().running),'Immediate Stop acknowledgement');report.stop_feedback_ms=performance.now()-started;
  await settle();report.stop_settled_ms=performance.now()-started;assert(map().notice?.includes('stopped'));assert.equal(map().data.tip,large);assert(report.stop_settled_ms<10000);await capture('stopped-retains-code');
  await stable();await client.tool('rocket_click',{target:'map-load',expected_tab:state.active_tab});await until(s=>!s.input_pending&&map().running,'Map reload running');
- // Refresh becomes Stop while reading: stop the big read, then read HEAD. The stopped read must never publish.
- await client.tool('rocket_click',{target:'map-revision-pick',expected_tab:state.active_tab});await until(s=>!s.input_pending);await client.tool('rocket_type',{target:'map-revision',text:'HEAD',expected_tab:state.active_tab});await until(s=>!s.input_pending);await client.tool('rocket_click',{target:'map-cancel',expected_tab:state.active_tab});await until(s=>!s.input_pending&&!map().running,'stopped reload');await stable();await client.tool('rocket_click',{target:'map-load',expected_tab:state.active_tab});await until(s=>!s.input_pending&&!map().running,'HEAD read');await settle();assert.equal(map().data.tip,big.git(['rev-parse','HEAD']));assert.equal(map().data.node_count,1);await delay(250);await settle();assert.equal(map().data.node_count,1);assert.deepEqual(snapshot(big),beforeBig);
+ // Stop before opening another popup: the bounded read can finish during menu navigation.
+ // The stopped read must never replace the subsequent HEAD result.
+ await client.tool('rocket_click',{target:'map-cancel',expected_tab:state.active_tab});await until(s=>!s.input_pending&&!map().running,'stopped reload');await load('HEAD');await until(s=>!map().running,'HEAD read');await settle();assert.equal(map().data.tip,big.git(['rev-parse','HEAD']));assert.equal(map().data.node_count,1);await delay(250);await settle();assert.equal(map().data.node_count,1);assert.deepEqual(snapshot(big),beforeBig);
  passed('Empty views and date scope, bounded Unicode labels, readable large-tree focus and complete Fit, one-click Code cancellation, a stopped read that never publishes, and unchanged Git/files');
 
  await closeWindow();await client.raw('POST','/shutdown');
  const recordsLog=fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).flatMap(n=>fs.readdirSync(path.join(root,n)).filter(f=>/^rocket(?:\.\d+)?\.jsonl$/.test(f)).flatMap(f=>fs.readFileSync(path.join(root,n,f),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));
  assert(recordsLog.length);assert(recordsLog.every(r=>r.dropped_before===0));const payload=JSON.stringify(recordsLog);for(const secret of ['PRIVATE_','検索',FILE,root,blob,...privateIds])assert(!payload.includes(secret),'Diagnostic payload leak');
- for(const op of ['map-code','map-history','map-people',...(edgesOnly?[]:['map-modules'])]){const starts=recordsLog.filter(r=>r.event==='request_start'&&r.operation===op);assert(starts.length,'Missing '+op);for(const start of starts)assert(recordsLog.some(r=>r.event==='request_end'&&r.session===start.session&&r.request===start.request),'Unpaired '+op);}
+ for(const op of ['map-code','map-history','map-people',...(edgesOnly?[]:['map-modules','map-code-links','map-code-history','map-code-changes'])]){const starts=recordsLog.filter(r=>r.event==='request_start'&&r.operation===op);assert(starts.length,'Missing '+op);for(const start of starts)assert(recordsLog.some(r=>r.event==='request_end'&&r.session===start.session&&r.request===start.request),'Unpaired '+op);}
  for(const start of recordsLog.filter(r=>r.event==='step_start'&&r.operation?.startsWith('map-')))assert(recordsLog.some(r=>r.event==='step_end'&&r.step===start.step&&r.session===start.session&&r.request===start.request),'Unpaired step');
  for(const op of (edgesOnly?['map-code']:['map-code','map-history','map-people']))assert(recordsLog.some(r=>r.operation===op&&r.outcome==='cancelled'),'Missing cancellation log '+op);assert(recordsLog.some(r=>r.operation==='map-code'&&r.outcome==='git_error'));report.log_records=recordsLog.length;
  passed('Paired request/step logs with named map operations, error/cancellation outcomes, zero dropped events and no private payloads');report.passed=true;

@@ -47,6 +47,11 @@ impl MapPage {
             modules::rebuild(self);
             return;
         }
+        // Folders is the code map: boxes, cards and arrows of its own.
+        if self.folders_view() {
+            code_map::rebuild(self);
+            return;
+        }
         let key = (self.query.clone(), self.alternate, None, false);
         if self.filter_key.as_ref() == Some(&key) {
             return;

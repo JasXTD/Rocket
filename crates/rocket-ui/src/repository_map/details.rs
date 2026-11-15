@@ -18,6 +18,8 @@ enum Pick {
     Line(usize),
     /// Modules: the whole package.
     Package(usize),
+    /// Code map: a folder's own files on one card; None for the top folder.
+    Files(Option<usize>),
 }
 enum Mark {
     Icon(Icon, Color32),
@@ -34,6 +36,8 @@ enum Act {
     Package(usize),
     /// Modules: put this module in the middle.
     Module(usize),
+    /// Code map: choose a card or box.
+    Item(code_map::Item),
 }
 
 pub(super) fn card(
@@ -91,6 +95,7 @@ pub(super) fn card(
                         Pick::Cell(p, a) => cell(ui, &data, p, a, &mut out),
                         Pick::Line(l) => line(ui, view, &data, l, &mut out),
                         Pick::Node(i) => node(ui, view, &data, i, &mut out),
+                        Pick::Files(folder) => files_card(ui, view, &data, folder, &mut out),
                         Pick::Package(_) => {
                             let mut chosen = None;
                             modules::package_details(ui, view, &data, &mut chosen, out.intents, out.widgets);
@@ -129,6 +134,14 @@ pub(super) fn card(
             s.whole = false;
             s.selected = Some(i);
             s.list_jump = true;
+        }
+        Some(Act::Item(code_map::Item::Node(i))) => {
+            s.code.group = None;
+            select(s, i);
+        }
+        Some(Act::Item(code_map::Item::Files(folder))) => {
+            s.code.group = Some(folder);
+            s.focus = true;
         }
         None => {}
     }
@@ -190,6 +203,12 @@ fn pick(s: &MapPage, data: &RepositoryMap, kind: MapKind) -> Pick {
     {
         return Pick::Package(p);
     }
+    if kind == MapKind::Code
+        && !s.alternate
+        && let Some(folder) = s.code.group
+    {
+        return Pick::Files(folder);
+    }
     match s.selected {
         Some(i) if i < n => Pick::Node(i),
         _ => Pick::Empty,
@@ -230,6 +249,14 @@ fn heading(s: &MapPage, data: &RepositoryMap, pick: &Pick) -> (Mark, String, Str
             ),
         },
         Pick::Node(i) => node_heading(s, data, i),
+        Pick::Files(folder) => {
+            let count = s.code.facts.as_ref().map_or(0, |f| code_map::own_files(f, folder));
+            let about = match folder {
+                Some(c) => trf!("in {folder}", folder = drawing::folder_name(&data.nodes[c])),
+                None => tr("in the top folder").to_owned(),
+            };
+            (Mark::Icon(Icon::File, MUTED()), trn!(count, "{n} file", "{n} files"), about)
+        }
         Pick::Package(p) => {
             let manifest = s.units.as_ref().and_then(|u| u.info.as_ref()).is_none_or(|i| i.manifest);
             (Mark::Icon(Icon::Package, TEAL()), modules::package_name(&data.nodes[p].label), modules::Words::of(s).package_kind(manifest).into())
@@ -437,11 +464,18 @@ fn node(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Out)
         MapNodeKind::File => {
             let path = data.nodes[i].path.clone().unwrap_or_default();
             fact_mono(ui, crate::i18n::tr("Path"), &label(&path));
+            let folders = data.kind == MapKind::Code && !s.alternate;
+            if folders {
+                code_facts(ui, s, data, code_map::Item::Node(i));
+            }
             actions(ui, |ui| {
                 if button(ui, out.widgets, "map-history", tr("Commits here"), !path.is_empty()) {
                     out.emit(MapIntent::Path(path.clone(), String::new()));
                 }
             });
+            if folders {
+                code_lists(ui, s, data, code_map::Item::Node(i), out);
+            }
         }
         MapNodeKind::Person => person(ui, s, data, i, out),
         MapNodeKind::Area => area(ui, data, i, out),
@@ -524,6 +558,7 @@ fn folder(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Ou
     folders.sort_by_key(name);
     files.sort_by_key(name);
     fact_mono(ui, crate::i18n::tr("Path"), &label(&path));
+    let code = data.kind == MapKind::Code && !s.alternate;
     fact(
         ui,
         crate::i18n::tr("Files"),
@@ -549,6 +584,9 @@ fn folder(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Ou
             }
         });
     }
+    if code {
+        code_facts(ui, s, data, code_map::Item::Node(i));
+    }
     actions(ui, |ui| {
         if button(ui, out.widgets, "map-history", tr("Commits here"), !path.is_empty()) {
             out.emit(MapIntent::Path(path.clone(), String::new()));
@@ -560,6 +598,9 @@ fn folder(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Ou
             }
         }
     });
+    if code {
+        code_lists(ui, s, data, code_map::Item::Node(i), out);
+    }
     if !folders.is_empty() {
         section(ui, tr("FOLDERS"), folders.len());
         for &k in folders.iter().take(ROWS) {
@@ -824,5 +865,167 @@ fn notes(ui: &mut Ui, data: &RepositoryMap, widgets: &mut HashMap<String, UiCont
         for note in &data.notes {
             ui.add(Label::new(RichText::new(note).size(11.5).color(HINT())).wrap());
         }
+    }
+}
+
+/// Code map: a folder's own files on one card.
+fn files_card(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, folder: Option<usize>, out: &mut Out) {
+    let Some(f) = s.code.facts.clone() else { return };
+    let list: Vec<usize> = match folder {
+        Some(c) => f.files[c].clone(),
+        None => f.top_files.clone(),
+    };
+    let item = code_map::Item::Files(folder);
+    code_facts(ui, s, data, item);
+    code_lists(ui, s, data, item, out);
+    let paths_list: Vec<&Vec<u8>> = list.iter().filter_map(|&k| data.nodes[k].path.as_ref()).collect();
+    let strip = folder.and_then(|c| data.nodes[c].path.clone()).unwrap_or_default();
+    paths(ui, out, tr("FILES HERE"), &paths_list, paths_list.len(), &strip, false);
+}
+
+/// Code map facts that follow the colour: kinds, commits, owner or changes.
+fn code_facts(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, item: code_map::Item) {
+    let (Some(picture), Some(f)) = (s.code.layout.as_ref(), s.code.facts.as_ref()) else { return };
+    let placed = picture.index(item).map(|i| &picture.placed[i]);
+    let path = code_map::item_path(data, item);
+    let file = matches!(item, code_map::Item::Node(i) if code_map::is_file(&data.nodes[i]));
+    match s.code.colour {
+        code_map::Colour::Kind => {
+            let sizes = match item {
+                code_map::Item::Node(i) => f.sizes[i],
+                code_map::Item::Files(Some(c)) => f.own[c],
+                code_map::Item::Files(None) => f.top_own,
+            };
+            let total: u64 = sizes.iter().sum::<u64>().max(1);
+            let mut parts: Vec<(u64, String)> = FileKind::ALL
+                .iter()
+                .enumerate()
+                .filter(|(k, _)| sizes[*k] > 0)
+                .map(|(k, kind)| (sizes[k], format!("{} {}%", code_map::kind_name(*kind), ((sizes[k] as f64 / total as f64) * 100.).round().max(1.))))
+                .collect();
+            parts.sort_by_key(|p| std::cmp::Reverse(p.0));
+            if !parts.is_empty() {
+                fact(ui, tr("Kind"), &parts.into_iter().map(|(_, t)| t).collect::<Vec<_>>().join(" · "));
+            }
+            if file && let Some(lines) = s.code.links.as_ref().and_then(|l| l.lines.get(&path)) {
+                fact(ui, tr("Lines"), &pages::number_text(*lines));
+            }
+        }
+        code_map::Colour::Activity => {
+            let Some(h) = &s.code.history else { return };
+            let since = s.code.period.since();
+            let count = match item {
+                code_map::Item::Node(_) if file => h.file_commits(&path, since),
+                code_map::Item::Node(_) => h.folder_commits(&path, false, since),
+                code_map::Item::Files(_) => h.folder_commits(&path, true, since),
+            };
+            let period = match s.code.period {
+                Period::Days30 => crate::i18n::tr("30 days"),
+                Period::Days90 => crate::i18n::tr("90 days"),
+                Period::Year => tr("1 year"),
+                Period::All => tr("All time"),
+            };
+            let (count, total) = (pages::number_text(count), pages::number_text(h.commits.len()));
+            let text = if s.code.period == Period::All {
+                trf!("{count} of {total}", count = count, total = total)
+            } else {
+                trf!("{count} in {period}, of {total}", count = count, period = period, total = total)
+            };
+            fact(ui, crate::i18n::tr("Commits"), &text);
+            if let Some(last) = h.last(&path, !file) {
+                fact(ui, tr("Last commit"), &format!("{} · {}", crate::style::date(last.time, 0), &last.id.as_str()[..8]));
+            }
+        }
+        code_map::Colour::Owner => {
+            if let Some(p) = placed {
+                fact(ui, tr("Owner"), &p.paint.sub);
+            }
+            match s.code.links.as_ref().and_then(|l| l.owners.as_ref()) {
+                Some(rules) => fact(ui, tr("Owners from"), &label(&rules.file)),
+                None if file => {
+                    if let Some(h) = &s.code.history
+                        && let Some((_, commits)) = h.owner(&path)
+                    {
+                        fact(ui, tr("Owners from"), &trf!("Most commits: {count}", count = pages::number_text(commits)));
+                    }
+                }
+                None => fact(ui, tr("Owners from"), tr("Most commits")),
+            }
+        }
+        code_map::Colour::Changes => {
+            let Some(changes) = &s.code.changes else { return };
+            if file {
+                if let Some(c) = changes.files.iter().find(|c| c.path.as_bytes() == path.as_slice()) {
+                    let text = match c.change {
+                        Change::Added => tr("Added"),
+                        Change::Renamed => tr("Renamed"),
+                        Change::Deleted => tr("Deleted"),
+                        _ => tr("Changed"),
+                    };
+                    fact(ui, tr("Change"), text);
+                }
+                if let Some((a, r)) = changes.lines.get(&path) {
+                    fact(ui, tr("Lines"), &format!("+{} \u{2212}{}", pages::number_text(*a), pages::number_text(*r)));
+                }
+            } else if let Some(p) = placed {
+                fact(ui, tr("Change"), &p.paint.sub);
+            }
+            if let Some(split) = &changes.split {
+                fact_mono(ui, tr("Since"), &format!("{} · {}", changes.base, &split.as_str()[..8]));
+            }
+        }
+    }
+}
+
+/// Code map lists: what the card uses and what uses it, with the files on the using
+/// side; in Activity, the most changed files under it.
+fn code_lists(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, item: code_map::Item, out: &mut Out) {
+    let (Some(picture), Some(f)) = (s.code.layout.clone(), s.code.facts.clone()) else { return };
+    if s.code.colour == code_map::Colour::Activity
+        && let Some(h) = &s.code.history
+    {
+        // The files under the card, from the tree: only those, not every node.
+        let mut files = Vec::new();
+        if !matches!(item, code_map::Item::Node(i) if code_map::is_file(&data.nodes[i])) {
+            code_map::under(&f, data, item, &mut files);
+        }
+        let since = s.code.period.since();
+        let mut ranked: Vec<(usize, usize)> = files
+            .into_iter()
+            .map(|k| (h.file_commits(data.nodes[k].path.as_deref().unwrap_or_default(), since), k))
+            .filter(|(c, _)| *c > 0)
+            .collect();
+        ranked.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+        if !ranked.is_empty() {
+            section(ui, tr("MOST CHANGED"), ranked.len());
+            for (count, k) in ranked.iter().take(5) {
+                let hover = label(data.nodes[*k].path.as_deref().unwrap_or_default());
+                if row_link(ui, out, Icon::File, MUTED(), &label(&data.nodes[*k].label), &trn!(*count, "{n} commit", "{n} commits"), false, &hover) {
+                    *out.act = Some(Act::Item(code_map::Item::Node(*k)));
+                }
+            }
+        }
+    }
+    let Some(at) = picture.index(item) else { return };
+    let (uses, used) = picture.connections(at);
+    for (title, list, forward) in [(tr("USES"), uses, true), (tr("USED BY"), used, false)] {
+        if list.is_empty() {
+            continue;
+        }
+        section(ui, title, list.len());
+        for a in list.iter().take(ROWS) {
+            let target = picture.placed[if forward { a.to } else { a.from }].item;
+            let (image, tint, name) = code_map::title(data, &f, target);
+            let name = match target {
+                code_map::Item::Files(Some(c)) => trf!("{files} in {folder}", files = name, folder = drawing::folder_name(&data.nodes[c])),
+                code_map::Item::Files(None) => trf!("{files} in the top folder", files = name),
+                _ => name,
+            };
+            let hover = a.names.join(", ");
+            if row_link(ui, out, image, tint, &name, &trn!(a.files, "{n} file", "{n} files"), false, &hover) {
+                *out.act = Some(Act::Item(target));
+            }
+        }
+        more(ui, list.len().min(ROWS), list.len());
     }
 }

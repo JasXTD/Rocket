@@ -22,6 +22,15 @@ fn data(count: usize) -> RepositoryMap {
     }
 }
 
+/// The same cards as packages: Packages draws and pages them as one graph.
+fn crates(count: usize) -> RepositoryMap {
+    let mut d = data(count);
+    for n in &mut d.nodes {
+        n.kind = MapNodeKind::Crate;
+    }
+    d
+}
+
 #[test]
 fn history_layout_preserves_first_parent_lanes_and_filter_positions() {
     let mut d = data(6);
@@ -146,13 +155,13 @@ fn stop_wins_completed_result_race_and_errors_preserve_previous_snapshot() {
 
 #[test]
 fn unicode_search_keeps_direct_match_ahead_of_bounded_neighbor_context() {
-    let mut d = data(400);
+    let mut d = crates(400);
     d.nodes[399].label = "結果 🚀 é".as_bytes().to_vec();
     d.links = (0..399)
         .map(|i| MapLink {
             from: i,
             to: 399,
-            kind: MapLinkKind::Contains,
+            kind: MapLinkKind::DependsOn,
             weight: 1,
             evidence: vec![],
         })
@@ -160,6 +169,7 @@ fn unicode_search_keeps_direct_match_ahead_of_bounded_neighbor_context() {
     let mut s = MapPage {
         data: Some(Arc::new(d)),
         query: "結果 🚀 é".into(),
+        alternate: true,
         ..Default::default()
     };
     s.rebuild();
@@ -178,7 +188,8 @@ fn hidden_nodes_are_not_exposed_as_clickable_controls_at_compact_sizes() {
     // Card titles use the semibold face the app installs.
     crate::style::install(&ctx);
     let mut s = MapPage {
-        data: Some(Arc::new(data(500))),
+        data: Some(Arc::new(crates(500))),
+        alternate: true,
         ..Default::default()
     };
     s.rebuild();
@@ -215,7 +226,8 @@ fn explicit_fit_contains_every_node_and_long_titles_stay_on_one_row() {
     // Card titles use the semibold face the app installs.
     crate::style::install(&ctx);
     let mut s = MapPage {
-        data: Some(Arc::new(data(500))),
+        data: Some(Arc::new(crates(500))),
+        alternate: true,
         ..Default::default()
     };
     s.rebuild();
@@ -239,7 +251,7 @@ fn explicit_fit_contains_every_node_and_long_titles_stay_on_one_row() {
         assert_eq!(galley.rows.len(), 1);
     });
     output.textures_delta.clear();
-    s.finish(Ok(data(1)));
+    s.finish(Ok(crates(1)));
     assert!(s.visible.is_empty());
     assert!(s.positions.is_empty());
     s.rebuild();
@@ -247,59 +259,8 @@ fn explicit_fit_contains_every_node_and_long_titles_stay_on_one_row() {
 }
 
 #[test]
-fn collapsed_groups_keep_cross_group_edges_and_search_can_find_hidden_unicode() {
-    let mut d = data(6);
-    for (i, name) in [(0, "ui"), (3, "core")] {
-        d.nodes[i].kind = MapNodeKind::Directory;
-        d.nodes[i].key = name.as_bytes().to_vec();
-        d.nodes[i].label = name.as_bytes().to_vec();
-    }
-    d.nodes[2].label = "結果 🚀 é".as_bytes().to_vec();
-    // The Cargo reader promotes a package directory from Directory to Crate.
-    d.nodes[0].kind = MapNodeKind::Crate;
-    d.links = [
-        (0, 1, MapLinkKind::Contains),
-        (0, 2, MapLinkKind::Contains),
-        (3, 4, MapLinkKind::Contains),
-        (3, 5, MapLinkKind::Contains),
-        (2, 4, MapLinkKind::DependsOn),
-    ]
-    .into_iter()
-    .map(|(from, to, kind)| MapLink {
-        from,
-        to,
-        kind,
-        weight: 1,
-        evidence: vec![],
-    })
-    .collect();
-    let mut s = MapPage {
-        data: Some(Arc::new(d)),
-        selected: Some(2),
-        ..Default::default()
-    };
-    s.toggle_group(0);
-    s.toggle_group(3);
-    s.rebuild();
-    assert_eq!(s.visible, [0, 3]);
-    assert_eq!(s.selected, Some(0));
-    assert!(
-        s.projected_links
-            .iter()
-            .any(|e| e.from == 0 && e.to == 3 && e.kind == MapLinkKind::DependsOn)
-    );
-    s.query = "結果 🚀 é".into();
-    s.rebuild();
-    assert_eq!(s.visible, [0, 3]);
-    s.toggle_group(0);
-    s.rebuild();
-    assert!(s.visible.contains(&2));
-    assert!(!s.visible.contains(&1));
-}
-
-#[test]
 fn neighbor_focus_excludes_unrelated_nodes_and_filtering_keeps_positions() {
-    let mut d = data(5);
+    let mut d = crates(5);
     d.links = [(0, 1), (1, 2), (3, 4)]
         .into_iter()
         .map(|(from, to)| MapLink {
@@ -313,6 +274,7 @@ fn neighbor_focus_excludes_unrelated_nodes_and_filtering_keeps_positions() {
     let mut s = MapPage {
         data: Some(Arc::new(d)),
         selected: Some(1),
+        alternate: true,
         ..Default::default()
     };
     s.rebuild();
@@ -333,7 +295,8 @@ fn neighbor_focus_excludes_unrelated_nodes_and_filtering_keeps_positions() {
 #[test]
 fn loaded_nodes_can_be_paged_without_reloading_and_search_resets_the_page() {
     let mut s = MapPage {
-        data: Some(Arc::new(data(605))),
+        data: Some(Arc::new(crates(605))),
+        alternate: true,
         ..Default::default()
     };
     s.rebuild();
@@ -479,84 +442,6 @@ fn people_cells_keep_files_inside_their_folder() {
     assert!(in_area(b"README.md", b"/"));
     assert!(!in_area(b"src/main.rs", b"/"));
     assert!(in_area(b"crates/rocket-ui/src/app.rs", b"crates/rocket-ui"));
-}
-
-#[test]
-fn translated_folder_captions_change_without_reloading_or_relaying_out() {
-    use crate::i18n::{Language, scoped};
-    let mut snapshot = data(4);
-    for n in &mut snapshot.nodes { n.kind = MapNodeKind::File; }
-    let mut page = MapPage { data: Some(Arc::new(snapshot)), ..Default::default() };
-    scoped(Language::English, || page.rebuild());
-    let data = page.data.as_ref().unwrap();
-    let group = &page.file_groups[0];
-    let position = group.at;
-    let original = scoped(Language::English, || drawing::group_about(group, data));
-    assert_eq!(original, "in the top folder");
-    for language in Language::ALL.into_iter().skip(1) {
-        let shown = scoped(language, || drawing::group_about(group, data));
-        assert_ne!(shown, original, "{language:?}");
-        assert_eq!(group.at, position);
-        assert_eq!(group.files, 4);
-    }
-    let few = FileGroup { folder: None, files: 1, about: "資料 🚀.rs".into(), at: Pos2::ZERO, more: None };
-    for language in Language::ALL {
-        assert_eq!(scoped(language, || drawing::group_about(&few, data)), "資料 🚀.rs");
-    }
-}
-
-#[test]
-fn folder_tree_counts_files_in_their_folder_and_opens_a_path() {
-    let mut d = data(5);
-    let entries = [
-        ("crates", MapNodeKind::Directory),
-        ("crates/a", MapNodeKind::Directory),
-        ("crates/a/x.rs", MapNodeKind::File),
-        ("crates/b.rs", MapNodeKind::File),
-        ("README.md", MapNodeKind::File),
-    ];
-    for (i, (path, kind)) in entries.into_iter().enumerate() {
-        d.nodes[i].kind = kind;
-        d.nodes[i].key = path.as_bytes().to_vec();
-        d.nodes[i].path = Some(path.as_bytes().to_vec());
-        d.nodes[i].label = path.rsplit('/').next().unwrap().as_bytes().to_vec();
-    }
-    d.links = [(0, 1), (1, 2), (0, 3)]
-        .into_iter()
-        .map(|(from, to)| MapLink {
-            from,
-            to,
-            kind: MapLinkKind::Contains,
-            weight: 1,
-            evidence: vec![],
-        })
-        .collect();
-    let mut s = MapPage {
-        data: Some(Arc::new(d)),
-        selected: Some(2),
-        ..Default::default()
-    };
-    s.rebuild();
-    // Files get no card of their own: a selected file selects its folder, and each
-    // folder's own files are summed up beside it.
-    assert_eq!(s.visible, [0, 1]);
-    assert_eq!(s.selected, Some(1));
-    let mut groups: Vec<(Option<usize>, usize, &str)> =
-        s.file_groups.iter().map(|g| (g.folder, g.files, g.about.as_str())).collect();
-    groups.sort();
-    // A few files are named on their card.
-    assert_eq!(groups, [(None, 1, "README.md"), (Some(0), 1, "b.rs"), (Some(1), 1, "x.rs")]);
-    s.toggle_group(0);
-    s.rebuild();
-    assert_eq!(s.visible, [0]);
-    assert_eq!(s.selected, Some(0));
-    let groups: Vec<(Option<usize>, usize)> = s.file_groups.iter().map(|g| (g.folder, g.files)).collect();
-    assert_eq!(groups, [(None, 1)]);
-    // Show folders / a changed path opens every folder on the way.
-    s.open_path(b"crates/a/x.rs");
-    s.rebuild();
-    assert!(s.collapsed.is_empty());
-    assert_eq!(s.selected, Some(1));
 }
 
 #[test]
@@ -1594,4 +1479,628 @@ fn modules_javascript_folders_group_their_files_and_cards_use_file_names() {
         assert_eq!(modules::Words { language: ModuleLanguage::Go, typescript: false }.keyword(OutlineKind::Function), "func");
         assert_eq!(modules::Words { language: ModuleLanguage::JavaScript, typescript: true }.package_kind(false), "TypeScript folder · modules");
     });
+}
+
+// ---- Code → Folders as a code map (canvas section 47).
+
+/// A Code read of these committed files: every folder on the way becomes a folder
+/// node, joined to what it holds. Keys are paths, as the Code read makes them.
+fn code_snapshot(files: &[&str]) -> RepositoryMap {
+    let mut d = RepositoryMap::default();
+    let mut index: HashMap<String, usize> = HashMap::new();
+    for file in files {
+        let parts: Vec<&str> = file.split('/').collect();
+        let mut parent: Option<usize> = None;
+        for k in 0..parts.len() {
+            let path = parts[..=k].join("/");
+            let folder = k + 1 < parts.len();
+            let at = *index.entry(path.clone()).or_insert_with(|| {
+                d.nodes.push(MapNode {
+                    key: path.clone().into_bytes(),
+                    label: parts[k].as_bytes().to_vec(),
+                    detail: Vec::new(),
+                    kind: if folder { MapNodeKind::Directory } else { MapNodeKind::File },
+                    path: Some(path.clone().into_bytes()),
+                    commit: None,
+                    count: if folder { 0 } else { 100 },
+                    files: 0,
+                    evidence: Vec::new(),
+                    refs: Vec::new(),
+                    time: 0,
+                });
+                let at = d.nodes.len() - 1;
+                if let Some(p) = parent {
+                    d.links.push(MapLink { from: p, to: at, kind: MapLinkKind::Contains, weight: 1, evidence: vec![] });
+                }
+                at
+            });
+            d.nodes[at].files += 1;
+            parent = Some(at);
+        }
+    }
+    d
+}
+/// Links between ends: a path ending in `/` is a folder end.
+fn code_links(links: &[(&str, &str)]) -> CodeLinks {
+    let mut out = CodeLinks::default();
+    let end = |p: &str, out: &mut CodeLinks| -> usize {
+        let e = CodeEnd { path: p.trim_end_matches('/').as_bytes().to_vec(), folder: p.ends_with('/') };
+        match out.ends.iter().position(|x| *x == e) {
+            Some(i) => i,
+            None => {
+                out.ends.push(e);
+                out.ends.len() - 1
+            }
+        }
+    };
+    for (a, b) in links {
+        let (from, to) = (end(a, &mut out), end(b, &mut out));
+        out.links.push(CodeLink { from, to, names: vec!["name".into()] });
+    }
+    out.packages.push(PackageRef { folder: Vec::new(), language: ModuleLanguage::Rust });
+    out
+}
+/// A Folders page with every folder closed, as a first read leaves it.
+fn code_page(files: &[&str], links: &[(&str, &str)]) -> MapPage {
+    let d = code_snapshot(files);
+    let mut s = MapPage { data: Some(Arc::new(d)), ..Default::default() };
+    let data = s.data.clone().unwrap();
+    s.collapsed = data.nodes.iter().filter(|n| n.kind == MapNodeKind::Directory).map(|n| n.key.clone()).collect();
+    s.code.links = Some(Arc::new(code_links(links)));
+    s
+}
+fn node(s: &MapPage, path: &str) -> usize {
+    s.data.as_ref().unwrap().nodes.iter().position(|n| n.path.as_deref() == Some(path.as_bytes())).unwrap()
+}
+fn open(s: &mut MapPage, path: &str) {
+    let key = path.as_bytes().to_vec();
+    s.collapsed.remove(&key);
+    s.filter_key = None;
+}
+fn picture(s: &MapPage) -> Arc<code_map::Picture> {
+    s.code.layout.clone().expect("a laid out code map")
+}
+/// Arrows as `from -> to (files)`, by the name of their card or box.
+fn arrows_of(s: &MapPage) -> Vec<String> {
+    let p = picture(s);
+    let data = s.data.as_ref().unwrap();
+    let name = |i: usize| match p.placed[i].item {
+        code_map::Item::Node(n) => String::from_utf8_lossy(data.nodes[n].path.as_deref().unwrap()).into_owned(),
+        code_map::Item::Files(_) => "files".into(),
+    };
+    let mut out: Vec<String> = p.arrows.iter().map(|a| format!("{} -> {} ({})", name(a.from), name(a.to), a.files)).collect();
+    out.sort();
+    out
+}
+const CODE: [&str; 7] = [
+    "crates/ui/src/lib.rs",
+    "crates/ui/src/view.rs",
+    "crates/core/src/lib.rs",
+    "crates/core/src/store.rs",
+    "tools/a.js",
+    "tools/b.js",
+    "README.md",
+];
+const USES: [(&str, &str); 4] = [
+    ("crates/ui/src/lib.rs", "crates/core/"),
+    ("crates/ui/src/view.rs", "crates/core/src/store.rs"),
+    ("crates/core/src/store.rs", "crates/core/src/lib.rs"),
+    ("tools/a.js", "crates/ui/src/lib.rs"),
+];
+
+#[test]
+fn code_map_gathers_links_between_closed_folders_and_splits_them_when_opened() {
+    let mut s = code_page(&CODE, &USES);
+    s.rebuild();
+    // Closed: one arrow between the top folders; the file nothing uses is apart.
+    assert_eq!(arrows_of(&s), ["tools -> crates (1)"]);
+    let p = picture(&s);
+    assert_eq!(p.captions.len(), 1, "README.md sits under Not connected");
+    let readme = p.index(code_map::Item::Node(node(&s, "README.md"))).unwrap();
+    let tools = p.index(code_map::Item::Node(node(&s, "tools"))).unwrap();
+    assert!(p.placed[readme].rect.top() > p.placed[tools].rect.bottom(), "unconnected cards come after");
+    // What uses sits above what it uses.
+    let crates = p.index(code_map::Item::Node(node(&s, "crates"))).unwrap();
+    assert!(p.placed[tools].rect.bottom() < p.placed[crates].rect.top());
+    // Opening crates splits its arrow; two files of ui use core.
+    open(&mut s, "crates");
+    s.rebuild();
+    assert_eq!(arrows_of(&s), ["crates/ui -> crates/core (2)", "tools -> crates/ui (1)"]);
+    let p = picture(&s);
+    let boxed = p.index(code_map::Item::Node(node(&s, "crates"))).unwrap();
+    assert!(p.placed[boxed].open);
+    for child in ["crates/ui", "crates/core"] {
+        let i = p.index(code_map::Item::Node(node(&s, child))).unwrap();
+        assert_eq!(p.placed[i].parent, Some(boxed));
+        assert!(p.placed[boxed].rect.contains_rect(p.placed[i].rect), "{child} sits inside its box");
+    }
+    // A folder holding one open folder shares its box: crates/ui / src.
+    open(&mut s, "crates/ui");
+    open(&mut s, "crates/ui/src");
+    s.rebuild();
+    let p = picture(&s);
+    let ui = p.index(code_map::Item::Node(node(&s, "crates/ui/src"))).unwrap();
+    assert_eq!(p.placed[ui].chain, [node(&s, "crates/ui")]);
+    assert_eq!(p.index(code_map::Item::Node(node(&s, "crates/ui"))), Some(ui));
+    assert!(arrows_of(&s).contains(&"crates/ui/src/view.rs -> crates/core (1)".to_string()));
+    assert!(arrows_of(&s).contains(&"crates/ui/src/lib.rs -> crates/core (1)".to_string()));
+    // The cards shown are what the rest of the Map works from.
+    assert!(s.visible.contains(&node(&s, "crates/ui/src/view.rs")));
+    assert!(s.projected_links.iter().any(|e| e.kind == MapLinkKind::DependsOn && e.weight == 1));
+}
+
+#[test]
+fn code_map_marks_arrows_that_point_up_and_keeps_many_own_files_on_one_card() {
+    let mut files: Vec<String> = (0..12).map(|i| format!("lib/f{i}.rs")).collect();
+    files.push("app/main.rs".into());
+    let paths: Vec<&str> = files.iter().map(String::as_str).collect();
+    let mut s = code_page(&paths, &[("app/main.rs", "lib/f0.rs"), ("lib/f1.rs", "app/main.rs"), ("lib/f2.rs", "app/main.rs")]);
+    s.rebuild();
+    let p = picture(&s);
+    let up: Vec<bool> = p.arrows.iter().map(|a| a.up).collect();
+    assert_eq!(p.arrows.len(), 2);
+    assert_eq!(up.iter().filter(|u| **u).count(), 1, "the two folders use each other: one arrow points up");
+    // Twelve files of their own share one card in an open folder; it opens to show them.
+    open(&mut s, "lib");
+    s.rebuild();
+    let lib = Some(node(&s, "lib"));
+    assert!(picture(&s).index(code_map::Item::Files(lib)).is_some());
+    assert!(!s.visible.contains(&node(&s, "lib/f0.rs")));
+    s.code.files_open.insert(b"lib".to_vec());
+    s.rebuild();
+    assert!(picture(&s).index(code_map::Item::Files(lib)).is_none());
+    assert!(s.visible.contains(&node(&s, "lib/f0.rs")));
+}
+
+#[test]
+fn code_map_connected_only_keeps_the_selection_what_it_connects_to_and_their_boxes() {
+    let mut s = code_page(&CODE, &USES);
+    open(&mut s, "crates");
+    s.selected = Some(node(&s, "crates/core"));
+    s.rebuild();
+    s.neighbors();
+    s.rebuild();
+    let mut shown: Vec<String> = picture(&s)
+        .placed
+        .iter()
+        .map(|p| match p.item {
+            code_map::Item::Node(n) => String::from_utf8_lossy(s.data.as_ref().unwrap().nodes[n].path.as_deref().unwrap()).into_owned(),
+            code_map::Item::Files(_) => "files".into(),
+        })
+        .collect();
+    shown.sort();
+    assert_eq!(shown, ["crates", "crates/core", "crates/ui"]);
+}
+
+#[test]
+fn code_map_colours_by_kind_activity_owner_and_changes() {
+    let mut s = code_page(&CODE, &USES);
+    open(&mut s, "crates");
+    s.rebuild();
+    let ui = node(&s, "crates/ui");
+    let at = |s: &MapPage, n: usize| picture(s).index(code_map::Item::Node(n)).unwrap();
+    // Kind: all code, so one band in the code colour.
+    let paint = picture(&s).placed[at(&s, ui)].paint.clone();
+    assert_eq!(paint.band.len(), 1);
+    assert_eq!(paint.band[0].0, MARK_1());
+    assert_eq!(picture(&s).legend.kinds, [FileKind::Code, FileKind::Docs]);
+    // Activity: commits in the period, shaded against the busiest card.
+    let id = |n: u8| ObjectId::parse(&format!("{n:040x}")).unwrap();
+    let now = 4_000_000_000;
+    s.code.history = Some(Arc::new(CodeHistory {
+        tip: None,
+        commits: vec![
+            HistoryCommit { id: id(1), time: now, author: 0 },
+            HistoryCommit { id: id(2), time: now, author: 1 },
+            HistoryCommit { id: id(3), time: now, author: 1 },
+        ],
+        authors: vec![b"Ann".to_vec(), b"Bo".to_vec()],
+        paths: [
+            (b"crates/ui/src/lib.rs".to_vec(), vec![0, 1]),
+            (b"crates/ui/src/view.rs".to_vec(), vec![1]),
+            (b"tools/a.js".to_vec(), vec![2]),
+        ]
+        .into_iter()
+        .collect(),
+        limited: false,
+    }));
+    s.code.colour = code_map::Colour::Activity;
+    s.code.period = Period::All;
+    s.rebuild();
+    let p = picture(&s);
+    assert_eq!(p.placed[at(&s, ui)].paint.sub, "2 commits");
+    assert_eq!(p.legend.most, 2);
+    assert_eq!(p.placed[at(&s, node(&s, "crates/core"))].paint.sub, "No commits");
+    // Owner without CODEOWNERS: the person with the most commits to each file.
+    s.code.colour = code_map::Colour::Owner;
+    s.rebuild();
+    let p = picture(&s);
+    assert_eq!(p.placed[at(&s, ui)].paint.sub, "Bo");
+    assert!(p.legend.owners_from.is_none());
+    // Owner with CODEOWNERS: the rules, and files no rule covers belong to nobody.
+    let mut links = (**s.code.links.as_ref().unwrap()).clone();
+    links.owners = Some(OwnerRules {
+        file: b".github/CODEOWNERS".to_vec(),
+        gitlab: false,
+        rules: 1,
+        skipped: 0,
+        sets: vec![vec!["@core-team".into()]],
+        files: [(b"crates/core/src/lib.rs".to_vec(), Some(0)), (b"crates/core/src/store.rs".to_vec(), Some(0))].into_iter().collect(),
+    });
+    s.code.links = Some(Arc::new(links));
+    s.rebuild();
+    let p = picture(&s);
+    assert_eq!(p.placed[at(&s, node(&s, "crates/core"))].paint.sub, "@core-team");
+    assert_eq!(p.placed[at(&s, ui)].paint.sub, "Nobody");
+    assert!(p.placed[at(&s, ui)].paint.dashed);
+    assert_eq!(p.legend.owners_from.as_deref(), Some(".github/CODEOWNERS"));
+    // Changes: letters for changed files, hatching one step away.
+    let changed = |path: &str, change| ComparedFile { path: RepoPath::new(path.as_bytes().to_vec()).unwrap(), original_path: None, change, similarity: None };
+    s.code.changes = Some(Arc::new(CodeChanges {
+        outcome: ChangesOutcome::Ready,
+        base: "main".into(),
+        base_id: None,
+        split: None,
+        splits: Vec::new(),
+        commits: 1,
+        files: vec![changed("crates/core/src/store.rs", Change::Modified), changed("tools/b.js", Change::Added)],
+        lines: [(b"crates/core/src/store.rs".to_vec(), (3, 1))].into_iter().collect(),
+    }));
+    s.code.colour = code_map::Colour::Changes;
+    s.rebuild();
+    let p = picture(&s);
+    // view.rs uses store.rs; lib.rs uses the core package, which holds it.
+    assert_eq!((p.legend.added, p.legend.changed, p.legend.uses), (1, 1, 2));
+    assert_eq!(p.placed[at(&s, node(&s, "crates/core"))].paint.sub, "1 changed");
+    // Changed only: the changed files, those that use them, and the boxes on the way.
+    s.code.changed_only = true;
+    s.rebuild();
+    let mut shown: Vec<String> = picture(&s)
+        .placed
+        .iter()
+        .filter_map(|p| match p.item {
+            code_map::Item::Node(n) if s.data.as_ref().unwrap().nodes[n].kind == MapNodeKind::File => {
+                Some(String::from_utf8_lossy(s.data.as_ref().unwrap().nodes[n].path.as_deref().unwrap()).into_owned())
+            }
+            _ => None,
+        })
+        .collect();
+    shown.sort();
+    assert_eq!(shown, ["crates/core/src/store.rs", "crates/ui/src/lib.rs", "crates/ui/src/view.rs", "tools/b.js"]);
+    let store = picture(&s).index(code_map::Item::Node(node(&s, "crates/core/src/store.rs"))).unwrap();
+    assert_eq!(picture(&s).placed[store].paint.badge, Some('M'));
+    assert_eq!(picture(&s).placed[store].paint.sub, "+3 \u{2212}1");
+}
+
+#[test]
+fn code_map_captions_follow_the_language_without_moving_cards() {
+    use crate::i18n::{Language, scoped};
+    let files: Vec<String> = (0..10).map(|i| format!("f{i}.md")).collect();
+    let paths: Vec<&str> = files.iter().map(String::as_str).collect();
+    let mut s = code_page(&paths, &[]);
+    scoped(Language::English, || s.rebuild());
+    let top = picture(&s).index(code_map::Item::Files(None)).unwrap();
+    let (rect, english) = (picture(&s).placed[top].rect, picture(&s).placed[top].paint.sub.clone());
+    assert_eq!(english, "in the top folder");
+    for language in Language::ALL.into_iter().skip(1) {
+        scoped(language, || s.rebuild());
+        let p = picture(&s);
+        assert_ne!(p.placed[top].paint.sub, english, "{language:?}");
+        assert_eq!(p.placed[top].rect, rect, "{language:?}");
+    }
+}
+
+#[test]
+fn code_map_canvas_registers_its_cards_inside_the_map_and_none_when_covered() {
+    let ctx = Context::default();
+    crate::style::install(&ctx);
+    let mut s = code_page(&CODE, &USES);
+    open(&mut s, "crates");
+    s.rebuild();
+    for size in [vec2(640., 420.), vec2(1100., 700.)] {
+        let rect = Rect::from_min_size(Pos2::ZERO, size);
+        for covered in [false, true] {
+            let mut controls = HashMap::new();
+            let mut intents = Vec::new();
+            s.fit = true;
+            let mut output = ctx.run_ui(RawInput { screen_rect: Some(rect), ..Default::default() }, |ui| {
+                code_map::canvas(ui, &mut s, rect, covered, &mut intents, &mut controls);
+            });
+            output.textures_delta.clear();
+            for (id, c) in &controls {
+                assert!(rect.contains_rect(c.rect), "{id}: {:?}", c.rect);
+            }
+            if covered {
+                assert!(controls.keys().all(|k| !k.starts_with("map-node-")), "{:?}", controls.keys());
+            } else {
+                let crates = node(&s, "crates");
+                assert!(controls.contains_key(&format!("map-node-{crates}")), "{:?}", controls.keys());
+                assert!(controls.contains_key(&format!("map-toggle-{crates}")));
+                assert!(controls.contains_key("map-fit"));
+            }
+        }
+    }
+}
+
+/// Polls the code map until the read it started has finished.
+fn finish_code_read(s: &mut MapPage) {
+    let started = std::time::Instant::now();
+    while !s.code.poll() {
+        assert!(started.elapsed() < std::time::Duration::from_secs(10), "the read never finished");
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+fn code_tip() -> ObjectId {
+    ObjectId::parse(&format!("{:040x}", 7)).unwrap()
+}
+
+#[test]
+fn code_map_closes_an_open_box_from_its_header() {
+    // The box's node index is past the cards placed: its header arrow once took the node
+    // index for a placed one, and panicked or closed another card.
+    let ctx = Context::default();
+    crate::style::install(&ctx);
+    let files = ["a.md", "b.md", "c.md", "d.md", "e.md", "f.md", "g.md", "h.md", "i.md", "zone/src/lib.rs"];
+    let mut s = code_page(&files, &[]);
+    open(&mut s, "zone");
+    s.rebuild();
+    let zone = node(&s, "zone");
+    let at = picture(&s).index(code_map::Item::Node(zone)).unwrap();
+    assert!(picture(&s).placed[at].open);
+    assert!(zone >= picture(&s).placed.len(), "the fixture keeps the two indices apart");
+    let rect = Rect::from_min_size(Pos2::ZERO, vec2(1100., 700.));
+    let mut controls = HashMap::new();
+    let mut frame = |s: &mut MapPage, events: Vec<Event>| -> Option<Pos2> {
+        controls.clear();
+        let mut output = ctx.run_ui(RawInput { screen_rect: Some(rect), events, ..Default::default() }, |ui| {
+            code_map::canvas(ui, s, rect, false, &mut Vec::new(), &mut controls);
+        });
+        output.textures_delta.clear();
+        controls.get(&format!("map-toggle-{zone}")).map(|c| c.rect.center())
+    };
+    s.fit = true;
+    let chevron = frame(&mut s, vec![]).expect("the box header has its arrow");
+    frame(&mut s, vec![Event::PointerMoved(chevron), Event::PointerButton { pos: chevron, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }]);
+    frame(&mut s, vec![Event::PointerButton { pos: chevron, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }]);
+    let key = s.data.as_ref().unwrap().nodes[zone].key.clone();
+    assert!(s.collapsed.contains(&key), "the box closed");
+    assert_eq!(s.selected, Some(zone));
+}
+
+#[test]
+fn code_map_stop_holds_until_refresh_and_a_folder_read_shows_its_arrows() {
+    let ctx = Context::default();
+    let tip = code_tip();
+    let mut s = code_page(&CODE, &USES);
+    s.code.renew(Some(&tip));
+    // Stop: the read ends without a result and is not asked for again until Refresh.
+    assert!(matches!(code_map::wanted(&s, &tip), Some(code_map::CodeRead::Links(None))));
+    s.code.links_read_for_test(&ctx, Vec::new(), Err(rocket_git::Error::Cancelled));
+    finish_code_read(&mut s);
+    assert!(s.code.stopped && s.code.links.is_none() && s.code.error().is_none());
+    assert!(code_map::wanted(&s, &tip).is_none(), "Stop means stop");
+    s.code.renew(Some(&tip));
+    assert!(!s.code.stopped);
+    assert!(matches!(code_map::wanted(&s, &tip), Some(code_map::CodeRead::Links(None))), "Refresh reads again");
+    // A folder read past the first read's limit joins what was read, and its arrows show.
+    let tools = PackageRef { folder: b"tools".to_vec(), language: ModuleLanguage::JavaScript };
+    let mut first = code_links(&USES[..3]);
+    first.unread.push(tools.clone());
+    first.limited = true;
+    s.code.links = Some(Arc::new(first));
+    s.rebuild();
+    assert!(arrows_of(&s).is_empty(), "{:?}", arrows_of(&s));
+    let mut more = code_links(&[USES[3]]);
+    more.packages = vec![tools];
+    s.code.links_read_for_test(&ctx, vec![b"tools".to_vec()], Ok(more));
+    finish_code_read(&mut s);
+    s.rebuild();
+    assert_eq!(arrows_of(&s), ["tools -> crates (1)"]);
+    let links = s.code.links.clone().unwrap();
+    assert!(links.unread.is_empty() && !links.limited);
+    assert!(s.code.too_large.is_empty());
+}
+
+#[test]
+fn code_map_reads_unread_packages_once_their_folder_is_open_and_never_again_when_too_large() {
+    let ctx = Context::default();
+    let tip = code_tip();
+    let mut s = code_page(&CODE, &USES);
+    s.code.renew(Some(&tip));
+    let mut links = code_links(&USES);
+    links.unread = vec![PackageRef { folder: b"tools".to_vec(), language: ModuleLanguage::JavaScript }];
+    s.code.links = Some(Arc::new(links));
+    s.rebuild();
+    assert!(code_map::wanted(&s, &tip).is_none(), "a closed folder is not read");
+    // However it opens (its arrow, Expand all, Show folder), an open folder's code is read.
+    open(&mut s, "tools");
+    s.rebuild();
+    assert!(matches!(code_map::wanted(&s, &tip), Some(code_map::CodeRead::Links(Some(ref l))) if l == &[b"tools".to_vec()]));
+    // Still unread after a read of its own: more code than one read takes, not asked again.
+    s.code.links_read_for_test(&ctx, vec![b"tools".to_vec()], Ok(CodeLinks::default()));
+    finish_code_read(&mut s);
+    s.rebuild();
+    assert!(s.code.too_large.contains(b"tools".as_slice()));
+    assert!(code_map::wanted(&s, &tip).is_none(), "no read again and again");
+}
+
+#[test]
+fn code_map_filters_keep_a_chosen_files_card_and_hide_deep_files_inside_open_boxes() {
+    // Connected only from a card that uses a folder's "N files" card keeps that card and
+    // its box.
+    let mut files: Vec<String> = (0..12).map(|k| format!("lib/f{k}.rs")).collect();
+    files.push("app/main.rs".into());
+    let files: Vec<&str> = files.iter().map(String::as_str).collect();
+    let mut s = code_page(&files, &[("app/main.rs", "lib/f0.rs")]);
+    open(&mut s, "lib");
+    s.rebuild();
+    let (app, lib) = (node(&s, "app"), node(&s, "lib"));
+    let group = code_map::Item::Files(Some(lib));
+    assert!(picture(&s).index(group).is_some(), "twelve files share one card");
+    assert_eq!(arrows_of(&s), ["app -> files (1)"]);
+    s.selected = Some(app);
+    s.neighbor_anchor = Some(s.data.as_ref().unwrap().nodes[app].key.clone());
+    s.filter_key = None;
+    s.rebuild();
+    let p = picture(&s);
+    assert!(p.index(group).is_some(), "the card app uses stays");
+    assert!(p.index(code_map::Item::Node(lib)).is_some_and(|i| p.placed[i].open), "with its box");
+    assert_eq!(arrows_of(&s), ["app -> files (1)"]);
+    // Changed only: an unchanged file two folders down inside an open box shows nowhere,
+    // so nothing points at the box for it.
+    let mut s = code_page(&["web/src/deep/a.ts", "web/src/b.ts", "api/c.ts"], &[("api/c.ts", "web/src/deep/a.ts")]);
+    let changed = |path: &str| ComparedFile { path: RepoPath::new(path.as_bytes().to_vec()).unwrap(), original_path: None, change: Change::Modified, similarity: None };
+    s.code.changes = Some(Arc::new(CodeChanges {
+        outcome: ChangesOutcome::Ready,
+        base: "main".into(),
+        base_id: None,
+        split: None,
+        splits: Vec::new(),
+        commits: 1,
+        files: vec![changed("web/src/b.ts"), changed("api/c.ts")],
+        lines: HashMap::new(),
+    }));
+    s.code.colour = code_map::Colour::Changes;
+    s.code.changed_only = true;
+    s.rebuild();
+    assert!(picture(&s).index(code_map::Item::Node(node(&s, "web/src/b.ts"))).is_some());
+    assert!(arrows_of(&s).is_empty(), "{:?}", arrows_of(&s));
+}
+
+#[test]
+fn code_map_shades_against_cards_dashes_unowned_and_hatches_go_packages() {
+    let id = |n: u8| ObjectId::parse(&format!("{n:040x}")).unwrap();
+    // Go packages use each other as wholes, so their ends are folders.
+    let mut s = code_page(&["pkg/a/a.go", "pkg/a/a2.go", "pkg/b/b.go", "README.md"], &[("pkg/a/", "pkg/b/")]);
+    open(&mut s, "pkg");
+    s.rebuild();
+    assert_eq!(arrows_of(&s), ["pkg/a -> pkg/b (1)"]);
+    let a = node(&s, "pkg/a");
+    let at = |s: &MapPage| picture(s).index(code_map::Item::Node(a)).unwrap();
+    // Activity: the pkg box counts both commits, each card one; cards set the scale.
+    s.code.history = Some(Arc::new(CodeHistory {
+        tip: None,
+        commits: vec![HistoryCommit { id: id(1), time: 4_000_000_000, author: 0 }, HistoryCommit { id: id(2), time: 4_000_000_000, author: 0 }],
+        authors: vec![b"Ann".to_vec()],
+        paths: [(b"pkg/a/a.go".to_vec(), vec![0]), (b"pkg/b/b.go".to_vec(), vec![1])].into_iter().collect(),
+        limited: false,
+    }));
+    s.code.colour = code_map::Colour::Activity;
+    s.code.period = Period::All;
+    s.rebuild();
+    assert_eq!(picture(&s).legend.most, 1);
+    // Owner: files a rule leaves without owners are dashed, as are files nobody owns.
+    let mut links = (**s.code.links.as_ref().unwrap()).clone();
+    links.owners = Some(OwnerRules {
+        file: b"CODEOWNERS".to_vec(),
+        gitlab: false,
+        rules: 1,
+        skipped: 2,
+        sets: Vec::new(),
+        files: [(b"pkg/a/a.go".to_vec(), None), (b"pkg/a/a2.go".to_vec(), None)].into_iter().collect(),
+    });
+    s.code.links = Some(Arc::new(links));
+    s.code.colour = code_map::Colour::Owner;
+    s.rebuild();
+    assert_eq!(picture(&s).placed[at(&s)].paint.sub, "Unowned");
+    assert!(picture(&s).placed[at(&s)].paint.dashed);
+    assert_eq!(picture(&s).legend.owners_skipped, 2);
+    // Changes: a Go package that uses a changed one uses it with each of its files.
+    s.code.changes = Some(Arc::new(CodeChanges {
+        outcome: ChangesOutcome::Ready,
+        base: "main".into(),
+        base_id: None,
+        split: None,
+        splits: Vec::new(),
+        commits: 1,
+        files: vec![ComparedFile { path: RepoPath::new(b"pkg/b/b.go".to_vec()).unwrap(), original_path: None, change: Change::Modified, similarity: None }],
+        lines: HashMap::new(),
+    }));
+    s.code.colour = code_map::Colour::Changes;
+    s.rebuild();
+    assert_eq!(picture(&s).legend.uses, 2);
+    assert_eq!(picture(&s).placed[at(&s)].paint.sub, "2 use a change");
+}
+
+#[test]
+fn code_map_search_and_show_folder_reach_files_inside_closed_folders() {
+    let mut s = code_page(&["应用/src/結果 🚀 é.rs", "应用/src/main.rs", "other/x.rs", "Cargo.toml"], &[]);
+    // Cargo reads a Cargo.toml at the top as its package; on the map it stays a file card.
+    let manifest = node(&s, "Cargo.toml");
+    let mut data = (**s.data.as_ref().unwrap()).clone();
+    data.nodes[manifest].kind = MapNodeKind::Crate;
+    data.nodes[manifest].label = b"root-lib".to_vec();
+    s.data = Some(Arc::new(data));
+    s.rebuild();
+    let p = picture(&s);
+    let at = p.index(code_map::Item::Node(manifest)).expect("a card for Cargo.toml");
+    assert!(!p.placed[at].open);
+    assert_eq!(code_map::title(s.data.as_ref().unwrap(), s.code.facts.as_ref().unwrap(), code_map::Item::Node(manifest)).2, "Cargo.toml");
+    // Search finds a file inside a closed folder and chooses the card that shows it.
+    s.query = "結果 🚀".into();
+    s.rebuild();
+    assert_eq!(s.selected, Some(node(&s, "应用")));
+    // A file chosen without a card of its own (from Details) selects the card showing it.
+    s.query.clear();
+    s.selected = Some(node(&s, "other/x.rs"));
+    s.filter_key = None;
+    s.rebuild();
+    assert_eq!(s.selected, Some(node(&s, "other")));
+    // Show folder from elsewhere opens the folders on the way, and the folder.
+    s.open_path("应用/src".as_bytes());
+    s.rebuild();
+    let p = picture(&s);
+    assert!(p.index(code_map::Item::Node(node(&s, "应用"))).is_some_and(|i| p.placed[i].open));
+    assert_eq!(s.selected, Some(node(&s, "应用/src")));
+}
+
+#[test]
+fn export_is_a_worded_button_that_says_why_it_is_greyed_out() {
+    /// One frame of the page: what it registered and the text it painted, with where.
+    fn page(ctx: &Context, tab: &mut Tab, events: Vec<Event>, time: f64) -> (HashMap<String, UiControl>, Vec<(String, Rect)>) {
+        fn texts(shape: &Shape, out: &mut Vec<(String, Rect)>) {
+            match shape {
+                Shape::Text(text) => out.push((text.galley.text().to_owned(), text.visual_bounding_rect())),
+                Shape::Vec(shapes) => shapes.iter().for_each(|shape| texts(shape, out)),
+                _ => {}
+            }
+        }
+        let mut controls = HashMap::new();
+        let screen = Rect::from_min_size(Pos2::ZERO, vec2(1480., 900.));
+        let mut output = ctx.run_ui(RawInput { screen_rect: Some(screen), events, time: Some(time), ..Default::default() }, |ui| {
+            view(ui, tab, &mut Vec::new(), &mut controls)
+        });
+        output.textures_delta.clear();
+        let mut painted = Vec::new();
+        for clipped in &output.shapes {
+            texts(&clipped.shape, &mut painted);
+        }
+        (controls, painted)
+    }
+    let ctx = Context::default();
+    crate::style::install(&ctx);
+    ctx.all_styles_mut(|s| s.interaction.tooltip_delay = 0.);
+    // A map on screen: a button with its word, not only an icon.
+    let mut tab = Tab::new(std::path::PathBuf::from("synthetic"), None);
+    tab.map.kind = MapKind::History;
+    tab.map.page_mut().data = Some(Arc::new(history(&[&[1], &[2], &[]])));
+    let mut frame = page(&ctx, &mut tab, vec![], 0.);
+    for time in [0.1, 0.2] {
+        frame = page(&ctx, &mut tab, vec![], time);
+    }
+    let export = frame.0["map-export"];
+    assert!(export.enabled);
+    let word = tr("Export");
+    assert!(frame.1.iter().any(|(text, rect)| text == word && export.rect.contains_rect(*rect)), "{word:?} is not on {:?}: {:?}", export.rect, frame.1);
+    // Nothing read yet: greyed out, and pointing at it says why.
+    let mut empty = Tab::new(std::path::PathBuf::from("synthetic"), None);
+    let (controls, _) = page(&ctx, &mut empty, vec![], 1.);
+    let export = controls["map-export"];
+    assert!(!export.enabled);
+    let mut painted = page(&ctx, &mut empty, vec![Event::PointerMoved(export.rect.center())], 1.1).1;
+    for time in [1.6, 2.1, 2.6] {
+        painted = page(&ctx, &mut empty, vec![], time).1;
+    }
+    let why = tr("Export as Mermaid, once the map shows something");
+    assert!(painted.iter().any(|(text, _)| text == why), "no {why:?} in {painted:?}");
 }

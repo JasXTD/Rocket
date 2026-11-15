@@ -16,7 +16,6 @@
   <a href="#command-line-interface">CLI</a> ·
   <a href="#build-and-run">Build and run</a> ·
   <a href="#comparison">Comparison</a> ·
-  <a href="#roadmap">Roadmap</a> ·
   <a href="#contributing">Contributing</a> ·
   <a href="docs/wiki/Home.md">Wiki</a> ·
   <a href="crates/rocket-ui/src/guide.md">User guide</a> ·
@@ -390,67 +389,6 @@ Official comparison sources:
 - **Partial actions** (single lines, hunks) cover specific text cases; other files need a
   whole-file action. The CLI and MCP service cover a subset of the desktop.
 
-## Roadmap
-
-Updated **2026-11-14**. Rocket has one maintainer, so this is a to-do list, not a
-schedule. The completed items below are included in **0.92.4**; package validation
-and platform limits are described in the [release notes](docs/releases/0.92.4.md).
-
-**Completed in 0.92.4**
-
-- [x] Insights with PR drilldowns, trends, author filters and CSV/JSON export.
-- [x] Map → Modules, People refinements and readable package-detail buttons, plus
-  Speed up history for large repositories.
-- [x] Agents: Copilot CLI, conversation resume, attention status and guided integration.
-- [x] Insights translations and catalog corrections; language review remains open below.
-- [x] Secret protection and History Index security fixes, hosting adapter corrections,
-  PR discussion layout improvements and stable repository navigation while loading.
-- [x] Integrate the egui 0.37 UI upgrade and rustix security update while preserving
-  the newer Agents, Insights and Map layouts.
-
-**Linux**
-
-- [ ] **Fedora and Arch Linux:** test Rocket there and list the packages each needs.
-- [ ] **More distributions**, such as Debian and openSUSE, and older releases: a portable
-  build that needs an older glibc than today's 2.43.
-- [ ] Run the remaining acceptance tests on Linux too: most localhost MCP runners and the
-  non-GitHub hosting tests still run on Windows only.
-
-**macOS**
-
-- [ ] Test the Apple Silicon and Intel previews on physical Macs, including keyboard/IME,
-  Retina display, terminal and desktop integration.
-- [ ] Sign with Developer ID, notarize and validate in-app updates and rollback using
-  signed release packages. Update support is implemented; ad-hoc previews refuse
-  in-app installation. Signing requires an Apple Developer identity that is not available yet.
-
-**Windows**
-
-- [ ] Test the portable package on a fresh Windows 11 install; testing so far has been on
-  Windows 10.
-
-**Hosting and integrations**
-
-- [ ] Check GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps, Gitea and Forgejo against
-  real accounts, not only local test servers.
-- [ ] Check the Jira extension against a live Jira site.
-
-**Languages and the command line**
-
-- [ ] Review wording and compact-window layouts across the ten preview translations
-  before removing the Preview label. Help with a language you speak is welcome.
-- [ ] Cover more of the desktop in `rocket-cli` and the localhost MCP service, keeping
-  the same previews, cancellation and recovery safeguards.
-
-### Ask for a feature
-
-Missing something? Open a
-[feature request](https://github.com/JasXTD/Rocket/issues/new?template=feature_request.yml):
-say what you're trying to do and what gets in the way; a screenshot or an example from
-another tool helps. Ideas that fit Rocket can join this list. Found a bug? Use the
-[bug report](https://github.com/JasXTD/Rocket/issues/new?template=bug_report.yml).
-Report security problems privately, as [SECURITY.md](SECURITY.md) describes.
-
 ## Project structure
 
 | Folder | What it holds |
@@ -490,4 +428,4 @@ assistance from OpenAI Codex and Anthropic Claude Code.
 ## License
 
 Licensed under either [Apache-2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your option.
-See [third-party notices](THIRD-PARTY-NOTICES.txt) for bundled components.
+See [third-party notices](THIRD-PARTY-NOTICES.md) for bundled components.

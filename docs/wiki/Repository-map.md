@@ -20,20 +20,52 @@ connect with dashed lines. Details lists its folder, file count, what it uses an
 what uses it. **Show folders** opens its folder in the tree; **Commits here** shows
 the commits that touched it in History.
 
-**Folders** shows the committed folder tree, read left to right. Folders start
-closed: open one with the arrow on its card, or use **Expand all / Collapse all**.
-A folder's own files are summed up on one dashed card beside its subfolders, named
-when there are three or fewer, and files at the top of the repository on one card of
-their own. The tree shows folders inside folders only; a Cargo package's folder keeps
-its folder name, and dependencies show in Packages. A selected folder's
-Details lists its folders and files; choose a file there to see the commits that
-changed it. Search can find a file inside a closed folder and selects the folder
-that shows it.
+**Folders** is the code map. Folders start closed: open one with the arrow on its card,
+or use **Expand all / Collapse all**, and it becomes a box holding its folders and
+files. A folder's own files show one by one up to eight; more share one dashed card,
+which opens the same way.
 
-This version does not infer every language's imports. Workspace-inherited, escaped
-or otherwise unsupported Cargo declarations stay unlinked. Symlinks and submodules
-are listed as references; their targets are not traversed. Uncommitted and untracked
-files do not appear.
+Arrows show which files use which. The map reads every package of the snapshot the way
+Modules reads one (Rust crates with their tests, examples and programs, JavaScript and
+TypeScript projects, Python packages and Go modules) and connects packages through the
+names they import: a Cargo package's crate name, a package.json name, another Python
+package or Go module of the repository. An arrow between two cards gathers every link
+between the files inside them, and its number counts the files on the using side. What
+uses sits above what it uses; when two use each other, the arrow pointing up is dashed.
+Cards that connect to nothing at their level sit under **Not connected**. One read takes
+up to 10,000 code files and 64 MiB; a package past that is read once its folder is open,
+by its arrow, **Expand all** or **Show folder**, and a package with more code than one
+read takes has no arrows. Go packages are read whole: an arrow from one counts packages,
+and a package that uses a change has all its Go files hatched. **Stop** ends the code
+reads too; **Refresh** starts them again.
+
+**Colour** on the toolbar colours the cards; the key at the bottom left says what the
+colours mean:
+
+- **Kind**: code, tests, docs, and config and data, by size; a band along the top of a
+  card shows the mix.
+- **Commit activity**: commits in 30 days, 90 days or all time, merges left out, shaded
+  against the busiest card shown. The newest 10,000 commits are read.
+- **Owner**: the snapshot's CODEOWNERS (`.github/`, the top folder, `docs/`, then
+  `.gitlab/`), read as GitHub or GitLab reads it (GitLab's rules for `.gitlab/CODEOWNERS`
+  and for any file with sections); without one, the person with the most
+  commits to each file, as the snapshot's `.mailmap` names them. Three owners get
+  colours, the most files first; the rest are Others, and files no rule covers belong to
+  Nobody. Most commits says who changed the files, not who answers for them.
+- **Changes**: what the snapshot changes since it split from the branch, tag or commit
+  typed in the key, as a pull request compares them. A, M and R are as in the Changes
+  list; a hatched card uses a changed file, or a package that holds one. **Changed only**
+  keeps those files and the folders on the way.
+
+Details lists what the selection uses and what uses it, with the files on the using side,
+and facts that follow the colour: kinds, commits and the most changed files, the owner,
+or the change and its lines.
+
+In Packages, workspace-inherited, escaped or otherwise unsupported Cargo declarations
+stay unlinked. Which function calls which is not shown; macros, `cfg` and other build
+constraints are not evaluated, as in Modules. Symlinks and submodules are listed as
+references; their targets are not traversed. Uncommitted and untracked files do not
+appear.
 
 ### Modules
 
@@ -162,11 +194,18 @@ people; **Show commits** for a person is a name search, not an identity filter.
 
 ## Navigation, limits and stopping
 
+Rust `#[path]` follow-ups share the same 10,000-file / 64 MiB source-read budget.
+CODEOWNERS has a separate global matching-work budget, checked inside wildcard
+matching as well as between files. If it is exhausted, Rocket reports the limit
+and falls back to commit-based ownership; incomplete ownership is not displayed.
+Cancellation interrupts matching and follow-up reads.
+
 - In Packages, Folders, Modules and Shared files, drag to pan, scroll or use **+ / −** to
   zoom, **Focus** to centre the selection and **Fit** to see everything. With the
   map focused, arrow keys pan and **F** fits.
 - **Connected only** keeps the selection and what it directly connects to.
-  Choosing a connection in Details follows it. Filtering keeps cards in place.
+  Choosing a connection in Details follows it. Filtering keeps cards in place, except
+  in Folders, which lays the kept cards out again.
 - **Stop** cancels the current read. Previously completed results remain visible.
   A failed refresh also keeps the last result and shows the error with **Retry**.
 - Results are pinned to Git object IDs. When the repository changes, the map says
@@ -175,8 +214,10 @@ people; **Show commits** for a person is a name search, not an identity filter.
 - Reads are bounded: 500 commits at a time up to 2,000, 4,096 file/folder/people
   nodes, 100,000 changed paths, 64 Cargo manifests (128 KiB each, 4 MiB total), and
   shared-file connections for up to 128 authors. History snapshots allow at most
-  12,000 parent links, and at most 240 cards draw at once. A partial map says so; a
-  refused read keeps the previous result and shows an error.
+  12,000 parent links, and at most 240 cards draw at once (400 cards and boxes in
+  Folders, which reads up to 10,000 code files and 64 MiB at a time, every manifest
+  up to 128 KiB and 16 MiB together, and the newest 10,000 commits). A partial map
+  says so; a refused read keeps the previous result and shows an error.
 - Labels over 4 KiB are shortened before drawing. Full paths and object IDs remain
   intact. Details lists up to 100 rows per section and says how many more there are.
 - Diagnostics record operation names, steps, durations, cancellation and errors.
@@ -184,7 +225,7 @@ people; **Show commits** for a person is a name search, not an identity filter.
 
 ## Export as Mermaid
 
-The export button in the header opens the text of what the map shows, as Mermaid,
+**Export** at the right of the header opens the text of what the map shows, as Mermaid,
 with line numbers. **Copy** puts it on the clipboard. **Save** writes a new `.mmd`
 file: **Save in** starts at your Documents folder (**Browse** picks another) and the
 name follows the view, such as `rocket-packages.mmd`. Existing files are never

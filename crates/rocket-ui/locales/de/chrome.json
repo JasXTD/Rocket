@@ -92,7 +92,6 @@
   "Tool finished": "Tool beendet",
   "Tool running": "Tool läuft",
   "Upload this branch's commits": "Commits dieses Branches hochladen",
-  "View stashes": "Stashes anzeigen",
   "Working with SSH keys": "SSH-Schlüssel werden verarbeitet",
   "between commits, with changes that aren't committed. Commit or stash them, or Abort.": "zwischen Commits, mit nicht committeten Änderungen. Committen oder stashen Sie sie oder wählen Sie „Abbrechen“.",
   "between commits. Continue does the rest, or Abort ends it.": "zwischen Commits. „Fortsetzen“ erledigt den Rest, „Abbrechen“ beendet den Vorgang.",
