@@ -41,7 +41,7 @@ fn npm_missing_resolutions_are_incomplete_before_scanner_or_cache_use() {
                     json!({"lockfileVersion":version,"packages":{"":{"name":"fixture"},"node_modules/example":package}})
                 };
                 fs::write(root.path.join(name), serde_json::to_vec(&lock).unwrap()).unwrap();
-                let error = scan::scan(&root.path, &root.path.join("scanner-must-not-run.exe"), &root.path, &root.path, None, false, &CancellationToken::new()).err().expect("incomplete npm coverage");
+                let error = scan::scan(&root.path, &root.path.join("scanner-must-not-run.exe"), &root.path, &root.path, None, false, &Limits::default(), &CancellationToken::new()).err().expect("incomplete npm coverage");
                 assert!(error.to_string().contains("npm lockfile") && error.to_string().contains("incomplete"), "{name} v{version}: {error}");
                 fs::remove_file(root.path.join(name)).unwrap();
             }
@@ -59,15 +59,15 @@ fn npm_coverage_gap_invalidates_a_previous_clean_cached_result() {
     fs::create_dir_all(cache.path.join("osv-scalibr/npm")).unwrap();
     fs::write(cache.path.join("osv-scalibr/npm/all.zip"), "owned inert cache").unwrap();
     let cancel = CancellationToken::new();
-    let inv = scan::inventory(&root.path, &cancel).unwrap();
+    let inv = scan::inventory(&root.path, &Limits::default(), &cancel).unwrap();
     let previous = scan::Cached {
-        database: scan::databases(&cache.path, &inv, &cancel).unwrap(), inventory: inv,
+        database: scan::databases(&cache.path, &inv.ecosystems(), &cancel).unwrap(), inventory: inv.fingerprint().unwrap(),
         report: Arc::new(scan::Report { packages:1, files:1, findings:vec![], notes:vec![], checked:scan::now(), oldest_database:scan::now() }),
     };
-    let error = scan::scan(&root.path, &exe, &cache.path, &cache.path, Some(&previous), false, &cancel).err().expect("old clean cache must not bypass the coverage guard");
+    let error = scan::scan(&root.path, &exe, &cache.path, &cache.path, Some(&previous), false, &Limits::default(), &cancel).err().expect("old clean cache must not bypass the coverage guard");
     assert!(error.to_string().contains("incomplete"));
     let mut state = State::default();
-    state.repositories.insert(42, RepositoryScan { cached:Some(previous), error:Some(error_message(&error)), next:None });
+    state.repositories.insert(42, RepositoryScan { cached:Some(previous), error:Some(error_message(&error)), limited:false, next:None });
     assert_eq!(state.summary(Some(42))["status"], "incomplete");
     assert_eq!(state.summary(Some(42))["blocking"], false);
 }
@@ -89,13 +89,13 @@ fn actual_osv_missing_npm_resolution_is_not_accepted_as_clean() {
     // and only synthetic records. No package manager or network is involved.
     let raw = rocket_git::run_offline_osv(&exe, &root.path, &cache.path, std::slice::from_ref(&lockfile), false, &cancel).unwrap();
     assert_eq!(raw.code, Some(0));
-    let inventory = scan::inventory(&root.path, &cancel).unwrap();
+    let inventory = scan::inventory(&root.path, &Limits::default(), &cancel).unwrap();
     let unchecked = scan::parse(&raw.json, &inventory, std::slice::from_ref(&lockfile)).unwrap();
     assert!(unchecked.packages > 0 && unchecked.findings.is_empty());
-    let error = scan::scan(&root.path, &exe, &cache.path, &work.path, None, true, &cancel).err().expect("upstream clean result must not be accepted");
+    let error = scan::scan(&root.path, &exe, &cache.path, &work.path, None, true, &Limits::default(), &cancel).err().expect("upstream clean result must not be accepted");
     assert!(error.to_string().contains("incomplete"));
     fs::copy(fixtures.join("vulnerable/package-lock.json"), &lockfile).unwrap();
-    let covered = scan::scan(&root.path, &exe, &cache.path, &work.path, None, true, &cancel).unwrap();
+    let covered = scan::scan(&root.path, &exe, &cache.path, &work.path, None, true, &Limits::default(), &cancel).unwrap();
     assert!(!covered.report.findings.is_empty());
 }
 
@@ -116,10 +116,10 @@ fn actual_osv_malformed_npm_sources_are_not_accepted_as_clean() {
         fs::write(&lockfile, serde_json::to_vec(&lock).unwrap()).unwrap();
         let raw = rocket_git::run_offline_osv(&exe, &root.path, &cache.path, std::slice::from_ref(&lockfile), false, &cancel).unwrap();
         assert_eq!(raw.code, Some(0));
-        let inv = scan::inventory(&root.path, &cancel).unwrap();
+        let inv = scan::inventory(&root.path, &Limits::default(), &cancel).unwrap();
         let unchecked = scan::parse(&raw.json, &inv, std::slice::from_ref(&lockfile)).unwrap();
         assert!(unchecked.packages > 0 && unchecked.findings.is_empty());
-        let error = scan::scan(&root.path, &exe, &cache.path, &work.path, None, true, &cancel).err().expect("malformed npm source must be incomplete");
+        let error = scan::scan(&root.path, &exe, &cache.path, &work.path, None, true, &Limits::default(), &cancel).err().expect("malformed npm source must be incomplete");
         assert!(error.to_string().contains("incomplete"));
     }
     for source in ["https://registry.example.invalid/package.tgz", "http://registry.example.invalid/package.tgz", "https://[::1]/package.tgz", "git+https://example.invalid/package.git", "github:owner/package", "garbage.git"] {
@@ -128,7 +128,7 @@ fn actual_osv_malformed_npm_sources_are_not_accepted_as_clean() {
             package["resolved"] = json!(source);
         }
         fs::write(&lockfile, serde_json::to_vec(&lock).unwrap()).unwrap();
-        let covered = scan::scan(&root.path, &exe, &cache.path, &work.path, None, true, &cancel).unwrap();
+        let covered = scan::scan(&root.path, &exe, &cache.path, &work.path, None, true, &Limits::default(), &cancel).unwrap();
         assert!(!covered.report.findings.is_empty(), "recognized source must retain advisory coverage: {source}");
     }
 }
@@ -208,25 +208,25 @@ fn discovery_is_bounded_and_missing_lockfiles_remain_visible() {
     fs::write(root.path.join("nested/package-lock.json"), "{}").unwrap();
     fs::create_dir(root.path.join("node_modules")).unwrap();
     fs::write(root.path.join("node_modules/Cargo.lock"), "not included").unwrap();
-    let inv = scan::inventory(&root.path, &CancellationToken::new()).unwrap();
+    let inv = scan::inventory(&root.path, &Limits::default(), &CancellationToken::new()).unwrap();
     assert_eq!(inv.files.len(), 1);
     assert_eq!(inv.files[0].path, Path::new("nested/package-lock.json"));
     assert!(!inv.notes.is_empty());
     let file = fs::File::create(root.path.join("Cargo.lock")).unwrap();
     file.set_len(8 * 1024 * 1024 + 1).unwrap();
-    assert!(scan::inventory(&root.path, &CancellationToken::new()).is_err());
+    assert!(scan::inventory(&root.path, &Limits::default(), &CancellationToken::new()).is_err());
 }
 #[test]
 fn unrelated_lockfiles_do_not_hide_missing_ecosystems_or_unverified_workspace_members() {
     let root = scratch();
     fs::write(root.path.join("Cargo.lock"), "").unwrap();
     fs::write(root.path.join("package.json"), "{}").unwrap();
-    let inv = scan::inventory(&root.path, &CancellationToken::new()).unwrap();
+    let inv = scan::inventory(&root.path, &Limits::default(), &CancellationToken::new()).unwrap();
     assert!(inv.notes.iter().any(|n| n.contains("no matching")));
     fs::remove_file(root.path.join("package.json")).unwrap();
     fs::create_dir(root.path.join("child")).unwrap();
     fs::write(root.path.join("child/Cargo.toml"), "").unwrap();
-    let inv = scan::inventory(&root.path, &CancellationToken::new()).unwrap();
+    let inv = scan::inventory(&root.path, &Limits::default(), &CancellationToken::new()).unwrap();
     assert!(inv.notes.iter().any(|n| n.contains("ancestor lockfile")));
 }
 #[test]
@@ -247,7 +247,7 @@ fn inventory_cancellation_and_empty_projects_do_not_claim_success() {
     let cancel = CancellationToken::new();
     cancel.cancel();
     assert!(matches!(
-        scan::inventory(&root.path, &cancel),
+        scan::inventory(&root.path, &Limits::default(), &cancel),
         Err(Error::Cancelled)
     ));
     assert!(
@@ -258,7 +258,7 @@ fn inventory_cancellation_and_empty_projects_do_not_claim_success() {
             &root.path,
             None,
             true,
-            &CancellationToken::new()
+            &Limits::default(), &CancellationToken::new()
         )
         .is_err()
     );
@@ -267,14 +267,14 @@ fn inventory_cancellation_and_empty_projects_do_not_claim_success() {
 fn missing_or_oversized_database_is_not_a_clean_scan() {
     let (inv, _, _) = sample();
     let root = scratch();
-    assert!(scan::databases(&root.path, &inv, &CancellationToken::new()).is_err());
+    assert!(scan::databases(&root.path, &inv.ecosystems(), &CancellationToken::new()).is_err());
     let folder = root.path.join("osv-scalibr/npm");
     fs::create_dir_all(&folder).unwrap();
     fs::File::create(folder.join("all.zip"))
         .unwrap()
         .set_len(512 * 1024 * 1024 + 1)
         .unwrap();
-    assert!(scan::databases(&root.path, &inv, &CancellationToken::new()).is_err());
+    assert!(scan::databases(&root.path, &inv.ecosystems(), &CancellationToken::new()).is_err());
 }
 #[test]
 fn temporary_snapshot_is_removed_on_scope_exit() {
@@ -352,7 +352,7 @@ fn actual_osv_detects_vulnerable_and_fixed_dependencies_and_invalidates_cache() 
         &work.path,
         None,
         true,
-        &cancel,
+        &Limits::default(), &cancel,
     )
     .unwrap();
     assert_eq!(vulnerable.report.packages, 2);
@@ -371,7 +371,7 @@ fn actual_osv_detects_vulnerable_and_fixed_dependencies_and_invalidates_cache() 
         &work.path,
         Some(&vulnerable),
         false,
-        &cancel,
+        &Limits::default(), &cancel,
     )
     .unwrap();
     assert!(Arc::ptr_eq(&vulnerable.report, &reused.report));
@@ -385,7 +385,7 @@ fn actual_osv_detects_vulnerable_and_fixed_dependencies_and_invalidates_cache() 
         &work.path,
         Some(&vulnerable),
         false,
-        &cancel,
+        &Limits::default(), &cancel,
     )
     .unwrap();
     assert!(fixed.report.findings.is_empty());
@@ -399,7 +399,7 @@ fn actual_osv_detects_vulnerable_and_fixed_dependencies_and_invalidates_cache() 
             &work.path,
             Some(&fixed),
             false,
-            &cancel
+            &Limits::default(), &cancel
         )
         .is_err()
     );
@@ -443,7 +443,7 @@ fn actual_osv_ignores_repo_suppressions_and_never_runs_build_scripts() {
         &work.path,
         None,
         true,
-        &CancellationToken::new(),
+        &Limits::default(), &CancellationToken::new(),
     )
     .unwrap();
     assert_eq!(result.report.findings.len(), 2);
@@ -473,7 +473,7 @@ fn actual_osv_malformed_and_empty_files_fail_without_clean_results() {
                 &work.path,
                 None,
                 true,
-                &CancellationToken::new()
+                &Limits::default(), &CancellationToken::new()
             )
             .is_err()
         );
@@ -495,7 +495,7 @@ fn actual_scan_cancellation_finishes_and_cleans_its_snapshot() {
     let rp = root.path.clone();
     let wp = work.path.clone();
     let cp = cache.path.clone();
-    let task = ReadTask::spawn(move |cancel| scan::scan(&rp, &exe, &cp, &wp, None, true, &cancel))
+    let task = ReadTask::spawn(move |cancel| scan::scan(&rp, &exe, &cp, &wp, None, true, &Limits::default(), &cancel))
         .unwrap();
     std::thread::sleep(Duration::from_millis(20));
     task.cancel();
@@ -529,7 +529,7 @@ fn actual_osv_checks_eight_more_dependency_formats_offline() {
                 &work.path,
                 None,
                 true,
-                &CancellationToken::new(),
+                &Limits::default(), &CancellationToken::new(),
             )
             .unwrap_or_else(|e| panic!("{name} {version}: {e:?}"));
             assert_eq!(

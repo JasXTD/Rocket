@@ -77,10 +77,22 @@ async function run() {
       await assert.rejects(client.tool('rocket_click',{target:id,expected_tab:state.active_tab}),/Content guards are user preferences/);
     }
     await click('security-ai-key-coverage');await capture('security-desktop');pass('Separate guard defaults on; MCP cannot change either guard');
+    // Section 51: Total scan budget is a row of Secret protection; Scan limits are the user's alone.
+    await reveal('pref-secret-scan-mib');inView('pref-secret-scan-mib');
+    assert(control('security-secret-coverage'),'What gets checked? is in view with the budget');
+    assert(control('pref-secret-scan-mib').rect[1]<control('security-secret-coverage').rect[1],'the budget row sits inside Secret protection, above What gets checked?');
+    await reveal('pref-dependency-files');inView('pref-dependency-files');
+    for(const id of ['pref-dependency-files','pref-dependency-file-mib','pref-dependency-total-mib']) assert.equal(control(id)?.enabled,false,id);
+    for(const id of ['pref-dependency-limits-apply','pref-dependency-limits-reset']) await assert.rejects(client.tool('rocket_click',{target:id,expected_tab:state.active_tab}),/Dependency scan limits are user preferences/);
+    assert.deepEqual(state.dependencies.limits,{files:256,file_mib:8,total_mib:64});
+    await capture('security-limits-desktop');pass('Total scan budget sits in Secret protection; MCP cannot change Scan limits');
+    for(let i=0;i<2;i++){await client.tool('rocket_scroll',{target:'prefs-scroll',direction:'up',pixels:2000,expected_tab:state.active_tab});await settled();}
     await resize(780,620);await reveal('pref-ai-key-guard');inView('pref-ai-key-guard');await capture('security-compact');
     await reveal('security-ai-key-coverage');inView('security-ai-key-coverage');
     await client.tool('rocket_scroll',{target:'prefs-scroll',direction:'down',pixels:200,expected_tab:state.active_tab});await settled();
-    await capture('security-compact-coverage');pass('Security controls remain accessible in a compact window');
+    await capture('security-compact-coverage');
+    await reveal('pref-dependency-files');inView('pref-dependency-files');await capture('security-limits-compact');
+    pass('Security controls remain accessible in a compact window');
     await click('dialog-submit');await resize(1440,960);
     for(const f of repos) {
       await client.tool('rocket_open',{path:f.repo});await settled();await click('view-changes');await type('commit-message','Fixture '+f.name);

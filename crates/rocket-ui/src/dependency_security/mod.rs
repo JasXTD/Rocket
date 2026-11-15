@@ -1,6 +1,8 @@
 //! Local dependency scans and an optional review before publishing pushed tips.
+mod limits;
 mod page;
 mod scan_budget;
+pub use limits::Limits;
 mod push;
 mod push_page;
 #[cfg(test)]
@@ -21,6 +23,8 @@ use std::{
 struct RepositoryScan {
     cached: Option<scan::Cached>,
     error: Option<String>,
+    /// The error is a scan limit that stopped the scan before OSV ran.
+    limited: bool,
     next: Option<Instant>,
 }
 enum JobResult {
@@ -45,6 +49,9 @@ pub struct State {
     pub(crate) setup_page: bool,
     setup: setup::Setup,
     scan_budget: scan_budget::Edit,
+    /// How many dependency files a scan takes and how large they may be.
+    pub limits: Limits,
+    limits_edit: limits::Edit,
     /// Set only by Rust fixture tests, never by repository content or MCP commands.
     #[cfg(test)]
     pub fixture_executable: Option<PathBuf>,
@@ -64,6 +71,8 @@ impl Default for State {
             setup_page: false,
             setup: setup::Setup::default(),
             scan_budget: Default::default(),
+            limits: Limits::default(),
+            limits_edit: Default::default(),
             #[cfg(test)]
             fixture_executable: None,
             #[cfg(test)]
@@ -88,7 +97,8 @@ impl State {
             "status":if self.running() {"running"} else if self.setup.loaded && !self.setup.ready {"setup_required"} else if state.is_some_and(|s| s.error.is_some()) {"incomplete"} else if report.is_some() {"scanned"} else {"not_scanned"},
             "setup_loaded":self.setup.loaded,"scanner_ready":self.setup.ready,"setup_error":self.setup.error.is_some(),
             "packages":report.map(|r|r.packages),"findings":report.map(|r|r.findings.len()),"coverage_notes":report.map(|r|r.notes.len()),
-            "checked":report.map(|r|r.checked),"blocking":self.push_review.open(),"before_push":self.before_push,"push_check":self.push_review.summary()})
+            "checked":report.map(|r|r.checked),"blocking":self.push_review.open(),"before_push":self.before_push,"push_check":self.push_review.summary(),
+            "limits":{"files":self.limits.files,"file_mib":self.limits.file_mib,"total_mib":self.limits.total_mib},"stopped_at_limit":state.is_some_and(|s| s.limited)})
     }
 }
 fn error_message(error: &Error) -> String {
@@ -127,14 +137,17 @@ impl Rocket {
         let path = tab.path.clone();
         let job_path = path.clone();
         let (executable, cache, work) = self.dependency_paths();
+        // Each scan keeps the limits it started with.
+        let limits = self.dependencies.limits;
         let state = self.dependencies.repositories.entry(owner).or_default();
         let previous = state.cached.clone();
         state.error = None;
+        state.limited = false;
         state.next = Some(Instant::now() + Duration::from_secs(30));
         self.dependencies.update_notice = None;
         match ReadTask::spawn(move |cancel| {
             if update {
-                let inventory = scan::inventory(&path, &cancel)?;
+                let inventory = scan::inventory(&path, &limits, &cancel)?;
                 let ecosystems: std::collections::BTreeSet<_> = inventory
                     .files
                     .iter()
@@ -156,6 +169,7 @@ impl Rocket {
                     &work,
                     previous.as_ref(),
                     force,
+                    &limits,
                     &cancel,
                 )
                 .map(JobResult::Scan)
@@ -208,6 +222,7 @@ impl Rocket {
                     Ok(JobResult::Scan(cached)) => {
                         state.cached = Some(cached);
                         state.error = None;
+                        state.limited = false;
                     }
                     Ok(JobResult::Updated) => {
                         self.dependencies.update_notice = Some(
@@ -219,6 +234,7 @@ impl Rocket {
                     }
                     Err(error) => {
                         state.cached = None;
+                        state.limited = scan::stopped_at_limit(&error);
                         state.error = Some(error_message(&error));
                     }
                 }
@@ -307,3 +323,5 @@ fn state_next(states: &mut HashMap<u64, RepositoryScan>, owner: u64) {
 mod tests;
 #[cfg(test)]
 mod page_tests;
+#[cfg(test)]
+mod limits_tests;

@@ -339,7 +339,7 @@ fn committed_inventory_peels_tags_preserves_limits_and_ignores_working_edits() {
             .unwrap();
             let repo = f.repo();
             let cancel = rocket_git::CancellationToken::new();
-            let inventory = scan::committed_inventory(&repo, &id, &cancel).unwrap();
+            let inventory = scan::committed_inventory(&repo, &id, &Limits::default(), &cancel).unwrap();
             assert_eq!(inventory.files.len(), 2);
             assert_eq!(inventory.files[0].bytes, contents.as_bytes());
             assert!(inventory.notes.iter().any(|n| n.contains("Manifest-only")));
@@ -355,9 +355,19 @@ fn committed_inventory_peels_tags_preserves_limits_and_ignores_working_edits() {
                     .to_string()
                     .contains("2 MiB preview")
             );
+            // A scanner may ask for up to 64 MiB, never more; a smaller limit refuses the
+            // 3 MiB file from its size alone.
             assert!(
-                repo.tree_file_with_limit(entry, 9 * 1024 * 1024, &cancel)
+                repo.tree_file_with_limit(entry, 64 * 1024 * 1024 + 1, &cancel)
                     .is_err()
+            );
+            assert!(matches!(
+                repo.tree_file_with_limit(entry, 1024 * 1024, &cancel),
+                Err(rocket_git::Error::Unsupported(_))
+            ));
+            assert_eq!(
+                repo.tree_file_with_limit(entry, 64 * 1024 * 1024, &cancel).unwrap().bytes,
+                contents.as_bytes()
             );
         },
     );

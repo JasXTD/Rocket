@@ -129,15 +129,15 @@ impl Repository {
     }
 
     /// Bounded raw blob read for consumers such as dependency scanners. The
-    /// normal preview keeps its 2 MiB limit; no caller can request over 8 MiB.
+    /// normal preview keeps its 2 MiB limit; no caller can request over 64 MiB.
     pub fn tree_file_with_limit(
         &self,
         entry: &TreeEntry,
         limit: usize,
         cancel: &CancellationToken,
     ) -> Result<HistoricalFile> {
-        if limit == 0 || limit > 8 * 1024 * 1024 {
-            return Err(Error::InvalidInput("The blob read limit must be between 1 byte and 8 MiB.".into()));
+        if limit == 0 || limit > 64 * 1024 * 1024 {
+            return Err(Error::InvalidInput("The blob read limit must be between 1 byte and 64 MiB.".into()));
         }
         cancel.check()?;
         self.check_tree_location(&entry.location)?;
@@ -170,7 +170,18 @@ impl Repository {
             Ok(size)
         })?;
         let bytes = self.runner.step("tree-content", "read-blob", || {
-            self.read_tree_object(
+            // A blob the size check allowed may be larger than this client's usual output
+            // limit; only its own known size raises the limit, for this one read.
+            let wider;
+            let reader = if size > self.runner.limits.stdout_bytes {
+                let mut copy = self.clone();
+                copy.runner.limits.stdout_bytes = size;
+                wider = copy;
+                &wider
+            } else {
+                self
+            };
+            reader.read_tree_object(
                 "tree-content",
                 &args(&["cat-file", "blob", entry.object().as_str()]),
                 cancel,

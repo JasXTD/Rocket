@@ -1016,6 +1016,9 @@ impl Ui {
         if matches!(target, "pref-dependency-push" | "dependency-push-continue") {
             return Err("Pre-push dependency checks and warning approval are user controls in the normal Rocket application.".into());
         }
+        if matches!(target, "pref-dependency-limits-apply" | "pref-dependency-limits-reset") {
+            return Err("Dependency scan limits are user preferences. MCP cannot change them.".into());
+        }
         if target.starts_with("shell-") {
             return Err(format!("The shell is a user preference. MCP cannot change it, and an MCP window always runs {}.", if cfg!(windows) { "Windows PowerShell" } else { "bash" }));
         }

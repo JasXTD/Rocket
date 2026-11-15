@@ -2552,6 +2552,7 @@ impl Rocket {
                             self.secret_scan_mib = p.secret_scan_mib;
                             self.dependencies.enabled = p.dependency_warnings;
                             self.dependencies.before_push = p.dependency_before_push;
+                            self.dependencies.limits = p.dependency_limits;
                             self.previous_auto_refresh = p.auto_refresh;
                             self.row_height = p.row_height;
                             self.commit_height = p.commit_height;
@@ -3182,6 +3183,7 @@ impl Rocket {
             secret_scan_mib: self.secret_scan_mib,
             dependency_warnings: self.dependencies.enabled,
             dependency_before_push: self.dependencies.before_push,
+            dependency_limits: self.dependencies.limits,
             row_height: self.row_height,
             zoom: ctx.zoom_factor(),
             sidebar_labels: self.sidebar_labels,

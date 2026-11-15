@@ -188,10 +188,7 @@ fn overview_findings_expand_and_coverage_or_failures_never_look_clean() {
                 oldest_database: scan::now() - 12 * 86_400,
             };
             let cached = |report: scan::Report| scan::Cached {
-                inventory: scan::Inventory {
-                    files: vec![],
-                    notes: vec![],
-                },
+                inventory: scan::Fingerprint::default(),
                 database: vec![],
                 report: Arc::new(report),
             };

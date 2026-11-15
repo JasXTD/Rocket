@@ -87,7 +87,7 @@ pub(super) fn check(inventory: &Inventory, cancel: &CancellationToken) -> Result
         ) {
             continue;
         }
-        // Discovery already bounds each file to 8 MiB. serde_json also limits
+        // Discovery already bounds each file to Scan limits' Each file (64 MiB at most). serde_json also limits
         // nesting; check cancellation again after parsing and between entries.
         let value: Value = serde_json::from_slice(&file.bytes).map_err(|_| incomplete())?;
         cancel.check()?;

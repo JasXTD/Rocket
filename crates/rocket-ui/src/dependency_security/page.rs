@@ -81,6 +81,9 @@ impl Rocket {
                     );
                 }
             });
+            // Both guards scan with the budget; it lives here, with the checks it limits.
+            preferences::divider(ui);
+            self.scan_budget_row(ui);
             preferences::divider(ui);
             preferences::card_note(ui, |ui| {
                 let response = CollapsingHeader::new(crate::i18n::tr("What gets checked?"))
@@ -160,7 +163,6 @@ impl Rocket {
                 );
             });
         });
-        self.scan_budget_card(ui);
         self.dependency_page(ui);
         self.sync_dependency_push_check();
         preferences::status_line(
@@ -258,6 +260,8 @@ impl Rocket {
                 );
             });
             preferences::divider(ui);
+            self.dependency_limits_row(ui);
+            preferences::divider(ui);
             preferences::card_note(ui, |ui| {
                 let repository = self.tab().map(|t| {
                     t.path
@@ -276,6 +280,7 @@ impl Rocket {
                     .and_then(|s| s.cached.as_ref())
                     .map(|c| c.report.clone());
                 let error = state.is_some_and(|s| s.error.is_some());
+                let limited = state.is_some_and(|s| s.error.is_some() && s.limited);
                 let running = self.dependencies.running();
                 let ready = self.dependencies.setup.ready;
                 let (title, tint) = if running {
@@ -328,6 +333,8 @@ impl Rocket {
                 } else {
                     if !ready {
                         crate::i18n::tr("Choose the scanner, then download advisory data.")
+                    } else if limited && !running {
+                        crate::i18n::tr("Stopped at a scan limit. Nothing was sent to OSV.")
                     } else if owner.is_none() {
                         crate::i18n::tr("Scanner setup is available for your next repository.")
                     } else {

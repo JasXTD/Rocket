@@ -1,5 +1,5 @@
 //! Per-push worker/UI rendezvous. Approval belongs to one pinned push only.
-use super::{error_message, scan};
+use super::{Limits, error_message, scan};
 use crate::app::Rocket;
 use eframe::egui::Context;
 use rocket_git::{CancellationToken, Error, ObjectId, PushCheck, Repository, Result};
@@ -18,6 +18,8 @@ struct Config {
     executable: PathBuf,
     cache: PathBuf,
     work: PathBuf,
+    /// A push started after Apply checks with the new limits.
+    limits: Limits,
 }
 pub(super) struct TipReport {
     pub source: ObjectId,
@@ -171,23 +173,32 @@ impl Guard {
                 "Review at most 32 pushed tips in one dependency check.".into(),
             ));
         }
-        let mut results = Vec::new();
-        let mut bytes = 0usize;
-        let mut findings = 0usize;
+        let limits = &self.config.limits;
+        // Every tip is read and the limits checked before OSV sees any of them, so a
+        // limit stop sends nothing. All files counts every pushed tip together.
+        let mut inventories = Vec::with_capacity(sources.len());
+        let mut bytes = 0u64;
         for source in sources {
             cancel.check()?;
-            let inventory = scan::committed_inventory(repo, source, cancel)?;
-            bytes += inventory.files.iter().map(|f| f.bytes.len()).sum::<usize>();
-            if bytes > 64 * 1024 * 1024 {
-                return Err(Error::InvalidInput(
-                    "Combined dependency files exceed the 64 MiB push scan limit.".into(),
-                ));
+            let inventory = scan::committed_inventory(repo, source, limits, cancel)?;
+            bytes += inventory.files.iter().map(|f| f.bytes.len() as u64).sum::<u64>();
+            if bytes > limits.total_bytes() {
+                return Err(scan::stop(format!(
+                    "Dependency files in the pushed commits add up to over {} MiB. Scan limits allow {} MiB in all.",
+                    limits.total_mib, limits.total_mib
+                )));
             }
+            inventories.push((source, inventory));
+        }
+        let mut results = Vec::new();
+        let mut findings = 0usize;
+        for (source, inventory) in inventories {
+            cancel.check()?;
             let cached = if inventory.files.is_empty() {
                 let mut notes = inventory.notes.clone();
                 notes.push("No supported dependency files were found at this pushed tip. Dependency coverage is unavailable.".into());
                 scan::Cached {
-                    inventory,
+                    inventory: inventory.fingerprint()?,
                     database: vec![],
                     report: Arc::new(scan::Report {
                         packages: 0,
@@ -252,8 +263,8 @@ impl Guard {
         }
         cancel.check()?;
         for (_, cached) in &results {
-            if !cached.inventory.files.is_empty()
-                && scan::databases(&self.config.cache, &cached.inventory, cancel)?
+            if !cached.inventory.is_empty()
+                && scan::databases(&self.config.cache, &cached.inventory.ecosystems(), cancel)?
                     != cached.database
             {
                 return Err(Error::InvalidInput("Advisory data changed during the push review. Run Push again to review the current result.".into()));
@@ -310,6 +321,7 @@ impl Rocket {
                 executable,
                 cache,
                 work,
+                limits: self.dependencies.limits,
             };
             let state = &mut self.dependencies.push_review;
             if state.guard.as_ref().is_none_or(|(old, _)| old != &config) {
@@ -339,5 +351,52 @@ impl Rocket {
     }
     pub(crate) fn cancel_dependency_push_review(&mut self) {
         self.dependencies.push_review.cancel();
+    }
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+    use crate::test_common::{Fixture, isolated};
+
+    #[test]
+    fn pushed_tips_over_all_files_stop_before_any_tip_is_scanned() {
+        isolated(
+            "ROCKET_SCAN_LIMITS_CASE",
+            "dependency_security::push::limit_tests::pushed_tips_over_all_files_stop_before_any_tip_is_scanned",
+            || {
+                let f = Fixture::new();
+                let tip = |f: &Fixture| ObjectId::parse(String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap().trim()).unwrap();
+                f.write("Cargo.lock", vec![b'#'; 600 * 1024]);
+                f.commit("first tip");
+                let first = tip(&f);
+                f.write("Cargo.lock", vec![b'%'; 600 * 1024]);
+                f.commit("second tip");
+                let second = tip(&f);
+                // No scanner or advisory data: scanning the first tip would fail on them,
+                // not on the limit.
+                let (sender, _receiver) = mpsc::channel();
+                let guard = Guard {
+                    config: Config {
+                        executable: f.root.join("inert.exe"),
+                        cache: f.root.join("no-data"),
+                        work: f.root.join("work"),
+                        limits: Limits { files: 256, file_mib: 1, total_mib: 1 },
+                    },
+                    sender,
+                    context: Context::default(),
+                };
+                let cancel = CancellationToken::new();
+                let error = guard.scan(&f.repo(), &[first.clone(), second], &cancel).err().expect("over All files");
+                assert_eq!(
+                    error_message(&error),
+                    "Dependency files in the pushed commits add up to over 1 MiB. Scan limits allow 1 MiB in all."
+                );
+                assert!(scan::stopped_at_limit(&error));
+                // One tip alone fits, and then fails on the missing scanner, not a limit.
+                let error = guard.scan(&f.repo(), &[first], &cancel).err().expect("no advisory data");
+                assert!(!scan::stopped_at_limit(&error), "{}", error_message(&error));
+            },
+        );
     }
 }

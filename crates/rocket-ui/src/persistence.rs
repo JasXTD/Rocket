@@ -57,6 +57,9 @@ const HISTORY_NOTICE_MAGIC: &[u8] = b"ROCKET-STATE\0\x20";
 /// v33: tasks saved from agent sessions' first messages (canvas section 48). Written
 /// only when there are some.
 const AGENT_TASKS_MAGIC: &[u8] = b"ROCKET-STATE\0\x21";
+/// v34: the dependency check's Scan limits (canvas section 51), written only once one
+/// differs from the defaults; older binaries refuse it rather than scan past it.
+const DEPENDENCY_LIMITS_MAGIC: &[u8] = b"ROCKET-STATE\0\x22";
 /// Heights the commit message area can be dragged to and saved at.
 pub const COMMIT_HEIGHTS: std::ops::RangeInclusive<f32> = 120.0..=2000.0;
 // v15 uses the v14 layout and version-2 definitions for context-specific commands.
@@ -107,6 +110,8 @@ pub struct Preferences {
     pub secret_scan_mib: u64,
     pub dependency_warnings: bool,
     pub dependency_before_push: bool,
+    /// Files, each file's size and all files' size a dependency scan takes.
+    pub dependency_limits: crate::dependency_security::Limits,
     pub row_height: f32,
     pub zoom: f32,
     /// Off shows the sidebar as an icon rail.
@@ -140,6 +145,7 @@ impl Default for Preferences {
             secret_scan_mib: rocket_git::DEFAULT_SECRET_SCAN_MIB,
             dependency_warnings: true,
             dependency_before_push: false,
+            dependency_limits: Default::default(),
             row_height: 33.0,
             zoom: 1.0,
             sidebar_labels: true,
@@ -450,12 +456,17 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
         return Err(invalid());
     }
     rocket_git::validate_secret_scan_mib(p.secret_scan_mib).map_err(|_| invalid())?;
+    if !p.dependency_limits.valid() {
+        return Err(invalid());
+    }
     let copilot = !state.copilot_program.is_empty();
     // Only a program a session could start is kept.
     if copilot && !rocket_git::valid_custom_program_path(Path::new(&state.copilot_program)) {
         return Err(invalid());
     }
-    let tasks = !state.agent_tasks.is_empty();
+    let limits = p.dependency_limits != crate::dependency_security::Limits::default();
+    // v33's tasks are written, perhaps none, whenever v34's limits are.
+    let tasks = limits || !state.agent_tasks.is_empty();
     // v32's notices are written, perhaps none, whenever v33's tasks are.
     let notices = tasks || !state.hidden_history_notices.is_empty();
     // Every record before the newest one is written, v31's program as an empty text.
@@ -650,6 +661,13 @@ fn encode_inner(state: &SavedState, inline_drafts: bool) -> io::Result<Vec<u8>> 
     if tasks {
         bytes[..AGENT_TASKS_MAGIC.len()].copy_from_slice(AGENT_TASKS_MAGIC);
         put(&mut bytes, &crate::agents::brief::encode_saved(&state.agent_tasks)?)?;
+    }
+    if limits {
+        bytes[..DEPENDENCY_LIMITS_MAGIC.len()].copy_from_slice(DEPENDENCY_LIMITS_MAGIC);
+        let l = &p.dependency_limits;
+        for value in [l.files as u64, l.file_mib, l.total_mib] {
+            bytes.extend((value as u32).to_le_bytes());
+        }
     }
     if bytes.len() as u64 > MAX_BYTES {
         return Err(invalid());
@@ -857,7 +875,8 @@ impl<'a> Reader<'a> {
 fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     let mut r = Reader(bytes);
     let magic = r.take(MAGIC.len())?;
-    let tasks = magic == AGENT_TASKS_MAGIC;
+    let limits = magic == DEPENDENCY_LIMITS_MAGIC;
+    let tasks = limits || magic == AGENT_TASKS_MAGIC;
     let notices = tasks || magic == HISTORY_NOTICE_MAGIC;
     let copilot = notices || magic == AGENT_PROGRAM_MAGIC;
     let insights = copilot || magic == INSIGHTS_MAGIC;
@@ -907,6 +926,7 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
         secret_scan_mib: rocket_git::DEFAULT_SECRET_SCAN_MIB,
         dependency_warnings: true,
         dependency_before_push: false,
+        dependency_limits: Default::default(),
         row_height: f32::from_bits(r.u32()?),
         zoom: f32::from_bits(r.u32()?),
         sidebar_labels: true,
@@ -1184,9 +1204,23 @@ fn decode(bytes: &[u8]) -> io::Result<SavedState> {
     }
     if tasks {
         state.agent_tasks = crate::agents::brief::decode_saved(r.bytes()?)?;
-        if state.agent_tasks.is_empty() {
+        // Empty only ahead of v34's limits.
+        if state.agent_tasks.is_empty() && !limits {
             return Err(invalid());
         }
+    }
+    if limits {
+        let mut value = || r.u32().map(u64::from);
+        let chosen = crate::dependency_security::Limits {
+            files: value()? as usize,
+            file_mib: value()?,
+            total_mib: value()?,
+        };
+        // Written only when they differ from the defaults, and only within their ranges.
+        if !chosen.valid() || chosen == crate::dependency_security::Limits::default() {
+            return Err(invalid());
+        }
+        state.preferences.dependency_limits = chosen;
     }
     if !r.0.is_empty() {
         return Err(invalid());
@@ -1306,6 +1340,42 @@ mod scan_budget_tests {
         // A task without a name is never written.
         state.agent_tasks[0].name = " ".into();
         assert!(encode(&state).is_err());
+    }
+
+    #[test]
+    fn dependency_limits_roundtrip_as_v34_only_when_changed() {
+        use crate::{agents::{brief::Saved, model::Kind}, dependency_security::Limits};
+        let mut state = SavedState::default();
+        assert_ne!(&encode(&state).unwrap()[..MAGIC.len()], DEPENDENCY_LIMITS_MAGIC);
+        state.preferences.dependency_limits = Limits { files: 2048, file_mib: 64, total_mib: 512 };
+        let bytes = encode(&state).unwrap();
+        assert_eq!(&bytes[..MAGIC.len()], DEPENDENCY_LIMITS_MAGIC);
+        assert_eq!(decode(&bytes).unwrap(), state);
+        // v33's tasks come first, here none; an older version can't skip the limits.
+        let mut old = bytes.clone();
+        old[MAGIC.len() - 1] = 0x21;
+        assert!(decode(&old).is_err(), "custom limits cannot be silently ignored");
+        let mut trailing = bytes.clone();
+        trailing.push(0);
+        assert!(decode(&trailing).is_err());
+        assert!(decode(&bytes[..bytes.len() - 1]).is_err());
+        // Values outside their ranges, or the defaults, are not a record Rocket writes.
+        let at = bytes.len() - 12;
+        for values in [[0, 8, 64], [2049, 8, 64], [256, 0, 64], [256, 65, 512], [256, 8, 513], [256, 16, 8], [256, 8, 64]] {
+            let mut corrupt = bytes.clone();
+            for (i, value) in values.into_iter().enumerate() {
+                corrupt[at + i * 4..at + i * 4 + 4].copy_from_slice(&(value as u32).to_le_bytes());
+            }
+            assert!(decode(&corrupt).is_err(), "{values:?}");
+        }
+        // Saved tasks and closed notices stay with them.
+        state.agent_tasks = vec![Saved { name: "Fix with a test".into(), kind: Kind::Issue, words: "Fix issue #{number}.".into() }];
+        state.hidden_history_notices = [std::env::temp_dir().join("repository")].into();
+        assert_eq!(decode(&encode(&state).unwrap()).unwrap(), state);
+        state.preferences.dependency_limits.files = 0;
+        assert!(encode(&state).is_err());
+        state.preferences.dependency_limits = Limits::default();
+        assert_eq!(&encode(&state).unwrap()[..MAGIC.len()], AGENT_TASKS_MAGIC);
     }
 
     #[test]

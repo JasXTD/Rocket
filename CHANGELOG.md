@@ -12,6 +12,14 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Preferences → Security: **Total scan budget** is now a row of the Secret protection
+  card (Guard AI API keys scans with it too); Enter applies it, and until then the row
+  says which budget is in use. Dependency checks gains **Scan limits**: Files (256, up
+  to 2,048), Each file (8 MiB, up to 64 MiB) and All files (64 MiB, up to 512 MiB), used
+  by background scans and before-push checks. Scans past 256 files or 64 MiB run OSV in
+  groups no larger than that, a scan stopped by a limit says which one and what it
+  found, and each repository keeps a fingerprint of its last scan's files instead of the
+  files. The state file uses format v34 once a limit differs from its default.
 - Optional Windows Inno Setup packaging alongside the portable ZIP: per-user
   installation, shortcuts, a separate updater-compatible app folder and guarded
   uninstall. Packaging checks the exact verified payload for credential material.

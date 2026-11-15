@@ -1,12 +1,14 @@
 //! Snapshot-only offline scanning. Repository files are data, never configuration.
 #[path = "npm_coverage.rs"]
 mod npm_coverage;
+use super::limits::{Limits, MIB};
 use rocket_git::{CancellationToken, Error, OSV_VERSION, Result, osv_file_digest, run_offline_osv};
 use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     io::Read,
+    ops::Range,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -15,8 +17,18 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const FILE_LIMIT: u64 = 8 * 1024 * 1024;
-const TOTAL_LIMIT: usize = 64 * 1024 * 1024;
+/// rocket-git refuses an OSV run with more lockfiles than this.
+const FILES_PER_RUN: usize = 256;
+/// Lockfile bytes one run may take: a whole scan's default before Scan limits, so no
+/// run outgrows what OSV's fixed time, output and package caps were sized for.
+const BYTES_PER_RUN: u64 = 64 * MIB;
+/// Packages one OSV result may list.
+const PACKAGES_PER_RUN: usize = 50_000;
+/// Characters of `--lockfile` arguments one run may take. Windows allows a command line
+/// 32,767; the program, its fixed arguments and the configuration path need the rest.
+const CHARACTERS_PER_RUN: usize = 24_000;
+/// Words every scan-limit stop says, so the page can tell a limit from other failures.
+const LIMIT_WORDS: &str = "Scan limits allow";
 const SKIP: &[&str] = &[
     ".git",
     "node_modules",
@@ -66,6 +78,34 @@ pub struct Inventory {
     pub files: Vec<Input>,
     pub notes: Vec<String>,
 }
+impl Inventory {
+    pub fn ecosystems(&self) -> BTreeSet<String> {
+        self.files.iter().map(|f| f.ecosystem.clone()).collect()
+    }
+    /// Each file's path, ecosystem and SHA-256, with the coverage notes: what a result
+    /// is kept by, so only a running scan holds the files themselves.
+    pub fn fingerprint(&self) -> Result<Fingerprint> {
+        let mut files = Vec::with_capacity(self.files.len());
+        for file in &self.files {
+            files.push((file.path.clone(), file.ecosystem.clone(), rocket_git::sha256_bytes(&file.bytes)?));
+        }
+        Ok(Fingerprint { files, notes: self.notes.clone() })
+    }
+}
+/// See [`Inventory::fingerprint`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Fingerprint {
+    files: Vec<(PathBuf, String, String)>,
+    notes: Vec<String>,
+}
+impl Fingerprint {
+    pub fn ecosystems(&self) -> BTreeSet<String> {
+        self.files.iter().map(|f| f.1.clone()).collect()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.files.is_empty()
+    }
+}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Database {
     pub ecosystem: String,
@@ -94,7 +134,8 @@ pub struct Report {
 }
 #[derive(Clone)]
 pub struct Cached {
-    pub inventory: Inventory,
+    /// The files this result covers, by fingerprint.
+    pub inventory: Fingerprint,
     pub database: Vec<Database>,
     pub report: Arc<Report>,
 }
@@ -106,6 +147,31 @@ pub fn now() -> u64 {
 }
 fn invalid(message: &str) -> Error {
     Error::InvalidInput(message.into())
+}
+/// A scan limit stopped the scan before OSV ran. Every such message says
+/// "Scan limits allow", which [`stopped_at_limit`] looks for.
+pub(super) fn stop(message: String) -> Error {
+    debug_assert!(message.contains(LIMIT_WORDS));
+    Error::InvalidInput(message)
+}
+/// The scan stopped at one of the user's Scan limits, which the user can raise.
+pub fn stopped_at_limit(error: &Error) -> bool {
+    matches!(error, Error::InvalidInput(message) if message.contains(LIMIT_WORDS))
+}
+/// MiB to one decimal for a size over `limit` MiB, never shown as the limit itself.
+fn mib_over(bytes: u64, limit: u64) -> String {
+    let tenths = (bytes.saturating_mul(10).saturating_add(MIB / 2) / MIB).max(limit * 10 + 1);
+    if tenths.is_multiple_of(10) { (tenths / 10).to_string() } else { format!("{}.{}", tenths / 10, tenths % 10) }
+}
+fn shown_path(path: &Path) -> String {
+    clean(&path.to_string_lossy().replace('\\', "/"), 300)
+}
+fn count_stop(found: usize, limits: &Limits) -> Error {
+    stop(format!(
+        "{} dependency files found. {LIMIT_WORDS} {} files.",
+        crate::pages::number_text(found),
+        crate::pages::number_text(limits.files)
+    ))
 }
 fn io(action: &'static str, source: std::io::Error) -> Error {
     Error::Io { action, source }
@@ -143,7 +209,9 @@ fn manifest_ecosystem(name: &str) -> Option<&'static str> {
     }
 }
 
-pub fn inventory(root: &Path, cancel: &CancellationToken) -> Result<Inventory> {
+/// The working copy's dependency files within `limits`. Every file is found and measured
+/// first, so a stop says how many there are or how large, and nothing is read past them.
+pub fn inventory(root: &Path, limits: &Limits, cancel: &CancellationToken) -> Result<Inventory> {
     if !root.is_absolute() {
         return Err(invalid(
             "Open a local repository before scanning dependencies.",
@@ -153,11 +221,11 @@ pub fn inventory(root: &Path, cancel: &CancellationToken) -> Result<Inventory> {
         .canonicalize()
         .map_err(|e| io("read dependency root", e))?;
     let mut pending = vec![(root.clone(), 0usize)];
-    let mut files = Vec::new();
+    // Path, path in the repository, ecosystem and size, for each dependency file.
+    let mut found: Vec<(PathBuf, PathBuf, &'static str, u64)> = Vec::new();
     let mut notes = BTreeSet::new();
     let mut manifests = Vec::new();
     let mut entries = 0;
-    let mut total = 0;
     while let Some((folder, depth)) = pending.pop() {
         cancel.check()?;
         if depth > 24 {
@@ -203,39 +271,61 @@ pub fn inventory(root: &Path, cancel: &CancellationToken) -> Result<Inventory> {
             let Some((_, ecosystem)) = FORMATS.iter().find(|(file, _)| *file == name) else {
                 continue;
             };
-            if files.len() == 256 || metadata.len() > FILE_LIMIT {
-                return Err(invalid(
-                    "Dependency files exceed the scan limits (256 files, 8 MiB each).",
-                ));
-            }
-            let canonical = path
-                .canonicalize()
-                .map_err(|e| io("resolve dependency file", e))?;
-            if !canonical.starts_with(&root) {
-                return Err(invalid("Dependency file resolves outside the repository."));
-            }
-            let mut bytes = Vec::new();
-            fs::File::open(&path)
-                .map_err(|e| io("open dependency file", e))?
-                .take(FILE_LIMIT + 1)
-                .read_to_end(&mut bytes)
-                .map_err(|e| io("read dependency file", e))?;
-            if bytes.len() as u64 > FILE_LIMIT {
-                return Err(invalid("A dependency file grew beyond the scan limit."));
-            }
-            total += bytes.len();
-            if total > TOTAL_LIMIT {
-                return Err(invalid("Dependency files exceed the 64 MiB scan limit."));
-            }
-            if name == "requirements.txt" || name == "go.mod" {
-                notes.insert("Manifest-only dependencies may omit resolved or indirect versions; no package manager was run.".into());
-            }
-            files.push(Input {
-                path: relative,
-                ecosystem: (*ecosystem).into(),
-                bytes,
-            });
+            found.push((path, relative, *ecosystem, metadata.len()));
         }
+    }
+    found.sort_by(|a, b| a.1.cmp(&b.1));
+    if found.len() > limits.files {
+        return Err(count_stop(found.len(), limits));
+    }
+    if let Some((_, relative, _, size)) = found.iter().find(|f| f.3 > limits.file_bytes()) {
+        return Err(stop(format!(
+            "{} is {} MiB. {LIMIT_WORDS} {} MiB a file.",
+            shown_path(relative),
+            mib_over(*size, limits.file_mib),
+            limits.file_mib
+        )));
+    }
+    let sizes: u64 = found.iter().map(|f| f.3).sum();
+    if sizes > limits.total_bytes() {
+        return Err(stop(format!(
+            "Dependency files add up to {} MiB. {LIMIT_WORDS} {} MiB in all.",
+            mib_over(sizes, limits.total_mib),
+            limits.total_mib
+        )));
+    }
+    let mut files = Vec::with_capacity(found.len());
+    let mut total = 0u64;
+    for (path, relative, ecosystem, _) in found {
+        cancel.check()?;
+        let canonical = path
+            .canonicalize()
+            .map_err(|e| io("resolve dependency file", e))?;
+        if !canonical.starts_with(&root) {
+            return Err(invalid("Dependency file resolves outside the repository."));
+        }
+        let mut bytes = Vec::new();
+        fs::File::open(&path)
+            .map_err(|e| io("open dependency file", e))?
+            .take(limits.file_bytes() + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|e| io("read dependency file", e))?;
+        // Measured above; a file that grew since is not scanned part-way.
+        if bytes.len() as u64 > limits.file_bytes() {
+            return Err(invalid("A dependency file grew beyond the scan limit."));
+        }
+        total += bytes.len() as u64;
+        if total > limits.total_bytes() {
+            return Err(invalid("Dependency files grew beyond the scan limit."));
+        }
+        if matches!(relative.file_name().and_then(|n| n.to_str()), Some("requirements.txt" | "go.mod")) {
+            notes.insert("Manifest-only dependencies may omit resolved or indirect versions; no package manager was run.".into());
+        }
+        files.push(Input {
+            path: relative,
+            ecosystem: ecosystem.into(),
+            bytes,
+        });
     }
     Ok(complete_inventory(files, manifests, notes))
 }
@@ -244,15 +334,15 @@ pub fn inventory(root: &Path, cancel: &CancellationToken) -> Result<Inventory> {
 pub fn committed_inventory(
     repo: &rocket_git::Repository,
     source: &rocket_git::ObjectId,
+    limits: &Limits,
     cancel: &CancellationToken,
 ) -> Result<Inventory> {
     use rocket_git::TreeEntryKind;
     let mut pending = vec![(repo.repository_tree(source.as_str(), cancel)?, 0usize)];
-    let mut files = Vec::new();
+    let mut found = Vec::new();
     let mut manifests = Vec::new();
     let mut notes = BTreeSet::new();
     let mut entries = 0usize;
-    let mut total = 0usize;
     while let Some((listing, depth)) = pending.pop() {
         cancel.check()?;
         if depth > 24 {
@@ -298,25 +388,45 @@ pub fn committed_inventory(
             let Some((_, ecosystem)) = format else {
                 continue;
             };
-            if files.len() == 256 {
-                return Err(invalid("Dependency files exceed the 256-file scan limit."));
-            }
-            let bytes = repo
-                .tree_file_with_limit(&entry, FILE_LIMIT as usize, cancel)?
-                .bytes;
-            total += bytes.len();
-            if total > TOTAL_LIMIT {
-                return Err(invalid("Dependency files exceed the 64 MiB scan limit."));
-            }
-            if name == "requirements.txt" || name == "go.mod" {
-                notes.insert("Manifest-only dependencies may omit resolved or indirect versions; no package manager was run.".into());
-            }
-            files.push(Input {
-                path: relative,
-                ecosystem: (*ecosystem).into(),
-                bytes,
-            });
+            found.push((entry, relative, *ecosystem));
         }
+    }
+    found.sort_by(|a, b| a.1.cmp(&b.1));
+    if found.len() > limits.files {
+        return Err(count_stop(found.len(), limits));
+    }
+    let mut files = Vec::with_capacity(found.len());
+    let mut total = 0u64;
+    for (entry, relative, ecosystem) in found {
+        cancel.check()?;
+        // Git refuses a blob over the limit from its size, before reading it.
+        let bytes = match repo.tree_file_with_limit(&entry, limits.file_bytes() as usize, cancel) {
+            Ok(file) => file.bytes,
+            Err(Error::Unsupported(_)) => {
+                return Err(stop(format!(
+                    "{} is over {} MiB. {LIMIT_WORDS} {} MiB a file.",
+                    shown_path(&relative),
+                    limits.file_mib,
+                    limits.file_mib
+                )));
+            }
+            Err(error) => return Err(error),
+        };
+        total += bytes.len() as u64;
+        if total > limits.total_bytes() {
+            return Err(stop(format!(
+                "Dependency files add up to over {} MiB. {LIMIT_WORDS} {} MiB in all.",
+                limits.total_mib, limits.total_mib
+            )));
+        }
+        if matches!(relative.file_name().and_then(|n| n.to_str()), Some("requirements.txt" | "go.mod")) {
+            notes.insert("Manifest-only dependencies may omit resolved or indirect versions; no package manager was run.".into());
+        }
+        files.push(Input {
+            path: relative,
+            ecosystem: ecosystem.into(),
+            bytes,
+        });
     }
     Ok(complete_inventory(files, manifests, notes))
 }
@@ -353,10 +463,9 @@ fn complete_inventory(
 
 pub fn databases(
     cache: &Path,
-    inv: &Inventory,
+    ecosystems: &BTreeSet<String>,
     cancel: &CancellationToken,
 ) -> Result<Vec<Database>> {
-    let ecosystems: BTreeSet<_> = inv.files.iter().map(|i| &i.ecosystem).collect();
     let mut result = Vec::new();
     for ecosystem in ecosystems {
         cancel.check()?;
@@ -445,6 +554,7 @@ impl Drop for Scratch {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn scan(
     root: &Path,
     executable: &Path,
@@ -452,14 +562,21 @@ pub fn scan(
     work: &Path,
     previous: Option<&Cached>,
     force: bool,
+    limits: &Limits,
     cancel: &CancellationToken,
 ) -> Result<Cached> {
-    let inv = inventory(root, cancel)?;
+    let inv = inventory(root, limits, cancel)?;
     let cached = scan_inventory(inv, executable, cache, work, previous, force, cancel)?;
-    if inventory(root, cancel)? != cached.inventory {
-        return Err(invalid(
-            "Dependency files or advisory data changed during the scan. Scan again.",
-        ));
+    // What OSV saw must still be there. Any other stop now (a file added past a limit,
+    // one gone) means the files changed during the scan, not that a limit stopped it.
+    let changed = || invalid("Dependency files or advisory data changed during the scan. Scan again.");
+    let again = match inventory(root, limits, cancel) {
+        Ok(again) => again,
+        Err(Error::Cancelled) => return Err(Error::Cancelled),
+        Err(_) => return Err(changed()),
+    };
+    if again.fingerprint()? != cached.inventory {
+        return Err(changed());
     }
     Ok(cached)
 }
@@ -484,36 +601,56 @@ pub fn scan_inventory(
             "OSV-Scanner is unavailable. Choose the reviewed scanner in Security settings.",
         ));
     }
-    let db = databases(cache, &inv, cancel)?;
+    let ecosystems = inv.ecosystems();
+    let db = databases(cache, &ecosystems, cancel)?;
+    let fingerprint = inv.fingerprint()?;
     if !force
         && let Some(old) = previous
-        && old.inventory == inv
+        && old.inventory == fingerprint
         && old.database == db
     {
         return Ok(old.clone());
     }
     let scratch = Scratch::new(work)?;
     let copies = scratch.copy(&inv)?;
-    let output = run_offline_osv(executable, &scratch.path, cache, &copies, false, cancel)?;
-    if !matches!(output.code, Some(0 | 1)) {
-        return Err(invalid(if output.code == Some(128) {
-            "OSV found no package versions to check. Coverage is incomplete."
-        } else {
-            "OSV could not complete the offline scan. Check the dependency files and refresh advisory data."
-        }));
+    let sizes: Vec<u64> = inv.files.iter().map(|f| f.bytes.len() as u64).collect();
+    let runs = runs(&copies, &sizes);
+    let mut merge = Merge::new(&inv);
+    let mut without_packages = 0;
+    // One run after another; each keeps OSV's own time and output limits.
+    for run in &runs {
+        cancel.check()?;
+        let output = run_offline_osv(executable, &scratch.path, cache, &copies[run.clone()], false, cancel)?;
+        match output.code {
+            Some(0 | 1) => {}
+            // No package versions in this run's files: they produced no inventory.
+            Some(128) => {
+                without_packages += 1;
+                continue;
+            }
+            _ => {
+                return Err(invalid(
+                    "OSV could not complete the offline scan. Check the dependency files and refresh advisory data.",
+                ));
+            }
+        }
+        let added = merge.add(&output.json, &inv, &copies, run.clone())?;
+        if output.code == Some(0) && added > 0 || output.code == Some(1) && added == 0 {
+            return Err(invalid(
+                "OSV returned an inconsistent scan result; it is not considered complete.",
+            ));
+        }
+        if output.diagnostics {
+            merge.note("OSV emitted diagnostics; this result may be incomplete. Raw diagnostic text is not logged.");
+        }
     }
-    let mut report = parse(&output.json, &inv, &copies)?;
-    if output.code == Some(0) && !report.findings.is_empty()
-        || output.code == Some(1) && report.findings.is_empty()
-    {
+    if without_packages == runs.len() {
         return Err(invalid(
-            "OSV returned an inconsistent scan result; it is not considered complete.",
+            "OSV found no package versions to check. Coverage is incomplete.",
         ));
     }
-    if output.diagnostics {
-        report.notes.push("OSV emitted diagnostics; this result may be incomplete. Raw diagnostic text is not logged.".into());
-    }
-    if databases(cache, &inv, cancel)? != db {
+    let mut report = merge.finish(&inv)?;
+    if databases(cache, &ecosystems, cancel)? != db {
         return Err(invalid(
             "Dependency files or advisory data changed during the scan. Scan again.",
         ));
@@ -528,10 +665,37 @@ pub fn scan_inventory(
     }
     scratch.remove()?;
     Ok(Cached {
-        inventory: inv,
+        inventory: fingerprint,
         database: db,
         report: Arc::new(report),
     })
+}
+
+/// OSV's runs for these copies (of files `sizes` bytes long), in order: at most 256
+/// files and 64 MiB a run, and few enough characters that its command line fits. A scan
+/// within the old fixed limits is still one run.
+pub fn runs(copies: &[PathBuf], sizes: &[u64]) -> Vec<Range<usize>> {
+    debug_assert_eq!(copies.len(), sizes.len());
+    let mut runs = Vec::new();
+    let (mut start, mut characters, mut bytes) = (0, 0, 0);
+    for (index, (copy, size)) in copies.iter().zip(sizes).enumerate() {
+        // `--lockfile`, the `:` before the path, quotes and the spaces between.
+        let needed = copy.as_os_str().len() + 16;
+        if index > start
+            && (index - start == FILES_PER_RUN
+                || characters + needed > CHARACTERS_PER_RUN
+                || bytes + size > BYTES_PER_RUN)
+        {
+            runs.push(start..index);
+            (start, characters, bytes) = (index, 0, 0);
+        }
+        characters += needed;
+        bytes += size;
+    }
+    if start < copies.len() {
+        runs.push(start..copies.len());
+    }
+    runs
 }
 
 fn clean(text: &str, max: usize) -> String {
@@ -580,184 +744,223 @@ fn severity(score: Option<&Value>) -> String {
     .into()
 }
 
+/// One scan's OSV results, a run at a time.
 pub fn parse(bytes: &[u8], inv: &Inventory, copies: &[PathBuf]) -> Result<Report> {
-    let value: Value = serde_json::from_slice(bytes)
-        .map_err(|_| invalid("OSV returned invalid JSON; no clean result is available."))?;
-    let groups = value["results"]
-        .as_array()
-        .ok_or_else(|| invalid("OSV did not return a package inventory."))?;
-    if groups.len() > 256 || copies.len() != inv.files.len() {
-        return Err(invalid("OSV result exceeds the file limit."));
-    }
-    let mut report = Report {
-        packages: 0,
-        files: inv.files.len(),
-        findings: Vec::new(),
-        notes: inv.notes.clone(),
-        checked: 0,
-        oldest_database: 0,
-    };
-    let mut sources = BTreeSet::new();
-    for source in groups {
-        let path = string(&source["source"], "path")?;
-        let index = copies
-            .iter()
-            .position(|p| normalized(p) == normalized(Path::new(path)))
-            .ok_or_else(|| invalid("OSV returned a source outside the dependency snapshot."))?;
-        sources.insert(index);
-        let packages = source["packages"]
-            .as_array()
-            .ok_or_else(|| invalid("OSV returned an invalid inventory."))?;
-        report.packages += packages.len();
-        if report.packages > 50_000 {
-            return Err(invalid("OSV result exceeds 50,000 packages."));
+    let mut merge = Merge::new(inv);
+    merge.add(bytes, inv, copies, 0..copies.len())?;
+    merge.finish(inv)
+}
+
+/// OSV's results for one scan's files, gathered run by run into one report.
+pub struct Merge {
+    report: Report,
+    sources: BTreeSet<usize>,
+}
+impl Merge {
+    pub fn new(inv: &Inventory) -> Self {
+        Self {
+            report: Report {
+                packages: 0,
+                files: inv.files.len(),
+                findings: Vec::new(),
+                notes: inv.notes.clone(),
+                checked: 0,
+                oldest_database: 0,
+            },
+            sources: BTreeSet::new(),
         }
-        for p in packages {
-            let name = string(&p["package"], "name")?;
-            let version = p["package"]["version"].as_str().unwrap_or("");
-            let ecosystem = p["package"]["ecosystem"].as_str().unwrap_or("");
-            if version.is_empty() || ecosystem.is_empty() {
-                report
-                    .notes
-                    .push("Some package versions or ecosystems could not be identified.".into());
-            }
-            if p["vulnerabilities"].is_null() {
-                continue;
-            }
-            let vulnerabilities = p["vulnerabilities"]
-                .as_array()
-                .ok_or_else(|| invalid("OSV returned an invalid advisory list."))?;
-            let mut active = BTreeMap::new();
-            for advisory in vulnerabilities.iter().filter(|v| v["withdrawn"].is_null()) {
-                let id = string(advisory, "id")?;
-                if !safe_id(id) || active.insert(id, advisory).is_some() {
-                    return Err(invalid("OSV returned an invalid advisory identifier."));
-                }
-            }
-            let mut seen = BTreeSet::new();
-            let fallback: Vec<_> = active.keys().map(|id| json!({"ids":[id]})).collect();
-            let reported = if p["groups"].is_null() {
-                &fallback
-            } else {
-                p["groups"]
-                    .as_array()
-                    .ok_or_else(|| invalid("OSV returned invalid advisory groups."))?
-            };
-            let grouped: BTreeSet<_> = reported
+    }
+    fn note(&mut self, text: &str) {
+        self.report.notes.push(text.into());
+    }
+    /// The report once every run is in: packages from at least one file, and a note
+    /// when some file produced none.
+    pub fn finish(self, inv: &Inventory) -> Result<Report> {
+        let Self { mut report, sources } = self;
+        if report.packages == 0 {
+            return Err(invalid(
+                "No resolved packages were scanned; coverage is incomplete.",
+            ));
+        }
+        if sources.len() != inv.files.len() {
+            report
+                .notes
+                .push("Some dependency files produced no inventory; coverage is incomplete.".into());
+        }
+        report.notes.sort();
+        report.notes.dedup();
+        Ok(report)
+    }
+    /// One run's JSON, for the copies in `run`. Returns how many advisories it added.
+    pub fn add(&mut self, bytes: &[u8], inv: &Inventory, copies: &[PathBuf], run: Range<usize>) -> Result<usize> {
+        let Self { report, sources } = self;
+        let value: Value = serde_json::from_slice(bytes)
+            .map_err(|_| invalid("OSV returned invalid JSON; no clean result is available."))?;
+        let groups = value["results"]
+            .as_array()
+            .ok_or_else(|| invalid("OSV did not return a package inventory."))?;
+        if groups.len() > FILES_PER_RUN
+            || copies.len() != inv.files.len()
+            || run.start > run.end
+            || run.end > copies.len()
+        {
+            return Err(invalid("OSV result exceeds the file limit."));
+        }
+        let before = report.findings.len();
+        // Packages are counted per OSV result, as when one run took every file.
+        let mut listed = 0usize;
+        for source in groups {
+            let path = string(&source["source"], "path")?;
+            // Only this run's own copies; a path from another run is not its result.
+            let index = copies[run.clone()]
                 .iter()
-                .flat_map(|g| {
-                    g["ids"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .filter_map(Value::as_str)
-                })
-                .collect();
-            if active.keys().any(|id| !grouped.contains(id)) {
-                return Err(invalid(
-                    "OSV omitted an advisory from its groups; the result is incomplete.",
-                ));
+                .position(|p| normalized(p) == normalized(Path::new(path)))
+                .map(|i| run.start + i)
+                .ok_or_else(|| invalid("OSV returned a source outside the dependency snapshot."))?;
+            sources.insert(index);
+            let packages = source["packages"]
+                .as_array()
+                .ok_or_else(|| invalid("OSV returned an invalid inventory."))?;
+            report.packages += packages.len();
+            listed += packages.len();
+            if listed > PACKAGES_PER_RUN {
+                return Err(invalid("OSV result exceeds 50,000 packages."));
             }
-            for group in reported {
-                let ids: Vec<_> = group["ids"]
+            for p in packages {
+                let name = string(&p["package"], "name")?;
+                let version = p["package"]["version"].as_str().unwrap_or("");
+                let ecosystem = p["package"]["ecosystem"].as_str().unwrap_or("");
+                if version.is_empty() || ecosystem.is_empty() {
+                    report
+                        .notes
+                        .push("Some package versions or ecosystems could not be identified.".into());
+                }
+                if p["vulnerabilities"].is_null() {
+                    continue;
+                }
+                let vulnerabilities = p["vulnerabilities"]
                     .as_array()
-                    .ok_or_else(|| invalid("OSV returned an invalid advisory group."))?
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .filter(|id| active.contains_key(id))
-                    .collect();
-                if ids.is_empty() {
-                    continue;
+                    .ok_or_else(|| invalid("OSV returned an invalid advisory list."))?;
+                let mut active = BTreeMap::new();
+                for advisory in vulnerabilities.iter().filter(|v| v["withdrawn"].is_null()) {
+                    let id = string(advisory, "id")?;
+                    if !safe_id(id) || active.insert(id, advisory).is_some() {
+                        return Err(invalid("OSV returned an invalid advisory identifier."));
+                    }
                 }
-                if ids.iter().any(|id| !safe_id(id)) {
-                    return Err(invalid("OSV returned an invalid advisory identifier."));
-                }
-                let aliases: BTreeSet<_> = ids
+                let mut seen = BTreeSet::new();
+                let fallback: Vec<_> = active.keys().map(|id| json!({"ids":[id]})).collect();
+                let reported = if p["groups"].is_null() {
+                    &fallback
+                } else {
+                    p["groups"]
+                        .as_array()
+                        .ok_or_else(|| invalid("OSV returned invalid advisory groups."))?
+                };
+                let grouped: BTreeSet<_> = reported
                     .iter()
-                    .flat_map(|id| {
-                        std::iter::once(*id).chain(
-                            active[id]["aliases"]
-                                .as_array()
-                                .into_iter()
-                                .flatten()
-                                .filter_map(Value::as_str),
-                        )
+                    .flat_map(|g| {
+                        g["ids"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(Value::as_str)
                     })
-                    .filter(|s| safe_id(s))
-                    .map(str::to_owned)
                     .collect();
-                if !aliases.is_disjoint(&seen) {
-                    continue;
+                if active.keys().any(|id| !grouped.contains(id)) {
+                    return Err(invalid(
+                        "OSV omitted an advisory from its groups; the result is incomplete.",
+                    ));
                 }
-                seen.extend(aliases.iter().cloned());
-                let mut fixed = BTreeSet::new();
-                for id in &ids {
-                    for affected in active[id]["affected"].as_array().into_iter().flatten() {
-                        if affected["package"]["name"].as_str() != Some(name)
-                            || affected["package"]["ecosystem"].as_str() != Some(ecosystem)
-                        {
-                            continue;
-                        }
-                        for range in affected["ranges"].as_array().into_iter().flatten() {
-                            for event in range["events"].as_array().into_iter().flatten() {
-                                if let Some(v) = event["fixed"].as_str() {
-                                    fixed.insert(clean(v, 100));
+                for group in reported {
+                    let ids: Vec<_> = group["ids"]
+                        .as_array()
+                        .ok_or_else(|| invalid("OSV returned an invalid advisory group."))?
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .filter(|id| active.contains_key(id))
+                        .collect();
+                    if ids.is_empty() {
+                        continue;
+                    }
+                    if ids.iter().any(|id| !safe_id(id)) {
+                        return Err(invalid("OSV returned an invalid advisory identifier."));
+                    }
+                    let aliases: BTreeSet<_> = ids
+                        .iter()
+                        .flat_map(|id| {
+                            std::iter::once(*id).chain(
+                                active[id]["aliases"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .filter_map(Value::as_str),
+                            )
+                        })
+                        .filter(|s| safe_id(s))
+                        .map(str::to_owned)
+                        .collect();
+                    if !aliases.is_disjoint(&seen) {
+                        continue;
+                    }
+                    seen.extend(aliases.iter().cloned());
+                    let mut fixed = BTreeSet::new();
+                    for id in &ids {
+                        for affected in active[id]["affected"].as_array().into_iter().flatten() {
+                            if affected["package"]["name"].as_str() != Some(name)
+                                || affected["package"]["ecosystem"].as_str() != Some(ecosystem)
+                            {
+                                continue;
+                            }
+                            for range in affected["ranges"].as_array().into_iter().flatten() {
+                                for event in range["events"].as_array().into_iter().flatten() {
+                                    if let Some(v) = event["fixed"].as_str() {
+                                        fixed.insert(clean(v, 100));
+                                    }
                                 }
                             }
                         }
                     }
-                }
-                let advisory = active[ids[0]];
-                let mut level = severity(group.get("max_severity"));
-                if level == "Unknown" {
-                    level = match advisory["database_specific"]["severity"]
-                        .as_str()
-                        .unwrap_or("")
-                        .to_ascii_uppercase()
-                        .as_str()
-                    {
-                        "CRITICAL" => "Critical",
-                        "HIGH" => "High",
-                        "MODERATE" | "MEDIUM" => "Medium",
-                        "LOW" => "Low",
-                        _ => "Unknown",
-                    }
-                    .into();
-                }
-                if report.findings.len() == 5000 {
-                    return Err(invalid("OSV result exceeds 5,000 findings."));
-                }
-                report.findings.push(Finding {
-                    package: clean(name, 240),
-                    version: clean(version, 120),
-                    ecosystem: clean(ecosystem, 80),
-                    file: clean(&inv.files[index].path.to_string_lossy(), 300),
-                    ids: ids.into_iter().map(str::to_owned).collect(),
-                    severity: level,
-                    summary: clean(
-                        advisory["summary"]
+                    let advisory = active[ids[0]];
+                    let mut level = severity(group.get("max_severity"));
+                    if level == "Unknown" {
+                        level = match advisory["database_specific"]["severity"]
                             .as_str()
-                            .unwrap_or("Published security advisory"),
-                        600,
-                    ),
-                    fixed: fixed.into_iter().collect(),
-                });
+                            .unwrap_or("")
+                            .to_ascii_uppercase()
+                            .as_str()
+                        {
+                            "CRITICAL" => "Critical",
+                            "HIGH" => "High",
+                            "MODERATE" | "MEDIUM" => "Medium",
+                            "LOW" => "Low",
+                            _ => "Unknown",
+                        }
+                        .into();
+                    }
+                    if report.findings.len() == 5000 {
+                        return Err(invalid("OSV result exceeds 5,000 findings."));
+                    }
+                    report.findings.push(Finding {
+                        package: clean(name, 240),
+                        version: clean(version, 120),
+                        ecosystem: clean(ecosystem, 80),
+                        file: clean(&inv.files[index].path.to_string_lossy(), 300),
+                        ids: ids.into_iter().map(str::to_owned).collect(),
+                        severity: level,
+                        summary: clean(
+                            advisory["summary"]
+                                .as_str()
+                                .unwrap_or("Published security advisory"),
+                            600,
+                        ),
+                        fixed: fixed.into_iter().collect(),
+                    });
+                }
             }
         }
+        Ok(report.findings.len() - before)
     }
-    if report.packages == 0 {
-        return Err(invalid(
-            "No resolved packages were scanned; coverage is incomplete.",
-        ));
-    }
-    if sources.len() != inv.files.len() {
-        report
-            .notes
-            .push("Some dependency files produced no inventory; coverage is incomplete.".into());
-    }
-    report.notes.sort();
-    report.notes.dedup();
-    Ok(report)
 }
 
 /// Downloads only ecosystem-wide public data using a synthetic inventory. No repository

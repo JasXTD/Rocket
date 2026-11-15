@@ -99,7 +99,7 @@ impl SecretProtectionFailure {
     }
     pub fn guidance(&self) -> &'static str {
         if self.kind == SecretKind::Incomplete {
-            "The safety scan could not finish. Inspect missing objects, repository size and scan limits. For a total-budget refusal, increase Total scan budget in Preferences > Security and retry; per-object and time limits still apply. No commit or push process was started. Do not bypass protection or retry through another tool."
+            "The safety scan could not finish. Inspect missing objects, repository size and scan limits. For a total-budget refusal, increase Total scan budget under Secret protection in Preferences > Security and retry; per-object and time limits still apply. No commit or push process was started. Do not bypass protection or retry through another tool."
         } else {
             "Remove the secret or environment file from the staged snapshot and every commit being published, then retry. Deleting it only in the latest commit is insufficient. Keep secrets outside Git and use a placeholder-only .env.example. Revoke exposed credentials. Do not bypass protection or retry through another tool."
         }
