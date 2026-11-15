@@ -24,6 +24,23 @@ test('private keys in ordinary or escaped content and provider tokens are refuse
   assert.deepEqual(secretKinds(Buffer.from('AK'+'IA'+crypto.randomBytes(8).toString('hex').toUpperCase())),['aws_access_key']);
 });
 
+test('OpenAI keys require their complete fingerprint, not adjacent compiled labels',()=>{
+  const generated=n=>crypto.randomBytes(n).toString('base64url').slice(0,n);
+  for(const prefix of ['proj','svcacct','admin']) {
+    // Linkers may pack a key-format prefix directly beside unrelated constants.
+    const labels=['branch','request','worktree','status','record','provider','arguments','changes'].join('');
+    assert.deepEqual(secretKinds(Buffer.from(['sk',prefix,labels].join('-'))),[]);
+    for(const before of [58,74])for(const after of [58,74]) {
+      const key=['sk',prefix,generated(before)+'T3BlbkFJ'+generated(after)].join('-');
+      assert.deepEqual(secretKinds(Buffer.from(key)),['ai_provider_token']);
+      assert.deepEqual(secretKinds(Buffer.from(JSON.stringify({key}))),['ai_provider_token']);
+      assert.deepEqual(secretKinds(Buffer.from(key+'x')),[]);
+    }
+  }
+  const legacy='sk-'+crypto.randomBytes(10).toString('hex')+'T3BlbkFJ'+crypto.randomBytes(10).toString('hex');
+  assert.deepEqual(secretKinds(Buffer.from(legacy)),['ai_provider_token']);
+});
+
 test('development folders, keys and profiles are never package inputs',()=>{
   for(const name of ['.git/config','docs/.ssh/config','target/release/x','work/result.json','.env','id_ed25519','identity.pfx','settings.bin'])assert(sensitivePath(name),name);
   for(const name of ['rocket.exe','docs/Git.md','git/2.56.0/cmd/git.exe','runtime/README.md'])assert(!sensitivePath(name),name);

@@ -244,6 +244,7 @@ mod tests {
                 let backend = Backend::discover(&fixture.root.join("logs")).unwrap();
                 let record = Record {
                     id: 1,
+                    origin: None,
                     tracking: false, approval: None, conversation: None,
                     attention: false, last_activity: Default::default(),
                     name: "policy fixture".into(),
@@ -295,6 +296,7 @@ mod tests {
                 }
                 let backend = Backend::discover(&fixture.root.join("logs")).unwrap();
                 let record = Record {
+                    origin: None,
                     tracking:false, conversation:None, approval:None,attention:false,last_activity:Default::default(),
                     id: 1,
                     name: "swap fixture".into(),
@@ -386,6 +388,7 @@ mod tests {
                 let plan = preview(
                     &backend,
                     Record {
+                        origin: None,
                         tracking:false, conversation:None, approval:None,attention:false,last_activity:Default::default(),
                         id: 1,
                         name: "setup fixture".into(),

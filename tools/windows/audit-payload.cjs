@@ -25,7 +25,11 @@ function secretKinds(bytes) {
   }
   if(/PuTTY-User-Key-File-[23]:[^\r\n]+[\s\S]{0,16384}Private-Lines:\s*[1-9]/.test(text)) kinds.push('putty_private_key');
   if(/\bgh[pousr]_[A-Za-z0-9]{36}\b|\bgithub_pat_[A-Za-z0-9_]{60,255}\b/.test(text))kinds.push('github_token');
-  if(/\bsk-(?:proj|svcacct|ant-api\d+)-[A-Za-z0-9_-]{32,512}\b/.test(text))kinds.push('ai_provider_token');
+  // As in rocket-git's guard, OpenAI keys have a complete payload and embedded
+  // fingerprint. A linker can place a format prefix beside ordinary labels;
+  // matching an arbitrary run after that prefix mistakes code for a credential.
+  const openai=/\bsk-(?:proj|svcacct|admin)-(?:[A-Za-z0-9_-]{58}|[A-Za-z0-9_-]{74})T3BlbkFJ(?:[A-Za-z0-9_-]{58}|[A-Za-z0-9_-]{74})(?![A-Za-z0-9_-])|\bsk-[A-Za-z0-9]{20}T3BlbkFJ[A-Za-z0-9]{20}(?![A-Za-z0-9_-])/;
+  if(openai.test(text)||/\bsk-ant-(?:api|admin)\d+-[A-Za-z0-9_-]{32,512}\b/.test(text))kinds.push('ai_provider_token');
   // AWS publishes example IDs with this suffix; repeated filler is not a credential.
   for(const m of text.matchAll(/\b(?:AKIA|ASIA|ABIA|ACCA)([A-Z0-9]{16})\b/g))
     if(!m[1].endsWith('EXAMPLE') && !/^(.)\1{15}$/.test(m[1])){kinds.push('aws_access_key');break;}
