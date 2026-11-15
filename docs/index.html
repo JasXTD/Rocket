@@ -168,6 +168,7 @@
     <div>
       <ul class="ticks flush"><li>Your checkout's changes stay where they are; each session starts from the commit you pick</li><li>Saved sessions never start by themselves</li><li>Removing a worktree checks for uncommitted work and keeps the branch</li><li>Uses the tools you installed and their own logins. Worktrees separate files, not permissions</li></ul>
       <p>A GitHub Copilot CLI preset. Sessions grouped by what needs you, with a badge when an agent asks for permission or finishes a turn. Resume conversation reopens the exact conversation, and Integrate merges an agent's committed work through the usual merge review.</p>
+      <p><span class="soon">Next release</span>Start a session from an open issue, from a pull request to address its review comments or fix its failing checks, or from a failed CI run. The host's text is quoted as a report, not as instructions, and waits in the session's input until you choose Send.</p>
       <p class="small">Pictured: the Agents tab in 0.92.4. The sessions run a stand-in test program instead of an agent, and the changes in the worktree are scripted.</p>
     </div>
   </div>
@@ -191,7 +192,7 @@
     <p>See every SSH key in one list, unlock one in ssh-agent, or make one repository use only one key. Existing keys and SSH config stay in place.</p>
   </div>
   <div>
-    <ul class="hosts"><li>GitHub</li><li>GitHub Enterprise Server</li><li>GitLab</li><li>Gitea</li><li>Forgejo</li><li>Bitbucket Cloud</li><li>Bitbucket Server/Data Center</li><li>Azure DevOps Services</li><li>Azure DevOps Server</li></ul>
+    <ul class="hosts"><li>GitHub</li><li>GitHub Enterprise Server</li><li>GitLab</li><li>Gitea</li><li>Forgejo<span class="soon">Next release</span></li><li>Bitbucket Cloud</li><li>Bitbucket Server/Data Center</li><li>Azure DevOps Services</li><li>Azure DevOps Server</li></ul>
     <p>Browse pull requests and supported issue lists, and create a PR or MR after a review. Leave inline review comments, reply to and resolve discussions, and merge once the reviewed head and base are checked again. CI marks show on commits and branches, with an Actions page and Re-run failed jobs where the host supports it.</p>
     <p class="small">What each host can do differs. Live acceptance for hosts other than github.com is still unverified. <a href="https://github.com/JasXTD/Rocket/blob/main/HOSTING.md">Hosting details</a></p>
   </div>
@@ -212,13 +213,13 @@
     <div><h3>People</h3><p>Who changed which folders, and who worked on the same files.</p></div>
     <div><h3>Activity</h3><p>A commit timeline, contributors, weekday and hour charts, and a treemap of the files that change most.</p></div>
   </div>
-  <p class="small">Statistics becomes Insights, and Code gains Modules.</p>
   <div class="four">
     <div><h3>Modules</h3><p>One Rust package's modules and which uses which, read from the committed files without compiling.</p></div>
     <div><h3>Pull requests</h3><p>Opened, merged, median merge time and open age from your hosting account, with weekly trends against the previous period.</p></div>
     <div><h3>Reviews</h3><p>Review requests still waiting, and the median time to a first review on GitHub, GitHub Enterprise Server, Gitea and Forgejo.</p></div>
     <div><h3>Saved views</h3><p>Each repository keeps its filters. Export what you see as CSV or JSON after a review.</p></div>
   </div>
+  <p><span class="soon">Next release</span>Modules also reads JavaScript, TypeScript, Python and Go. Folders becomes a code map: arrows show which files use which, and cards can be coloured by kind, commit activity, owner or what changed.</p>
   <p class="small">Pull request numbers come from a loaded sample of up to 500 and name what's missing instead of estimating it. <a href="https://github.com/JasXTD/Rocket/blob/main/docs/Insights.md">How Insights counts</a></p>
 </section>
 
@@ -252,7 +253,7 @@
     <div><h3>Bisect</h3><p>Find the commit that introduced a problem, by hand or automated.</p></div>
     <div><h3>Faster history</h3><p>Write Git's commit-graph on request, so History orders a large repository's commits several times faster.</p></div>
     <div><h3>Many repositories</h3><p>Folders, nested workspaces and tabs. Scan a folder, see every status, then Fetch all or Pull all.</p></div>
-    <div><h3>Explore</h3><p>Search GitHub, GitLab or Gitea, or paste an address, look around read-only, then keep or discard the clone.</p></div>
+    <div><h3>Explore</h3><p>Search GitHub or paste an address, look around read-only, then keep or discard the clone.</p><p><span class="soon">Next release</span>Search GitLab, Gitea and Codeberg too.</p></div>
     <div><h3>Terminal</h3><p>PowerShell, Git Bash or Command Prompt on Windows, zsh on macOS, your login shell on Linux, or your own.</p></div>
     <div><h3>Command palette</h3><p>Ctrl+K finds commands, branches and views.</p></div>
     <div><h3>Languages</h3><p>English and ten preview translations, picked from your system language or in Preferences.</p></div>
