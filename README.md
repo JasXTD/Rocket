@@ -411,7 +411,8 @@ Official comparison sources:
   [Insights](docs/Insights.md).
 - [CLI](CLI.md), [Hosting](HOSTING.md), [Extensions](docs/wiki/Integrations.md) and the
   [extension API](INTEGRATIONS.md).
-- [Security](SECURITY.md), [Dependencies](DEPENDENCIES.md) and the [Changelog](CHANGELOG.md).
+- [Privacy policy](PRIVACY.md), [Security](SECURITY.md), [Dependencies](DEPENDENCIES.md)
+  and the [Changelog](CHANGELOG.md).
 
 ## Contributing
 

@@ -208,6 +208,20 @@ h2{margin:14px 0 0;font-size:clamp(30px,3.3vw,44px);line-height:1.1;font-weight:
 .foot .brand img{width:24px;height:24px}
 .sp{flex:1}
 
+/* Privacy policy uses the same colours and navigation as the product pages. */
+.policy{max-width:820px;margin-inline:auto;padding:64px 0 80px;overflow-wrap:anywhere}
+.policy h1{font-size:clamp(36px,4.5vw,58px);line-height:1.12;letter-spacing:-.04em;margin:0 0 18px}
+.policy h2{font-size:clamp(23px,2.7vw,29px);line-height:1.25;letter-spacing:-.02em;margin:44px 0 16px;scroll-margin-top:100px}
+.policy p,.policy li{line-height:1.7;color:var(--soft)}
+.policy p{margin:16px 0}
+.policy li{margin:8px 0}
+.policy ul{padding-left:24px}
+.policy code{font-size:.9em;color:var(--text);background:var(--raised);border-radius:4px;padding:2px 5px}
+.policy-index{margin:28px 0;padding:4px 20px;background:var(--panel);border:1px solid var(--border);border-radius:10px}
+.policy-index summary{min-height:48px;align-content:center;cursor:pointer;color:var(--text);font-weight:600}
+.policy-index ul{margin:0 0 16px;padding-left:20px}
+.policy-index a{display:inline-block;min-height:36px;padding-block:4px}
+
 /* page not found */
 .nf{padding:96px 0 120px}
 .nf h1{font-size:clamp(40px,5vw,68px);margin:12px 0 0}

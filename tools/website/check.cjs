@@ -6,7 +6,13 @@ const project = path.resolve(__dirname, '../..'), docs = path.join(project, 'doc
 const GITHUB = 'https://github.com/JasXTD/Rocket', SITE = 'https://jasxtd.github.io/Rocket/';
 const VERSION = fs.readFileSync(path.join(project, 'Cargo.toml'), 'utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"/)[1];
 const releaseAssets = new Set(['Setup-x64.exe', 'windows-x64.zip', 'linux-x64.tar.gz', 'macos-arm64-preview.zip', 'macos-x64-preview.zip'].map(name => `Rocket-${VERSION}-${name}`));
-const pages = ['index.html', 'get.html', '404.html'];
+const pages = ['index.html', 'get.html', '404.html', 'privacy.html'];
+// These are navigable policy/contact links, never permission to load remote assets.
+const policyLinks = new Set([
+  GITHUB + '/issues',
+  'https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement',
+  'https://privacy.microsoft.com/en-us/privacystatement'
+]);
 const problems = [], seen = { links: 0, images: 0, github: 0 };
 const fail = (page, text) => problems.push(`${page}: ${text}`);
 const read = page => fs.readFileSync(path.join(docs, page), 'utf8');
@@ -20,9 +26,16 @@ for (const page of pages) {
   if (!/<title>[^<]+<\/title>/.test(html)) fail(page, 'no title');
   if (!/<meta name="viewport"/.test(html)) fail(page, 'no viewport');
 
-  for (const [, name, value] of html.matchAll(/\s(href|src|poster)="([^"]*)"/g)) {
+  for (const [tag, element] of html.matchAll(/<([a-z][a-z0-9-]*)\b[^>]*>/gi)) {
+   const attributes = attrs(tag);
+   if (element === 'script' && !attributes.src) fail(page, 'inline scripts are not allowed; use the checked local script');
+   for (const [name, value] of Object.entries(attributes).filter(([name]) => ['href', 'src', 'poster'].includes(name))) {
     seen.links++;
     if (/^https?:/.test(value)) {
+      if (name !== 'href' || (element !== 'a' && !(element === 'link' && attributes.rel === 'canonical'))) {
+        fail(page, `loads an external resource: ${value}`); continue;
+      }
+      if (element === 'a' && policyLinks.has(value)) continue;
       if (value === GITHUB || value === GITHUB + '.git') continue;
       const release = GITHUB + '/releases/';
       const download = release + `download/v${VERSION}/`;
@@ -51,6 +64,7 @@ for (const page of pages) {
     const target = !file ? page : file === './' ? 'index.html' : file;
     if (!fs.existsSync(path.join(docs, target))) { fail(page, `missing file: ${value}`); continue; }
     if (anchor && target.endsWith('.html') && !ids(target).has(anchor)) fail(page, `missing anchor: ${value}`);
+   }
   }
 
   for (const [tag] of html.matchAll(/<img\b[^>]*>/g)) {
@@ -84,9 +98,22 @@ const personal = [os.homedir(), os.homedir().replaceAll('\\', '/'), os.userInfo(
 for (const name of text) {
   const body = fs.readFileSync(path.join(docs, name), 'utf8');
   for (const word of personal) if (body.includes(word)) fail(name, `names something personal: ${word}`);
-  if (/fonts\.googleapis|analytics|gtag|cdn\./i.test(body)) fail(name, 'loads something from elsewhere');
+  // Policy prose can discuss analytics; only executable/style content is checked here.
+  // HTML resource URLs are checked by element above, independently of allowed links.
+  if (/\.(css|js)$/.test(name) && /fonts\.googleapis|analytics|gtag|cdn\./i.test(body)) fail(name, 'loads something from elsewhere');
 }
 if (!fs.existsSync(path.join(docs, '.nojekyll'))) fail('docs', 'no .nojekyll');
+
+// The same user-facing policy is shipped as Markdown and a script-independent web page.
+const policy = fs.readFileSync(path.join(project, 'PRIVACY.md'), 'utf8');
+const webPolicy = read('privacy.html').match(/<article class="policy" id="policy-text">([\s\S]*?)<\/article>/)?.[1];
+const normalize = text => text.replace(/\s+/g, ' ').trim();
+const plainPolicy = normalize(policy.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/^#{1,6} /gm, '').replace(/^- /gm, '').replace(/\*\*|`/g, ''));
+const plainWeb = normalize((webPolicy || '').replace(/<nav\b[\s\S]*?<\/nav>/g, '').replace(/<\/?(?:p|h[1-6]|li|ul)\b[^>]*>/g, ' ').replace(/<[^>]*>/g, '').replaceAll('&quot;', '"').replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&amp;', '&'));
+if (plainPolicy !== plainWeb) fail('privacy.html', 'policy text differs from PRIVACY.md');
+if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}|mailto:/i.test(policy)) fail('PRIVACY.md', 'contains an email address');
+for (const page of pages) if (!/<footer\b[\s\S]*href="privacy.html"/.test(read(page))) fail(page, 'missing privacy footer link');
+if (!read('sitemap.xml').includes(SITE + 'privacy.html')) fail('sitemap.xml', 'missing privacy page');
 
 let bytes = 0;
 for (const name of media) bytes += fs.statSync(path.join(docs, 'media', name)).size;

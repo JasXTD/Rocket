@@ -1,5 +1,7 @@
 # Security
 
+For data handling, connected services and retention, see the [privacy policy](PRIVACY.md).
+
 ## Reporting a vulnerability
 
 Please report security problems privately, not in a public issue. On GitHub, open the
