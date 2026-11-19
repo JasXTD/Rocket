@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Pick an installed Git for native release tests using the same gate as Rocket.
+# Prefer installed Git, otherwise build the Defender-scanned source in runner temp.
 set -euo pipefail
+umask 077
 cd "$(dirname "$0")/../.."
 probe="${RUNNER_TEMP:?Expected a disposable runner}/rocket-check-git-version"
 rustc --edition=2024 -o "$probe" - <<'RUST'
@@ -30,5 +31,23 @@ for git in /opt/homebrew/bin/git /usr/local/bin/git \
     exit 0
   fi
 done
-echo '::error::None of the installed Homebrew or Xcode Git executables passed Rocket’s security version check.' >&2
-exit 1
+
+[[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_OS:-} == macOS && ${ROCKET_MACOS_SANDBOX_DISPOSABLE_USER:-} == 1 ]]
+read -r expected archive < tools/macos/release-git.sha256
+if [[ ! $expected =~ ^[0-9a-f]{64}$ || $archive != git-2.56.1.tar.gz || ${ROCKET_DEFENDER_SCANNED_GIT_SHA:-} != "$expected" ]]; then
+  echo '::error::Building Git requires a successful Defender scan of the pinned source in this run.' >&2
+  exit 1
+fi
+work=$(mktemp -d "$RUNNER_TEMP/rocket-release-git.XXXXXXXX")
+prefix="$work/prefix"
+cd "$work"
+curl --proto '=https' --fail --silent --show-error --max-time 120 --output "$archive" \
+  "https://www.kernel.org/pub/software/scm/git/$archive"
+printf '%s  %s\n' "$expected" "$archive" | shasum -a 256 --check --status
+tar -xzf "$archive"
+make -C git-2.56.1 -j3 prefix="$prefix" NO_GETTEXT=YesPlease NO_TCLTK=YesPlease install
+version=$("$prefix/bin/git" --version)
+[[ "$version" == 'git version 2.56.1' ]]
+"$probe" "$version"
+printf '%s\n' "$prefix/bin" >> "${GITHUB_PATH:?Expected the job path file}"
+echo 'Built and verified Git 2.56.1 for this disposable runner.'

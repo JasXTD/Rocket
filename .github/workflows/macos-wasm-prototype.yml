@@ -64,9 +64,25 @@ jobs:
           retention-days: 1
           compression-level: 0
 
+  scan_git:
+    if: ${{ inputs.checks == 'release-package' && github.event.repository.private == false }}
+    runs-on: windows-2025
+    timeout-minutes: 8
+    outputs:
+      sha256: ${{ steps.scan.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Verify and scan the pinned Git source with Microsoft Defender
+        id: scan
+        shell: pwsh
+        run: ./tools/windows/Scan-MacReleaseGit.ps1
+
   mac:
-    needs: guest
-    if: ${{ inputs.checks != 'release-package' || github.event.repository.private == false }}
+    needs: [guest, scan_git]
+    if: ${{ !cancelled() && needs.guest.result == 'success' && (inputs.checks != 'release-package' || (github.event.repository.private == false && needs.scan_git.result == 'success')) }}
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-15' }}
     timeout-minutes: ${{ inputs.checks == 'release-package' && (inputs.architecture == 'x64' && 50 || 30) || inputs.checks == 'complete-package' && 8 || 15 }}
     env:
@@ -109,9 +125,11 @@ jobs:
           node tools/prototypes/macos-lua-wasm/prepare-deps.cjs "$RUNNER_TEMP/prototype-deps" host
           unzip -p "$RUNNER_TEMP/guest.zip" guest.wasm > "$RUNNER_TEMP/guest.wasm"
           test "$(shasum -a 256 "$RUNNER_TEMP/guest.wasm" | cut -d ' ' -f1)" = "$EXPECTED_GUEST_SHA"
-      - name: Select a security-patched installed Git for native release tests
+      - name: Prepare a security-patched Git for native release tests
         if: ${{ inputs.checks == 'release-package' }}
         shell: bash
+        env:
+          ROCKET_DEFENDER_SCANNED_GIT_SHA: ${{ needs.scan_git.outputs.sha256 }}
         run: bash tools/macos/select-release-git.sh
       - name: Run only the selected Lua checks
         timeout-minutes: ${{ inputs.checks == 'release-package' && (inputs.architecture == 'x64' && 45 || 25) || 15 }}
