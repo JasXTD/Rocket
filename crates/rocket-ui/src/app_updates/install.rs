@@ -1,5 +1,6 @@
 //! Replace a verified packaged directory after the old process exits. Keep its backup.
 use super::package::*;
+use super::progress::{FilePhase, RestartProgress};
 use rocket_git::{CancellationToken, Result};
 use serde_json::{Value, json};
 use std::{
@@ -107,12 +108,13 @@ fn file_map(value: &Value) -> Result<BTreeMap<String, String>> {
     }
     Ok(map)
 }
-pub fn handoff(
+pub(super) fn handoff(
     prepared: &Prepared,
     target: &Path,
     helper: &Path,
     repositories: &[PathBuf],
     cancel: &CancellationToken,
+    progress: &RestartProgress,
 ) -> Result<Handoff> {
     super::windows_package::require_unmanaged()?;
     cancel.check()?;
@@ -127,8 +129,8 @@ pub fn handoff(
     plain(&prepared.job)?;
     #[cfg(unix)]
     rocket_git::local_storage::check_private(&prepared.job).map_err(io)?;
-    let old = installed(target, cancel)?;
-    if manifest(&prepared.job.join("bundle"), prepared.version, cancel)? != prepared.files {
+    let old = installed(target, cancel, Some((progress, FilePhase::CheckInstalled)))?;
+    if manifest(&prepared.job.join("bundle"), prepared.version, cancel, Some((progress, FilePhase::CheckUpdate)))? != prepared.files {
         return Err(error("Prepared update changed. Download it again."));
     }
     let parent = target
@@ -168,6 +170,7 @@ pub fn handoff(
             &stage,
             &prepared.files,
             cancel,
+            Some((progress, FilePhase::Stage)),
         )?;
         #[cfg(target_os = "macos")]
         rocket_git::app_update::macos::verify_app(&stage, Some(prepared.version), cancel)?;
@@ -350,8 +353,8 @@ fn apply_verified(path: &Path, verify: impl Fn(&Path, Option<rocket_git::app_upd
         plain(&stage)?;
         plain(&backup)?;
         if backup.exists()
-            || inventory(&target, &token)? != old
-            || inventory(&stage, &token)? != new
+            || inventory(&target, &token, None)? != old
+            || inventory(&stage, &token, None)? != new
         {
             return Err(error(
                 "Installation or prepared files changed. Nothing was replaced.",
@@ -432,7 +435,7 @@ fn apply_verified(path: &Path, verify: impl Fn(&Path, Option<rocket_git::app_upd
         && parent_exited
         && rollback_ok
         && digest(&target.join(ENTRYPOINT), &token).is_ok_and(|sha| sha == old[ENTRYPOINT])
-        && (!cfg!(target_os = "macos") || (inventory(&target, &token).is_ok_and(|files| files == old) && verify(&target, None, &token).is_ok()))
+        && (!cfg!(target_os = "macos") || (inventory(&target, &token, None).is_ok_and(|files| files == old) && verify(&target, None, &token).is_ok()))
     {
         let _ = command(&target.join(ENTRYPOINT))
             .args(&repos)
@@ -483,7 +486,7 @@ mod tests {
         let chmod = |path: &Path, mode| fs::set_permissions(path, fs::Permissions::from_mode(mode)).unwrap();
         for unsafe_folder in [&job, &parent] {
             chmod(unsafe_folder, 0o777);
-            let refused = handoff(&prepared, &target, &helper, &[], &CancellationToken::new())
+            let refused = handoff(&prepared, &target, &helper, &[], &CancellationToken::new(), &RestartProgress::default())
                 .err().expect("unsafe job must not launch a helper");
             assert!(matches!(refused, rocket_git::Error::Io { source, .. } if source.kind() == std::io::ErrorKind::PermissionDenied));
             let refused = apply(&plan).unwrap_err();

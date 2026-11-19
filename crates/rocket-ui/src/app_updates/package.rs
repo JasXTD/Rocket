@@ -1,8 +1,9 @@
 //! Release archives are data. No script or executable from a download runs here.
+use super::progress::{FilePhase, RestartProgress};
 use rocket_git::{
     CancellationToken, Error, Result,
     app_update::{AppRelease, UpdateClient, UpdateVersion},
-    osv_file_digest,
+    osv_file_digest, sha256_reader,
 };
 use serde_json::{Value, json};
 use std::{
@@ -10,10 +11,7 @@ use std::{
     fs,
     io::Read,
     path::{Component, Path, PathBuf},
-    sync::{
-        Arc,
-        atomic::{AtomicU8, Ordering},
-    },
+    sync::atomic::{AtomicBool, AtomicU8, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -73,6 +71,17 @@ pub fn io(source: std::io::Error) -> Error {
         source,
     }
 }
+fn reject_link(metadata: &fs::Metadata) -> Result<()> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if metadata.file_attributes() & 0x400 != 0 {
+            return Err(error("Update path contains a link or reparse point."));
+        }
+    }
+    if metadata.file_type().is_symlink() { return Err(error("Update path contains a link.")); }
+    Ok(())
+}
 pub fn plain(path: &Path) -> Result<()> {
     if !path.is_absolute()
         || path
@@ -85,18 +94,7 @@ pub fn plain(path: &Path) -> Result<()> {
     }
     for part in path.ancestors() {
         match fs::symlink_metadata(part) {
-            Ok(m) => {
-                #[cfg(windows)]
-                {
-                    use std::os::windows::fs::MetadataExt;
-                    if m.file_attributes() & 0x400 != 0 {
-                        return Err(error("Update path contains a link or reparse point."));
-                    }
-                }
-                if m.file_type().is_symlink() {
-                    return Err(error("Update path contains a link."));
-                }
-            }
+            Ok(m) => reject_link(&m)?,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(io(e)),
         }
@@ -149,24 +147,72 @@ pub fn digest(path: &Path, cancel: &CancellationToken) -> Result<String> {
     plain(path)?;
     osv_file_digest(path, MAX_FILE, cancel)
 }
-pub fn inventory(root: &Path, cancel: &CancellationToken) -> Result<BTreeMap<String, String>> {
-    plain(root)?;
+type FileCounter<'a> = Option<(&'a RestartProgress, FilePhase)>;
+
+// Each worker owns a disjoint slice. Collect and bound the inventory before
+// starting I/O, join every worker before returning, and count only successful files.
+fn process_files<T: Send>(
+    files: &mut [T],
+    cancel: &CancellationToken,
+    counter: FileCounter<'_>,
+    operation: impl Fn(&mut T) -> Result<()> + Sync,
+) -> Result<()> {
+    if let Some((progress, phase)) = counter {
+        progress.begin(phase, files.len());
+    }
+    let failed = AtomicBool::new(false);
+    let work = |chunk: &mut [T]| {
+        for file in chunk {
+            if failed.load(Ordering::Relaxed) { break; }
+            if let Err(e) = cancel.check().and_then(|()| operation(file)) {
+                failed.store(true, Ordering::Relaxed);
+                return Err(e);
+            }
+            if let Some((progress, _)) = counter { progress.file_done(); }
+        }
+        Ok(())
+    };
+    // Small packages do not need a worker pool. Four is also the limit used by
+    // bundled Git verification, keeping simultaneous disk reads and buffers bounded.
+    let workers = std::thread::available_parallelism().map_or(1, usize::from)
+        .min(4).min(files.len().div_ceil(64));
+    if workers <= 1 { return work(files); }
+    let chunk_size = files.len().div_ceil(workers);
+    std::thread::scope(|scope| {
+        let mut jobs = Vec::with_capacity(workers);
+        for chunk in files.chunks_mut(chunk_size) {
+            let job = std::thread::Builder::new().spawn_scoped(scope, || work(chunk))
+                .map_err(|e| { failed.store(true, Ordering::Relaxed); io(e) })?;
+            jobs.push(job);
+        }
+        for job in jobs {
+            job.join().map_err(|_| error("Update file worker stopped unexpectedly."))??;
+        }
+        Ok(())
+    })
+}
+
+pub(super) fn inventory(root: &Path, cancel: &CancellationToken, counter: FileCounter<'_>) -> Result<BTreeMap<String, String>> {
     let mut pending = vec![root.to_path_buf()];
-    let mut files = BTreeMap::new();
+    let mut files = Vec::new();
     let mut names = BTreeSet::new();
     let mut entries = 0;
     let mut total = 0u64;
     while let Some(dir) = pending.pop() {
         cancel.check()?;
+        plain(&dir)?;
         for item in fs::read_dir(&dir).map_err(io)? {
+            cancel.check()?;
             entries += 1;
             if entries > 20000 {
                 return Err(error("Release contains too many entries."));
             }
             let item = item.map_err(io)?;
             let path = item.path();
-            plain(&path)?;
+            // DirEntry metadata does not follow symlinks. Check every directory
+            // before descent and each file's full ancestry immediately before reading.
             let m = item.metadata().map_err(io)?;
+            reject_link(&m)?;
             if m.is_dir() {
                 pending.push(path);
                 continue;
@@ -186,18 +232,28 @@ pub fn inventory(root: &Path, cancel: &CancellationToken) -> Result<BTreeMap<Str
             total = total
                 .checked_add(m.len())
                 .ok_or_else(|| error("Release size overflow."))?;
-            if files.len() >= 20000 || total > MAX_TREE {
+            if files.len() >= 20000 || m.len() > MAX_FILE || total > MAX_TREE {
                 return Err(error("Unpacked release exceeds its size limit."));
             }
-            files.insert(name, digest(&path, cancel)?);
+            files.push((name, path, m.len(), String::new()));
         }
     }
-    Ok(files)
+    process_files(&mut files, cancel, counter, |(_, path, size, hash)| {
+        plain(path)?;
+        // Keep each read within the size used for the aggregate tree limit,
+        // including if a file changes between directory enumeration and hashing.
+        let mut reader = fs::File::open(path).map_err(io)?.take(*size + 1);
+        *hash = sha256_reader(&mut reader, *size, cancel)?;
+        if reader.limit() != 1 { return Err(error("Release file length changed during verification.")); }
+        Ok(())
+    })?;
+    Ok(files.into_iter().map(|(name, _, _, hash)| (name, hash)).collect())
 }
 pub fn manifest(
     bundle: &Path,
     version: UpdateVersion,
     cancel: &CancellationToken,
+    counter: FileCounter<'_>,
 ) -> Result<BTreeMap<String, String>> {
     let value = json_file(&bundle.join("rocket-update.json"))?;
     #[cfg(target_os = "macos")]
@@ -256,7 +312,7 @@ pub fn manifest(
             return Err(error("The update is missing a required Rocket executable."));
         }
     }
-    let actual = installed(bundle, cancel)?;
+    let actual = installed(bundle, cancel, counter)?;
     #[cfg(target_os = "macos")]
     rocket_git::app_update::macos::verify_app(bundle, Some(version), cancel)?;
     let mut payload = actual.clone();
@@ -270,9 +326,9 @@ pub fn manifest(
     Ok(actual)
 }
 #[cfg(target_os = "macos")]
-pub fn installed(root: &Path, cancel: &CancellationToken) -> Result<BTreeMap<String, String>> {
+pub fn installed(root: &Path, cancel: &CancellationToken, counter: FileCounter<'_>) -> Result<BTreeMap<String, String>> {
     plain(root)?;
-    let files = inventory(root, cancel)?;
+    let files = inventory(root, cancel, counter)?;
     for name in BINARIES {
         if !files.contains_key(name) { return Err(error("The Mac update is missing a required Rocket executable.")); }
     }
@@ -280,7 +336,7 @@ pub fn installed(root: &Path, cancel: &CancellationToken) -> Result<BTreeMap<Str
     Ok(files)
 }
 #[cfg(not(target_os = "macos"))]
-pub fn installed(root: &Path, cancel: &CancellationToken) -> Result<BTreeMap<String, String>> {
+pub fn installed(root: &Path, cancel: &CancellationToken, counter: FileCounter<'_>) -> Result<BTreeMap<String, String>> {
     let sums = String::from_utf8(read(&root.join("SHA256SUMS.txt"), 4 * 1024 * 1024)?)
         .map_err(|_| error("Installed release manifest is invalid."))?;
     let mut expected = BTreeMap::new();
@@ -313,7 +369,7 @@ pub fn installed(root: &Path, cancel: &CancellationToken) -> Result<BTreeMap<Str
         "SHA256SUMS.txt".into(),
         digest(&root.join("SHA256SUMS.txt"), cancel)?,
     );
-    if inventory(root, cancel)? != expected {
+    if inventory(root, cancel, counter)? != expected {
         return Err(error(
             "The installation contains changed or extra files. They are preserved; install the new bundle in a separate folder.",
         ));
@@ -350,14 +406,34 @@ pub fn prepare(
     client: &UpdateClient,
     release: &AppRelease,
     cache: &Path,
-    phase: &Arc<AtomicU8>,
+    phase: &AtomicU8,
     cancel: &CancellationToken,
 ) -> Result<Prepared> {
     #[cfg(unix)]
     rocket_git::local_storage::create_protected(cache).map_err(io)?;
     let job = unique(cache)?;
+    match prepare_files(client, release, &job, phase, cancel) {
+        Ok(files) => Ok(Prepared { job, version: release.version, files }),
+        Err(failure) => {
+            // Only this fresh, unpublished job belongs to preparation. Installed
+            // trees, recovery backups and other attempts live outside it.
+            if let Err(cleanup) = plain(&job).and_then(|()| fs::remove_dir_all(&job).map_err(io)) {
+                return Err(error(&format!("{failure}. Could not remove incomplete update: {cleanup}")));
+            }
+            Err(failure)
+        }
+    }
+}
+
+fn prepare_files(
+    client: &UpdateClient,
+    release: &AppRelease,
+    job: &Path,
+    phase: &AtomicU8,
+    cancel: &CancellationToken,
+) -> Result<BTreeMap<String, String>> {
     phase.store(1, Ordering::Release);
-    let archive = client.download(release, &job, cancel)?;
+    let archive = client.download(release, job, cancel)?;
     phase.store(2, Ordering::Release);
     // Hold the ZIP against modification/deletion across verification and extraction.
     let mut options = fs::OpenOptions::new();
@@ -383,13 +459,13 @@ pub fn prepare(
             return Err(error("Mac update must contain exactly Rocket.app and its update manifest."));
         }
         for name in BINARIES.into_iter().chain(std::iter::once("Contents/Helpers/RocketLua.app/Contents/MacOS/rocket-lua-host")) {
-            let path = prepared_root(&job).join(name);
+            let path = prepared_root(job).join(name);
             plain(&path)?;
             if path.exists() { fs::set_permissions(path, fs::Permissions::from_mode(0o755)).map_err(io)?; }
         }
     }
     phase.store(3, Ordering::Release);
-    let files = manifest(&bundle, release.version, cancel)?;
+    let files = manifest(&bundle, release.version, cancel, None)?;
     fs::write(
         job.join("prepared.json"),
         serde_json::to_vec_pretty(
@@ -400,22 +476,20 @@ pub fn prepare(
     .map_err(io)?;
     drop(_lease);
     fs::remove_file(archive).map_err(io)?;
-    Ok(Prepared {
-        job,
-        version: release.version,
-        files,
-    })
+    cancel.check()?;
+    Ok(files)
 }
 pub fn copy_tree(
     source: &Path,
     destination: &Path,
     files: &BTreeMap<String, String>,
     cancel: &CancellationToken,
+    counter: FileCounter<'_>,
 ) -> Result<()> {
     plain(destination)?;
     fs::create_dir(destination).map_err(io)?;
-    for (name, sha) in files {
-        cancel.check()?;
+    let mut entries: Vec<_> = files.iter().collect();
+    process_files(&mut entries, cancel, counter, |&mut (name, sha)| {
         let input = source.join(name);
         let output = destination.join(name);
         plain(&input)?;
@@ -460,8 +534,8 @@ pub fn copy_tree(
         if digest(&output, cancel)? != *sha {
             return Err(error("Release changed while preparing the installation."));
         }
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 #[cfg(all(test, not(target_os = "macos")))]
@@ -512,10 +586,10 @@ mod tests {
         fs::create_dir(root.join("資料")).unwrap();
         fs::write(root.join("資料/README.md"), "Unicode file").unwrap();
         let token = CancellationToken::new();
-        let payload = inventory(&root, &token).unwrap();
+        let payload = inventory(&root, &token, None).unwrap();
         let records:Vec<_>=payload.iter().map(|(name,sha)| json!({"path":name,"sha256":sha,"size":fs::metadata(root.join(name)).unwrap().len()})).collect();
         fs::write(root.join("rocket-update.json"),serde_json::to_vec(&json!({"schema":1,"version":"9.0.0","platform":platform().unwrap(),"entrypoint":ENTRYPOINT,"files":records})).unwrap()).unwrap();
-        let sums = inventory(&root, &token)
+        let sums = inventory(&root, &token, None)
             .unwrap()
             .iter()
             .map(|(name, sha)| format!("{sha}  {name}\n"))
@@ -539,13 +613,39 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
+    fn restart_progress_counts_only_verified_files_and_resets_between_phases() {
+        let root = fixture();
+        let token = CancellationToken::new();
+        for n in 0..256 { fs::write(root.join(format!("document-{n}.md")), b"fixture").unwrap(); }
+        let progress = RestartProgress::default();
+        let files = inventory(&root, &token, Some((&progress, FilePhase::CheckInstalled))).unwrap();
+        let verified = progress.snapshot().unwrap();
+        assert_eq!((verified.phase, verified.done, verified.total), (FilePhase::CheckInstalled, files.len(), files.len()));
+
+        let parent = unique(&std::env::temp_dir()).unwrap();
+        let stage = parent.join("stage");
+        copy_tree(&root, &stage, &files, &token, Some((&progress, FilePhase::Stage))).unwrap();
+        let staged = progress.snapshot().unwrap();
+        assert_eq!((staged.phase, staged.done, staged.total), (FilePhase::Stage, files.len(), files.len()));
+        assert_eq!(inventory(&stage, &token, None).unwrap(), files);
+
+        fs::write(root.join("document-0.md"), b"edited fixture").unwrap();
+        assert!(copy_tree(&root, &parent.join("changed"), &files, &token, Some((&progress, FilePhase::Stage))).is_err());
+        assert!(progress.snapshot().unwrap().done < files.len());
+        token.cancel();
+        assert!(copy_tree(&root, &parent.join("cancelled"), &files, &token, Some((&progress, FilePhase::Stage))).is_err());
+        assert_eq!(progress.snapshot().unwrap().done, 0);
+        cleanup(parent);
+        cleanup(root);
+    }
+    #[test]
     fn complete_package_verifies_and_can_be_verified_after_installation() {
         let root = fixture();
         let token = CancellationToken::new();
-        let result = manifest(&root, UpdateVersion(9, 0, 0), &token).unwrap();
-        assert_eq!(result, installed(&root, &token).unwrap());
+        let result = manifest(&root, UpdateVersion(9, 0, 0), &token, None).unwrap();
+        assert_eq!(result, installed(&root, &token, None).unwrap());
         assert!(result.contains_key("資料/README.md"));
-        assert!(manifest(&root, UpdateVersion(9, 0, 1), &token).is_err());
+        assert!(manifest(&root, UpdateVersion(9, 0, 1), &token, None).is_err());
         cleanup(root);
     }
     #[test]
@@ -562,14 +662,14 @@ mod tests {
             .retain(|entry| entry["path"] != ssh);
         fs::write(update, serde_json::to_vec(&json).unwrap()).unwrap();
         let token = CancellationToken::new();
-        let sums = inventory(&root, &token)
+        let sums = inventory(&root, &token, None)
             .unwrap()
             .iter()
             .map(|(name, sha)| format!("{sha}  {name}\n"))
             .collect::<String>();
         fs::write(root.join("SHA256SUMS.txt"), sums).unwrap();
-        assert!(manifest(&root, UpdateVersion(9, 0, 0), &token).is_err());
-        assert!(installed(&root, &token).is_err());
+        assert!(manifest(&root, UpdateVersion(9, 0, 0), &token, None).is_err());
+        assert!(installed(&root, &token, None).is_err());
         cleanup(root);
     }
     #[test]
@@ -577,24 +677,24 @@ mod tests {
         let root = fixture();
         let token = CancellationToken::new();
         fs::write(root.join("personal.txt"), "keep me").unwrap();
-        assert!(installed(&root, &token).is_err());
+        assert!(installed(&root, &token, None).is_err());
         assert_eq!(fs::read(root.join("personal.txt")).unwrap(), b"keep me");
         fs::remove_file(root.join("personal.txt")).unwrap();
         fs::write(root.join(ENTRYPOINT), "changed binary!").unwrap();
-        assert!(manifest(&root, UpdateVersion(9, 0, 0), &token).is_err());
+        assert!(manifest(&root, UpdateVersion(9, 0, 0), &token, None).is_err());
         cleanup(root);
     }
     #[test]
     fn cancelled_validation_does_not_modify_package() {
         let root = fixture();
         let token = CancellationToken::new();
-        let before = inventory(&root, &token).unwrap();
+        let before = inventory(&root, &token, None).unwrap();
         token.cancel();
         assert!(matches!(
-            manifest(&root, UpdateVersion(9, 0, 0), &token),
+            manifest(&root, UpdateVersion(9, 0, 0), &token, None),
             Err(Error::Cancelled)
         ));
-        assert_eq!(before, inventory(&root, &CancellationToken::new()).unwrap());
+        assert_eq!(before, inventory(&root, &CancellationToken::new(), None).unwrap());
         cleanup(root);
     }
     /// The archive tools/package-release.sh made passes the checks an update runs, from
@@ -612,14 +712,14 @@ mod tests {
             UpdateClient::new(rocket_git::app_update::UpdateEndpoint::Loopback(9), None).unwrap();
         let bundle = job.join("bundle");
         client.extract(&archive, &bundle, &token).unwrap();
-        let files = manifest(&bundle, version, &token).unwrap();
+        let files = manifest(&bundle, version, &token, None).unwrap();
         for name in BINARIES {
             assert!(files.contains_key(name), "{name}");
         }
-        assert_eq!(files, installed(&bundle, &token).unwrap());
+        assert_eq!(files, installed(&bundle, &token, None).unwrap());
         // As installed, its programs run and nothing else does.
         let installation = job.join("installation");
-        copy_tree(&bundle, &installation, &files, &token).unwrap();
+        copy_tree(&bundle, &installation, &files, &token, None).unwrap();
         use std::os::unix::fs::PermissionsExt;
         for name in files.keys() {
             let mode = fs::metadata(installation.join(name))
@@ -632,7 +732,7 @@ mod tests {
                 "{name}"
             );
         }
-        assert_eq!(files, installed(&installation, &token).unwrap());
+        assert_eq!(files, installed(&installation, &token, None).unwrap());
         cleanup(job);
     }
 }

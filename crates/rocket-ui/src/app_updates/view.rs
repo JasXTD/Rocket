@@ -1,5 +1,5 @@
 //! Update presentation. Network, verification and restart work stay in the controller.
-use super::{Operation, State};
+use super::{FilePhase, Operation, State};
 use crate::{app::Rocket, pages, style::*};
 use eframe::egui::*;
 use std::{collections::HashMap, sync::atomic::Ordering};
@@ -339,6 +339,19 @@ fn body_ui(
             ui.add_space(8.0);
             ui.add(Label::new(RichText::new(title(s)).font(semibold(24.0))).wrap());
             ui.add(Label::new(RichText::new(description(s)).size(13.0).color(MUTED())).wrap());
+            if let Some(progress) = s.file_progress() {
+                let done = progress.done;
+                let total = progress.total;
+                let label = match progress.phase {
+                    FilePhase::CheckInstalled => crate::i18n::trf!("Checking installed files ({done}/{total})", done, total),
+                    FilePhase::CheckUpdate => crate::i18n::trf!("Checking update files ({done}/{total})", done, total),
+                    FilePhase::Stage => crate::i18n::trf!("Preparing files ({done}/{total})", done, total),
+                };
+                ui.add(Label::new(RichText::new(label).size(14.0).color(TEXT_ITEM())).wrap());
+                let bar = ui.add(ProgressBar::new(done as f32 / total.max(1) as f32)
+                    .desired_width(ui.available_width().min(300.0)).desired_height(6.0).fill(BLUE()));
+                pages::region(widgets, "update-file-progress", bar.rect.intersect(ui.clip_rect()), true);
+            }
             if s.release.is_none() {
                 ui.add_space(4.0);
                 ui.label(

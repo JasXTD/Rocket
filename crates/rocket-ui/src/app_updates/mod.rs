@@ -1,7 +1,10 @@
 //! Once at launch, then only on explicit request. Download and restart are separate choices.
 pub mod install;
 mod package;
+mod progress;
 mod view;
+pub use progress::{FilePhase, FileProgress};
+use progress::RestartProgress;
 use rocket_git::windows_package;
 use crate::{app::Rocket, backend::user_error};
 use eframe::egui::*;
@@ -47,6 +50,7 @@ pub struct State {
     installable: bool,
     task: Option<ReadTask<Outcome>>,
     progress: Arc<AtomicU8>,
+    restart_progress: Arc<RestartProgress>,
     handoff: Option<install::Handoff>,
     notice: bool,
     notes_expanded: bool,
@@ -74,6 +78,7 @@ impl Default for State {
             installable: false,
             task: None,
             progress: Arc::new(AtomicU8::new(0)),
+            restart_progress: Arc::default(),
             handoff: None,
             notice: false,
             notes_expanded: false,
@@ -100,6 +105,9 @@ impl State {
     }
     pub fn pending_restart(&self) -> bool {
         self.handoff.is_some()
+    }
+    pub fn file_progress(&self) -> Option<FileProgress> {
+        if self.status == "preparing_restart" { self.restart_progress.snapshot() } else { None }
     }
     pub fn open(&mut self) {
         self.reveal();
@@ -297,13 +305,15 @@ impl Rocket {
         };
         let repositories: Vec<_> = self.tabs.iter().map(|t| t.path.clone()).collect();
         self.updates.status = "preparing_restart";
+        self.updates.restart_progress = Arc::default();
+        let progress = self.updates.restart_progress.clone();
         self.updates.install_task = true;
         self.updates.error = None;
         self.updates.message = None;
         let log = self.backend.as_ref().map(|b| b.log.clone());
         let task = crate::read_task::spawn(ctx, move |cancel| {
             let run = || {
-                install::handoff(&prepared, &target, &helper, &repositories, &cancel)
+                install::handoff(&prepared, &target, &helper, &repositories, &cancel, &progress)
                     .map(Outcome::Handoff)
             };
             if let Some(log) = log {

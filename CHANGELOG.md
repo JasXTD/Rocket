@@ -19,6 +19,9 @@ keep detailed test evidence in `VALIDATION.md`.
   code map draws their arrows too, also between projects. Test source sets,
   module-info.java and Kotlin scripts are left out; nothing is compiled or run.
 - Code Map checks up to 512 packages per read, including empty packages.
+- Portable updates show how many files have been checked or staged while preparing
+  to restart. Up to four files are processed in parallel. The updater still verifies
+  each staged copy and rechecks both installations before replacing the old one.
 - Linux and macOS check the upstream security patch level before opening or
   cloning a repository. Git 2.56.1 and later stable releases are supported, as
   are the patched 2.50 through 2.55 maintenance branches. Preferences identifies

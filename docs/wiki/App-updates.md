@@ -32,8 +32,12 @@ of discarding the prepared update.
 2. Choose **Download update**. Rocket verifies the complete archive and every
    extracted file. Progress names the actual download or verification phase.
    **Cancel download** stops preparation without replacing the app.
-3. When ready, choose **Install and restart**. Normal close protections still
-   apply. Drafts are saved; terminal sessions close. Cancelling the close keeps
+3. When ready, choose **Install and restart**. Starting with Rocket 0.92.6,
+   **Preparing to restart** shows a file count for each step. Rocket checks the
+   installed files, checks the downloaded files, then copies them to staging.
+   A staged file counts as complete after Rocket reads it back and verifies its
+   SHA-256. Normal close protections still apply. Drafts are saved and terminal
+   sessions close. Cancelling the close keeps
    the existing app and installation. Download again when you want to retry.
 4. Rocket waits for its old process to exit, rechecks both directories, replaces
    the packaged installation and reopens the repositories.
