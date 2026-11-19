@@ -282,8 +282,103 @@
   "Python package · modules": "Пакет Python · модулі",
   "Python folder · modules": "Тека Python · модулі",
   "Go module · packages": "Модуль Go · пакети",
+  "Find a namespace": "Знайти простір імен",
+  "Find a file": "Знайти файл",
+  "NAMESPACES": "ПРОСТОРИ ІМЕН",
+  "FILES": "ФАЙЛИ",
+  "Namespace": "Простір імен",
+  "{n} namespaces": {
+    "one": "Простори імен: {n}",
+    "few": "Простори імен: {n}",
+    "many": "Простори імен: {n}",
+    "other": "Простори імен: {n}"
+  },
+  "{n} more namespaces": {
+    "one": "Ще {n} простір імен",
+    "few": "Ще {n} простори імен",
+    "many": "Ще {n} просторів імен",
+    "other": "Ще {n} простору імен"
+  },
+  "{n} more files": {
+    "one": "Ще {n} файл",
+    "few": "Ще {n} файли",
+    "many": "Ще {n} файлів",
+    "other": "Ще {n} файлу"
+  },
+  "Used by {n} namespaces": {
+    "one": "Використовується в {n} просторі імен",
+    "few": "Використовується в {n} просторах імен",
+    "many": "Використовується в {n} просторах імен",
+    "other": "Використовується в {n} простору імен"
+  },
+  "Used by {n} files": {
+    "one": "Використовується в {n} файлі",
+    "few": "Використовується в {n} файлах",
+    "many": "Використовується в {n} файлах",
+    "other": "Використовується в {n} файлу"
+  },
+  "Whole project": "Увесь проєкт",
+  "Every package of the project and how they connect": "Усі пакети проєкту та їхні зв’язки",
+  "Every namespace of the project and how they connect": "Усі простори імен проєкту та їхні зв’язки",
+  "Every file of the project and how they connect": "Усі файли проєкту та їхні зв’язки",
+  "Choose a namespace": "Вибрати простір імен",
+  "Choose a file": "Вибрати файл",
+  "Order the namespaces by how many use them, or by name": "Упорядкувати простори імен за кількістю просторів імен, що їх використовують, або за назвою",
+  "Order the files by how many use them, or by name": "Упорядкувати файли за кількістю файлів, що їх використовують, або за назвою",
+  "No namespace matches": "Немає відповідних просторів імен",
+  "No file matches": "Немає відповідних файлів",
+  "{count} namespaces, {order}": "Простори імен: {count}, {order}",
+  "{count} files, {order}": "Файли: {count}, {order}",
+  "{count} namespaces are too many to draw at once. Choose one from the list": "Забагато просторів імен, щоб намалювати їх одразу: {count}. Виберіть один у списку",
+  "{count} files are too many to draw at once. Choose one from the list": "Забагато файлів, щоб намалювати їх одразу: {count}. Виберіть один у списку",
+  "Namespaces {namespaces} · links {links} · arrows point to what is used": "Простори імен: {namespaces} · зв’язки: {links} · стрілки вказують на те, що використовується",
+  "Files {files} · links {links} · arrows point to what is used": "Файли: {files} · зв’язки: {links} · стрілки вказують на те, що використовується",
+  "IN THIS NAMESPACE": "У ЦЬОМУ ПРОСТОРІ ІМЕН",
+  "Namespaces": "Простори імен",
+  "Kotlin project · packages": "Проєкт Kotlin · пакети",
+  "Kotlin folder · packages": "Тека Kotlin · пакети",
+  "Java project · packages": "Проєкт Java · пакети",
+  "Java folder · packages": "Тека Java · пакети",
+  "C++ project · files": "Проєкт C++ · файли",
+  "C++ folder · files": "Тека C++ · файли",
+  "C project · files": "Проєкт C · файли",
+  "C folder · files": "Тека C · файли",
+  "C# project · namespaces": "Проєкт C# · простори імен",
+  "C# folder · namespaces": "Тека C# · простори імен",
+  "Namespace · {package}": "Простір імен · {package}",
+  "File · {package}": "Файл · {package}",
+  "{n} Kotlin files": {
+    "one": "{n} файл Kotlin",
+    "few": "{n} файли Kotlin",
+    "many": "{n} файлів Kotlin",
+    "other": "{n} файлу Kotlin"
+  },
+  "{n} Java files": {
+    "one": "{n} файл Java",
+    "few": "{n} файли Java",
+    "many": "{n} файлів Java",
+    "other": "{n} файлу Java"
+  },
+  "{n} C++ files": {
+    "one": "{n} файл C++",
+    "few": "{n} файли C++",
+    "many": "{n} файлів C++",
+    "other": "{n} файлу C++"
+  },
+  "{n} C files": {
+    "one": "{n} файл C",
+    "few": "{n} файли C",
+    "many": "{n} файлів C",
+    "other": "{n} файлу C"
+  },
+  "{n} C# files": {
+    "one": "{n} файл C#",
+    "few": "{n} файли C#",
+    "many": "{n} файлів C#",
+    "other": "{n} файлу C#"
+  },
   "No package to read in this snapshot": "У цьому знімку немає пакетів для читання",
-  "Modules reads Rust, JavaScript, TypeScript, Python and Go.": "Вигляд «Модулі» читає Rust, JavaScript, TypeScript, Python і Go.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.": "Вигляд «Модулі» читає Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ і C#.",
   "The package to map": "Пакет для карти",
   "OUTSIDE": "ЗОВНІШНІ",
   "build ignore": "виключено зі збирання",

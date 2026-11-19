@@ -10,6 +10,15 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased — Modules in Java, Kotlin, C, C++ and C#
+
+- Map → Code → Modules reads Java and Kotlin projects (Maven and Gradle builds; a card
+  is a package), C and C++ projects (CMake, Meson, Make and similar builds; a card is a
+  file, connected by its `#include` lines) and C# projects (`.csproj`; a card is a
+  namespace, connected by `using` lines and the type names a file uses). The Folders
+  code map draws their arrows too, also between projects. Test source sets,
+  module-info.java and Kotlin scripts are left out; nothing is compiled or run.
+
 ## 0.92.5 — Code Map, connected Agents and Windows installer
 
 See [full release notes](docs/releases/0.92.5.md) for downloads, requirements and validation limits.

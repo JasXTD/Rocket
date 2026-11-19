@@ -91,8 +91,8 @@ See the [full release notes](docs/releases/0.92.5.md).
   Cargo packages and the folder tree, **History** the branches and merges, and **People**
   who changed which folders. Export what the map shows as Mermaid.
 - **Modules** in Map → Code shows one package's modules and which uses which, for Rust,
-  JavaScript and TypeScript, Python and Go, read from the committed files without
-  compiling or running anything.
+  JavaScript and TypeScript, Python, Go, Java and Kotlin, C and C++, and C#, read from the
+  committed files without compiling or running anything.
 - [**Insights**](docs/Insights.md) replaces Statistics: commit activity, a
   file treemap and pull request numbers from your hosting account, with weekly trends
   against the previous period, waiting review requests, time to first review, saved views
@@ -311,7 +311,7 @@ the rest.
 | Pull request metrics | ✅ opened/merged trends, merge time, time to first review | — | 💲 GitKraken Insights, in the browser | — |
 | **Understanding a repository** | | | | |
 | Activity statistics | ✅ timeline, contributors, weekday/hour, file treemap | ✅ statistics, activity treemap | — | — |
-| Code and repository map | ✅ packages, folders, branches and people; modules in Rust, JS/TS, Python and Go | — | Codemaps, early access only | — |
+| Code and repository map | ✅ packages, folders, branches and people; modules in Rust, JS/TS, Python, Go, Java/Kotlin, C/C++ and C# | — | Codemaps, early access only | — |
 | **Safety** | | | | |
 | Built-in secret check before commit and push | ✅ tokens, private keys, credentials, AI API keys | — | — | — |
 | Dependency advisories | ✅ offline OSV scan, optional check before push | — | — | — |
@@ -380,8 +380,9 @@ Official comparison sources:
   services, without a live tenant. AI conflict proposals have also been checked with
   a real Astra response through localhost MCP using synthetic code; the separate
   Claude Code/Codex CLI provider paths still use stand-ins in acceptance tests.
-- **Map and Insights:** Modules reads Rust, JavaScript and TypeScript, Python and Go
-  as text: it doesn't expand macros or `cfg`, evaluate other build constraints or
+- **Map and Insights:** Modules reads Rust, JavaScript and TypeScript, Python, Go, Java
+  and Kotlin, C and C++, and C# as text: it doesn't expand macros or `cfg`, run the C
+  preprocessor, evaluate other build constraints or
   follow import paths built at run time. Insights counts a loaded sample of up to 500
   pull requests; time to first review is measured on GitHub, GitHub Enterprise Server,
   Gitea and Forgejo only, and missing data is named rather than estimated.

@@ -350,11 +350,12 @@ impl Repository {
             batch
         };
         let cargo_batch = manifests(&mut paths.iter().filter(|p| packages::file_name(p) == b"Cargo.toml").map(|p| p.to_vec()));
+        // Only package.json and go.mod say how a package is named from outside it.
         let small_batch = manifests(
             &mut others
                 .iter()
                 .filter_map(|f| f.manifest.clone())
-                .filter(|m| !m.ends_with(b"__init__.py"))
+                .filter(|m| matches!(packages::file_name(m), b"package.json" | b"go.mod"))
                 .chain(others.iter().filter(|f| f.language == ModuleLanguage::JavaScript).flat_map(|f| {
                     [packages::join(&f.folder, b"tsconfig.json"), packages::join(&f.folder, b"jsconfig.json")]
                 })),
@@ -388,6 +389,8 @@ impl Repository {
                         go_modules.push((module, f.folder.clone()));
                     }
                 }
+                // Java's packages and C#'s namespaces are named by their files, once read.
+                ModuleLanguage::Java | ModuleLanguage::C | ModuleLanguage::CSharp => {}
             }
         }
         // Longest module paths first, so a nested module wins over its parent.
@@ -433,6 +436,64 @@ impl Repository {
         let go_folders: HashSet<&[u8]> = blobs.keys().filter(|p| p.ends_with(b".go")).map(|p| packages::parent(p)).collect();
         // A Go package at the top of the snapshot has no folder card: its files stand for it.
         let top_go: Vec<Vec<u8>> = blobs.keys().filter(|p| packages::parent(p).is_empty() && p.ends_with(b".go") && !p.ends_with(b"_test.go")).map(|p| p.to_vec()).collect();
+        // Every Java package and C# namespace the read files name, by the folder most of
+        // their files are in: an import from another project finds its folder there.
+        let mut java_counts: HashMap<String, BTreeMap<Vec<u8>, usize>> = HashMap::new();
+        let mut csharp_counts: HashMap<String, BTreeMap<Vec<u8>, usize>> = HashMap::new();
+        for (reference, other, _) in &planned {
+            let (Some(i), language) = (other, reference.language) else { continue };
+            let counts = match language {
+                ModuleLanguage::Java => &mut java_counts,
+                ModuleLanguage::CSharp => &mut csharp_counts,
+                _ => continue,
+            };
+            for path in &others[*i].files {
+                let Some(text) = texts.get(path) else { continue };
+                let name = if language == ModuleLanguage::Java { jvm::package_clause(text) } else { csharp::namespace_clause(text) };
+                *counts.entry(name.join(".")).or_default().entry(packages::parent(path).to_vec()).or_default() += 1;
+            }
+        }
+        // Packages no file of this read names (a folder read, or past the read limits) are
+        // found by their folders: `b/src/main/java/com/acme/lib` is com.acme.lib, and
+        // `src/Shop.Core/Models` Shop.Core.Models, as both languages lay them out.
+        let mut java_paths: HashMap<String, BTreeMap<Vec<u8>, usize>> = HashMap::new();
+        let mut csharp_paths: HashMap<String, BTreeMap<Vec<u8>, usize>> = HashMap::new();
+        for path in blobs.keys() {
+            let counts = if packages::java_file(path) {
+                &mut java_paths
+            } else if packages::csharp_file(path) {
+                &mut csharp_paths
+            } else {
+                continue;
+            };
+            let folder = packages::parent(path);
+            let parts: Vec<&[u8]> = folder.split(|b| *b == b'/').filter(|d| !d.is_empty()).collect();
+            for n in 1..=parts.len().min(16) {
+                let name = String::from_utf8_lossy(&parts[parts.len() - n..].join(&b'.')).into_owned();
+                *counts.entry(name).or_default().entry(folder.to_vec()).or_default() += 1;
+            }
+        }
+        // The folder most of a package's files are in; the shallowest, then the first by
+        // name, of those that hold as many (as each project's own units pick it).
+        let main = |counts: HashMap<String, BTreeMap<Vec<u8>, usize>>| -> HashMap<String, Vec<u8>> {
+            counts
+                .into_iter()
+                .filter(|(name, _)| !name.is_empty())
+                .filter_map(|(name, folders)| folders.into_iter().max_by_key(|(dir, n)| (*n, std::cmp::Reverse(dir.len()), std::cmp::Reverse(dir.clone()))).map(|(dir, _)| (name, dir)))
+                .collect()
+        };
+        let named = |read: HashMap<String, BTreeMap<Vec<u8>, usize>>, laid_out: HashMap<String, BTreeMap<Vec<u8>, usize>>| {
+            let mut index = main(read);
+            for (name, folder) in main(laid_out) {
+                index.entry(name).or_insert(folder);
+            }
+            index
+        };
+        let (java_packages, csharp_namespaces) = (named(java_counts, java_paths), named(csharp_counts, csharp_paths));
+        // A Java package or C# namespace at the top has no folder card: its files stand for it.
+        let top_files = |keep: fn(&[u8]) -> bool| -> Vec<Vec<u8>> { blobs.keys().filter(|p| packages::parent(p).is_empty() && keep(p)).map(|p| p.to_vec()).collect() };
+        let (top_java, top_csharp) = (top_files(packages::java_file), top_files(packages::csharp_file));
+        let headers = units::Headers::new(blobs.keys().copied());
         let mut b = Builder::default();
         for (reference, other, files) in planned {
             cancel.check()?;
@@ -452,7 +513,12 @@ impl Repository {
                         javascript: &javascript_names,
                         python: &python_names,
                         go: &go_modules,
+                        java: &java_packages,
+                        csharp: &csharp_namespaces,
+                        top_java: &top_java,
+                        top_csharp: &top_csharp,
                         known: &known,
+                        headers: &headers,
                         go_folders: &go_folders,
                         top_go: &top_go,
                     };
@@ -692,15 +758,22 @@ fn code_other(
             units::javascript(&f.folder, &own, names.known, &aliases, cancel)?
         }
         ModuleLanguage::Python => units::python(&f.folder, f.manifest.is_some(), &own, cancel)?,
+        ModuleLanguage::Java => units::java(&own, &f.files, cancel)?,
+        ModuleLanguage::C => units::c(&f.folder, &own, &f.files, names.known, names.headers, cancel)?,
+        ModuleLanguage::CSharp => units::csharp(&own, cancel)?,
         ModuleLanguage::Go | ModuleLanguage::Rust => units::go(&f.folder, &module, &own, &f.files, cancel)?,
     };
-    // A unit is a file, or a folder for a Go package. The top folder has no card, so a
-    // Go package there stands as its files.
+    // A unit is a file, or a folder for a Go or Java package and a C# namespace. The
+    // top folder has no card, so a package there stands as its files.
     let ends = |path: &[u8]| -> Vec<(Vec<u8>, bool)> {
         if blobs.contains_key(path) {
             vec![(path.to_vec(), false)]
         } else if path.is_empty() {
-            if f.language == ModuleLanguage::Go { names.top_go.iter().map(|p| (p.clone(), false)).collect() } else { Vec::new() }
+            match f.language {
+                ModuleLanguage::Go => names.top_go.iter().map(|p| (p.clone(), false)).collect(),
+                ModuleLanguage::Java | ModuleLanguage::CSharp => f.files.iter().filter(|p| packages::parent(p).is_empty()).map(|p| (p.clone(), false)).collect(),
+                _ => Vec::new(),
+            }
         } else {
             vec![(path.to_vec(), true)]
         }
@@ -715,16 +788,21 @@ fn code_other(
     for (u, outside) in &built.outside {
         let from = ends(&built.units[*u].path);
         for name in outside {
-            // A relative import into another project names the file itself.
-            if f.language == ModuleLanguage::JavaScript && names.known.contains(name.as_bytes()) {
+            // A relative import or an include into another project names the file itself.
+            if matches!(f.language, ModuleLanguage::JavaScript | ModuleLanguage::C) && names.known.contains(name.as_bytes()) {
                 for (a, a_folder) in &from {
                     b.link(a, *a_folder, name.as_bytes(), false, [name.clone()]);
                 }
                 continue;
             }
+            // A package or namespace by its whole name: a shorter one is a parent, and
+            // `com.acme.payments` from a library is no part of `com.acme`.
             let target: Option<Vec<u8>> = match f.language {
                 ModuleLanguage::JavaScript => names.javascript.get(name).cloned(),
                 ModuleLanguage::Python => names.python.get(name.split('.').next().unwrap_or_default()).cloned(),
+                ModuleLanguage::Java => names.java.get(name).cloned(),
+                ModuleLanguage::CSharp => names.csharp.get(name).cloned(),
+                ModuleLanguage::C => None,
                 ModuleLanguage::Go | ModuleLanguage::Rust => names.go.iter().find(|(m, _)| name == m || name.starts_with(&format!("{m}/"))).map(|(m, folder)| {
                     let rest = name[m.len()..].trim_start_matches('/');
                     let package = if rest.is_empty() { folder.clone() } else { packages::join(folder, rest.as_bytes()) };
@@ -733,11 +811,13 @@ fn code_other(
                 }),
             };
             let Some(target) = target.filter(|t| *t != f.folder) else { continue };
-            // A package at the top has no card: its package.json, or its Go files.
+            // A package at the top has no card: its package.json, or its files.
             let targets = match (target.is_empty(), f.language) {
                 (false, _) => vec![(target, true)],
                 (true, ModuleLanguage::JavaScript) => vec![(b"package.json".to_vec(), false)],
                 (true, ModuleLanguage::Go) => names.top_go.iter().map(|p| (p.clone(), false)).collect(),
+                (true, ModuleLanguage::Java) => names.top_java.iter().map(|p| (p.clone(), false)).collect(),
+                (true, ModuleLanguage::CSharp) => names.top_csharp.iter().map(|p| (p.clone(), false)).collect(),
                 (true, _) => Vec::new(),
             };
             for (a, a_folder) in &from {
@@ -754,8 +834,17 @@ struct Names<'a> {
     javascript: &'a HashMap<String, Vec<u8>>,
     python: &'a HashMap<String, Vec<u8>>,
     go: &'a [(String, Vec<u8>)],
-    /// Every committed path, for JavaScript imports.
+    /// Java's packages and C#'s namespaces, by the folder most of their files are in.
+    java: &'a HashMap<String, Vec<u8>>,
+    csharp: &'a HashMap<String, Vec<u8>>,
+    /// The Java and Kotlin files, and the C# files, at the top, which stand for a package
+    /// or namespace there.
+    top_java: &'a [Vec<u8>],
+    top_csharp: &'a [Vec<u8>],
+    /// Every committed path, for JavaScript imports and C includes.
     known: &'a HashSet<&'a [u8]>,
+    /// The C and C++ files by name, for includes.
+    headers: &'a units::Headers,
     /// Folders holding Go files.
     go_folders: &'a HashSet<&'a [u8]>,
     /// The Go files of a package at the top, which stand for it.

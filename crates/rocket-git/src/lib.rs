@@ -138,7 +138,7 @@ pub use remote_management::{RemoteRenamePreview, RemoteRenameReport};
 mod repository;
 mod repository_map;
 pub use repository_map::{MapKind, MapOptions, MapNodeKind, MapLinkKind, MapNode, MapLink, MapContinuation, RepositoryMap, MAP_COMMITS, MAP_HISTORY_MAX, MAP_NODES, map_mermaid};
-pub use repository_map::{ModuleLanguage, ModuleMap, ModulePackage, OutlineItem, OutlineKind, PackageRef, UnlinkedReason};
+pub use repository_map::{Dialect, ModuleLanguage, ModuleMap, ModulePackage, OutlineItem, OutlineKind, PackageRef, UnlinkedReason};
 pub use repository_map::{
     CODE_HISTORY_COMMITS, CODE_MAP_FILES, CODEOWNERS_BYTES, CODEOWNERS_FILES, ChangesOutcome, CodeChanges, CodeEnd, CodeHistory, CodeLink, CodeLinks, CodeOwners,
     FileKind, HistoryCommit, OwnerRules, Ownership, file_kind,

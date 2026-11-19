@@ -4,9 +4,12 @@ use crate::{parse, repository::commit_revision_args, runner::args, *};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 mod cargo;
+mod cfamily;
 mod code_map;
+mod csharp;
 mod golang;
 mod javascript;
+mod jvm;
 mod mermaid;
 mod modules;
 mod owners;
@@ -43,7 +46,7 @@ pub enum MapKind {
     History,
     People,
     /// One package's modules and which uses which: Rust, JavaScript or TypeScript,
-    /// Python or Go.
+    /// Python, Go, Java or Kotlin, C or C++, or C#.
     Modules,
 }
 impl MapKind {
@@ -89,7 +92,8 @@ impl Default for MapOptions {
         }
     }
 }
-/// The languages Modules reads. TypeScript is read as JavaScript.
+/// The languages Modules reads. TypeScript is read as JavaScript, Kotlin with Java and
+/// C++ with C; the package's [`Dialect`] names which.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ModuleLanguage {
     #[default]
@@ -97,13 +101,30 @@ pub enum ModuleLanguage {
     JavaScript,
     Python,
     Go,
+    /// Java and Kotlin: a unit is a package.
+    Java,
+    /// C and C++: a unit is a file.
+    C,
+    /// A unit is a namespace.
+    CSharp,
 }
 impl ModuleLanguage {
-    /// Go's packages stand alone: a folder inside a package is another package, so
-    /// nothing is counted as inside another. The other languages nest like folders.
+    /// Go's and Java's packages and C#'s namespaces stand alone: one inside another (by
+    /// folder or by name) is another, so nothing is counted as inside another. The other
+    /// languages nest like folders.
     pub fn standalone(self) -> bool {
-        self == Self::Go
+        matches!(self, Self::Go | Self::Java | Self::CSharp)
     }
+}
+/// The second language a package of one is written in, which names the package.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Dialect {
+    /// A JavaScript project with TypeScript files or a tsconfig.json.
+    TypeScript,
+    /// A Java project with more Kotlin files than Java ones.
+    Kotlin,
+    /// A C project with C++ files.
+    Cpp,
 }
 /// A package Modules can read, named by its folder (empty for the top folder) and
 /// language: one folder can hold a Cargo package and a JavaScript project.
@@ -116,14 +137,16 @@ pub struct PackageRef {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ModulePackage {
     pub folder: Vec<u8>,
-    /// Cargo's or package.json's name, a Go module's path, else the folder's own name
-    /// (empty for the top folder).
+    /// Cargo's or package.json's name, a Go module's path, Maven's artifactId or Gradle's
+    /// rootProject.name, CMake's or Meson's project name, a .csproj file's own name, else
+    /// the folder's own name (empty for the top folder).
     pub name: Vec<u8>,
     pub language: ModuleLanguage,
-    /// A JavaScript project with TypeScript files or a tsconfig.json.
-    pub typescript: bool,
-    /// Found by its own file: Cargo.toml, package.json, __init__.py or go.mod. False
-    /// for a top-level folder of JavaScript or Python files that has none.
+    /// TypeScript, Kotlin or C++ beside the language's own files.
+    pub dialect: Option<Dialect>,
+    /// Found by its own file: Cargo.toml, package.json, __init__.py, go.mod, a Maven or
+    /// Gradle build, a C or C++ build (CMake, Meson, Make and the like) or a .csproj.
+    /// False for a folder of files that has none.
     pub manifest: bool,
     /// Source files: Rust files in `src`, or the package's files of its language.
     pub files: usize,
@@ -146,9 +169,10 @@ pub enum MapNodeKind {
     Commit,
     Person,
     Area,
-    /// A module: a Rust module with a file of its own, a JavaScript file or folder, a
-    /// Python module or package, or a Go package. In a Modules read a Directory is a Go
-    /// folder that holds packages but is none itself.
+    /// A module: a Rust module with a file of its own, a JavaScript, C or C++ file or
+    /// folder, a Python module or package, a Go or Java package, or a C# namespace. In a
+    /// Modules read a Directory is a Go folder, or a part of Java's package names or C#'s
+    /// namespaces, that holds others but is none itself.
     Module,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -217,12 +241,13 @@ pub struct ModuleMap {
     pub language: ModuleLanguage,
     /// The node every other module is inside: Rust's crate root (`src/lib.rs`, or
     /// `src/main.rs` without a library) or a Python package's `__init__.py`. None for
-    /// JavaScript, Go and a Python folder without one.
+    /// the other languages and a Python folder without one.
     pub root: Option<usize>,
     /// What each module's own files declare at their top level, by node, in order.
     pub outline: BTreeMap<usize, Vec<OutlineItem>>,
     /// What each module imports from outside the package, by node: other crates,
-    /// Node built-ins and npm packages, Python's and PyPI's modules, other Go modules.
+    /// Node built-ins and npm packages, Python's and PyPI's modules, other Go modules,
+    /// Java packages, C and C++ headers and libraries, C# namespaces.
     pub outside: BTreeMap<usize, Vec<Vec<u8>>>,
     /// The package's source files no module is read from, and why.
     pub unlinked: Vec<(Vec<u8>, UnlinkedReason)>,
@@ -236,18 +261,21 @@ pub struct ModuleMap {
 pub struct OutlineItem {
     pub kind: OutlineKind,
     pub name: Vec<u8>,
-    /// Rust's `pub`, `pub(crate)` and the like, or JavaScript's `export`, as written;
-    /// empty when private and in Python and Go.
+    /// Rust's `pub`, `pub(crate)` and the like, JavaScript's `export`, an access
+    /// modifier in Java, Kotlin and C#, or C's and C++'s `static`, as written; empty when
+    /// none is written and in Python and Go.
     pub visibility: Vec<u8>,
     /// Seen from outside: Rust's `pub…`, an exported JavaScript name, a Python name
-    /// without a leading underscore, a Go name starting with a capital letter.
+    /// without a leading underscore, a Go name starting with a capital letter, a public
+    /// Java type, a Kotlin or C# one that is not private, a C or C++ function that is not
+    /// static or what a header declares.
     pub exported: bool,
     /// An `impl` block's trait, if it implements one.
     pub of_trait: Option<Vec<u8>>,
     /// An `impl` block's functions, or a class's or Go type's own.
     pub functions: usize,
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum OutlineKind {
     Function,
     Struct,
@@ -259,13 +287,19 @@ pub enum OutlineKind {
     Static,
     Macro,
     Impl,
-    /// A JavaScript or Python class.
+    /// A JavaScript, Python, Java, Kotlin, C# or C++ class.
     Class,
-    /// A TypeScript interface.
+    /// A TypeScript, Java, Kotlin or C# interface.
     Interface,
-    /// JavaScript's `let` and `var`.
+    /// JavaScript's `let` and `var`, Kotlin's `var`.
     Let,
     Var,
+    /// A Java or C# record.
+    Record,
+    /// A Kotlin object.
+    Object,
+    /// Java's `@interface`, Kotlin's `annotation class`.
+    Annotation,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnlinkedReason {
@@ -690,8 +724,8 @@ impl Repository {
                 cargo::connect(map, &index, &manifests, &blobs, cancel)
             })?;
         }
-        // The JavaScript, Python and Go packages Modules can read, so Code offers it
-        // where there is no Cargo package.
+        // The packages of the other languages Modules can read, so Code offers it where
+        // there is no Cargo package.
         let paths: Vec<&[u8]> = output
             .split(|b| *b == 0)
             .filter_map(|raw| {
@@ -709,7 +743,7 @@ impl Repository {
             .map(|f| ModulePackage {
                 name: packages::file_name(&f.folder).to_vec(),
                 language: f.language,
-                typescript: f.typescript,
+                dialect: f.dialect,
                 manifest: f.manifest.is_some(),
                 files: f.files.len(),
                 node: None,

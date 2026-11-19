@@ -247,8 +247,83 @@
   "Python package · modules": "Python-Paket · Module",
   "Python folder · modules": "Python-Ordner · Module",
   "Go module · packages": "Go-Modul · Pakete",
+  "Find a namespace": "Namespace suchen",
+  "Find a file": "Datei suchen",
+  "NAMESPACES": "NAMESPACES",
+  "FILES": "DATEIEN",
+  "Namespace": "Namespace",
+  "{n} namespaces": {
+    "one": "{n} Namespace",
+    "other": "{n} Namespaces"
+  },
+  "{n} more namespaces": {
+    "one": "{n} weiterer Namespace",
+    "other": "{n} weitere Namespaces"
+  },
+  "{n} more files": {
+    "one": "{n} weitere Datei",
+    "other": "{n} weitere Dateien"
+  },
+  "Used by {n} namespaces": {
+    "one": "Verwendet von {n} Namespace",
+    "other": "Verwendet von {n} Namespaces"
+  },
+  "Used by {n} files": {
+    "one": "Verwendet von {n} Datei",
+    "other": "Verwendet von {n} Dateien"
+  },
+  "Whole project": "Ganzes Projekt",
+  "Every package of the project and how they connect": "Alle Pakete des Projekts und wie sie zusammenhängen",
+  "Every namespace of the project and how they connect": "Alle Namespaces des Projekts und wie sie zusammenhängen",
+  "Every file of the project and how they connect": "Alle Dateien des Projekts und wie sie zusammenhängen",
+  "Choose a namespace": "Namespace wählen",
+  "Choose a file": "Datei wählen",
+  "Order the namespaces by how many use them, or by name": "Namespaces danach ordnen, wie viele sie verwenden, oder nach Namen",
+  "Order the files by how many use them, or by name": "Dateien danach ordnen, wie viele sie verwenden, oder nach Namen",
+  "No namespace matches": "Kein passender Namespace",
+  "No file matches": "Keine passende Datei",
+  "{count} namespaces, {order}": "{count} Namespaces, {order}",
+  "{count} files, {order}": "{count} Dateien, {order}",
+  "{count} namespaces are too many to draw at once. Choose one from the list": "{count} Namespaces sind zu viele, um sie auf einmal zu zeichnen. Wählen Sie einen aus der Liste",
+  "{count} files are too many to draw at once. Choose one from the list": "{count} Dateien sind zu viele, um sie auf einmal zu zeichnen. Wählen Sie eine aus der Liste",
+  "Namespaces {namespaces} · links {links} · arrows point to what is used": "Namespaces {namespaces} · Verbindungen {links} · Pfeile zeigen auf das Verwendete",
+  "Files {files} · links {links} · arrows point to what is used": "Dateien {files} · Verbindungen {links} · Pfeile zeigen auf das Verwendete",
+  "IN THIS NAMESPACE": "IN DIESEM NAMESPACE",
+  "Namespaces": "Namespaces",
+  "Kotlin project · packages": "Kotlin-Projekt · Pakete",
+  "Kotlin folder · packages": "Kotlin-Ordner · Pakete",
+  "Java project · packages": "Java-Projekt · Pakete",
+  "Java folder · packages": "Java-Ordner · Pakete",
+  "C++ project · files": "C++-Projekt · Dateien",
+  "C++ folder · files": "C++-Ordner · Dateien",
+  "C project · files": "C-Projekt · Dateien",
+  "C folder · files": "C-Ordner · Dateien",
+  "C# project · namespaces": "C#-Projekt · Namespaces",
+  "C# folder · namespaces": "C#-Ordner · Namespaces",
+  "Namespace · {package}": "Namespace · {package}",
+  "File · {package}": "Datei · {package}",
+  "{n} Kotlin files": {
+    "one": "{n} Kotlin-Datei",
+    "other": "{n} Kotlin-Dateien"
+  },
+  "{n} Java files": {
+    "one": "{n} Java-Datei",
+    "other": "{n} Java-Dateien"
+  },
+  "{n} C++ files": {
+    "one": "{n} C++-Datei",
+    "other": "{n} C++-Dateien"
+  },
+  "{n} C files": {
+    "one": "{n} C-Datei",
+    "other": "{n} C-Dateien"
+  },
+  "{n} C# files": {
+    "one": "{n} C#-Datei",
+    "other": "{n} C#-Dateien"
+  },
   "No package to read in this snapshot": "Kein lesbares Paket in dieser Momentaufnahme",
-  "Modules reads Rust, JavaScript, TypeScript, Python and Go.": "Die Ansicht Module liest Rust, JavaScript, TypeScript, Python und Go.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.": "Die Ansicht Module liest Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ und C#.",
   "The package to map": "Das darzustellende Paket",
   "OUTSIDE": "EXTERN",
   "build ignore": "vom Build ausgenommen",

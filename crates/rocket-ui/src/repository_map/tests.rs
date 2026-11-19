@@ -1372,7 +1372,7 @@ fn language_map(language: ModuleLanguage, units: &[TestUnit], uses: &[(usize, us
         links,
         scope: MapOptions { kind: MapKind::Modules, package: Some(package), ..Default::default() },
         modules: Some(ModuleMap { package: 0, language, ..Default::default() }),
-        module_packages: vec![ModulePackage { folder: b"pkg".to_vec(), name: b"pkg".to_vec(), language, typescript: false, manifest: true, files: units.len(), node: Some(0) }],
+        module_packages: vec![ModulePackage { folder: b"pkg".to_vec(), name: b"pkg".to_vec(), language, dialect: None, manifest: true, files: units.len(), node: Some(0) }],
         ..Default::default()
     }
 }
@@ -1475,9 +1475,62 @@ fn modules_javascript_folders_group_their_files_and_cards_use_file_names() {
         assert_eq!(words.find(), "Find a module");
         assert_eq!(words.files(226), "226 JavaScript files");
         assert_eq!(words.keyword(OutlineKind::Function), "function");
-        assert_eq!(modules::Words { language: ModuleLanguage::Python, typescript: false }.keyword(OutlineKind::Function), "def");
-        assert_eq!(modules::Words { language: ModuleLanguage::Go, typescript: false }.keyword(OutlineKind::Function), "func");
-        assert_eq!(modules::Words { language: ModuleLanguage::JavaScript, typescript: true }.package_kind(false), "TypeScript folder · modules");
+        assert_eq!(modules::Words { language: ModuleLanguage::Python, dialect: None }.keyword(OutlineKind::Function), "def");
+        assert_eq!(modules::Words { language: ModuleLanguage::Go, dialect: None }.keyword(OutlineKind::Function), "func");
+        assert_eq!(modules::Words { language: ModuleLanguage::JavaScript, dialect: Some(Dialect::TypeScript) }.package_kind(false), "TypeScript folder · modules");
+    });
+}
+
+#[test]
+fn modules_java_packages_stand_alone_and_each_language_names_its_units() {
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        // com.acme.app.web holds web.api in the list, as Go's folders do; each is a package.
+        let data = language_map(
+            ModuleLanguage::Java,
+            &[
+                ("com.acme.app", "app", "Java package", false, 1, 20, None),
+                ("com.acme.app.store", "store", "Java package", false, 2, 60, None),
+                ("com.acme.app.web", "web", "Folder", true, 0, 0, None),
+                ("com.acme.app.web.api", "api", "Java package", false, 3, 90, Some(2)),
+            ],
+            &[(0, 1, &["Db"]), (3, 1, &["Db", "Cache"])],
+        );
+        let mut s = modules_page(data);
+        let units = s.units().unwrap();
+        let data = s.data.clone().unwrap();
+        let mut top: Vec<String> = units.top.iter().map(|&i| modules::name(&data, i)).collect();
+        top.sort();
+        assert_eq!(top, ["api", "app", "store"], "every package counts at the top, the folder only in the list");
+        assert_eq!(units.used_by[&m(1)], 2);
+        assert_eq!(units.size(m(3)), (3, 90), "a package holds its own files only");
+        let words = modules::Words::of(&s);
+        assert_eq!((words.find(), words.legend(3, 2)), ("Find a package", "Packages 3 · links 2 · arrows point to what is used".to_owned()));
+        assert_eq!(words.files(12), "12 Java files");
+        assert_eq!(words.package_kind(true), "Java project · packages");
+        assert_eq!(words.keyword(OutlineKind::Enum), "enum");
+        assert_eq!(words.keyword(OutlineKind::Annotation), "@interface");
+        assert_eq!(words.keyword(OutlineKind::Record), "record");
+        // Kotlin's words in a project mostly in Kotlin.
+        let kotlin = modules::Words { language: ModuleLanguage::Java, dialect: Some(Dialect::Kotlin) };
+        assert_eq!((kotlin.files(1), kotlin.package_kind(false)), ("1 Kotlin file".to_owned(), "Kotlin folder · packages"));
+        let keywords: Vec<&str> = [OutlineKind::Function, OutlineKind::Const, OutlineKind::Var, OutlineKind::Enum, OutlineKind::Object, OutlineKind::Type, OutlineKind::Annotation].iter().map(|k| kotlin.keyword(*k)).collect();
+        assert_eq!(keywords, ["fun", "val", "var", "enum class", "object", "typealias", "annotation class"]);
+        // C# has namespaces; C and C++ files.
+        let csharp = modules::Words { language: ModuleLanguage::CSharp, dialect: None };
+        assert_eq!((csharp.find(), csharp.legend(5, 4)), ("Find a namespace", "Namespaces 5 · links 4 · arrows point to what is used".to_owned()));
+        assert_eq!((csharp.files(2), csharp.package_kind(true), csharp.keyword(OutlineKind::Type)), ("2 C# files".to_owned(), "C# project · namespaces", "delegate"));
+        let c = modules::Words { language: ModuleLanguage::C, dialect: None };
+        assert_eq!((c.find(), c.legend(4, 1)), ("Find a file", "Files 4 · links 1 · arrows point to what is used".to_owned()));
+        assert_eq!((c.files(3), c.package_kind(false)), ("3 C files".to_owned(), "C folder · files"));
+        let keywords: Vec<&str> = [OutlineKind::Function, OutlineKind::Macro, OutlineKind::Type, OutlineKind::Struct, OutlineKind::Var].iter().map(|k| c.keyword(*k)).collect();
+        assert_eq!(keywords, ["function", "#define", "typedef", "struct", "extern"]);
+        let cpp = modules::Words { language: ModuleLanguage::C, dialect: Some(Dialect::Cpp) };
+        assert_eq!((cpp.files(9), cpp.package_kind(true)), ("9 C++ files".to_owned(), "C++ project · files"));
+        let names: Vec<&str> = [(ModuleLanguage::Java, None), (ModuleLanguage::Java, Some(Dialect::Kotlin)), (ModuleLanguage::C, None), (ModuleLanguage::C, Some(Dialect::Cpp)), (ModuleLanguage::CSharp, None)]
+            .iter()
+            .map(|(l, d)| modules::language_name(*l, *d))
+            .collect();
+        assert_eq!(names, ["Java", "Kotlin", "C", "C++", "C#"]);
     });
 }
 
@@ -2020,6 +2073,33 @@ fn code_map_shades_against_cards_dashes_unowned_and_hatches_go_packages() {
     s.rebuild();
     assert_eq!(picture(&s).legend.uses, 2);
     assert_eq!(picture(&s).placed[at(&s)].paint.sub, "2 use a change");
+}
+
+#[test]
+fn code_map_java_and_csharp_packages_use_a_change_with_each_of_their_files() {
+    // Java packages and C# namespaces use each other as wholes too: their ends are folders.
+    let mut s = code_page(&["jv/a/A.java", "jv/a/Util.kt", "jv/b/B.java", "cs/m/Model.cs", "cs/w/Web.cs"], &[("jv/a/", "jv/b/"), ("cs/w/", "cs/m/")]);
+    open(&mut s, "jv");
+    open(&mut s, "cs");
+    s.rebuild();
+    let changed = |path: &[u8]| ComparedFile { path: RepoPath::new(path.to_vec()).unwrap(), original_path: None, change: Change::Modified, similarity: None };
+    s.code.changes = Some(Arc::new(CodeChanges {
+        outcome: ChangesOutcome::Ready,
+        base: "main".into(),
+        base_id: None,
+        split: None,
+        splits: Vec::new(),
+        commits: 1,
+        files: vec![changed(b"jv/b/B.java"), changed(b"cs/m/Model.cs")],
+        lines: HashMap::new(),
+    }));
+    s.code.colour = code_map::Colour::Changes;
+    s.rebuild();
+    // A.java and Util.kt use B's package; Web.cs uses the Model namespace.
+    assert_eq!(picture(&s).legend.uses, 3);
+    let a = node(&s, "jv/a");
+    let at = picture(&s).index(code_map::Item::Node(a)).unwrap();
+    assert_eq!(picture(&s).placed[at].paint.sub, "2 use a change");
 }
 
 #[test]

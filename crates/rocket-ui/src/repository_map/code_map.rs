@@ -1204,10 +1204,12 @@ pub fn change_marks(s: &MapPage, data: &RepositoryMap, f: &Facts, changes: &Code
             }
             let from = &links.ends[l.from];
             if from.folder {
-                // A Go package uses as a whole: each of its own Go files uses the change.
+                // A Go or Java package and a C# namespace use as a whole: each of their own
+                // files in the folder uses the change.
                 if let Some(&n) = f.by_path.get(&from.path) {
                     for &k in &f.files[n] {
-                        if data.nodes[k].path.as_deref().is_some_and(|p| p.ends_with(b".go") && !changed.contains(p)) {
+                        let whole = |p: &[u8]| [b".go".as_slice(), b".java", b".kt", b".cs"].iter().any(|e| p.ends_with(e)) && !p.ends_with(b"_test.go");
+                        if data.nodes[k].path.as_deref().is_some_and(|p| whole(p) && !changed.contains(p)) {
                             marks.entry(k).or_insert('u');
                         }
                     }

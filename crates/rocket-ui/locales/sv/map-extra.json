@@ -247,8 +247,83 @@
   "Python package · modules": "Python-paket · moduler",
   "Python folder · modules": "Python-mapp · moduler",
   "Go module · packages": "Go-modul · paket",
+  "Find a namespace": "Hitta en namnrymd",
+  "Find a file": "Hitta en fil",
+  "NAMESPACES": "NAMNRYMDER",
+  "FILES": "FILER",
+  "Namespace": "Namnrymd",
+  "{n} namespaces": {
+    "one": "{n} namnrymd",
+    "other": "{n} namnrymder"
+  },
+  "{n} more namespaces": {
+    "one": "{n} namnrymd till",
+    "other": "{n} namnrymder till"
+  },
+  "{n} more files": {
+    "one": "{n} fil till",
+    "other": "{n} filer till"
+  },
+  "Used by {n} namespaces": {
+    "one": "Används av {n} namnrymd",
+    "other": "Används av {n} namnrymder"
+  },
+  "Used by {n} files": {
+    "one": "Används av {n} fil",
+    "other": "Används av {n} filer"
+  },
+  "Whole project": "Hela projektet",
+  "Every package of the project and how they connect": "Alla paket i projektet och hur de hänger ihop",
+  "Every namespace of the project and how they connect": "Alla namnrymder i projektet och hur de hänger ihop",
+  "Every file of the project and how they connect": "Alla filer i projektet och hur de hänger ihop",
+  "Choose a namespace": "Välj en namnrymd",
+  "Choose a file": "Välj en fil",
+  "Order the namespaces by how many use them, or by name": "Ordna namnrymderna efter hur många som använder dem, eller efter namn",
+  "Order the files by how many use them, or by name": "Ordna filerna efter hur många som använder dem, eller efter namn",
+  "No namespace matches": "Ingen namnrymd matchar",
+  "No file matches": "Ingen fil matchar",
+  "{count} namespaces, {order}": "{count} namnrymder, {order}",
+  "{count} files, {order}": "{count} filer, {order}",
+  "{count} namespaces are too many to draw at once. Choose one from the list": "{count} namnrymder är för många för att rita samtidigt. Välj en i listan",
+  "{count} files are too many to draw at once. Choose one from the list": "{count} filer är för många för att rita samtidigt. Välj en i listan",
+  "Namespaces {namespaces} · links {links} · arrows point to what is used": "Namnrymder {namespaces} · länkar {links} · pilar pekar på det som används",
+  "Files {files} · links {links} · arrows point to what is used": "Filer {files} · länkar {links} · pilar pekar på det som används",
+  "IN THIS NAMESPACE": "I DEN HÄR NAMNRYMDEN",
+  "Namespaces": "Namnrymder",
+  "Kotlin project · packages": "Kotlin-projekt · paket",
+  "Kotlin folder · packages": "Kotlin-mapp · paket",
+  "Java project · packages": "Java-projekt · paket",
+  "Java folder · packages": "Java-mapp · paket",
+  "C++ project · files": "C++-projekt · filer",
+  "C++ folder · files": "C++-mapp · filer",
+  "C project · files": "C-projekt · filer",
+  "C folder · files": "C-mapp · filer",
+  "C# project · namespaces": "C#-projekt · namnrymder",
+  "C# folder · namespaces": "C#-mapp · namnrymder",
+  "Namespace · {package}": "Namnrymd · {package}",
+  "File · {package}": "Fil · {package}",
+  "{n} Kotlin files": {
+    "one": "{n} Kotlin-fil",
+    "other": "{n} Kotlin-filer"
+  },
+  "{n} Java files": {
+    "one": "{n} Java-fil",
+    "other": "{n} Java-filer"
+  },
+  "{n} C++ files": {
+    "one": "{n} C++-fil",
+    "other": "{n} C++-filer"
+  },
+  "{n} C files": {
+    "one": "{n} C-fil",
+    "other": "{n} C-filer"
+  },
+  "{n} C# files": {
+    "one": "{n} C#-fil",
+    "other": "{n} C#-filer"
+  },
   "No package to read in this snapshot": "Inget paket att läsa i den här ögonblicksbilden",
-  "Modules reads Rust, JavaScript, TypeScript, Python and Go.": "Vyn Moduler läser Rust, JavaScript, TypeScript, Python och Go.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.": "Vyn Moduler läser Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ och C#.",
   "The package to map": "Paketet att kartlägga",
   "OUTSIDE": "UTANFÖR",
   "build ignore": "utesluten ur byggen",

@@ -508,7 +508,7 @@ impl Repository {
                 folder: folder.clone(),
                 name: name.clone().into_bytes(),
                 language: ModuleLanguage::Rust,
-                typescript: false,
+                dialect: None,
                 manifest: true,
                 files: map.nodes[at].count,
                 node: Some(at),
@@ -521,23 +521,51 @@ impl Repository {
         if limited {
             map.notes.push(format!("More than {} packages of one language: the first {} by folder are listed.", packages::PACKAGES, packages::PACKAGES));
         }
-        let wanted: Vec<Vec<u8>> = others.iter().filter_map(|f| f.manifest.clone()).filter(|m| !m.ends_with(b"__init__.py")).collect();
+        // The manifests that name a package or say how it is imported.
+        let wanted: Vec<Vec<u8>> = others
+            .iter()
+            .filter_map(|f| f.manifest.clone())
+            .filter(|m| matches!(packages::file_name(m), b"package.json" | b"go.mod") || packages::names_project(m))
+            .collect();
         let small = if wanted.is_empty() { BTreeMap::new() } else { self.runner.step(op, "read-manifests", || self.map_small(&wanted, &blobs, cancel))? };
         for f in &others {
             let text = f.manifest.as_ref().and_then(|m| small.get(m));
             let own = packages::file_name(&f.folder).to_vec();
+            let built = f.manifest.is_some();
+            let named = || f.manifest.as_ref().and_then(|m| packages::project_name(m, text.map(String::as_str))).map(String::into_bytes).unwrap_or_else(|| own.clone());
             let (prefix, name, detail): (&[u8], Vec<u8>, &[u8]) = match f.language {
                 ModuleLanguage::JavaScript => (
                     b"package-javascript:",
                     text.and_then(|t| packages::json(t)).and_then(|j| j.get("name").and_then(packages::Json::str).map(|n| n.as_bytes().to_vec())).filter(|n| !n.is_empty()).unwrap_or(own),
-                    match (f.typescript, f.manifest.is_some()) {
+                    match (f.dialect.is_some(), built) {
                         (true, true) => b"TypeScript project",
                         (true, false) => b"TypeScript folder",
                         (false, true) => b"JavaScript project",
                         (false, false) => b"JavaScript folder",
                     },
                 ),
-                ModuleLanguage::Python => (b"package-python:", own, if f.manifest.is_some() { b"Python package" } else { b"Python folder" }),
+                ModuleLanguage::Python => (b"package-python:", own, if built { b"Python package" } else { b"Python folder" }),
+                ModuleLanguage::Java => (
+                    b"package-java:",
+                    named(),
+                    match (f.dialect.is_some(), built) {
+                        (true, true) => b"Kotlin project",
+                        (true, false) => b"Kotlin folder",
+                        (false, true) => b"Java project",
+                        (false, false) => b"Java folder",
+                    },
+                ),
+                ModuleLanguage::C => (
+                    b"package-c:",
+                    named(),
+                    match (f.dialect.is_some(), built) {
+                        (true, true) => b"C++ project",
+                        (true, false) => b"C++ folder",
+                        (false, true) => b"C project",
+                        (false, false) => b"C folder",
+                    },
+                ),
+                ModuleLanguage::CSharp => (b"package-csharp:", named(), if built { b"C# project" } else { b"C# folder" }),
                 ModuleLanguage::Go | ModuleLanguage::Rust => (b"package-go:", text.and_then(|t| packages::go_module(t)).map(String::into_bytes).unwrap_or(own), b"Go module"),
             };
             let mut n = node(MapNodeKind::Crate, [prefix, f.folder.as_slice()].concat(), name.clone(), detail.to_vec());
@@ -550,7 +578,7 @@ impl Repository {
                 folder: f.folder.clone(),
                 name,
                 language: f.language,
-                typescript: f.typescript,
+                dialect: f.dialect,
                 manifest: f.manifest.is_some(),
                 files: f.files.len(),
                 node: Some(at),
@@ -793,12 +821,22 @@ impl Repository {
                 units::javascript(&found.folder, &texts, &known, &aliases, cancel)
             }
             ModuleLanguage::Python => units::python(&found.folder, found.manifest.is_some(), &texts, cancel),
+            ModuleLanguage::Java => units::java(&texts, &found.files, cancel),
+            ModuleLanguage::C => {
+                let known: HashSet<&[u8]> = blobs.keys().copied().collect();
+                let headers = units::Headers::new(blobs.keys().copied());
+                units::c(&found.folder, &texts, &found.files, &known, &headers, cancel)
+            }
+            ModuleLanguage::CSharp => units::csharp(&texts, cancel),
             ModuleLanguage::Go | ModuleLanguage::Rust => units::go(&found.folder, module.as_deref().unwrap_or_default(), &texts, &found.files, cancel),
         })?;
         map.notes.push(
             match found.language {
                 ModuleLanguage::JavaScript => "Read from the committed JavaScript and TypeScript files of one project. Connections come from import, export … from, require() and import() with a fixed path, and tsconfig paths; other imports are listed as outside. Nothing is run, so paths built while a program runs are not followed.",
                 ModuleLanguage::Python => "Read from the committed Python files of one package. Connections come from import and from … import lines, also inside functions; other imports are listed as outside. Nothing is run, so importlib and sys.path changes are not followed.",
+                ModuleLanguage::Java => "Read from the committed Java and Kotlin files of one project. Each package stands alone; connections come from imports, the names a file uses through a * import, and names written out with their package. Test source sets (src/test and the like) are left out. Nothing is compiled, so names reached through inheritance are not followed.",
+                ModuleLanguage::C => "Read from the committed C and C++ files of one project. Connections come from #include lines, found beside the including file, else by the end of a path in the project or the snapshot; the names on a connection are those the included file declares and the other uses. The preprocessor is not run: macros are not expanded, and only the first branch of an #if is read for declarations.",
+                ModuleLanguage::CSharp => "Read from the committed C# files of one project. Each namespace stands alone; connections come from using lines, the type names a file uses from its namespace's parents and the namespaces it uses, and names written out in full. Nothing is compiled, so extension methods are not told apart from other methods.",
                 ModuleLanguage::Go | ModuleLanguage::Rust => "Read from the committed Go files of one module. Each package stands alone; connections come from imports and the names used through them. Test files and files marked //go:build ignore are left out; other build constraints are not evaluated.",
             }
             .into(),
@@ -976,7 +1014,7 @@ mod tests {
 
     #[test]
     fn rust_opens_first_and_other_crates_are_named_once() {
-        let package = |language, files| ModulePackage { folder: Vec::new(), name: Vec::new(), language, typescript: false, manifest: true, files, node: None };
+        let package = |language, files| ModulePackage { folder: Vec::new(), name: Vec::new(), language, dialect: None, manifest: true, files, node: None };
         // A crate with a large JavaScript fixtures tree still opens on the crate.
         assert_eq!(default_package(&[package(ModuleLanguage::JavaScript, 900), package(ModuleLanguage::Rust, 3)]), Some(1));
         assert_eq!(default_package(&[package(ModuleLanguage::Rust, 0), package(ModuleLanguage::Go, 2), package(ModuleLanguage::Python, 5)]), Some(2));

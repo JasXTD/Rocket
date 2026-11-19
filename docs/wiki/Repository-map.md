@@ -27,9 +27,11 @@ which opens the same way.
 
 Arrows show which files use which. The map reads every package of the snapshot the way
 Modules reads one (Rust crates with their tests, examples and programs, JavaScript and
-TypeScript projects, Python packages and Go modules) and connects packages through the
-names they import: a Cargo package's crate name, a package.json name, another Python
-package or Go module of the repository. An arrow between two cards gathers every link
+TypeScript projects, Python packages, Go modules, Java and Kotlin, C and C++, and C#
+projects) and connects packages through the names they import: a Cargo package's crate
+name, a package.json name, another Python package or Go module of the repository, a Java
+package or C# namespace another project declares (or whose folders it is laid out in),
+or a C or C++ file of another project. An arrow between two cards gathers every link
 between the files inside them, and its number counts the files on the using side. What
 uses sits above what it uses; when two use each other, the arrow pointing up is dashed.
 Cards that connect to nothing at their level sit under **Not connected**. One read takes
@@ -70,8 +72,9 @@ appear.
 ### Modules
 
 **Modules** shows the modules of one package and which module uses which: a Rust
-crate, a JavaScript or TypeScript project, a Python package, or the packages of a Go
-module. Choose the package on the button beside **Packages · Folders · Modules**, which
+crate, a JavaScript or TypeScript project, a Python package, the packages of a Go module
+or of a Java or Kotlin project, the namespaces of a C# project, or the files of a C or C++
+project. Choose the package on the button beside **Packages · Folders · Modules**, which
 lists the snapshot's packages grouped by language, or **Show modules** in a Cargo
 package's Details. Without a choice it reads the largest package of the language with
 the most files. A repository without Cargo packages shows **Folders · Modules**.
@@ -125,9 +128,33 @@ The other languages are read the same way, as text within the same limits:
   (`http.Client`). Test files, `testdata`, `vendor` and files marked
   `//go:build ignore` are left out; the last are listed under Not linked. Other build
   constraints are not evaluated, so files for every platform are read together.
+- **Java and Kotlin**, read together. A project is a folder with `pom.xml`,
+  `build.gradle(.kts)` or `settings.gradle(.kts)` holding the files no deeper build holds,
+  as Maven's modules and Gradle's subprojects are; files in no project make one per
+  top-level folder. Kotlin names a project with more Kotlin files than Java ones. Each
+  package (its files' `package` line) stands alone, as Go's do, nested in the list under
+  the name above it; the list starts below the part every name shares. Packages are
+  connected by imports (`static` and Kotlin's `as` too), by the names a file uses through a
+  `*` import, and by names written out with their package. Test source sets (`src/test`,
+  `src/androidTest` and the like), `module-info.java` and Kotlin scripts are left out.
+- **C and C++**, read together. A project is the top-most folder with a CMake, Meson,
+  Make or similar build (the builds deeper down are parts of it); files no build holds make
+  one project. Each file is a module and its folders group their files. `#include "…"` is
+  looked for beside the file, then, as include folders would find it, by the end of a path
+  in the project, nearest first, then elsewhere in the repository (`<…>` only when it names
+  a folder). The names on a connection are those the header declares and the file uses.
+  The preprocessor is not run: macros are not expanded, `#include` lines count in every
+  branch but `#if 0`, and declarations only in an `#if`'s first branch.
+- **C#.** A project is a folder with a `.csproj` (`bin` and `obj` skipped); files in no
+  project make one per top-level folder. Each namespace stands alone, as Java's packages
+  do. Namespaces are connected by `using` lines (`static` and aliases too), by the type
+  names a file uses, looked for as C# does (its own namespace, its parents, then the
+  namespaces its `using` lines and the project's `global using` lines open), and by names
+  written out in full. A partial class is one, its methods added up.
 
 Imports from outside the package (other crates, Node built-ins and npm packages,
-Python's and PyPI's modules, other Go modules) are listed under **Outside** in a
+Python's and PyPI's modules, other Go modules, Java packages, C and C++ libraries and
+headers, C# namespaces) are listed under **Outside** in a
 module's Details, and counted in the package's. They are not drawn. Paths built while a
 program runs, bundler aliases other than tsconfig paths and `sys.path` changes are not
 followed.

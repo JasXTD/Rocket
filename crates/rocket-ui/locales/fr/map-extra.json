@@ -247,8 +247,83 @@
   "Python package · modules": "Paquet Python · modules",
   "Python folder · modules": "Dossier Python · modules",
   "Go module · packages": "Module Go · paquets",
+  "Find a namespace": "Rechercher un espace de noms",
+  "Find a file": "Rechercher un fichier",
+  "NAMESPACES": "ESPACES DE NOMS",
+  "FILES": "FICHIERS",
+  "Namespace": "Espace de noms",
+  "{n} namespaces": {
+    "one": "{n} espace de noms",
+    "other": "{n} espaces de noms"
+  },
+  "{n} more namespaces": {
+    "one": "{n} espace de noms de plus",
+    "other": "{n} espaces de noms de plus"
+  },
+  "{n} more files": {
+    "one": "{n} fichier de plus",
+    "other": "{n} fichiers de plus"
+  },
+  "Used by {n} namespaces": {
+    "one": "Utilisé par {n} espace de noms",
+    "other": "Utilisé par {n} espaces de noms"
+  },
+  "Used by {n} files": {
+    "one": "Utilisé par {n} fichier",
+    "other": "Utilisé par {n} fichiers"
+  },
+  "Whole project": "Projet entier",
+  "Every package of the project and how they connect": "Tous les paquets du projet et leurs liens",
+  "Every namespace of the project and how they connect": "Tous les espaces de noms du projet et leurs liens",
+  "Every file of the project and how they connect": "Tous les fichiers du projet et leurs liens",
+  "Choose a namespace": "Choisir un espace de noms",
+  "Choose a file": "Choisir un fichier",
+  "Order the namespaces by how many use them, or by name": "Trier les espaces de noms selon le nombre d’espaces de noms qui les utilisent, ou par nom",
+  "Order the files by how many use them, or by name": "Trier les fichiers selon le nombre de fichiers qui les utilisent, ou par nom",
+  "No namespace matches": "Aucun espace de noms ne correspond",
+  "No file matches": "Aucun fichier ne correspond",
+  "{count} namespaces, {order}": "{count} espaces de noms, {order}",
+  "{count} files, {order}": "{count} fichiers, {order}",
+  "{count} namespaces are too many to draw at once. Choose one from the list": "{count} espaces de noms, c’est trop pour tout dessiner à la fois. Choisissez-en un dans la liste",
+  "{count} files are too many to draw at once. Choose one from the list": "{count} fichiers, c’est trop pour tout dessiner à la fois. Choisissez-en un dans la liste",
+  "Namespaces {namespaces} · links {links} · arrows point to what is used": "Espaces de noms {namespaces} · liens {links} · les flèches pointent vers ce qui est utilisé",
+  "Files {files} · links {links} · arrows point to what is used": "Fichiers {files} · liens {links} · les flèches pointent vers ce qui est utilisé",
+  "IN THIS NAMESPACE": "DANS CET ESPACE DE NOMS",
+  "Namespaces": "Espaces de noms",
+  "Kotlin project · packages": "Projet Kotlin · paquets",
+  "Kotlin folder · packages": "Dossier Kotlin · paquets",
+  "Java project · packages": "Projet Java · paquets",
+  "Java folder · packages": "Dossier Java · paquets",
+  "C++ project · files": "Projet C++ · fichiers",
+  "C++ folder · files": "Dossier C++ · fichiers",
+  "C project · files": "Projet C · fichiers",
+  "C folder · files": "Dossier C · fichiers",
+  "C# project · namespaces": "Projet C# · espaces de noms",
+  "C# folder · namespaces": "Dossier C# · espaces de noms",
+  "Namespace · {package}": "Espace de noms · {package}",
+  "File · {package}": "Fichier · {package}",
+  "{n} Kotlin files": {
+    "one": "{n} fichier Kotlin",
+    "other": "{n} fichiers Kotlin"
+  },
+  "{n} Java files": {
+    "one": "{n} fichier Java",
+    "other": "{n} fichiers Java"
+  },
+  "{n} C++ files": {
+    "one": "{n} fichier C++",
+    "other": "{n} fichiers C++"
+  },
+  "{n} C files": {
+    "one": "{n} fichier C",
+    "other": "{n} fichiers C"
+  },
+  "{n} C# files": {
+    "one": "{n} fichier C#",
+    "other": "{n} fichiers C#"
+  },
   "No package to read in this snapshot": "Aucun paquet à lire dans cet instantané",
-  "Modules reads Rust, JavaScript, TypeScript, Python and Go.": "La vue Modules lit Rust, JavaScript, TypeScript, Python et Go.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.": "La vue Modules lit Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ et C#.",
   "The package to map": "Le paquet à cartographier",
   "OUTSIDE": "EXTERNES",
   "build ignore": "exclu des builds",

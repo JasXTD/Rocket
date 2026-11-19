@@ -572,6 +572,160 @@ fn committed_rust_modules_connections_and_unlinked_files() {
 }
 
 #[test]
+fn committed_java_kotlin_c_and_csharp_projects() {
+    isolated("ROCKET_MAP_TEST", "committed_java_kotlin_c_and_csharp_projects", || {
+        let f = Fixture::new();
+        // A Gradle build: a Kotlin app using a Java library, each its own subproject.
+        f.write("jvm/settings.gradle.kts", "rootProject.name = \"shop\"\ninclude(\":app\", \":lib\")\n");
+        f.write("jvm/app/build.gradle.kts", "plugins { kotlin(\"jvm\") }\n");
+        f.write("jvm/app/src/main/kotlin/com/acme/app/Main.kt", "package com.acme.app\n\nimport com.acme.app.ui.Screen\nimport com.acme.lib.store.Db\nimport kotlinx.coroutines.runBlocking\n\nfun main() = runBlocking { Screen().show(Db.open()) }\n");
+        f.write("jvm/app/src/main/kotlin/com/acme/app/ui/Screen.kt", "package com.acme.app.ui\n\nclass Screen {\n    fun show(x: Any) {}\n    fun hide() {}\n}\n");
+        f.write("jvm/app/src/test/kotlin/com/acme/app/MainTest.kt", "package com.acme.app\n\nimport org.junit.Test\n");
+        f.write("jvm/lib/build.gradle.kts", "plugins { `java-library` }\n");
+        f.write("jvm/lib/src/main/java/com/acme/lib/store/Db.java", "package com.acme.lib.store;\n\nimport java.util.List;\n\npublic final class Db {\n    public static Db open() { return new Db(); }\n    public void close() {}\n}\n");
+        // A CMake project in C: the build below src is part of it.
+        f.write("native/CMakeLists.txt", "cmake_minimum_required(VERSION 3.20)\nproject(acme C)\nadd_subdirectory(src)\n");
+        f.write("native/src/CMakeLists.txt", "add_library(acme acme.c)\n");
+        f.write("native/include/acme/acme.h", "#ifndef ACME_H\n#define ACME_H\n#include <stddef.h>\nint acme_open(const char *path);\n#endif\n");
+        f.write("native/src/acme.c", "#include \"acme/acme.h\"\n#include \"util.h\"\n\nint acme_open(const char *path) { return (int)util_len(path); }\n");
+        f.write("native/src/util.h", "static size_t util_len(const char *s) { return 0; }\n");
+        // A C# solution of two projects.
+        f.write("dotnet/Acme.Web/Acme.Web.csproj", "<Project Sdk=\"Microsoft.NET.Sdk.Web\" />\n");
+        f.write("dotnet/Acme.Web/Controllers/HomeController.cs", "using Acme.Core.Models;\nusing Microsoft.AspNetCore.Mvc;\n\nnamespace Acme.Web.Controllers;\n\npublic class HomeController : Controller\n{\n    public IActionResult Index() => View(new User(\"a\"));\n}\n");
+        f.write("dotnet/Acme.Web/Program.cs", "var app = WebApplication.Create(args);\napp.Run();\n");
+        f.write("dotnet/Acme.Core/Acme.Core.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
+        f.write("dotnet/Acme.Core/Models/User.cs", "namespace Acme.Core.Models;\n\npublic record User(string Name);\n");
+        f.commit("languages");
+        let package = |folder: &str, language| PackageRef { folder: folder.as_bytes().to_vec(), language };
+        let read = |choice: Option<PackageRef>| f.repo().repository_map(&MapOptions { kind: MapKind::Modules, package: choice, ..Default::default() }, &token()).unwrap();
+
+        let code = f.repo().repository_map(&MapOptions { kind: MapKind::Code, ..Default::default() }, &token()).unwrap();
+        let found: Vec<(String, ModuleLanguage, Option<Dialect>, usize)> =
+            code.module_packages.iter().map(|p| (String::from_utf8_lossy(&p.folder).into_owned(), p.language, p.dialect, p.files)).collect();
+        assert_eq!(
+            found,
+            [
+                // The root build holds no file of its own; the test source set is left out.
+                ("jvm/app".into(), ModuleLanguage::Java, Some(Dialect::Kotlin), 2),
+                ("jvm/lib".into(), ModuleLanguage::Java, None, 1),
+                ("native".into(), ModuleLanguage::C, None, 3),
+                ("dotnet/Acme.Core".into(), ModuleLanguage::CSharp, None, 1),
+                ("dotnet/Acme.Web".into(), ModuleLanguage::CSharp, None, 2),
+            ]
+        );
+
+        // Three languages with three files each: Java comes first, then its largest project.
+        let map = read(None);
+        assert_eq!(map.scope.package, Some(package("jvm/app", ModuleLanguage::Java)));
+        let names: Vec<(String, String)> = map
+            .nodes
+            .iter()
+            .filter(|n| n.kind == MapNodeKind::Crate)
+            .map(|n| (String::from_utf8_lossy(&n.label).into_owned(), String::from_utf8_lossy(&n.detail).into_owned()))
+            .collect();
+        assert_eq!(
+            names,
+            [
+                ("app".into(), "Kotlin project".into()),
+                ("lib".into(), "Java project".into()),
+                ("acme".into(), "C project".into()),
+                ("Acme.Core".into(), "C# project".into()),
+                ("Acme.Web".into(), "C# project".into()),
+            ]
+        );
+        let module = |map: &RepositoryMap, key: &str| map.nodes.iter().position(|n| n.key == format!("module:{key}").as_bytes()).unwrap_or_else(|| panic!("no module {key}"));
+        let uses = |map: &RepositoryMap, from: &str, to: &str| {
+            map.links
+                .iter()
+                .find(|e| e.kind == MapLinkKind::DependsOn && e.from == module(map, from) && e.to == module(map, to))
+                .map(|e| e.evidence.iter().map(|n| String::from_utf8_lossy(n).into_owned()).collect::<Vec<_>>())
+        };
+        let outside = |map: &RepositoryMap, key: &str| -> Vec<String> {
+            map.modules.as_ref().unwrap().outside.get(&module(map, key)).map(|o| o.iter().map(|n| String::from_utf8_lossy(n).into_owned()).collect()).unwrap_or_default()
+        };
+        let details = map.modules.as_ref().unwrap();
+        assert_eq!((details.language, details.root), (ModuleLanguage::Java, None));
+        assert_eq!(uses(&map, "com.acme.app", "com.acme.app.ui"), Some(vec!["Screen".into()]));
+        assert_eq!(map.nodes[module(&map, "com.acme.app.ui")].label, b"ui");
+        assert_eq!(map.nodes[module(&map, "com.acme.app.ui")].detail, b"Java package");
+        // The library is another project: its package is outside this one.
+        assert_eq!(outside(&map, "com.acme.app"), ["com.acme.lib.store", "kotlinx.coroutines"]);
+        let outline: Vec<String> = details.outline[&module(&map, "com.acme.app.ui")].iter().map(|o| format!("{:?} {} {}", o.kind, String::from_utf8_lossy(&o.name), o.functions)).collect();
+        assert_eq!(outline, ["Class Screen 2"]);
+
+        // C: files and folders; includes beside the file and by the end of their path.
+        let map = read(Some(package("native", ModuleLanguage::C)));
+        assert_eq!(map.modules.as_ref().unwrap().language, ModuleLanguage::C);
+        assert_eq!(uses(&map, "src/acme.c", "include/acme/acme.h"), Some(vec!["acme_open".into()]));
+        assert_eq!(uses(&map, "src/acme.c", "src/util.h"), Some(vec!["util_len".into()]));
+        assert_eq!(outside(&map, "include/acme/acme.h"), ["stddef.h"]);
+        assert_eq!(map.nodes[module(&map, "src/acme.c")].detail, b"C source");
+
+        // C#: namespaces; top-level statements are in the global namespace.
+        let map = read(Some(package("dotnet/Acme.Web", ModuleLanguage::CSharp)));
+        assert_eq!(map.modules.as_ref().unwrap().language, ModuleLanguage::CSharp);
+        assert_eq!(map.nodes[module(&map, "")].label, b"(global namespace)");
+        assert_eq!(outside(&map, "Acme.Web.Controllers"), ["Acme.Core.Models", "Microsoft.AspNetCore.Mvc"]);
+
+        // The code map joins the projects: an import or a using line names the other's folder.
+        let tip = ObjectId::parse(String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap().trim()).unwrap();
+        let links = f.repo().code_links(&tip, None, &token()).unwrap();
+        let name = |i: usize| {
+            let e = &links.ends[i];
+            format!("{}{}", String::from_utf8_lossy(&e.path), if e.folder { "/" } else { "" })
+        };
+        let mut pairs: Vec<String> = links.links.iter().map(|l| format!("{} -> {}", name(l.from), name(l.to))).collect();
+        pairs.sort();
+        assert_eq!(
+            pairs,
+            [
+                "dotnet/Acme.Web/Controllers/ -> dotnet/Acme.Core/Models/",
+                "jvm/app/src/main/kotlin/com/acme/app/ -> jvm/app/src/main/kotlin/com/acme/app/ui/",
+                "jvm/app/src/main/kotlin/com/acme/app/ -> jvm/lib/src/main/java/com/acme/lib/store/",
+                "native/src/acme.c -> native/include/acme/acme.h",
+                "native/src/acme.c -> native/src/util.h",
+            ]
+        );
+    });
+}
+
+#[test]
+fn code_links_name_packages_whole_reach_the_top_folder_and_survive_folder_reads() {
+    isolated("ROCKET_MAP_TEST", "code_links_name_packages_whole_reach_the_top_folder_and_survive_folder_reads", || {
+        let f = Fixture::new();
+        // Maven modules: a uses b; web imports a library's com.acme.payments, beside app's com.acme.
+        for module in ["a", "b", "app", "web"] {
+            f.write(&format!("{module}/pom.xml"), format!("<project><artifactId>{module}</artifactId></project>\n"));
+        }
+        f.write("a/src/main/java/com/acme/a/A.java", "package com.acme.a;\n\nimport com.acme.b.B;\n\npublic class A { B b; }\n");
+        f.write("b/src/main/java/com/acme/b/B.java", "package com.acme.b;\n\npublic class B {}\n");
+        f.write("app/src/main/java/com/acme/Application.java", "package com.acme;\n\npublic class Application {}\n");
+        f.write("web/src/main/java/com/acme/web/Web.java", "package com.acme.web;\n\nimport com.acme.payments.Gateway;\n\npublic class Web { Gateway gateway; }\n");
+        // A C# project at the top of the repository.
+        f.write("App.csproj", "<Project Sdk=\"Microsoft.NET.Sdk\" />\n");
+        f.write("Program.cs", "using App.Models;\n\nnamespace App;\n\nclass Program { User user; }\n");
+        f.write("Models/User.cs", "namespace App.Models;\n\npublic class User {}\n");
+        f.commit("jvm and dotnet");
+        let tip = ObjectId::parse(String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap().trim()).unwrap();
+        let pairs = |links: &CodeLinks| {
+            let name = |i: usize| {
+                let e = &links.ends[i];
+                format!("{}{}", String::from_utf8_lossy(&e.path), if e.folder { "/" } else { "" })
+            };
+            let mut out: Vec<String> = links.links.iter().map(|l| format!("{} -> {}", name(l.from), name(l.to))).collect();
+            out.sort();
+            out
+        };
+        let all = f.repo().code_links(&tip, None, &token()).unwrap();
+        // No arrow from web to app: com.acme.payments is no part of com.acme.
+        assert_eq!(pairs(&all), ["Program.cs -> Models/", "a/src/main/java/com/acme/a/ -> b/src/main/java/com/acme/b/"]);
+        // Reading a's folder alone still finds b's package by its folders.
+        let only = f.repo().code_links(&tip, Some(&[b"a".to_vec()]), &token()).unwrap();
+        assert_eq!(pairs(&only), ["a/src/main/java/com/acme/a/ -> b/src/main/java/com/acme/b/"]);
+    });
+}
+
+#[test]
 fn committed_javascript_python_and_go_packages() {
     isolated("ROCKET_MAP_TEST", "committed_javascript_python_and_go_packages", || {
         let f = Fixture::new();
@@ -604,7 +758,7 @@ fn committed_javascript_python_and_go_packages() {
         let found: Vec<(String, ModuleLanguage, bool, usize)> = code
             .module_packages
             .iter()
-            .map(|p| (String::from_utf8_lossy(&p.folder).into_owned(), p.language, p.typescript, p.files))
+            .map(|p| (String::from_utf8_lossy(&p.folder).into_owned(), p.language, p.dialect == Some(Dialect::TypeScript), p.files))
             .collect();
         assert_eq!(
             found,

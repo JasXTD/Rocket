@@ -567,6 +567,529 @@ pub(super) fn go(folder: &[u8], module: &str, texts: &BTreeMap<Vec<u8>, String>,
     Ok(built)
 }
 
+/// The names two sets share, sorted, up to what a connection keeps: the smaller set is
+/// the one walked.
+fn shared_names(used: &BTreeSet<String>, declared: &HashSet<String>) -> Vec<String> {
+    let mut out: Vec<String> = if declared.len() < used.len() {
+        declared.iter().filter(|d| used.contains(*d)).cloned().collect()
+    } else {
+        used.iter().filter(|u| declared.contains(*u)).cloned().collect()
+    };
+    out.sort();
+    out.truncate(NAMES);
+    out
+}
+
+/// The folder most of `files` are in; the shallowest, then the first by name, of those
+/// that hold as many.
+fn main_folder<'a>(files: impl Iterator<Item = &'a Vec<u8>>) -> Vec<u8> {
+    let mut counts: BTreeMap<&[u8], usize> = BTreeMap::new();
+    for f in files {
+        *counts.entry(parent(f)).or_default() += 1;
+    }
+    counts.into_iter().max_by_key(|(dir, n)| (*n, std::cmp::Reverse(dir.len()), std::cmp::Reverse(*dir))).map(|(d, _)| d.to_vec()).unwrap_or_default()
+}
+
+/// Units for dotted names, Java's packages and C#'s namespaces, each standing alone:
+/// one per name, from `names` (its folder, files and lines), nested in the list under
+/// the name above it. Parts of names between them (`com.acme` above `com.acme.store`)
+/// are folders, listed and never drawn. The list starts below the part every name
+/// shares, as Go's starts in its module, and each is labelled by its name below that
+/// part (`store`, `web.api`); a name that is that part is listed at the top beside the
+/// others with its last name, as is the unnamed one (`unnamed` its label). The keys
+/// are the whole names.
+fn dotted_units(built: &mut Built, names: &BTreeMap<String, (Vec<u8>, usize, usize)>, detail: &'static [u8], unnamed: &[u8]) -> HashMap<String, usize> {
+    let parts = |name: &str| -> Vec<String> { if name.is_empty() { Vec::new() } else { name.split('.').map(str::to_owned).collect() } };
+    let mut base: Option<Vec<String>> = None;
+    for name in names.keys().filter(|n| !n.is_empty()) {
+        let p = parts(name);
+        base = Some(match base {
+            None => p,
+            Some(b) => b.iter().zip(&p).take_while(|(x, y)| x == y).map(|(x, _)| x.clone()).collect(),
+        });
+    }
+    let base = base.unwrap_or_default();
+    // A name below the shared part, or the last name of the one that is it.
+    let below = |p: &[String]| -> Option<Vec<u8>> {
+        if p.len() > base.len() { Some(p[base.len()..].join(".").into_bytes()) } else { p.last().map(|l| l.clone().into_bytes()) }
+    };
+    let mut at: HashMap<String, usize> = HashMap::new();
+    let mut named: HashMap<String, usize> = HashMap::new();
+    for (name, (folder, files, lines)) in names {
+        let p = parts(name);
+        let label = below(&p).unwrap_or_else(|| unnamed.to_vec());
+        let unit = built.add(Unit {
+            key: name.clone(),
+            label,
+            detail,
+            path: folder.clone(),
+            parent: None,
+            folder: false,
+            files: *files,
+            lines: *lines,
+        });
+        at.insert(name.clone(), unit);
+        named.insert(name.clone(), unit);
+    }
+    // The parts between the shared start and each name, as folders.
+    for (name, (folder, _, _)) in names {
+        let p = parts(name);
+        for l in base.len() + 1..p.len() {
+            let prefix = p[..l].join(".");
+            if at.contains_key(&prefix) {
+                continue;
+            }
+            // Where the folder is: the name's own folder less the names below the part,
+            // when the folders follow the names; else the folder above it.
+            let dirs: Vec<&[u8]> = folder.split(|b| *b == b'/').filter(|d| !d.is_empty()).collect();
+            let rest = &p[l..];
+            let follows = dirs.len() >= rest.len() && dirs[dirs.len() - rest.len()..].iter().zip(rest).all(|(d, n)| *d == n.as_bytes());
+            let path = if follows { dirs[..dirs.len() - rest.len()].join(&b'/') } else { parent(folder).to_vec() };
+            let unit = built.add(Unit {
+                key: prefix.clone(),
+                label: below(&p[..l]).unwrap_or_default(),
+                detail: b"Folder",
+                path,
+                parent: None,
+                folder: true,
+                files: 0,
+                lines: 0,
+            });
+            at.insert(prefix, unit);
+        }
+    }
+    for (name, &unit) in &at {
+        let p = parts(name);
+        if p.len() > base.len() + 1 {
+            built.units[unit].parent = at.get(&p[..p.len() - 1].join(".")).copied();
+        }
+    }
+    // The shared part's own last name can be another's name below it (`app` beside
+    // `com.acme.app.app`): those show the whole name.
+    let mut seen: HashMap<Vec<u8>, usize> = HashMap::new();
+    for u in &built.units {
+        *seen.entry(u.label.clone()).or_default() += 1;
+    }
+    for (name, &unit) in &at {
+        if seen.get(&built.units[unit].label).copied().unwrap_or(0) > 1 && !name.is_empty() {
+            built.units[unit].label = name.clone().into_bytes();
+        }
+    }
+    named
+}
+
+// ---- Java and Kotlin -----------------------------------------------------------------
+
+/// The package an import from outside the project names: its names before the first
+/// one starting with a capital letter (a class), else all but a member's.
+fn java_package(import: &jvm::Import) -> Vec<String> {
+    let path = &import.path;
+    let end = match path.iter().position(|p| p.starts_with(|c: char| c.is_uppercase())) {
+        Some(0) => path.len(),
+        Some(at) => at,
+        None if import.all => path.len(),
+        None => path.len() - 1,
+    };
+    path[..end.max(1)].to_vec()
+}
+
+/// A Java or Kotlin project: one unit per package (its files' package clause), each
+/// standing alone, the parts of package names between them listed for the tree.
+/// Imports name a package and one of its types (or Kotlin's functions); a `*` import
+/// takes the names the file uses that the package declares, and a name written out with
+/// its package (`com.acme.store.Db`) connects the two as well. `files_of_project` are
+/// all the project's files, read or not: an import of a package the read limits left
+/// unread is still the project's own, never outside it.
+pub(super) fn java(texts: &BTreeMap<Vec<u8>, String>, files_of_project: &[Vec<u8>], cancel: &CancellationToken) -> Result<Built> {
+    let mut built = Built::default();
+    let mut files: Vec<(&Vec<u8>, jvm::Facts, usize)> = Vec::new();
+    for (path, source) in texts {
+        cancel.check()?;
+        files.push((path, jvm::read(source, packages::kotlin_file(path)), lines(source)));
+    }
+    let mut by_package: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (i, (_, f, _)) in files.iter().enumerate() {
+        by_package.entry(f.package.join(".")).or_default().push(i);
+    }
+    let names: BTreeMap<String, (Vec<u8>, usize, usize)> = by_package
+        .iter()
+        .map(|(name, list)| (name.clone(), (main_folder(list.iter().map(|&i| files[i].0)), list.len(), list.iter().map(|&i| files[i].2).sum())))
+        .collect();
+    let unit_of = dotted_units(&mut built, &names, b"Java package", b"(default package)");
+    // What each package declares, in all its files.
+    let mut declared: HashMap<usize, HashSet<String>> = HashMap::new();
+    for (_, f, _) in &files {
+        declared.entry(unit_of[&f.package.join(".")]).or_default().extend(f.outline.iter().map(|o| text(&o.name)));
+    }
+    let firsts: HashSet<&str> = names.keys().filter_map(|n| n.split('.').next()).filter(|n| !n.is_empty()).collect();
+    // The folders of the project's files that were not read, as their names.
+    let read: HashSet<&[u8]> = texts.keys().map(Vec::as_slice).collect();
+    let unread: Vec<Vec<&[u8]>> = files_of_project.iter().filter(|p| !read.contains(p.as_slice())).map(|p| parent(p).split(|b| *b == b'/').collect()).collect();
+    let own_unread = |package: &[String]| {
+        unread
+            .iter()
+            .any(|dir| dir.len() >= package.len() && dir[dir.len() - package.len()..].iter().zip(package).all(|(d, n)| *d == n.as_bytes()))
+    };
+    // The longest start of `parts`, up to `max` names, that is one of the project's
+    // packages and is followed by a class (named with a capital), the last name (a
+    // Kotlin function, a lowercase class) or nothing: in `com.acme.app.missing.Thing`
+    // `missing` is a package, not a class of com.acme.app.
+    let local = |parts: &[String], max: usize| {
+        (1..=max.min(parts.len())).rev().find_map(|n| {
+            let class = parts.get(n).is_none_or(|next| n + 1 == parts.len() || next.starts_with(|c: char| c.is_uppercase()));
+            unit_of.get(&parts[..n].join(".")).filter(|_| class).map(|&u| (u, n))
+        })
+    };
+    let empty = HashSet::new();
+    for (_, f, _) in &files {
+        cancel.check()?;
+        let from = unit_of[&f.package.join(".")];
+        let own = declared.get(&from).unwrap_or(&empty);
+        for import in &f.imports {
+            if import.module {
+                built.outside(from, import.path.join("."));
+                continue;
+            }
+            let max = if import.all { import.path.len() } else { import.path.len().saturating_sub(1) };
+            match local(&import.path, max) {
+                Some((to, n)) => {
+                    built.followed += 1;
+                    if to == from {
+                        continue;
+                    }
+                    let theirs = declared.get(&to).unwrap_or(&empty);
+                    let used: Vec<String> = if n < import.path.len() {
+                        // A type (or a Kotlin function), or with `*` a class's members.
+                        let name = import.path[n].clone();
+                        if !theirs.contains(&name) {
+                            built.unknown += 1;
+                        }
+                        vec![name]
+                    } else {
+                        // `*`: what the file uses that the package declares, and its own package does not.
+                        let mut used: Vec<String> = shared_names(&f.names, theirs).into_iter().filter(|x| !own.contains(x)).collect();
+                        if used.is_empty() {
+                            used.push("*".into());
+                        }
+                        used
+                    };
+                    built.links.entry((from, to)).or_default();
+                    built.uses(from, to, used);
+                }
+                None => {
+                    let package = java_package(import);
+                    if own_unread(&package) {
+                        built.followed += 1;
+                        built.unknown += 1;
+                    } else {
+                        built.outside(from, package.join("."));
+                    }
+                }
+            }
+        }
+        for q in f.qualified.iter().filter(|q| firsts.contains(q[0].as_str())) {
+            if let Some((to, n)) = local(q, q.len() - 1)
+                && to != from
+                && declared.get(&to).is_some_and(|d| d.contains(&q[n]))
+            {
+                built.links.entry((from, to)).or_default();
+                built.uses(from, to, [q[n].clone()]);
+            }
+        }
+        if !f.outline.is_empty() {
+            built.outline.entry(from).or_default().extend(f.outline.iter().cloned());
+        }
+    }
+    Ok(built)
+}
+
+// ---- C and C++ -------------------------------------------------------------------------
+
+/// The snapshot's C and C++ files by their file names, for an include found by the end
+/// of its path, as a build's include folders find it.
+pub(super) struct Headers {
+    by_name: HashMap<Vec<u8>, Vec<Vec<u8>>>,
+}
+impl Headers {
+    pub fn new<'a>(paths: impl Iterator<Item = &'a [u8]>) -> Self {
+        let mut by_name: HashMap<Vec<u8>, Vec<Vec<u8>>> = HashMap::new();
+        for p in paths.filter(|p| packages::c_file(p)) {
+            by_name.entry(file_name(p).to_vec()).or_default().push(p.to_vec());
+        }
+        Self { by_name }
+    }
+    /// The file whose path ends with `spec`, one of `within` when given, never `from`
+    /// itself: the one sharing the most folders with `from`, then the shortest.
+    pub fn find(&self, spec: &[u8], from: &[u8], within: Option<&HashSet<&[u8]>>) -> Option<&[u8]> {
+        let list = self.by_name.get(file_name(spec))?;
+        let suffix = [b"/".as_slice(), spec].concat();
+        list.iter()
+            .filter(|p| p.as_slice() != from && (p.as_slice() == spec || p.ends_with(&suffix)) && within.is_none_or(|w| w.contains(p.as_slice())))
+            .max_by_key(|p| (shared_folders(p, from), std::cmp::Reverse(p.len()), std::cmp::Reverse(p.as_slice())))
+            .map(Vec::as_slice)
+    }
+}
+/// How many folders two paths share from the top.
+fn shared_folders(a: &[u8], b: &[u8]) -> usize {
+    let (a, b) = (parent(a), parent(b));
+    if a.is_empty() || b.is_empty() {
+        return 0;
+    }
+    a.split(|x| *x == b'/').zip(b.split(|x| *x == b'/')).take_while(|(x, y)| x == y).count()
+}
+/// The library an include from outside names: `<openssl/ssl.h>` is openssl, `<stdio.h>`
+/// stdio.h.
+fn library(spec: &str) -> String {
+    match spec.split_once('/') {
+        Some((first, _)) if !first.is_empty() => first.to_owned(),
+        _ => spec.to_owned(),
+    }
+}
+
+/// A C or C++ project: one unit per file and per folder. An `#include "…"` is looked
+/// for beside the including file first; then, as the build's include folders would find
+/// it, one of the project's files whose path ends with it, nearest first; then such a
+/// file elsewhere in the snapshot, for `<…>` only when it names a folder
+/// (`<git2/types.h>`, not `<stdio.h>`). A file never includes itself: a header's
+/// `#include_next <stdint.h>` names the system's. The names on a connection are those
+/// the included file declares and the including one uses. `files_of_project` are all
+/// the project's files, read or not: a project of loose files can sit in a folder that
+/// holds another project, whose files are not its own.
+pub(super) fn c(folder: &[u8], texts: &BTreeMap<Vec<u8>, String>, files_of_project: &[Vec<u8>], known: &HashSet<&[u8]>, headers: &Headers, cancel: &CancellationToken) -> Result<Built> {
+    let own: HashSet<&[u8]> = files_of_project.iter().map(Vec::as_slice).chain(texts.keys().map(Vec::as_slice)).collect();
+    let mut built = Built::default();
+    let mut folders = Folders { at: HashMap::new() };
+    let mut file_unit: HashMap<&[u8], usize> = HashMap::new();
+    let key = |rel: &[u8]| text(rel);
+    let base = shared_base(folder, texts.keys());
+    // A `.h` in a project with C++ files is C++'s.
+    let cpp = texts.keys().any(|p| packages::cpp_file(p));
+    for (path, source) in texts {
+        let up = folders.unit(&mut built, &base, parent(path), None, &key);
+        let is_cpp = packages::cpp_file(path) || cpp && !path.ends_with(b".c");
+        let detail: &'static [u8] = match (is_cpp, cfamily::header(path)) {
+            (true, true) => b"C++ header",
+            (true, false) => b"C++ source",
+            (false, true) => b"C header",
+            (false, false) => b"C source",
+        };
+        let at = built.add(Unit {
+            key: text(within(path, &base)),
+            label: file_name(path).to_vec(),
+            detail,
+            path: path.clone(),
+            parent: up,
+            folder: false,
+            files: 1,
+            lines: lines(source),
+        });
+        file_unit.insert(path.as_slice(), at);
+    }
+    // A name two of the project's files or folders share (util.h) shows its path.
+    let mut seen: HashMap<Vec<u8>, usize> = HashMap::new();
+    for u in &built.units {
+        *seen.entry(u.label.clone()).or_default() += 1;
+    }
+    for u in &mut built.units {
+        if seen.get(&u.label).copied().unwrap_or(0) > 1 {
+            u.label = u.key.clone().into_bytes();
+        }
+    }
+    let mut facts: Vec<(&Vec<u8>, cfamily::Facts)> = Vec::new();
+    for (path, source) in texts {
+        cancel.check()?;
+        facts.push((path, cfamily::read(source, cfamily::header(path))));
+    }
+    // What each file declares, for the names an include brings in.
+    let declared: HashMap<usize, HashSet<String>> = facts
+        .iter()
+        .map(|(path, f)| (file_unit[path.as_slice()], f.outline.iter().map(|o| text(&o.name)).chain(f.constants.iter().cloned()).collect()))
+        .collect();
+    for (path, f) in &facts {
+        cancel.check()?;
+        let from = file_unit[path.as_slice()];
+        for include in &f.includes {
+            let spec = include.path.trim_start_matches("./").as_bytes();
+            let beside = if include.angle { None } else { cargo::relative(parent(path), spec).filter(|p| known.contains(p.as_slice()) && p != *path) };
+            // `..` only makes sense beside the including file.
+            let plain = !spec.split(|b| *b == b'/').any(|p| p == b".." || p == b".");
+            let target: Option<Vec<u8>> = beside
+                .or_else(|| plain.then(|| headers.find(spec, path, Some(&own))).flatten().map(<[u8]>::to_vec))
+                .or_else(|| (plain && (!include.angle || spec.contains(&b'/'))).then(|| headers.find(spec, path, None)).flatten().map(<[u8]>::to_vec));
+            match target {
+                Some(t) => match file_unit.get(t.as_slice()) {
+                    Some(&to) => {
+                        built.followed += 1;
+                        let used = declared.get(&to).map(|d| shared_names(&f.names, d)).unwrap_or_default();
+                        built.links.entry((from, to)).or_default();
+                        built.uses(from, to, used);
+                    }
+                    // Generated tables and the like (`.inc`, `.def`) are no C file.
+                    None if !packages::c_file(&t) => {}
+                    // A project file the read limits left unread.
+                    None if own.contains(t.as_slice()) => {
+                        built.followed += 1;
+                        built.unknown += 1;
+                    }
+                    None => built.outside(from, text(&t)),
+                },
+                None if include.angle => built.outside(from, library(&include.path)),
+                // A quoted include no committed file ends with: generated, or from outside.
+                None => {
+                    built.followed += 1;
+                    built.unknown += 1;
+                }
+            }
+        }
+        if !f.outline.is_empty() {
+            built.outline.insert(from, f.outline.clone());
+        }
+    }
+    Ok(built)
+}
+
+// ---- C# ------------------------------------------------------------------------------------
+
+/// A C# project: one unit per namespace (the namespace a file's types are in), each
+/// standing alone, the parts of namespace names between them listed for the tree. A
+/// `using` line of the project's namespace connects the two; the type names a file uses
+/// connect it to the namespace that declares them, looked for as C# does: its own
+/// namespace, its parents, then the namespaces its using lines (and the project's
+/// `global using` lines) open. A name written out with its namespace connects too.
+pub(super) fn csharp(texts: &BTreeMap<Vec<u8>, String>, cancel: &CancellationToken) -> Result<Built> {
+    let mut built = Built::default();
+    let mut files: Vec<(&Vec<u8>, csharp::Facts, usize)> = Vec::new();
+    for (path, source) in texts {
+        cancel.check()?;
+        files.push((path, csharp::read(source), lines(source)));
+    }
+    // Each namespace's own files; a namespace only a second block of a file declares has that file's folder.
+    let mut members: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    let mut types: BTreeMap<String, Vec<(usize, OutlineItem)>> = BTreeMap::new();
+    for (i, (_, f, _)) in files.iter().enumerate() {
+        members.entry(f.namespace.join(".")).or_default().push(i);
+        for (namespace, item) in &f.outline {
+            types.entry(namespace.join(".")).or_default().push((i, item.clone()));
+        }
+    }
+    let mut names: BTreeMap<String, (Vec<u8>, usize, usize)> = BTreeMap::new();
+    for name in members.keys().chain(types.keys()) {
+        if names.contains_key(name) {
+            continue;
+        }
+        let own: Vec<usize> = members.get(name).cloned().unwrap_or_else(|| types[name].iter().map(|(i, _)| *i).collect());
+        let counted = members.get(name).map(Vec::as_slice).unwrap_or_default();
+        names.insert(name.clone(), (main_folder(own.iter().map(|&i| files[i].0)), counted.len(), counted.iter().map(|&i| files[i].2).sum()));
+    }
+    let unit_of = dotted_units(&mut built, &names, b"C# namespace", b"(global namespace)");
+    // A partial type declared in several files is one: its methods add up.
+    for (name, items) in types {
+        let mut merged: Vec<OutlineItem> = Vec::new();
+        for (_, item) in items {
+            match merged.iter_mut().find(|m| m.kind == item.kind && m.name == item.name) {
+                Some(m) => {
+                    m.functions += item.functions;
+                    m.exported |= item.exported;
+                    if m.visibility.is_empty() {
+                        m.visibility = item.visibility;
+                    }
+                }
+                None => merged.push(item),
+            }
+        }
+        built.outline.insert(unit_of[&name], merged);
+    }
+    let declared: HashMap<usize, HashSet<String>> = built.outline.iter().map(|(u, items)| (*u, items.iter().map(|o| text(&o.name)).collect())).collect();
+    // The project's `global using` namespaces open for every file: they connect another
+    // file only through the names it uses, or every namespace would point at them.
+    let global: Vec<usize> = files
+        .iter()
+        .flat_map(|(_, f, _)| f.usings.iter().filter(|u| u.global && !u.members && u.alias.is_none()))
+        .filter_map(|u| unit_of.get(&u.path.join(".")).copied())
+        .collect();
+    let firsts: HashSet<&str> = names.keys().filter_map(|n| n.split('.').next()).filter(|n| !n.is_empty()).collect();
+    let local = |parts: &[String], max: usize| (1..=max.min(parts.len())).rev().find_map(|n| unit_of.get(&parts[..n].join(".")).map(|&u| (u, n)));
+    let empty = HashSet::new();
+    for (_, f, _) in &files {
+        cancel.check()?;
+        let from = unit_of[&f.namespace.join(".")];
+        let own = declared.get(&from).unwrap_or(&empty);
+        // The namespaces the using lines open, in order.
+        let mut opened: Vec<usize> = Vec::new();
+        for u in &f.usings {
+            let whole = unit_of.get(&u.path.join(".")).copied();
+            if u.members || u.alias.is_some() && whole.is_none() {
+                // A type: `using static A.B.C;`, `using X = A.B.C;`. Namespaces and types are
+                // both named with capitals: a shorter namespace counts only for a type it declares.
+                let n = u.path.len() - 1;
+                let found = unit_of.get(&u.path[..n].join(".")).map(|&to| (to, n)).or_else(|| {
+                    local(&u.path, n.saturating_sub(1)).filter(|(to, at)| declared.get(to).is_some_and(|d| d.contains(&u.path[*at])))
+                });
+                match found {
+                    Some((to, n)) => {
+                        built.followed += 1;
+                        if to != from {
+                            let name = u.path[n].clone();
+                            if !declared.get(&to).is_some_and(|d| d.contains(&name)) {
+                                built.unknown += 1;
+                            }
+                            built.links.entry((from, to)).or_default();
+                            built.uses(from, to, [name]);
+                        }
+                    }
+                    None => built.outside(from, u.path[..u.path.len() - usize::from(u.members && u.path.len() > 1)].join(".")),
+                }
+                continue;
+            }
+            match whole {
+                Some(to) => {
+                    built.followed += 1;
+                    if to != from {
+                        opened.push(to);
+                        built.links.entry((from, to)).or_default();
+                    }
+                }
+                None => built.outside(from, u.path.join(".")),
+            }
+        }
+        // Where each name the file uses is declared: its parents, nearest first (the
+        // global namespace last), then the opened namespaces.
+        let mut look: Vec<usize> = (1..f.namespace.len()).rev().filter_map(|n| unit_of.get(&f.namespace[..n].join(".")).copied()).collect();
+        if !f.namespace.is_empty()
+            && let Some(&g) = unit_of.get("")
+        {
+            look.push(g);
+        }
+        look.extend(opened);
+        look.extend(global.iter().copied());
+        let mut by_name: HashMap<&str, usize> = HashMap::new();
+        for &ns in look.iter().filter(|&&ns| ns != from) {
+            for name in declared.get(&ns).into_iter().flatten() {
+                by_name.entry(name.as_str()).or_insert(ns);
+            }
+        }
+        let mut used: BTreeMap<usize, Vec<String>> = BTreeMap::new();
+        for name in f.names.iter().filter(|n| !own.contains(*n)) {
+            if let Some(&ns) = by_name.get(name.as_str()) {
+                used.entry(ns).or_default().push(name.clone());
+            }
+        }
+        for q in f.qualified.iter().filter(|q| firsts.contains(q[0].as_str())) {
+            if let Some((to, n)) = local(q, q.len() - 1)
+                && to != from
+                && declared.get(&to).is_some_and(|d| d.contains(&q[n]))
+            {
+                used.entry(to).or_default().push(q[n].clone());
+            }
+        }
+        for (to, names) in used {
+            built.links.entry((from, to)).or_default();
+            built.uses(from, to, names);
+        }
+    }
+    Ok(built)
+}
+
 /// Puts a package's units on the map as nodes after the package nodes, with their
 /// connections, outline and outside imports.
 pub(super) fn push(map: &mut RepositoryMap, details: &mut ModuleMap, built: Built) {
@@ -722,6 +1245,165 @@ mod tests {
         let built = python(b"tools", false, &files, &CancellationToken::new()).unwrap();
         assert_eq!(built.root, None);
         assert_eq!(links(&built), [row("release", "helpers", &["helpers"]), row("release", "lib.util", &["util"])]);
+    }
+
+    #[test]
+    fn java_packages_connect_by_imports_star_imports_and_names_written_out() {
+        let files = texts(&[
+            (
+                "app/src/main/java/com/acme/app/App.java",
+                "package com.acme.app;\nimport com.acme.app.store.Db;\nimport com.acme.app.web.*;\nimport java.util.List;\nimport static com.acme.app.util.Strings.trim;\nimport module java.base;\npublic class App { void run() { new Router(); Db.open(); com.acme.app.store.Cache.clear(); } }\n",
+            ),
+            ("app/src/main/java/com/acme/app/store/Db.java", "package com.acme.app.store;\npublic class Db { public static Db open() { return null; } }\n"),
+            ("app/src/main/java/com/acme/app/store/Cache.java", "package com.acme.app.store;\npublic class Cache {}\n"),
+            ("app/src/main/java/com/acme/app/web/Router.java", "package com.acme.app.web;\npublic class Router {}\nclass Hidden {}\n"),
+            ("app/src/main/java/com/acme/app/web/api/Api.java", "package com.acme.app.web.api;\nimport com.acme.app.missing.Thing;\nimport com.acme.app.store.Nope;\nclass Api {}\n"),
+            ("app/src/main/kotlin/com/acme/app/util/Strings.kt", "package com.acme.app.util\nobject Strings { fun trim(s: String) = s }\nfun helper() = 1\n"),
+        ]);
+        let built = java(&files, &[], &CancellationToken::new()).unwrap();
+        let keys: Vec<(&str, &str, Option<&str>)> = built.units.iter().map(|u| (u.key.as_str(), std::str::from_utf8(&u.label).unwrap(), u.parent.map(|p| built.units[p].key.as_str()))).collect();
+        // The list starts below com.acme.app, which every name shares; api sits in web.
+        assert_eq!(
+            keys,
+            [
+                ("com.acme.app", "app", None),
+                ("com.acme.app.store", "store", None),
+                ("com.acme.app.util", "util", None),
+                ("com.acme.app.web", "web", None),
+                ("com.acme.app.web.api", "web.api", Some("com.acme.app.web")),
+            ]
+        );
+        assert_eq!(built.units[1].path, b"app/src/main/java/com/acme/app/store");
+        assert_eq!(
+            links(&built),
+            [
+                row("com.acme.app", "com.acme.app.store", &["Cache", "Db"]),
+                row("com.acme.app", "com.acme.app.util", &["Strings"]),
+                row("com.acme.app", "com.acme.app.web", &["Router"]),
+                row("com.acme.app.web.api", "com.acme.app.store", &["Nope"]),
+            ]
+        );
+        // Store has no Nope; com.acme.app.missing is no package here.
+        assert_eq!((built.followed, built.unknown), (4, 1));
+        let outside: Vec<Vec<String>> = built.outside.values().map(|s| s.iter().cloned().collect()).collect();
+        assert_eq!(outside, [vec!["java.base".to_owned(), "java.util".into()], vec!["com.acme.app.missing".to_owned()]]);
+        let web: Vec<(String, bool)> = built.outline[&3].iter().map(|o| (text(&o.name), o.exported)).collect();
+        assert_eq!(web, [("Router".to_owned(), true), ("Hidden".into(), false)]);
+        // A package of the project the read limits left unread is its own, not outside.
+        let files = texts(&[("src/com/acme/App.java", "package com.acme;\nimport com.acme.big.Huge;\nclass App {}\n")]);
+        let built = java(&files, &[b"src/com/acme/App.java".to_vec(), b"src/com/acme/big/Huge.java".to_vec()], &CancellationToken::new()).unwrap();
+        assert!(built.outside.is_empty());
+        assert_eq!((built.followed, built.unknown), (1, 1));
+    }
+
+    #[test]
+    fn c_includes_beside_by_the_end_of_a_path_and_outside() {
+        let files = texts(&[
+            ("lib/include/acme/acme.h", "#ifndef ACME_H\n#define ACME_H\n#include \"acme/types.h\"\n#include <stdio.h>\nint acme_open(acme_handle *h);\n#endif\n"),
+            ("lib/include/acme/types.h", "typedef struct acme_handle acme_handle;\nenum acme_mode { ACME_READ, ACME_WRITE };\n"),
+            ("lib/src/acme.c", "#include \"acme/acme.h\"\n#include \"internal.h\"\n#include \"config.h\"\n#include \"../../other/shared.h\"\n#include \"table.inc\"\n#include <zlib.h>\nint acme_open(acme_handle *h) { return ACME_READ + helper(); }\n"),
+            ("lib/src/internal.h", "static int helper(void) { return 0; }\n"),
+        ]);
+        let paths = ["lib/include/acme/acme.h", "lib/include/acme/types.h", "lib/src/acme.c", "lib/src/internal.h", "lib/src/table.inc", "other/shared.h", "vendor/zlib/zlib.h"];
+        let known: HashSet<&[u8]> = paths.iter().map(|p| p.as_bytes()).collect();
+        let headers = Headers::new(known.iter().copied());
+        let own: Vec<Vec<u8>> = files.keys().cloned().collect();
+        let built = c(b"lib", &files, &own, &known, &headers, &CancellationToken::new()).unwrap();
+        let keys: Vec<(&str, &[u8])> = built.units.iter().map(|u| (u.key.as_str(), u.detail)).collect();
+        assert_eq!(
+            keys,
+            [
+                ("include", b"Folder".as_slice()),
+                ("include/acme", b"Folder"),
+                ("include/acme/acme.h", b"C header"),
+                ("include/acme/types.h", b"C header"),
+                ("src", b"Folder"),
+                ("src/acme.c", b"C source"),
+                ("src/internal.h", b"C header"),
+            ]
+        );
+        assert_eq!(
+            links(&built),
+            [
+                row("include/acme/acme.h", "include/acme/types.h", &["acme_handle"]),
+                row("src/acme.c", "include/acme/acme.h", &["acme_open"]),
+                row("src/acme.c", "src/internal.h", &["helper"]),
+            ]
+        );
+        // config.h is no committed file; table.inc is no C file; <zlib.h> names no folder.
+        assert_eq!((built.followed, built.unknown), (4, 1));
+        let outside: Vec<Vec<String>> = built.outside.values().map(|s| s.iter().cloned().collect()).collect();
+        assert_eq!(outside, [vec!["stdio.h".to_owned()], vec!["other/shared.h".to_owned(), "zlib.h".into()]]);
+        let rows: Vec<(String, bool)> = built.outline[&3].iter().map(|o| (text(&o.name), o.exported)).collect();
+        assert_eq!(rows, [("acme_handle".to_owned(), true), ("acme_mode".into(), true)]);
+    }
+
+    #[test]
+    fn c_loose_files_beside_another_project_and_a_header_naming_itself() {
+        // Loose files in tools/ and scripts/ make a project at the top; c/ is a CMake project.
+        let files = texts(&[
+            ("tools/a.c", "#include \"cdemo_api.h\"\nint run(void) { return cdemo_open(); }\n"),
+            ("scripts/b.c", "int b(void) { return 0; }\n"),
+            ("compat/stdint.h", "#include_next <stdint.h>\ntypedef long intmax_t;\n"),
+        ]);
+        let paths = ["tools/a.c", "scripts/b.c", "compat/stdint.h", "c/CMakeLists.txt", "c/include/cdemo_api.h"];
+        let known: HashSet<&[u8]> = paths.iter().map(|p| p.as_bytes()).collect();
+        let headers = Headers::new(known.iter().copied());
+        let own: Vec<Vec<u8>> = files.keys().cloned().collect();
+        let built = c(b"", &files, &own, &known, &headers, &CancellationToken::new()).unwrap();
+        // The other project's header is outside this one, not one of its unread files; a
+        // header never includes itself.
+        assert!(built.links.is_empty(), "{:?}", links(&built));
+        let outside: BTreeMap<String, Vec<String>> = built.outside.iter().map(|(u, s)| (built.units[*u].key.clone(), s.iter().cloned().collect())).collect();
+        assert_eq!(outside, BTreeMap::from([("compat/stdint.h".to_owned(), vec!["stdint.h".to_owned()]), ("tools/a.c".into(), vec!["c/include/cdemo_api.h".to_owned()])]));
+        assert_eq!((built.followed, built.unknown), (0, 0));
+    }
+
+    #[test]
+    fn csharp_namespaces_connect_by_using_lines_parents_and_type_names() {
+        let files = texts(&[
+            (
+                "Web/Controllers/HomeController.cs",
+                "using Acme.Core.Models;\nusing static Acme.Core.Util.Strings;\nusing Microsoft.AspNetCore.Mvc;\nnamespace Acme.Web.Controllers;\npublic class HomeController : Controller { public string Index() => Trim(new User().Name) + Helper.Format(); }\n",
+            ),
+            ("Web/Helper.cs", "namespace Acme.Web;\npublic static class Helper { public static string Format() => \"\"; }\n"),
+            ("Core/Models/User.cs", "namespace Acme.Core.Models { public class User { public string Name { get; set; } } public partial class Order { void A() {} } }\n"),
+            ("Core/Models/Order.cs", "namespace Acme.Core.Models { public partial class Order { void B() {} void C() {} } }\n"),
+            ("Core/Util/Strings.cs", "namespace Acme.Core.Util;\npublic static class Strings { public static string Trim(string s) => s; }\n"),
+            ("GlobalUsings.cs", "global using Acme.Core.Models;\nglobal using System;\n"),
+            ("Web/Pages/Index.cs", "namespace Acme.Web.Pages;\nclass IndexPage { User u; Acme.Core.Util.Strings s; }\n"),
+        ]);
+        let built = csharp(&files, &CancellationToken::new()).unwrap();
+        let keys: Vec<(&str, &str, bool, Option<&str>)> = built.units.iter().map(|u| (u.key.as_str(), std::str::from_utf8(&u.label).unwrap(), u.folder, u.parent.map(|p| built.units[p].key.as_str()))).collect();
+        assert_eq!(
+            keys,
+            [
+                ("", "(global namespace)", false, None),
+                ("Acme.Core.Models", "Core.Models", false, Some("Acme.Core")),
+                ("Acme.Core.Util", "Core.Util", false, Some("Acme.Core")),
+                ("Acme.Web", "Web", false, None),
+                ("Acme.Web.Controllers", "Web.Controllers", false, Some("Acme.Web")),
+                ("Acme.Web.Pages", "Web.Pages", false, Some("Acme.Web")),
+                ("Acme.Core", "Core", true, None),
+            ]
+        );
+        assert_eq!(
+            links(&built),
+            [
+                // GlobalUsings.cs's own line; the others only through the names they use.
+                row("(root)", "Acme.Core.Models", &[]),
+                row("Acme.Web.Controllers", "Acme.Core.Models", &["User"]),
+                row("Acme.Web.Controllers", "Acme.Core.Util", &["Strings"]),
+                row("Acme.Web.Controllers", "Acme.Web", &["Helper"]),
+                row("Acme.Web.Pages", "Acme.Core.Models", &["User"]),
+                row("Acme.Web.Pages", "Acme.Core.Util", &["Strings"]),
+            ]
+        );
+        let outside: BTreeMap<String, Vec<String>> = built.outside.iter().map(|(u, s)| (built.units[*u].key.clone(), s.iter().cloned().collect())).collect();
+        assert_eq!(outside, BTreeMap::from([("".to_owned(), vec!["System".to_owned()]), ("Acme.Web.Controllers".into(), vec!["Microsoft.AspNetCore.Mvc".to_owned()])]));
+        // A partial class's methods add up across its files (listed by file: Order.cs first).
+        let models: Vec<(String, usize)> = built.outline[&1].iter().map(|o| (text(&o.name), o.functions)).collect();
+        assert_eq!(models, [("Order".to_owned(), 3), ("User".into(), 0)]);
     }
 
     #[test]

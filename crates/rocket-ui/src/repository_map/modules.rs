@@ -1,16 +1,31 @@
-//! Code → Modules: one package's modules (Rust, JavaScript or TypeScript, Python) or a
-//! Go module's packages. The list beside the picture names every one, most used first.
+//! Code → Modules: one package's modules (Rust, JavaScript or TypeScript, Python), a Go
+//! module's or a Java or Kotlin project's packages, a C# project's namespaces, or a C or
+//! C++ project's files. The list beside the picture names every one, most used first.
 //! The picture puts the chosen one between those that use it and those it uses; a small
 //! package can also be drawn whole, in layers.
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
-/// The words Modules uses for what it shows: Rust, JavaScript and Python have modules
-/// in a package; Go has packages in a module.
+/// What Modules calls the units it shows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Noun {
+    /// Rust, JavaScript and Python: modules in a package.
+    Module,
+    /// Go and Java: packages in a module or project.
+    Package,
+    /// C#: namespaces in a project.
+    Namespace,
+    /// C and C++: files in a project.
+    File,
+}
+
+/// The words Modules uses for what it shows, by language: Rust, JavaScript and Python
+/// have modules in a package; Go has packages in a module, Java packages in a project,
+/// C# namespaces and C files.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Words {
     pub language: ModuleLanguage,
-    pub typescript: bool,
+    pub dialect: Option<Dialect>,
 }
 impl Words {
     pub fn of(s: &MapPage) -> Self {
@@ -18,86 +33,170 @@ impl Words {
         let language = info.as_ref().map(|p| p.language).or(s.package.as_ref().map(|p| p.language)).unwrap_or_default();
         Self {
             language,
-            typescript: info.is_some_and(|p| p.typescript),
+            dialect: info.and_then(|p| p.dialect),
         }
     }
-    fn go(self) -> bool {
-        self.language == ModuleLanguage::Go
+    fn noun(self) -> Noun {
+        match self.language {
+            ModuleLanguage::Go | ModuleLanguage::Java => Noun::Package,
+            ModuleLanguage::CSharp => Noun::Namespace,
+            ModuleLanguage::C => Noun::File,
+            ModuleLanguage::Rust | ModuleLanguage::JavaScript | ModuleLanguage::Python => Noun::Module,
+        }
     }
     pub fn find(self) -> &'static str {
-        if self.go() { tr("Find a package") } else { tr("Find a module") }
+        match self.noun() {
+            Noun::Module => tr("Find a module"),
+            Noun::Package => tr("Find a package"),
+            Noun::Namespace => tr("Find a namespace"),
+            Noun::File => tr("Find a file"),
+        }
     }
     fn caption(self) -> &'static str {
-        if self.go() { tr("PACKAGES") } else { tr("MODULES") }
+        match self.noun() {
+            Noun::Module => tr("MODULES"),
+            Noun::Package => tr("PACKAGES"),
+            Noun::Namespace => tr("NAMESPACES"),
+            Noun::File => tr("FILES"),
+        }
     }
     fn column(self) -> &'static str {
-        if self.go() { crate::i18n::tr("Package") } else { tr("Module") }
+        match self.noun() {
+            Noun::Module => tr("Module"),
+            Noun::Package => crate::i18n::tr("Package"),
+            Noun::Namespace => tr("Namespace"),
+            Noun::File => crate::i18n::tr("File"),
+        }
     }
     fn count(self, n: usize) -> String {
-        if self.go() { trn!(n, "{n} package", "{n} packages") } else { trn!(n, "{n} module", "{n} modules") }
+        match self.noun() {
+            Noun::Module => trn!(n, "{n} module", "{n} modules"),
+            Noun::Package => trn!(n, "{n} package", "{n} packages"),
+            Noun::Namespace => trn!(n, "{n} namespace", "{n} namespaces"),
+            Noun::File => trn!(n, "{n} file", "{n} files"),
+        }
     }
     fn more(self, n: usize) -> String {
-        if self.go() { trn!(n, "{n} more package", "{n} more packages") } else { trn!(n, "{n} more module", "{n} more modules") }
+        match self.noun() {
+            Noun::Module => trn!(n, "{n} more module", "{n} more modules"),
+            Noun::Package => trn!(n, "{n} more package", "{n} more packages"),
+            Noun::Namespace => trn!(n, "{n} more namespace", "{n} more namespaces"),
+            Noun::File => trn!(n, "{n} more file", "{n} more files"),
+        }
     }
     fn used_by(self, n: usize) -> String {
-        if self.go() { trn!(n, "Used by {n} package", "Used by {n} packages") } else { trn!(n, "Used by {n} module", "Used by {n} modules") }
+        match self.noun() {
+            Noun::Module => trn!(n, "Used by {n} module", "Used by {n} modules"),
+            Noun::Package => trn!(n, "Used by {n} package", "Used by {n} packages"),
+            Noun::Namespace => trn!(n, "Used by {n} namespace", "Used by {n} namespaces"),
+            Noun::File => trn!(n, "Used by {n} file", "Used by {n} files"),
+        }
     }
     fn whole(self) -> &'static str {
-        if self.go() { tr("Whole module") } else { tr("Whole package") }
+        match (self.noun(), self.language) {
+            (Noun::Module, _) => tr("Whole package"),
+            (Noun::Package, ModuleLanguage::Go) => tr("Whole module"),
+            _ => tr("Whole project"),
+        }
     }
     fn whole_hover(self) -> &'static str {
-        if self.go() { tr("Every package of the module and how they connect") } else { tr("Every module of the package and how they connect") }
+        match (self.noun(), self.language) {
+            (Noun::Module, _) => tr("Every module of the package and how they connect"),
+            (Noun::Package, ModuleLanguage::Go) => tr("Every package of the module and how they connect"),
+            (Noun::Package, _) => tr("Every package of the project and how they connect"),
+            (Noun::Namespace, _) => tr("Every namespace of the project and how they connect"),
+            (Noun::File, _) => tr("Every file of the project and how they connect"),
+        }
     }
     fn choose(self) -> &'static str {
-        if self.go() { tr("Choose a package") } else { tr("Choose a module") }
+        match self.noun() {
+            Noun::Module => tr("Choose a module"),
+            Noun::Package => tr("Choose a package"),
+            Noun::Namespace => tr("Choose a namespace"),
+            Noun::File => tr("Choose a file"),
+        }
     }
     fn order_hover(self) -> &'static str {
-        if self.go() { tr("Order the packages by how many use them, or by name") } else { tr("Order the modules by how many use them, or by name") }
+        match self.noun() {
+            Noun::Module => tr("Order the modules by how many use them, or by name"),
+            Noun::Package => tr("Order the packages by how many use them, or by name"),
+            Noun::Namespace => tr("Order the namespaces by how many use them, or by name"),
+            Noun::File => tr("Order the files by how many use them, or by name"),
+        }
     }
     fn none_match(self) -> &'static str {
-        if self.go() { tr("No package matches") } else { tr("No module matches") }
+        match self.noun() {
+            Noun::Module => tr("No module matches"),
+            Noun::Package => tr("No package matches"),
+            Noun::Namespace => tr("No namespace matches"),
+            Noun::File => tr("No file matches"),
+        }
     }
     fn note(self, count: usize, order: &str) -> String {
         let count = pages::number_text(count);
-        if self.go() { trf!("{count} packages, {order}", count = count, order = order) } else { trf!("{count} modules, {order}", count = count, order = order) }
+        match self.noun() {
+            Noun::Module => trf!("{count} modules, {order}", count = count, order = order),
+            Noun::Package => trf!("{count} packages, {order}", count = count, order = order),
+            Noun::Namespace => trf!("{count} namespaces, {order}", count = count, order = order),
+            Noun::File => trf!("{count} files, {order}", count = count, order = order),
+        }
     }
     fn too_many(self, count: usize) -> String {
         let count = pages::number_text(count);
-        if self.go() {
-            trf!("{count} packages are too many to draw at once. Choose one from the list", count = count)
-        } else {
-            trf!("{count} modules are too many to draw at once. Choose one from the list", count = count)
+        match self.noun() {
+            Noun::Module => trf!("{count} modules are too many to draw at once. Choose one from the list", count = count),
+            Noun::Package => trf!("{count} packages are too many to draw at once. Choose one from the list", count = count),
+            Noun::Namespace => trf!("{count} namespaces are too many to draw at once. Choose one from the list", count = count),
+            Noun::File => trf!("{count} files are too many to draw at once. Choose one from the list", count = count),
         }
     }
     pub fn legend(self, count: usize, links: usize) -> String {
         let (count, links) = (pages::number_text(count), pages::number_text(links));
-        if self.go() {
-            trf!("Packages {packages} · links {links} · arrows point to what is used", packages = count, links = links)
-        } else {
-            trf!("Modules {modules} · links {links} · arrows point to what is used", modules = count, links = links)
+        match self.noun() {
+            Noun::Module => trf!("Modules {modules} · links {links} · arrows point to what is used", modules = count, links = links),
+            Noun::Package => trf!("Packages {packages} · links {links} · arrows point to what is used", packages = count, links = links),
+            Noun::Namespace => trf!("Namespaces {namespaces} · links {links} · arrows point to what is used", namespaces = count, links = links),
+            Noun::File => trf!("Files {files} · links {links} · arrows point to what is used", files = count, links = links),
         }
     }
-    /// "In this file", or for a Go package (many files) "In this package".
+    /// "In this file", or for a Go or Java package (many files) "In this package", and a
+    /// C# namespace "In this namespace".
     fn outline(self) -> &'static str {
-        if self.go() { tr("IN THIS PACKAGE") } else { tr("IN THIS FILE") }
+        match self.noun() {
+            Noun::Module | Noun::File => tr("IN THIS FILE"),
+            Noun::Package => tr("IN THIS PACKAGE"),
+            Noun::Namespace => tr("IN THIS NAMESPACE"),
+        }
     }
-    /// The units the Modules fact counts: "Modules", or "Packages" in Go.
-    fn units(self) -> &'static str {
-        if self.go() { tr("Packages") } else { tr("Modules") }
+    /// The units the package's facts count: "Modules", "Packages" or "Namespaces". None for
+    /// C and C++, whose units are the files the Files fact already counts.
+    fn units(self) -> Option<&'static str> {
+        match self.noun() {
+            Noun::Module => Some(tr("Modules")),
+            Noun::Package => Some(tr("Packages")),
+            Noun::Namespace => Some(tr("Namespaces")),
+            Noun::File => None,
+        }
     }
     /// What a package's source files are: "214 Rust files".
     pub fn files(self, n: usize) -> String {
-        match self.language {
-            ModuleLanguage::Rust => trn!(n, "{n} Rust file", "{n} Rust files"),
-            ModuleLanguage::JavaScript if self.typescript => trn!(n, "{n} TypeScript file", "{n} TypeScript files"),
-            ModuleLanguage::JavaScript => trn!(n, "{n} JavaScript file", "{n} JavaScript files"),
-            ModuleLanguage::Python => trn!(n, "{n} Python file", "{n} Python files"),
-            ModuleLanguage::Go => trn!(n, "{n} Go file", "{n} Go files"),
+        match (self.language, self.dialect) {
+            (ModuleLanguage::Rust, _) => trn!(n, "{n} Rust file", "{n} Rust files"),
+            (ModuleLanguage::JavaScript, Some(_)) => trn!(n, "{n} TypeScript file", "{n} TypeScript files"),
+            (ModuleLanguage::JavaScript, None) => trn!(n, "{n} JavaScript file", "{n} JavaScript files"),
+            (ModuleLanguage::Python, _) => trn!(n, "{n} Python file", "{n} Python files"),
+            (ModuleLanguage::Go, _) => trn!(n, "{n} Go file", "{n} Go files"),
+            (ModuleLanguage::Java, Some(_)) => trn!(n, "{n} Kotlin file", "{n} Kotlin files"),
+            (ModuleLanguage::Java, None) => trn!(n, "{n} Java file", "{n} Java files"),
+            (ModuleLanguage::C, Some(_)) => trn!(n, "{n} C++ file", "{n} C++ files"),
+            (ModuleLanguage::C, None) => trn!(n, "{n} C file", "{n} C files"),
+            (ModuleLanguage::CSharp, _) => trn!(n, "{n} C# file", "{n} C# files"),
         }
     }
     /// The package's own name for itself: "TypeScript project · modules".
     pub fn package_kind(self, manifest: bool) -> &'static str {
-        match (self.language, self.typescript, manifest) {
+        let second = self.dialect.is_some();
+        match (self.language, second, manifest) {
             (ModuleLanguage::Rust, ..) => tr("Cargo package · modules"),
             (ModuleLanguage::JavaScript, true, true) => tr("TypeScript project · modules"),
             (ModuleLanguage::JavaScript, true, false) => tr("TypeScript folder · modules"),
@@ -106,14 +205,35 @@ impl Words {
             (ModuleLanguage::Python, _, true) => tr("Python package · modules"),
             (ModuleLanguage::Python, _, false) => tr("Python folder · modules"),
             (ModuleLanguage::Go, ..) => tr("Go module · packages"),
+            (ModuleLanguage::Java, true, true) => tr("Kotlin project · packages"),
+            (ModuleLanguage::Java, true, false) => tr("Kotlin folder · packages"),
+            (ModuleLanguage::Java, false, true) => tr("Java project · packages"),
+            (ModuleLanguage::Java, false, false) => tr("Java folder · packages"),
+            (ModuleLanguage::C, true, true) => tr("C++ project · files"),
+            (ModuleLanguage::C, true, false) => tr("C++ folder · files"),
+            (ModuleLanguage::C, false, true) => tr("C project · files"),
+            (ModuleLanguage::C, false, false) => tr("C folder · files"),
+            (ModuleLanguage::CSharp, _, true) => tr("C# project · namespaces"),
+            (ModuleLanguage::CSharp, _, false) => tr("C# folder · namespaces"),
         }
     }
-    /// The keyword a declaration is written with.
+    /// The keyword a declaration is written with. A Java project mostly in Kotlin shows
+    /// Kotlin's words.
     pub(super) fn keyword(self, kind: OutlineKind) -> &'static str {
+        let kotlin = self.dialect == Some(Dialect::Kotlin);
         match (self.language, kind) {
             (ModuleLanguage::Python, OutlineKind::Function) => "def",
             (ModuleLanguage::Go, OutlineKind::Function) => "func",
-            (ModuleLanguage::JavaScript, OutlineKind::Function) => "function",
+            (ModuleLanguage::JavaScript | ModuleLanguage::C, OutlineKind::Function) => "function",
+            (ModuleLanguage::Java, OutlineKind::Function) => "fun",
+            (ModuleLanguage::Java, OutlineKind::Const) => "val",
+            (ModuleLanguage::Java, OutlineKind::Type) => "typealias",
+            (ModuleLanguage::Java, OutlineKind::Enum) if kotlin => "enum class",
+            (ModuleLanguage::Java, OutlineKind::Annotation) if kotlin => "annotation class",
+            (ModuleLanguage::C, OutlineKind::Macro) => "#define",
+            (ModuleLanguage::C, OutlineKind::Type) => "typedef",
+            (ModuleLanguage::C, OutlineKind::Var) => "extern",
+            (ModuleLanguage::CSharp, OutlineKind::Type) => "delegate",
             (_, OutlineKind::Function) => "fn",
             (_, OutlineKind::Struct) => "struct",
             (_, OutlineKind::Enum) => "enum",
@@ -128,17 +248,25 @@ impl Words {
             (_, OutlineKind::Interface) => "interface",
             (_, OutlineKind::Let) => "let",
             (_, OutlineKind::Var) => "var",
+            (_, OutlineKind::Record) => "record",
+            (_, OutlineKind::Object) => "object",
+            (_, OutlineKind::Annotation) => "@interface",
         }
     }
 }
 /// A language as the package button groups it.
-pub(super) fn language_name(language: ModuleLanguage, typescript: bool) -> &'static str {
-    match language {
-        ModuleLanguage::Rust => "Rust",
-        ModuleLanguage::JavaScript if typescript => "TypeScript",
-        ModuleLanguage::JavaScript => "JavaScript",
-        ModuleLanguage::Python => "Python",
-        ModuleLanguage::Go => "Go",
+pub(super) fn language_name(language: ModuleLanguage, dialect: Option<Dialect>) -> &'static str {
+    match (language, dialect) {
+        (ModuleLanguage::Rust, _) => "Rust",
+        (ModuleLanguage::JavaScript, Some(_)) => "TypeScript",
+        (ModuleLanguage::JavaScript, None) => "JavaScript",
+        (ModuleLanguage::Python, _) => "Python",
+        (ModuleLanguage::Go, _) => "Go",
+        (ModuleLanguage::Java, Some(_)) => "Kotlin",
+        (ModuleLanguage::Java, None) => "Java",
+        (ModuleLanguage::C, Some(_)) => "C++",
+        (ModuleLanguage::C, None) => "C",
+        (ModuleLanguage::CSharp, _) => "C#",
     }
 }
 /// A package's name; one at the top of the repository may have none.
@@ -401,7 +529,8 @@ impl Units {
 /// name, which the reader makes its path when two share one.
 pub(super) fn name(data: &RepositoryMap, i: usize) -> String {
     let n = &data.nodes[i];
-    let by_label = data.modules.as_ref().is_some_and(|m| m.language == ModuleLanguage::JavaScript);
+    // JavaScript and C files by their names, Java packages and C# namespaces by theirs below the part all share.
+    let by_label = data.modules.as_ref().is_some_and(|m| matches!(m.language, ModuleLanguage::JavaScript | ModuleLanguage::C | ModuleLanguage::Java | ModuleLanguage::CSharp));
     match n.key.strip_prefix(b"module:") {
         Some(path) if !path.is_empty() && !by_label => label(path),
         _ => label(&n.label),
@@ -723,7 +852,7 @@ pub(super) fn body(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, comp
         icon(card.painter(), Rect::from_center_size(card.cursor().center_top() + vec2(0., 11.), vec2(22., 22.)), Icon::Braces, FAINT());
         card.add_space(28.);
         card.label(RichText::new(tr("No package to read in this snapshot")).font(semibold(14.)).color(TEXT()));
-        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python and Go.")).color(MUTED()));
+        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.")).color(MUTED()));
         card.add_space(6.);
         if button(&mut card, widgets, "map-modules-show-folders", crate::i18n::tr("Show folders"), !covered) {
             emit(intents, MapIntent::CodeView(false));
@@ -941,7 +1070,7 @@ fn switcher(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units, b
 pub(super) fn package_picker(ui: &mut Ui, s: &MapPage, packages: &[(ModulePackage, bool)], intents: &mut Vec<Intent>, widgets: &mut HashMap<String, UiControl>) {
     let current = packages.iter().find(|(p, _)| s.package.as_ref() == Some(&p.reference()));
     let text = current.map_or_else(|| crate::i18n::tr("Package").to_owned(), |(p, _)| package_name(&p.name));
-    let language = current.map(|(p, _)| language_name(p.language, p.typescript)).unwrap_or_default();
+    let language = current.map(|(p, _)| language_name(p.language, p.dialect)).unwrap_or_default();
     let width = (text_width(ui, &text) + text_width(ui, language) + 64.).min(260.);
     room(ui, width);
     let control_id = ui.make_persistent_id(("map-control", "map-module-package"));
@@ -961,7 +1090,7 @@ pub(super) fn package_picker(ui: &mut Ui, s: &MapPage, packages: &[(ModulePackag
     // As tall as its rows, up to the room below the button: egui sizes a new popup at 400 pt
     // unless the content asks for more.
     let room = (ui.ctx().content_rect().bottom() - r.rect.bottom() - 32.).clamp(220., 560.);
-    let mut groups: Vec<(ModuleLanguage, bool)> = packages.iter().map(|(p, _)| (p.language, p.typescript)).collect();
+    let mut groups: Vec<(ModuleLanguage, Option<Dialect>)> = packages.iter().map(|(p, _)| (p.language, p.dialect)).collect();
     groups.sort();
     groups.dedup();
     let rows = packages.len() as f32 * (30. + ui.spacing().item_spacing.y) + groups.len() as f32 * 28.;
@@ -969,10 +1098,10 @@ pub(super) fn package_picker(ui: &mut Ui, s: &MapPage, packages: &[(ModulePackag
         ScrollArea::vertical().id_salt("map-module-packages").max_height(room).min_scrolled_height(rows.min(room)).show(ui, |ui| {
             // Grouped by language, each group in the order the read gave.
             let mut order: Vec<usize> = (0..packages.len()).collect();
-            order.sort_by_key(|&i| (packages[i].0.language, packages[i].0.typescript));
+            order.sort_by_key(|&i| (packages[i].0.language, packages[i].0.dialect));
             let mut group = None;
             for (k, (package, counted)) in order.into_iter().map(|k| (k, &packages[k])) {
-                let language = language_name(package.language, package.typescript);
+                let language = language_name(package.language, package.dialect);
                 if group != Some(language) {
                     ui.add_space(if group.is_none() { 2. } else { 6. });
                     group = Some(language);
@@ -986,7 +1115,7 @@ pub(super) fn package_picker(ui: &mut Ui, s: &MapPage, packages: &[(ModulePackag
                 icon(painter, Rect::from_center_size(pos2(r.rect.left() + 14., r.rect.center().y), vec2(13., 13.)), Icon::Package, if usable { TEAL() } else { FAINT() });
                 let words = Words {
                     language: package.language,
-                    typescript: package.typescript,
+                    dialect: package.dialect,
                 };
                 let count = match (*counted, package.files) {
                     (false, _) => String::new(),
@@ -1073,8 +1202,8 @@ pub(super) fn module_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: 
     let words = Words::of(s);
     let n = &data.nodes[i];
     let file = n.path.clone().unwrap_or_default();
-    // A JavaScript folder and a Go package stand for a folder, not one file.
-    let is_folder = n.detail == b"Folder" || n.detail == b"Go package";
+    // A JavaScript folder, a Go or Java package and a C# namespace stand for a folder, not one file.
+    let is_folder = matches!(n.detail.as_slice(), b"Folder" | b"Go package" | b"Java package" | b"C# namespace");
     let (users, uses) = units.neighbors(data, i);
     let what = if is_folder { crate::i18n::tr("Folder") } else { crate::i18n::tr("File") };
     details::fact_mono(ui, what, &label(&file));
@@ -1222,7 +1351,9 @@ pub(super) fn package_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, se
     let folder = n.path.clone().unwrap_or_default();
     details::fact_mono(ui, crate::i18n::tr("Folder"), &if folder.is_empty() { tr("the top folder").to_owned() } else { label(&folder) });
     details::fact(ui, crate::i18n::tr("Files"), &words.files(n.count));
-    details::fact(ui, words.units(), &pages::number_text(units.top.len()));
+    if let Some(what) = words.units() {
+        details::fact(ui, what, &pages::number_text(units.top.len()));
+    }
     details::fact(ui, tr("Links"), &pages::number_text(units.top_links));
     details::actions(ui, |ui| {
         if button(ui, widgets, "map-show-folders", crate::i18n::tr("Show folders"), true) {
@@ -1277,7 +1408,7 @@ pub(super) fn package_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, se
         list.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(b.0)));
         details::section(ui, tr("OUTSIDE"), list.len());
         for (k, (what, count)) in list.iter().take(5).enumerate() {
-            let count = if words.language == ModuleLanguage::Go { words.count(*count) } else { trn!(*count, "{n} file", "{n} files") };
+            let count = if words.language.standalone() { words.count(*count) } else { trn!(*count, "{n} file", "{n} files") };
             details::row(ui, widgets, &format!("map-package-outside-{k}"), Icon::External, MUTED(), &label(what), &count, false, "");
         }
         details::more(ui, list.len().min(5), list.len());

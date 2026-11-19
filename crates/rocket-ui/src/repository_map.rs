@@ -802,7 +802,7 @@ fn code_views(state: &State) -> CodeViews {
                         folder: modules::package_folder(n),
                         name: n.label.clone(),
                         language: ModuleLanguage::Rust,
-                        typescript: false,
+                        dialect: None,
                         manifest: true,
                         files: 0,
                         node: None,
