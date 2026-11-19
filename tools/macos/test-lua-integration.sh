@@ -19,6 +19,10 @@ case "$guest:$out:$root_cargo" in /*:/*:/*) ;; *) exit 2 ;; esac
 test ! -e "$out" && test ! -L "$out"
 mkdir "$out"
 exec > >(tee "$out/build.log") 2>&1
+if [[ "$mode" == release-package && ${GITHUB_ACTIONS:-} == true ]]; then
+  # Point to the failing check without uploading its raw runner log.
+  trap 'printf "::error file=tools/macos/test-lua-integration.sh,line=%d::Native release check exited %d.\n" "$LINENO" "$?" >&2' ERR
+fi
 export MACOSX_DEPLOYMENT_TARGET=15.0 CARGO_INCREMENTAL=0 CARGO_PROFILE_DEV_DEBUG=0 CARGO_PROFILE_TEST_DEBUG=0
 bash "$root/tools/macos/build-lua-helper.sh" "$guest" "$out/helper" "$profile"
 export ROCKET_MACOS_LUA_APP="$out/helper/RocketLua.app"

@@ -109,6 +109,10 @@ jobs:
           node tools/prototypes/macos-lua-wasm/prepare-deps.cjs "$RUNNER_TEMP/prototype-deps" host
           unzip -p "$RUNNER_TEMP/guest.zip" guest.wasm > "$RUNNER_TEMP/guest.wasm"
           test "$(shasum -a 256 "$RUNNER_TEMP/guest.wasm" | cut -d ' ' -f1)" = "$EXPECTED_GUEST_SHA"
+      - name: Select a security-patched installed Git for native release tests
+        if: ${{ inputs.checks == 'release-package' }}
+        shell: bash
+        run: bash tools/macos/select-release-git.sh
       - name: Run only the selected Lua checks
         timeout-minutes: ${{ inputs.checks == 'release-package' && (inputs.architecture == 'x64' && 45 || 25) || 15 }}
         shell: bash
