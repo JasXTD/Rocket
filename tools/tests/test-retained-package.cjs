@@ -2,10 +2,32 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
 const {zip}=require('./app-update-fixtures.cjs'),reader=require('../macos/read-package-zip.cjs');
 const {inputs,sourceDiff}=require('../macos/test-retained-package.cjs');
+const {prepare}=require('../macos/prepare-release-artifact.cjs');
 function removeFixture(temp){
  assert.equal(path.dirname(path.resolve(temp)),path.resolve(os.tmpdir()));assert(path.basename(temp).startsWith('rocket-zip-'));assert(!fs.lstatSync(temp).isSymbolicLink());
  fs.rmSync(temp,{recursive:true,force:true});
 }
+test('release uploads contain only the checked package, checksum and public receipt fields',()=>{
+ const source=fs.mkdtempSync(path.join(os.tmpdir(),'rocket-zip-release-'));
+ const destination=path.join(source,'artifact'),name='Rocket-1.2.3-macos-x64-preview.zip';
+ function fixture(entries){
+  const bytes=zip(entries),sha256=require('node:crypto').createHash('sha256').update(bytes).digest('hex');
+  fs.writeFileSync(path.join(source,name),bytes);
+  fs.writeFileSync(path.join(source,name+'.sha256'),sha256+'  '+name+'\n');
+  fs.writeFileSync(path.join(source,'integration.json'),JSON.stringify({platform:'darwin',arch:'x64',profile:'release',sha256,extra:'unpublished detail'}));
+ }
+ try{
+  fixture({'package/.ssh/config':Buffer.from('fixture')});
+  assert.throws(()=>prepare(source,destination,'1.2.3','x64'),/Private or development/);
+  assert(!fs.existsSync(destination));
+  fixture({'package/README.md':Buffer.from('public release')});
+  fs.writeFileSync(path.join(source,'runner.log'),'local diagnostic');
+  prepare(source,destination,'1.2.3','x64');
+  const folder=path.join(destination,'prototype-results');
+  assert.deepEqual(fs.readdirSync(folder).sort(),[name,name+'.sha256','integration.json'].sort());
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(folder,'integration.json')))).sort(),['arch','platform','profile','sha256']);
+ } finally{removeFixture(source);}
+});
 test('retained package inputs reject shell syntax, wrong architectures and production changes',()=>{
  const env={ROCKET_REQUESTED_MAC_ARCH:'x64',ROCKET_SOURCE_RUN:'1234567',ROCKET_ARCHIVE_SHA256:'a'.repeat(64)};
  assert.equal(inputs(env).arch,'x64');

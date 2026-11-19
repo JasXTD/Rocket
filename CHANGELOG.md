@@ -10,7 +10,9 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
-## 0.92.6 — Git security, Code Map and Windows updates (unreleased)
+## 0.92.6 — Git security, Code Map and Windows updates
+
+See the [release notes](docs/releases/0.92.6.md) for downloads, Git requirements and update behavior on each platform.
 
 - Map → Code → Modules reads Java and Kotlin projects (Maven and Gradle builds; a card
   is a package), C and C++ projects (CMake, Meson, Make and similar builds; a card is a
@@ -26,8 +28,8 @@ keep detailed test evidence in `VALIDATION.md`.
   cloning a repository. Git 2.56.1 and later stable releases are supported, as
   are the patched 2.50 through 2.55 maintenance branches. Preferences identifies
   the required version for an older installation's branch.
-- The portable updater can offer this build to Rocket 0.92.5 installations once
-  published.
+- Windows and Linux x64 portable installations can update from 0.92.5. The
+  Apple Silicon and Intel macOS previews use manual downloads.
 - Record slow bundled-Git verification operations in local diagnostics, including
   the Windows thread, inventory file number, read offset and Stop state. These
   records are available while a read is still waiting and omit paths and contents.

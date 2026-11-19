@@ -2,7 +2,7 @@
 
 Rocket keeps the portable ZIP. The optional Inno Setup package wraps the same
 verified files; it does not download Git or another runtime during installation.
-Download Setup or the portable ZIP from [GitHub Releases](https://github.com/JasXTD/Rocket/releases/tag/v0.92.5).
+Download Setup or the portable ZIP from [GitHub Releases](https://github.com/JasXTD/Rocket/releases/tag/v0.92.6).
 
 [MSIX packaging](Windows-MSIX.md) provides a separate Microsoft Store option
 under the GitRocket identity. It does not replace this installer or the ZIP.

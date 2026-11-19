@@ -40,16 +40,16 @@ open **Help → Setup Guide** in the app. **Ctrl+K** opens the command palette a
 guide.
 
 > [!NOTE]
-> [Download Rocket 0.92.5](https://github.com/JasXTD/Rocket/releases/tag/v0.92.5):
+> [Download Rocket 0.92.6](https://github.com/JasXTD/Rocket/releases/tag/v0.92.6)
 > Windows x64, Linux x64 (glibc 2.43+) and macOS 15+ previews for Apple Silicon and Intel.
 > The Mac preview is not Developer-ID-signed or notarized.
 > Pick your package on the [download page](https://jasxtd.github.io/Rocket/get.html), or
 > [build from source](#build-and-run).
 
-**New in 0.92.5:** a Windows installer alongside the portable ZIP; cross-language
-Code Map and Modules; Agents launched from issues, pull requests and failed CI
-runs; Forgejo/Codeberg hosting; GitLab/Gitea Explore; and security/UI refinements.
-See the [full release notes](docs/releases/0.92.5.md).
+**New in 0.92.6** — Rocket bundles patched Git for Windows and checks the security
+patch level of installed Git. Code Map reads Java, Kotlin, C, C++ and C# modules.
+Portable updates verify files in parallel and show file counts while preparing
+to restart. See the [full release notes](docs/releases/0.92.6.md).
 
 ## Features
 
@@ -220,8 +220,8 @@ See [Current limits](#current-limits) for what still differs between platforms.
 
 Windows supports an [Inno Setup installer](docs/Windows-installer.md) and a portable
 ZIP. [MSIX packaging](docs/Windows-MSIX.md) adds a Microsoft Store option using the
-**GitRocket** identity; it has not been submitted to the Store. All three packaging
-routes remain supported, and the published 0.92.5 installer and ZIP remain available.
+**GitRocket** identity. GitHub downloads are available as the Windows installer and
+portable ZIP. Store certification and distribution are separate.
 
 ## Command-line interface
 
