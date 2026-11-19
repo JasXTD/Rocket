@@ -262,6 +262,22 @@ disposable app copy. It reuses the closed fixture to check pinned files, invento
 verifier code, mixed builds and missing/extra files. It never executes damaged
 binaries or changes an existing versioned release.
 
+To capture a future Windows read stall in the Rust integration fixtures, opt in
+to the same bounded local logs used by the app. Use the existing reviewed runtime:
+
+```powershell
+$env:PATH = (Resolve-Path 'runtime/git/2.56.1.windows.1/cmd').Path + ';' + $env:PATH
+$env:ROCKET_TEST_DIAGNOSTICS = Join-Path ([IO.Path]::GetTempPath()) 'rocket-git-io-logs'
+cargo test --offline --locked -p rocket-git --test code_map --test configuration_snapshot -- --test-threads=1 --nocapture
+Remove-Item Env:ROCKET_TEST_DIAGNOSTICS
+```
+
+Preserve that directory while a test is stalled. `managed_git_io_wait` records
+the Windows thread, phase, file's inventory position, read offset and cancellation
+state without recording paths or contents. See the
+[recovery guide](../docs/wiki/Recovery-and-troubleshooting.md#bundled-git-verification-stops-making-progress-on-windows)
+for field meanings and limits. This command runs tests and does not package Rocket.
+
 `node tools/tests/test-release-bundle.cjs tools/releases/0.92.0` checks missing
 workers, mismatched host/worker pairs, manifest tampering and unsigned policy on
 a disposable copy. `node tools/tests/test-release-git-guard.cjs tools/releases/0.92.0/rocket-cli.exe`

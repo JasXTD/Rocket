@@ -18,7 +18,7 @@ mod python;
 mod rust;
 mod units;
 pub use code_map::{
-    CODE_HISTORY_COMMITS, CODE_MAP_FILES, ChangesOutcome, CodeChanges, CodeEnd, CodeHistory, CodeLink, CodeLinks, FileKind, HistoryCommit, OwnerRules, file_kind,
+    CODE_HISTORY_COMMITS, CODE_MAP_FILES, CODE_MAP_PACKAGES, ChangesOutcome, CodeChanges, CodeEnd, CodeHistory, CodeLink, CodeLinks, FileKind, HistoryCommit, OwnerRules, file_kind,
 };
 pub use mermaid::map_mermaid;
 pub use owners::{CODEOWNERS_BYTES, CODEOWNERS_FILES, CodeOwners, Ownership};

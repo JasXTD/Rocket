@@ -20,6 +20,29 @@ fn pairs(links: &CodeLinks) -> Vec<String> {
 }
 
 #[test]
+fn empty_packages_are_bounded_and_can_be_read_later() {
+    isolated("ROCKET_CODE_MAP_TEST", "empty_packages_are_bounded_and_can_be_read_later", || {
+        let f = Fixture::new();
+        for i in 0..=CODE_MAP_PACKAGES {
+            f.write(&format!("p{i:04}/Cargo.toml"), "[package]\nname='empty'\n");
+        }
+        f.commit("empty packages");
+        let repo = f.repo();
+        let tip = head(&f);
+        let mut links = repo.code_links(&tip, None, &token()).unwrap();
+        assert_eq!(links.files, 0);
+        assert_eq!(links.packages.len(), CODE_MAP_PACKAGES);
+        assert!(links.limited);
+        assert_eq!(links.unread.len(), 1);
+        let folder = links.unread[0].folder.clone();
+        let more = repo.code_links(&tip, Some(&[folder]), &token()).unwrap();
+        assert_eq!(more.packages, links.unread);
+        links.merge(more);
+        assert!(!links.limited && links.unread.is_empty());
+    });
+}
+
+#[test]
 fn code_links_bound_codeowners_work_without_showing_partial_ownership() {
     isolated("ROCKET_CODE_MAP_TEST", "code_links_bound_codeowners_work_without_showing_partial_ownership", || {
         let f = Fixture::new();
@@ -163,6 +186,7 @@ fn code_history_counts_commits_by_path_with_the_pinned_mailmap() {
         f.run(&["config", "user.email", "old@example.invalid"]);
         f.write("src/a.rs", "1\n");
         f.commit("one");
+        f.run(&["commit", "--allow-empty", "-m", "metadata only"]);
         f.run(&["config", "user.name", "林安"]);
         f.run(&["config", "user.email", "canonical@example.invalid"]);
         f.write(".mailmap", "林安 <canonical@example.invalid> Alias <old@example.invalid>\n");
@@ -182,7 +206,7 @@ fn code_history_counts_commits_by_path_with_the_pinned_mailmap() {
         f.run(&["merge", "--no-ff", "-m", "merge side", "side"]);
         let tip = head(&f);
         let history = f.repo().code_history(&tip, &token()).unwrap();
-        assert_eq!(history.commits.len(), 4, "the merge is left out");
+        assert_eq!(history.commits.len(), 5, "include the empty commit, exclude the merge");
         assert!(!history.limited);
         assert_eq!(history.authors.len(), 2, "Alias is 林安 through the snapshot's .mailmap: {:?}", history.authors);
         assert_eq!(history.file_commits(b"src/a.rs", None), 2);
@@ -194,6 +218,35 @@ fn code_history_counts_commits_by_path_with_the_pinned_mailmap() {
         // Commits on the same day; a period after them all counts none.
         let newest = history.commits[0].time;
         assert_eq!(history.folder_commits(b"", false, Some(newest + 1)), 0);
+    });
+}
+
+#[test]
+fn code_history_preserves_control_prefixed_paths_in_git_objects() {
+    isolated("ROCKET_CODE_MAP_TEST", "code_history_preserves_control_prefixed_paths_in_git_objects", || {
+        let f = Fixture::new();
+        f.write("data", "ordinary file content");
+        let oid = String::from_utf8(f.run(&["hash-object", "-w", "data"])).unwrap();
+        let oid = oid.trim();
+        // Git trees can store these names even on systems that cannot check them out.
+        // The second name follows the first path's NUL separator directly.
+        let records = f.root.join("tree-input");
+        let entries = ["\x01first", "\x01second"].map(|name| format!("100644 blob {oid}\t{name}\0"));
+        std::fs::write(&records, entries.concat()).unwrap();
+        let tree = f.command(&f.repository, &["mktree", "-z"])
+            .stdin(std::fs::File::open(records).unwrap())
+            .output()
+            .unwrap();
+        assert!(tree.status.success(), "{}", String::from_utf8_lossy(&tree.stderr));
+        let tree_id = String::from_utf8(tree.stdout).unwrap();
+        let commit = String::from_utf8(f.run(&["commit-tree", tree_id.trim(), "-m", "two paths"])).unwrap();
+        let tip = ObjectId::parse(commit.trim()).unwrap();
+        let history = f.repo().code_history(&tip, &token()).unwrap();
+        assert_eq!(history.commits.len(), 1);
+        assert_eq!(history.commits[0].id, tip);
+        assert_eq!(history.paths.len(), 2);
+        assert_eq!(history.file_commits(b"\x01first", None), 1);
+        assert_eq!(history.file_commits(b"\x01second", None), 1);
     });
 }
 

@@ -4,6 +4,37 @@ use rocket_git::{CancellationToken, Error};
 use std::fs;
 
 #[test]
+fn isolated_settings_are_ready_before_any_repository_setup() {
+    const TEST: &str = "isolated_settings_are_ready_before_any_repository_setup";
+    const CASE: &str = "ROCKET_ISOLATION_ORDER_CASE";
+    const LAUNCH: &str = "ROCKET_ISOLATION_ORDER_LAUNCH";
+    if std::env::var_os(LAUNCH).is_none() {
+        // The launcher only prepares settings. It must work without Git on
+        // PATH and discard GIT_DIR even when it points through a regular file.
+        let exe = std::env::current_exe().unwrap();
+        let output = std::process::Command::new(&exe)
+            .args(["--exact", TEST, "--nocapture"])
+            .env(LAUNCH, "1")
+            .env_remove(CASE)
+            .env("PATH", "")
+            .env("GIT_DIR", exe.join("invalid-repository"))
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        return;
+    }
+    isolated(CASE, TEST, || {
+        assert!(std::env::var_os("GIT_DIR").is_none());
+        assert_eq!(std::env::var("GIT_ALLOW_PROTOCOL").unwrap(), "file");
+        let config = std::env::var_os("GIT_CONFIG_GLOBAL").unwrap();
+        assert_eq!(Some(config.clone()), std::env::var_os("GIT_CONFIG_SYSTEM"));
+        assert!(fs::read(config).unwrap().is_empty());
+        let template = std::env::var_os("GIT_TEMPLATE_DIR").unwrap();
+        assert_eq!(fs::read_dir(template).unwrap().count(), 0);
+    });
+}
+
+#[test]
 fn effective_configuration_tracks_includes_and_preserves_worktree() {
     isolated(
         "ROCKET_CONFIGURATION_TEST",

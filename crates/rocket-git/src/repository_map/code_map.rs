@@ -9,6 +9,8 @@ use std::collections::HashSet;
 /// Code files one read takes; past this, the packages left are read when their folder
 /// is opened.
 pub const CODE_MAP_FILES: usize = 10_000;
+/// Charge source planning even when a package has no readable files.
+pub const CODE_MAP_PACKAGES: usize = 512;
 const CODE_MAP_BYTES: usize = 64 * 1024 * 1024;
 /// As Modules: a larger file is not read.
 const FILE_BYTES: usize = 1024 * 1024;
@@ -191,12 +193,10 @@ impl CodeLinks {
             }
         }
         self.lines.extend(other.lines);
-        for p in other.packages {
-            self.unread.retain(|u| u != &p);
-            if !self.packages.contains(&p) {
-                self.packages.push(p);
-            }
-        }
+        let completed: HashSet<_> = other.packages.iter().collect();
+        self.unread.retain(|p| !completed.contains(p));
+        let mut known_packages: HashSet<_> = self.packages.iter().cloned().collect();
+        self.packages.extend(other.packages.into_iter().filter(|p| known_packages.insert(p.clone())));
         self.files += other.files;
         self.sources_limited |= other.sources_limited;
         self.limited = !self.unread.is_empty() || other.limited || self.sources_limited || self.owners_limited;
@@ -329,8 +329,7 @@ impl Repository {
         // Manifests name the packages: every Cargo.toml, package.json, go.mod and
         // tsconfig or jsconfig, each up to 128 KiB, MANIFEST_BYTES together.
         let paths: Vec<&[u8]> = blobs.keys().copied().collect();
-        // Every package, not the Modules switcher's first 128 a language: the files and
-        // bytes of one read are the limit here, and packages past them stay unread.
+        // Keep the full catalog so later reads can select a deferred folder.
         let (others, _) = packages::find_up_to(&paths, usize::MAX);
         let mut manifest_limited = false;
         let mut manifests = |wanted: &mut dyn Iterator<Item = Vec<u8>>| -> Vec<(Vec<u8>, ObjectId, usize)> {
@@ -361,15 +360,15 @@ impl Repository {
                     [packages::join(&f.folder, b"tsconfig.json"), packages::join(&f.folder, b"jsconfig.json")]
                 })),
         );
-        let mut crates: Vec<(Vec<u8>, String)> = Vec::new();
+        let mut crates = BTreeMap::new();
         for (path, text) in self.code_texts("read-manifests", &cargo_batch, cancel)? {
             if let (Some(name), _) = cargo::manifest(&text) {
-                crates.push((packages::parent(&path).to_vec(), name));
+                crates.insert(packages::parent(&path).to_vec(), name.replace('-', "_"));
             }
         }
         let small = self.code_texts("read-manifests", &small_batch, cancel)?;
         // A crate as `use` lines name it.
-        let crate_names: HashMap<String, Vec<u8>> = crates.iter().map(|(folder, name)| (name.replace('-', "_"), folder.clone())).collect();
+        let crate_names: HashMap<String, Vec<u8>> = crates.iter().map(|(folder, name)| (name.clone(), folder.clone())).collect();
         // How other packages of this snapshot are named from outside them.
         let mut javascript_names: HashMap<String, Vec<u8>> = HashMap::new();
         let mut python_names: HashMap<String, Vec<u8>> = HashMap::new();
@@ -396,22 +395,29 @@ impl Repository {
         }
         // Longest module paths first, so a nested module wins over its parent.
         go_modules.sort_by_key(|m| std::cmp::Reverse(m.0.len()));
-        let mut order: Vec<(Vec<u8>, Option<usize>)> = crates.iter().map(|(folder, _)| (folder.clone(), None)).collect();
+        let mut order: Vec<(Vec<u8>, Option<usize>)> = crates.keys().map(|folder| (folder.clone(), None)).collect();
         order.extend(others.iter().enumerate().map(|(i, f)| (f.folder.clone(), Some(i))));
         order.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
         // The packages this read takes, in path order, while they fit its limits.
         let mut budget = Budget::default();
         let mut planned: Vec<(PackageRef, Option<usize>, BTreeSet<Vec<u8>>)> = Vec::new();
         let mut batch: Vec<(Vec<u8>, ObjectId, usize)> = Vec::new();
+        let selected = only.map(|list| list.iter().map(Vec::as_slice).collect::<HashSet<_>>());
+        let mut packages_planned = 0;
         for (folder, other) in order {
             cancel.check()?;
             let reference = PackageRef {
                 folder: folder.clone(),
                 language: other.map_or(ModuleLanguage::Rust, |i| others[i].language),
             };
-            if only.is_some_and(|list| !list.contains(&folder)) {
+            if selected.as_ref().is_some_and(|list| !list.contains(folder.as_slice())) {
                 continue;
             }
+            if packages_planned >= CODE_MAP_PACKAGES {
+                out.unread.push(reference);
+                continue;
+            }
+            packages_planned += 1;
             let (files, own): (BTreeSet<Vec<u8>>, Batch) = match other {
                 None => {
                     let files = rust_files(&folder, &blobs);
@@ -500,14 +506,14 @@ impl Repository {
             cancel.check()?;
             match other {
                 None => {
-                    let name = crates.iter().find(|(f, _)| *f == reference.folder).map(|(_, n)| n.replace('-', "_")).unwrap_or_default();
+                    let name = &crates[&reference.folder];
                     let mut read = Read {
                         texts: &mut texts,
                         budget: &mut budget,
                         lines: &mut out.lines,
                         limited: &mut out.sources_limited,
                     };
-                    self.code_rust(&reference.folder, &name, &files, &crate_names, &blobs, &mut read, &mut b, cancel)?;
+                    self.code_rust(&reference.folder, name, &files, &crate_names, &blobs, &mut read, &mut b, cancel)?;
                 }
                 Some(i) => {
                     let names = Names {
@@ -992,7 +998,7 @@ impl Repository {
                 arguments.push(crate::runner::git_path(worktree));
             }
             // log.showSignature would put signature checks between the commits.
-            arguments.extend(args(&["--no-replace-objects", "log", "-z", "--no-merges", "--no-renames", "--no-show-signature", "--name-only", "--format=%x01%H%x02%at%x02%an%x02%ae"]));
+            arguments.extend(args(&["--no-replace-objects", "log", "-z", "--no-merges", "--no-renames", "--no-show-signature", "--name-only", "--format=%x00%H%x00%at%x00%an%x00%ae"]));
             arguments.push(format!("--max-count={}", count + 1).into());
             arguments.extend(args(&[tip.as_str(), "--"]));
             runner.run(self.cwd(), &arguments, Vec::new(), cancel)?.success(op)
@@ -1003,52 +1009,57 @@ impl Repository {
             other => (other?, CODE_HISTORY_COMMITS),
         };
         cancel.check()?;
-        let mut history = CodeHistory {
-            tip: Some(tip.clone()),
-            ..Default::default()
-        };
-        let mut people: HashMap<Vec<u8>, u32> = HashMap::new();
-        let mut first = false;
-        let mut current: Option<u32> = None;
-        for token in bytes.split(|b| *b == 0) {
-            if let Some(header) = token.strip_prefix(&[1u8]) {
-                if history.commits.len() >= wanted {
-                    history.limited = true;
-                    break;
-                }
-                let mut parts = header.splitn(4, |b| *b == 2);
-                let (Some(id), Some(time), Some(name), Some(email)) = (parts.next(), parts.next(), parts.next(), parts.next()) else {
-                    return Err(Error::parse(op, "invalid commit header"));
-                };
-                let email = email.strip_suffix(b"\n").unwrap_or(email);
-                let id = parse::oid(id, op)?;
-                let time = std::str::from_utf8(time).ok().and_then(|t| t.parse::<i64>().ok()).ok_or_else(|| Error::parse(op, "invalid author time"))?;
-                let (name, email) = canonical(name, email, &aliases);
-                let key = if email.is_empty() { name.clone() } else { email.to_ascii_lowercase() };
-                let author = *people.entry(key).or_insert_with(|| {
-                    history.authors.push(name.clone());
-                    (history.authors.len() - 1) as u32
-                });
-                history.commits.push(HistoryCommit { id, time, author });
-                current = Some((history.commits.len() - 1) as u32);
-                first = true;
-                continue;
-            }
-            // Git puts a line break between the format line and the first name.
-            let path = if std::mem::take(&mut first) { token.strip_prefix(b"\n").unwrap_or(token) } else { token };
-            if path.is_empty() {
-                continue;
-            }
-            if let Some(c) = current {
-                let list = history.paths.entry(path.to_vec()).or_default();
-                if list.last() != Some(&c) {
-                    list.push(c);
-                }
-            }
-        }
-        Ok(history)
+        parse_code_history(&bytes, tip, &aliases, wanted, cancel)
     }
+}
 
+// An empty field introduces four metadata fields. A Git pathname is always
+// nonempty and cannot contain NUL, including paths starting with control bytes.
+fn parse_code_history(bytes: &[u8], tip: &ObjectId, aliases: &[Alias], wanted: usize, cancel: &CancellationToken) -> Result<CodeHistory> {
+    let op = "map-code-history";
+    let mut history = CodeHistory {
+        tip: Some(tip.clone()),
+        ..Default::default()
+    };
+    let mut people: HashMap<Vec<u8>, u32> = HashMap::new();
+    let mut first = false;
+    let mut current: Option<u32> = None;
+    let mut tokens = bytes.split_inclusive(|b| *b == 0).map(|field| field.strip_suffix(&[0]));
+    while let Some(field) = tokens.next() {
+        cancel.check()?;
+        let token = field.ok_or_else(|| Error::parse(op, "unterminated field"))?;
+        if token.is_empty() {
+            if history.commits.len() >= wanted {
+                history.limited = true;
+                break;
+            }
+            let mut next = || tokens.next().flatten().ok_or_else(|| Error::parse(op, "incomplete commit header"));
+            let (id, time, name, email) = (next()?, next()?, next()?, next()?);
+            let id = parse::oid(id, op)?;
+            let time = std::str::from_utf8(time).ok().and_then(|t| t.parse::<i64>().ok()).ok_or_else(|| Error::parse(op, "invalid author time"))?;
+            let (name, email) = canonical(name, email, aliases);
+            let key = if email.is_empty() { name.clone() } else { email.to_ascii_lowercase() };
+            let author = *people.entry(key).or_insert_with(|| {
+                history.authors.push(name.clone());
+                (history.authors.len() - 1) as u32
+            });
+            history.commits.push(HistoryCommit { id, time, author });
+            current = Some((history.commits.len() - 1) as u32);
+            first = true;
+            continue;
+        }
+        // Git puts a line break between the format line and the first name.
+        let path = if std::mem::take(&mut first) { token.strip_prefix(b"\n").ok_or_else(|| Error::parse(op, "missing path separator"))? } else { token };
+        let c = current.filter(|_| !path.is_empty()).ok_or_else(|| Error::parse(op, "unexpected pathname"))?;
+        let list = history.paths.entry(path.to_vec()).or_default();
+        if list.last() != Some(&c) {
+            list.push(c);
+        }
+    }
+    Ok(history)
+}
+
+impl Repository {
     /// What `tip` changes since it split from `base`: the files, lines added and removed,
     /// and how many commits.
     pub fn code_changes(&self, base: &str, tip: &ObjectId, cancel: &CancellationToken) -> Result<CodeChanges> {
@@ -1145,6 +1156,24 @@ fn parse_numstat(bytes: &[u8]) -> HashMap<Vec<u8>, (usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_keeps_control_bytes_in_paths_and_metadata() {
+        let tip = ObjectId::parse(&"a".repeat(40)).unwrap();
+        let oid = tip.as_str().as_bytes();
+        let fields: &[&[u8]] = &[b"", oid, b"0", b"Lin\x02A", b"", b"\n\nfirst", b"\x01notes",
+            b"", oid, b"1", b"Empty", b"", b"", oid, b"2", b"Lin\x02A", b"", b"\n\x01notes"];
+        let bytes: Vec<_> = fields.iter().flat_map(|field| field.iter().copied().chain(Some(0))).collect();
+        let cancel = CancellationToken::default();
+        let history = parse_code_history(&bytes, &tip, &[], 3, &cancel).unwrap();
+        assert_eq!(history.commits.len(), 3);
+        assert_eq!(history.authors, [b"Lin\x02A".to_vec(), b"Empty".to_vec()]);
+        assert_eq!(history.paths[b"\nfirst".as_slice()], [0]);
+        assert_eq!(history.paths[b"\x01notes".as_slice()], [0, 2]);
+        assert!(!history.limited);
+        assert!(parse_code_history(&bytes[..bytes.len()-1], &tip, &[], 3, &cancel).is_err());
+        assert!(parse_code_history(b"\0header", &tip, &[], 3, &cancel).is_err());
+    }
 
     #[test]
     fn source_reservations_refuse_count_bytes_and_overflow_without_consuming_space() {

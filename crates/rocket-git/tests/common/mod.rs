@@ -19,7 +19,6 @@ pub fn isolated(case_variable: &str, name: &str, test: fn()) {
         test();
         return;
     }
-    let f = Fixture::new();
     let mut command = Command::new(std::env::current_exe().unwrap());
     // The parent already decided to run this case. Preserve explicit opt-in to
     // ignored integration tests instead of silently discovering zero in the child.
@@ -30,20 +29,25 @@ pub fn isolated(case_variable: &str, name: &str, test: fn()) {
             command.env_remove(key);
         }
     }
+    // Only the child needs a repository and a verified Git runtime. The parent
+    // provides the child's private global config and empty template directory.
+    let root = new_fixture_root();
     command
         .env(case_variable, name)
-        .env("GIT_CONFIG_GLOBAL", f.root.join("empty.config"))
-        .env("GIT_CONFIG_SYSTEM", f.root.join("empty.config"))
+        .env("GIT_CONFIG_GLOBAL", root.join("empty.config"))
+        .env("GIT_CONFIG_SYSTEM", root.join("empty.config"))
         .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_ALLOW_PROTOCOL", "file")
-        .env("GIT_TEMPLATE_DIR", f.root.join("no-hooks"))
+        .env("GIT_TEMPLATE_DIR", root.join("no-hooks"))
         .env("GIT_TERMINAL_PROMPT", "0");
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x0800_0000);
     }
-    let output = command.output().unwrap();
+    let output = command.output();
+    remove_fixture_root(&root);
+    let output = output.expect("run isolated test child");
     assert!(
         output.status.success(),
         "{}\n{}",
@@ -71,6 +75,35 @@ pub fn ssh_keygen() -> Command {
     }
 }
 
+fn new_fixture_root() -> PathBuf {
+    let base = fixture_base();
+    // Git's config environment does not accept the Windows verbatim path prefix.
+    let unique = format!(
+        "rocket-{}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    );
+    let root = base.join(unique);
+    fs::create_dir(&root).unwrap();
+    fs::create_dir(root.join("no-hooks")).unwrap();
+    fs::write(root.join("empty.config"), b"").unwrap();
+    root
+}
+
+fn remove_fixture_root(root: &Path) {
+    // Only the uniquely created direct child of the fixture base may be removed.
+    let base = fixture_base().canonicalize().unwrap();
+    let target = root.canonicalize().unwrap();
+    assert_eq!(target.parent(), Some(base.as_path()));
+    if let Err(error) = fs::remove_dir_all(&target) {
+        eprintln!("fixture cleanup failed for {}: {error}", target.display());
+    }
+}
+
 pub struct Fixture {
     pub root: PathBuf,
     pub repository: PathBuf,
@@ -81,30 +114,19 @@ impl Fixture {
         Self::with_format("sha1")
     }
     pub fn with_format(format: &str) -> Self {
-        let base = fixture_base();
-        fs::create_dir_all(&base).unwrap();
-        // Git's config environment does not accept Rust's Windows \\?\ verbatim prefix.
-        // Keep this absolute, ordinary spelling when passing paths to Git; canonicalize
-        // only when comparing identities or validating the cleanup boundary.
-        let unique = format!(
-            "rocket-{}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos(),
-            NEXT.fetch_add(1, Ordering::Relaxed)
-        );
-        let root = base.join(unique);
-        fs::create_dir(&root).unwrap();
+        let root = new_fixture_root();
         let repository = root.join("repo with spaces 文");
         fs::create_dir(&repository).unwrap();
-        fs::create_dir(root.join("no-hooks")).unwrap();
-        fs::write(root.join("empty.config"), b"").unwrap();
         let fixture = Self {
             root,
             repository,
-            git: GitClient::discover().unwrap(),
+            git: match std::env::var_os("ROCKET_TEST_DIAGNOSTICS") {
+                Some(path) => {
+                    let log = DiagnosticLog::open(path).expect("open opted-in test diagnostics");
+                    log.request("discover", |log| GitClient::discover_with_log(log.clone())).unwrap()
+                }
+                None => GitClient::discover().unwrap(),
+            },
         };
         fixture.run(&[
             "init",
@@ -172,12 +194,6 @@ impl Fixture {
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
-        let base = fixture_base().canonicalize().unwrap();
-        let target = self.root.canonicalize().unwrap();
-        // Recursive deletion is confined to the uniquely created direct child of the fixture root.
-        assert_eq!(target.parent(), Some(base.as_path()));
-        if let Err(error) = fs::remove_dir_all(&target) {
-            eprintln!("fixture cleanup failed for {}: {error}", target.display());
-        }
+        remove_fixture_root(&self.root);
     }
 }

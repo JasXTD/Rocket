@@ -18,6 +18,7 @@ keep detailed test evidence in `VALIDATION.md`.
   namespace, connected by `using` lines and the type names a file uses). The Folders
   code map draws their arrows too, also between projects. Test source sets,
   module-info.java and Kotlin scripts are left out; nothing is compiled or run.
+- Code Map checks up to 512 packages per read, including empty packages.
 - Linux and macOS check the upstream security patch level before opening or
   cloning a repository. Git 2.56.1 and later stable releases are supported, as
   are the patched 2.50 through 2.55 maintenance branches. Preferences identifies

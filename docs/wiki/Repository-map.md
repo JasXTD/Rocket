@@ -35,7 +35,8 @@ or a C or C++ file of another project. An arrow between two cards gathers every 
 between the files inside them, and its number counts the files on the using side. What
 uses sits above what it uses; when two use each other, the arrow pointing up is dashed.
 Cards that connect to nothing at their level sit under **Not connected**. One read takes
-up to 10,000 code files and 64 MiB; a package past that is read once its folder is open,
+up to 512 packages, 10,000 code files and 64 MiB. Empty packages count
+toward the package limit. A deferred package is read once its folder is open,
 by its arrow, **Expand all** or **Show folder**, and a package with more code than one
 read takes has no arrows. Go packages are read whole: an arrow from one counts packages,
 and a package that uses a change has all its Go files hatched. **Stop** ends the code
