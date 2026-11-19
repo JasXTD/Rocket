@@ -141,10 +141,8 @@ fn save_selection(
 enum Check {
     /// Usable: its complete version, including the Windows security build.
     Ready(String),
-    /// Local/SSH operations work, but the runtime cannot safely use HTTP(S).
-    Restricted(Box<(String, &'static str)>),
     /// Older than Rocket supports: its complete version.
-    Old(String),
+    Old { version: String, minimum: &'static str },
     /// Not usable: why.
     Broken(String),
 }
@@ -157,7 +155,7 @@ struct Found {
 }
 impl Found {
     fn usable(&self) -> bool {
-        matches!(self.check, None | Some(Check::Ready(_) | Check::Restricted(_)))
+        matches!(self.check, None | Some(Check::Ready(_)))
     }
 }
 
@@ -377,15 +375,16 @@ fn check(path: &Path, cancel: &CancellationToken) -> Check {
         ..Default::default()
     };
     match GitClient::discover_with_options(Some(path), limits, None, cancel) {
-        Ok(git) => match git.http_transport_warning() {
-            Some(warning) => Check::Restricted(Box::new((display_version(git.version()), warning))),
-            None => Check::Ready(display_version(git.version())),
-        },
-        // "Git 2.46 or later required; found git version 2.45.2.windows.1"
-        Err(Error::Unsupported(message)) => match message.split_once("found ") {
-            Some((_, version)) => Check::Old(display_version(version)),
-            None => Check::Broken(message),
-        },
+        Ok(git) => Check::Ready(display_version(git.version())),
+        Err(Error::Unsupported(message)) => {
+            if let Some((_, version)) = message.split_once(" required; found ")
+                && let Err(minimum) = GitClient::check_version(version)
+            {
+                Check::Old { version: display_version(version), minimum }
+            } else {
+                Check::Broken(message)
+            }
+        }
         Err(error) => Check::Broken(user_error(&error)),
     }
 }
@@ -603,7 +602,7 @@ impl Rocket {
                 };
                 // Keep the verified lease alive through discovery and publication.
                 let _lease = if selected == Choice::Managed {
-                    Some(log.request("managed-git-verify", |_| verify_managed_git(&cancel, &progress))?)
+                    Some(log.request("managed-git-verify", |log| verify_managed_git_with_log(&cancel, &progress, log))?)
                 } else { None };
                 let executable = selected.executable()?;
                 let git = GitClient::discover_with_options(
@@ -633,8 +632,8 @@ impl Rocket {
         let progress = self.git_settings.managed_progress.clone();
         self.git_settings.start(Job::Verify, move |cancel| {
             let log = DiagnosticLog::open(&log_path).map_err(|e| io("open Git settings diagnostics", e))?;
-            log.request("managed-git-verify", |_| {
-                let _lease = verify_managed_git(&cancel, &progress)?;
+            log.request("managed-git-verify", |log| {
+                let _lease = verify_managed_git_with_log(&cancel, &progress, log)?;
                 Ok(Finished::ManagedVerified)
             })
         });
@@ -1084,11 +1083,8 @@ fn check_pill(ui: &mut Ui, check: Option<&Check>) {
         Some(Check::Ready(version)) => {
             pages::pill(ui, version, MUTED());
         }
-        Some(Check::Restricted(details)) => {
-            pages::pill(ui, &trf!("{version} · HTTP blocked", version = details.0), AMBER()).on_hover_text(details.1);
-        }
-        Some(Check::Old(version)) => {
-            pages::pill(ui, &trf!("{version} · needs 2.46", version), AMBER());
+        Some(Check::Old { version, minimum }) => {
+            pages::pill(ui, &trf!("{version} · needs {minimum}", version, minimum), AMBER());
         }
         Some(Check::Broken(reason)) => {
             pages::pill(ui, tr("Not usable"), AMBER()).on_hover_text(reason);
@@ -1197,7 +1193,9 @@ mod tests {
         assert_eq!(display_version("git version 2.56.0.windows.3"), "2.56.0.windows.3");
         assert_eq!(display_version("git version 2.56.0.windows.4"), "2.56.0.windows.4");
         assert_eq!(display_version("git version 2.45.2"), "2.45.2");
-        assert!(Found {path: PathBuf::from("unused"), check: Some(Check::Restricted(Box::new(("2.56.0.windows.3".into(), "HTTP blocked"))))}.usable());
+        assert!(!Found {path: PathBuf::from("unused"), check: Some(Check::Old {
+            version: "2.56.0.windows.4".into(), minimum: "2.56.1.windows.1",
+        })}.usable());
     }
     #[test]
     fn managed_choice_is_relocatable_and_keeps_legacy_selections() {

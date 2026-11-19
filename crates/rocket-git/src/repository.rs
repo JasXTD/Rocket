@@ -19,6 +19,18 @@ pub struct GitClient {
 }
 
 impl GitClient {
+    /// Lowest supported release. Later maintenance series can have a higher security floor.
+    pub const MINIMUM_VERSION: &'static str = if cfg!(windows) {
+        crate::runner::http_safety::WINDOWS_MINIMUM
+    } else {
+        crate::runner::http_safety::UNIX_MINIMUM
+    };
+
+    /// Check a complete `git --version` line. An error gives the patched release
+    /// to select for this platform and maintenance series.
+    pub fn check_version(version: &str) -> std::result::Result<(), &'static str> {
+        crate::runner::http_safety::check_version(version, cfg!(windows))
+    }
     // An already validated runner can discover related repositories without
     // repeating executable/version probing. This client is private to the backend.
     pub(crate) fn from_runner(runner: Runner) -> Self {
@@ -131,7 +143,7 @@ impl GitClient {
             guard_ai_api_keys: Arc::new(std::sync::atomic::AtomicBool::new(true)),
             secret_scan_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(crate::DEFAULT_SECRET_SCAN_MIB as usize * 1024 * 1024)),
             push_check: Default::default(),
-            git_http_allowed: !cfg!(windows),
+            git_http_allowed: false,
             managed_git,
         };
         let cwd = std::env::current_dir().map_err(|e| Error::io("read current directory", e))?;
@@ -141,34 +153,30 @@ impl GitClient {
         let version = std::str::from_utf8(parse::line(&version))
             .map_err(|_| Error::parse("version", "non-UTF-8 version"))?
             .to_owned();
-        let components: Vec<_> = version
-            .strip_prefix("git version ")
-            .unwrap_or("")
-            .split('.')
-            .collect();
-        let major = components.first().and_then(|v| v.parse::<u32>().ok());
-        let minor = components.get(1).and_then(|v| v.parse::<u32>().ok());
-        if let (Some(log), Some(major), Some(minor)) = (&runner.log, major, minor) {
-            log.git_version(
-                major,
-                minor,
-                components.get(2).and_then(|v| v.parse::<u32>().ok()),
-            );
+        if let Some(log) = &runner.log
+            && let Some(release) = version.strip_prefix("git version ").and_then(|s| s.split_whitespace().next())
+        {
+            let mut parts = release.split('.').map(str::parse::<u32>);
+            if let (Some(Ok(major)), Some(Ok(minor))) = (parts.next(), parts.next()) {
+                log.git_version(major, minor, parts.next().and_then(|v| v.ok()));
+            }
         }
-        if !matches!((major, minor), (Some(2), Some(46..)) | (Some(3..), Some(_))) {
-            return Err(Error::Unsupported(format!(
-                "Git 2.46 or later required; found {version}"
-            )));
+        if let Err(minimum) = Self::check_version(&version) {
+            let requirement = if cfg!(windows) {
+                format!("Git for Windows {minimum} or later")
+            } else {
+                format!("Git {minimum} or another security-patched release")
+            };
+            return Err(Error::Unsupported(format!("{requirement} required; found {version}")));
         }
-        runner.git_http_allowed = !cfg!(windows)
-            || crate::runner::http_safety::patched_windows_git(&version);
+        runner.git_http_allowed = true;
         Ok(Self { runner, version, previews: Default::default() })
     }
 
     pub fn version(&self) -> &str {
         &self.version
     }
-    /// An affected/unknown Windows Git runtime can still serve local and SSH work.
+    /// Transport warning for a restricted runner. Discovery rejects unsupported Git builds.
     pub fn http_transport_warning(&self) -> Option<&'static str> {
         (!self.runner.git_http_allowed).then_some(crate::runner::http_safety::WARNING)
     }

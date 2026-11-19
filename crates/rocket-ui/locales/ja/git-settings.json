@@ -1,7 +1,6 @@
 {
   "{choice} cannot be used: {error}": "{choice} は使用できません：{error}",
-  "{version} · HTTP blocked": "{version} · HTTP をブロック",
-  "{version} · needs 2.46": "{version} · 2.46 が必要",
+  "{version} · needs {minimum}": "{version} · {minimum} が必要",
   "Any git.exe on this computer": "このコンピューター上の任意の git.exe",
   "Automatic": "自動",
   "Bundled Git": "同梱の Git",

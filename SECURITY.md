@@ -766,6 +766,19 @@ increment `dropped_events`; logs never change an already observed Git result.
 `overflow_events` counts records preserved through contention. The total normal
 retention budget is 9 MiB, independent of the number of cooperating processes.
 
+Bundled-Git verification has one background diagnostic reporter per process,
+with at most 32 retained observations including queued work. Verification only
+updates short in-memory snapshots; it never joins that reporter or gives it
+runtime file handles. The reporter has a separate in-process writer mutex,
+sharing session/request IDs, sequence numbers and health with the normal log.
+The same OS rotation lock, bounded overflow and retention limits still apply.
+If the reporter cannot start or its capacity is exhausted, diagnostic health
+counts the missed observation; Git verification and its security checks continue.
+Slow-operation snapshots use only fixed phase names, numeric progress, native
+thread IDs and positions in the compiled, digest-identified public inventory.
+They do not log paths, contents, arguments or OS error messages, and do not
+interrupt, retry or relax a blocked file operation.
+
 ## Unsigned distribution and optional signing
 
 Rocket supports **unsigned builds and releases**. No certificate is required
@@ -963,22 +976,26 @@ review strings visibly escape hidden characters and backslashes; original contex
 paths/branches and literal arguments are preserved for execution. Repeated defaults
 cannot inflate the preview beyond the runner's existing 32000-byte argument limit.
 
-## Windows Git HTTP runtime gate (2026-10-29)
+<a id="windows-git-http-runtime-gate-2026-10-29"></a>
+<a id="windows-git-version-requirement"></a>
 
-Git for Windows bundles its own curl/Brotli decoder. Rocket permits built-in
-HTTP(S) Git operations only when the Windows build identifies itself as
-2.56.0.windows.4 or newer. Earlier and unrecognized builds receive a final
-`GIT_ALLOW_PROTOCOL` restriction to file/SSH, intersected with existing limits.
-This follows URL rewrites and child Git processes, including submodules and LFS
-child Git calls; repository configuration cannot restore HTTP. Unknown remote
-helpers are also excluded. Local Git and SSH remain usable. Preferences preserves
-the complete build number and shows the HTTP restriction. Restart Rocket after
-updating Git. Non-Windows version requirements are unchanged.
+## Git version requirements
 
-This is a known-version safety gate, not binary authentication or protection
-against replacing an installation after discovery. Explicit external/custom tools
-remain separately trusted. Git for Windows 2.56.0.windows.4 updates Brotli to 1.2.1
-for CVE-2026-111497; see the [official security release](https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.4).
+Rocket 0.92.6 checks the selected Git executable before local or remote repository
+operations. On Linux and macOS, the first supported release on each upstream
+maintenance branch is **2.50.2, 2.51.3, 2.52.1, 2.53.1, 2.54.1, 2.55.1 or 2.56.1**.
+Later stable releases on those branches and newer stable branches also qualify.
+Rocket checks the upstream version reported by Git, including Apple Git builds.
+Distribution backports that retain an affected version number cannot be identified
+by this check. [Upstream Git security advisory](https://github.com/git/git/security/advisories/GHSA-vp2w-7xxj-jvxr).
+
+Windows requires Git for Windows 2.56.1.windows.1 or newer. The [upstream release](https://github.com/git-for-windows/git/releases/tag/v2.56.1.windows.1)
+fixes issues in merge, patch and remote handling. Bundled, automatic and custom
+selections all pass through the same version check. Preferences shows the full
+build number. Restart Rocket after updating the selected installation.
+
+The bundled runtime also undergoes inventory verification. For custom Git,
+the version comes from the selected executable, so choose a trusted installation.
 
 On Windows, hosting/integration HTTP uses only curl from `GetSystemDirectoryW`.
 `SystemRoot`, PATH and a curl beside Git cannot select this credential-bearing

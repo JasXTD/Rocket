@@ -80,16 +80,16 @@ This override is not a way to configure production HTTP hosts.
 `rocket-cli` (`rocket-cli.exe` on Windows) is Rocket's standalone command-line client. It calls
 `rocket-git` directly; repository commands do not require the desktop app, MCP,
 Node.js or .NET. The explicit `review` launcher requires the desktop executable.
-The CLI prefers its bundled Git when included; otherwise installed Git 2.46+ is
-required. An explicit executable selection still takes priority. The focused
+The CLI prefers its bundled Git when included; otherwise it uses installed Git.
+An explicit executable selection still takes priority. The focused
 composed-workflow tests described below run on Windows; other platform runtime
 acceptance is separate.
 The original `inspect` example remains available for existing developer scripts.
 
-On Windows, HTTP(S) Git operations require Git for Windows 2.56.0.windows.4 or
-newer. Older or unrecognized builds retain local/SSH operations; HTTP and unknown
-remote helpers are refused even after URL rewriting. This is the same runtime
-policy as the desktop app. See [SECURITY.md](SECURITY.md#windows-git-http-runtime-gate-2026-10-29).
+Every Windows Git operation requires Git for Windows 2.56.1.windows.1 or newer,
+including local operations. Linux and macOS accept Git 2.56.1 or newer and patched
+releases in the 2.50–2.55 series. The desktop app and MCP use the same
+[Git version requirements](SECURITY.md#git-version-requirements).
 
 ## Build and run
 

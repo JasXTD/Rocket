@@ -1,7 +1,7 @@
 # Bundled Git for Windows
 
 Rocket can carry a separate, verified Git runtime beside its executables at
-`git/2.56.0.windows.4/cmd/git.exe`. **Automatic** prefers this copy when included,
+`git/2.56.1.windows.1/cmd/git.exe`. **Automatic** prefers this copy when included,
 otherwise it finds Git on PATH. Explicit installed/custom choices still override
 Automatic. Select **Preferences → Git → Bundled Git** to require this copy, wait
 for verification, then restart. The saved bundled choice travels with the app.
@@ -10,16 +10,16 @@ If the runtime is changed or an included bundle is incomplete, Rocket reports it
 and does not silently switch to another Git. A developer build without any bundled
 runtime still uses installed Git. No runtime files are downloaded on startup.
 
-The reviewed package is official **PortableGit 2.56.0.windows.4, Windows x64**:
-[release and source information](https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.4).
-Archive: `PortableGit-2.56.0.4-64-bit.7z.exe` (60,087,472 bytes).
-SHA-256: `b1f3e52216e2ed6882d1bebfd4d3fdf319bec40d2edbbf9fd26ec4fd3fce7ed1`.
+The reviewed package is official **PortableGit 2.56.1.windows.1, Windows x64**:
+[release and source information](https://github.com/git-for-windows/git/releases/tag/v2.56.1.windows.1).
+Archive: `PortableGit-2.56.1-64-bit.7z.exe` (60,125,512 bytes).
+SHA-256: `9dd04a608ceb5f6ab32a73709e0ecb159d211da71b697c45ff81f6dd0c6b49c7`.
 Its Authenticode signature was valid for Johannes Schindelin, with a Microsoft
-timestamp. The user reported a clean Malwarebytes scan on 2026-10-30 before use.
+timestamp. The user reported a clean Malwarebytes scan on 2026-11-18 before use.
 
-The initialized payload contains **9,612 files, 411,449,437 bytes**. The complete
+The initialized payload contains **9,618 files, 411,457,972 bytes**. The complete
 inventory is compiled into Rocket from `crates/rocket-git/src/managed_git.manifest`;
-its SHA-256 is `94395c3c041d75fd66b5d768844e8545fc35010e368537aaede718eaf4e7ee96`.
+its SHA-256 is `094e647a706b68349c44dcabd0fb4863cf00d55de39814355e6dba3b8af3c13a`.
 Keep the vendor `LICENSE.txt`, `README.portable`, and all included notices. The
 runtime's licenses and corresponding-source information accompany the official
 release; Git itself is GPL-2.0. Rocket remains Rust; Git's bundled credential helper
@@ -33,7 +33,7 @@ Machine-specific Windows hosts/services copies are excluded. The bundle-local
 prompt to change a global preference. No user configuration is copied into it.
 Its MSYS virtual `mtab` is a regular encoded link file, not a Windows reparse point.
 
-For developers, the prepared payload belongs in `runtime/git/2.56.0.windows.4/`,
+For developers, the prepared payload belongs in `runtime/git/2.56.1.windows.1/`,
 which is ignored by Git. Do not copy an existing personal Git installation into
 this directory. `tools/Assemble-GitRuntime.ps1 -Destination <bundle-folder>` verifies
 every source file, creates a new staged copy and verifies it before publication.

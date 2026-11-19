@@ -12,7 +12,7 @@ use std::{
 
 fn bash() -> Option<PathBuf> {
     let bundled = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join(r"..\..\runtime\git\2.56.0.windows.4\bin\bash.exe");
+        .join(r"..\..\runtime\git\2.56.1.windows.1\bin\bash.exe");
     let installed = PathBuf::from(r"C:\Program Files\Git\bin\bash.exe");
     [bundled, installed].into_iter().find(|p| p.is_file())
 }
@@ -72,7 +72,7 @@ fn git_bash_keeps_history_interrupts_commands_and_uses_its_own_git() {
     wait(&session, "prompt", prompt);
     session.input(b"echo MARK_$((40+2)); command -v git\r").unwrap();
     wait(&session, "first command", |s| line_is(s, "MARK_42"));
-    if bash.components().any(|c| c.as_os_str() == "2.56.0.windows.4") {
+    if bash.components().any(|c| c.as_os_str() == "2.56.1.windows.1") {
         wait(&session, "the bundled Git", |s| line_is(s, "/ucrt64/bin/git"));
     }
     session.input(b"\x1b[A").unwrap();

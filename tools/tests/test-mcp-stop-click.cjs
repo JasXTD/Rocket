@@ -8,7 +8,7 @@ const { RocketHttpClient } = require('../mcp/mcp-http-client.cjs');
 const workspace = path.resolve(__dirname, '../..');
 const bundle = path.resolve(process.env.ROCKET_STOP_BUILD || path.join(workspace, 'target/release'));
 const exe = path.join(bundle, 'rocket-mcp.exe');
-const git = path.join(bundle, 'git/2.56.0.windows.4/cmd/git.exe');
+const git = path.join(bundle, 'git/2.56.1.windows.1/cmd/git.exe');
 const evidence = path.resolve(process.env.ROCKET_STOP_EVIDENCE || path.join(workspace, 'tools/maintenance/stop-first-click-20261031'));
 assert(evidence.startsWith(path.join(workspace, 'tools/maintenance') + path.sep), 'Evidence must remain inside tools/maintenance');
 const preflight = process.argv.includes('--lock-preflight');

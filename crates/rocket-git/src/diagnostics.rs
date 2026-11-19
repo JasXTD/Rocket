@@ -38,16 +38,16 @@ pub struct DiagnosticLog {
 struct Inner {
     directory: PathBuf,
     session: String,
-    next_id: AtomicU64,
+    next_id: Arc<AtomicU64>,
+    sequence: Arc<AtomicU64>,
     state: Mutex<State>,
     // UI/MCP health reads must never wait for filesystem work under `state`.
-    health: Mutex<LogHealth>,
+    health: Arc<Mutex<LogHealth>>,
     max_bytes: u64,
 }
 
 #[derive(Debug, Default)]
 struct State {
-    sequence: u64,
     // Once an append reaches durable overflow, later events try the lock but
     // do not each repeat the full wait. A successful append clears this state.
     contended: bool,
@@ -74,6 +74,24 @@ pub struct McpRequestMetrics<'a> {
     pub validation_ms: u64,
     pub phase_ms: u64,
     pub input_delivered: bool,
+}
+
+/// Counts and fixed labels only; file identifies a row in the public runtime inventory.
+pub(crate) struct ManagedGitIoSnapshot {
+    pub verification: u64,
+    pub worker: usize,
+    pub thread: u32,
+    pub phase: &'static str,
+    pub file: usize,
+    pub file_bytes: u64,
+    pub read_bytes: u64,
+    pub wait_ms: u64,
+    pub elapsed_ms: u64,
+    pub checked: usize,
+    pub total: usize,
+    pub cancelled: bool,
+    pub os_error: Option<i32>,
+    pub outcome: &'static str,
 }
 
 /// Fixed labels for the native MCP input guard. No repository-derived text.
@@ -138,9 +156,10 @@ impl DiagnosticLog {
                     std::process::id(),
                     NEXT_SESSION.fetch_add(1, Ordering::Relaxed)
                 ),
-                next_id: AtomicU64::new(1),
+                next_id: Arc::new(AtomicU64::new(1)),
+                sequence: Arc::new(AtomicU64::new(0)),
                 state: Mutex::new(State::default()),
-                health: Mutex::new(LogHealth::default()),
+                health: Arc::new(Mutex::new(LogHealth::default())),
                 max_bytes,
             }),
             request: 0,
@@ -173,6 +192,49 @@ impl DiagnosticLog {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
+    }
+
+    /// A reporter must not hold the caller's in-process writer mutex during I/O.
+    /// Keep request correlation and unique IDs; the existing OS rotation lock and
+    /// bounded overflow still coordinate the two writers on disk.
+    pub(crate) fn background_writer(&self) -> Self {
+        Self {
+            inner: Arc::new(Inner {
+                directory: self.inner.directory.clone(), session: self.inner.session.clone(),
+                next_id: self.inner.next_id.clone(), sequence: self.inner.sequence.clone(),
+                state: Mutex::new(State::default()), health: self.inner.health.clone(),
+                max_bytes: self.inner.max_bytes,
+            }),
+            request: self.request,
+        }
+    }
+
+    pub(crate) fn managed_git_monitor_unavailable(&self) {
+        let mut health = self.inner.health.lock().unwrap_or_else(|e| e.into_inner());
+        health.dropped_events = health.dropped_events.saturating_add(1);
+        health.last_error_kind = Some(io::ErrorKind::WouldBlock);
+        health.last_os_error = None;
+    }
+
+    pub(crate) fn managed_git_io(&self, s: &ManagedGitIoSnapshot) {
+        let phase = match s.phase {
+            "prepare" | "inspect_root" | "resolve_root" | "cached_recheck" | "manifest"
+            | "inspect_directory" | "open_directory" | "directory_metadata" | "journal"
+            | "list_directory" | "entry_metadata" | "hash_workers" | "open_file"
+            | "file_metadata" | "read_file" | "hash_file" | "log_record" | "idle" => s.phase,
+            _ => "other",
+        };
+        let outcome = match s.outcome {
+            "running" | "ok" | "cancelled" | "error" | "abandoned" => s.outcome,
+            _ => "other",
+        };
+        self.record(if outcome == "running" { "managed_git_io_wait" } else { "managed_git_io_end" },
+            if outcome == "ok" { "info" } else { "warn" }, &format!(
+                ",\"operation\":\"managed-git-verify\",\"verification_id\":{},\"worker\":{},\"thread_id\":{},\"step\":\"{phase}\",\"file_index\":{},\"file_bytes\":{},\"read_bytes\":{},\"wait_ms\":{},\"elapsed_ms\":{},\"checked\":{},\"total\":{},\"cancel_requested\":{},\"os_error\":{},\"outcome\":\"{outcome}\",\"manifest_sha256\":\"{}\"",
+                s.verification, s.worker, s.thread, s.file, s.file_bytes, s.read_bytes,
+                s.wait_ms, s.elapsed_ms, s.checked, s.total, s.cancelled,
+                s.os_error.map_or("null".into(), |code| code.to_string()),
+                crate::MANAGED_GIT_MANIFEST_SHA256));
     }
 
     /// Correlate an application request, including errors before Git starts and
@@ -590,7 +652,7 @@ impl DiagnosticLog {
 
     fn emit(&self, event: &str, level: &str, detail: &str) -> io::Result<()> {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-        state.sequence = state.sequence.saturating_add(1);
+        let sequence = self.inner.sequence.fetch_add(1, Ordering::Relaxed) + 1;
         // Every string here is generated internally or drawn from a fixed allowlist.
         // Never feed an Error's Display/Debug, argv, or repository bytes to this formatter.
         let record = format!(
@@ -598,7 +660,7 @@ impl DiagnosticLog {
             epoch_nanos() / 1_000_000,
             std::process::id(),
             self.inner.session,
-            state.sequence,
+            sequence,
             self.request,
             self.health().dropped_events
         );
@@ -1527,6 +1589,73 @@ mod tests {
         assert!(text.contains("\"outcome\":\"cancelled\""));
         assert_records(&text);
     }
+    #[test]
+    fn background_writer_keeps_correlation_and_does_not_hold_the_foreground_mutex() {
+        let directory = Directory::new();
+        let log = directory.log();
+        log.request("managed-git-verify", |context| {
+            let background = context.background_writer();
+            assert_eq!(background.request, context.request);
+            assert_eq!(background.session_id(), context.session_id());
+            let blocked = background.inner.state.lock().unwrap();
+            let foreground = context.clone();
+            let (sent, received) = std::sync::mpsc::channel();
+            let writer = thread::spawn(move || {
+                foreground.observation("foreground_test", "managed-git-verify", &Ok(()), Duration::ZERO);
+                sent.send(()).unwrap();
+            });
+            let completed = received.recv_timeout(Duration::from_secs(1));
+            drop(blocked);
+            writer.join().unwrap();
+            assert!(completed.is_ok(), "foreground logging waited for the reporter's I/O mutex");
+            background.observation("background_test", "managed-git-verify", &Ok(()), Duration::ZERO);
+            Ok(())
+        }).unwrap();
+        let text = directory.current();
+        assert_records(&text);
+        let mut sequences = HashSet::new();
+        for line in text.lines() {
+            let sequence = line.split("\"seq\":").nth(1).unwrap().split(',').next().unwrap();
+            assert!(sequences.insert(sequence));
+        }
+        assert_eq!(sequences.len(), 5);
+    }
+
+    #[test]
+    fn background_and_foreground_writers_keep_unique_correlated_records() {
+        let directory = Directory::new();
+        let log = directory.log();
+        let writers = [log.clone(), log.background_writer()];
+        let ready = std::sync::Barrier::new(writers.len());
+        thread::scope(|scope| {
+            for writer in &writers {
+                let ready = &ready;
+                scope.spawn(move || {
+                    ready.wait();
+                    for _ in 0..20 { writer.request("status", |_| Ok(())).unwrap(); }
+                });
+            }
+        });
+        let text: String = DiagnosticLog::retained_files(&directory.0).unwrap().iter()
+            .filter_map(|path| fs::read_to_string(path).ok()).collect();
+        assert_records(&text);
+        let field = |line: &str, name: &str| -> u64 {
+            line.split(&format!("\"{name}\":")).nth(1).unwrap().split(',').next().unwrap().parse().unwrap()
+        };
+        let mut sequences = HashSet::new();
+        let mut requests = std::collections::BTreeMap::new();
+        for line in text.lines() {
+            assert!(line.contains(log.session_id()));
+            assert!(sequences.insert(field(line, "seq")), "a background writer reused a sequence");
+            let request = field(line, "request");
+            if request != 0 { *requests.entry(request).or_insert(0) += 1; }
+        }
+        assert_eq!(sequences, (1..=81).collect());
+        assert_eq!(requests.len(), 40);
+        assert!(requests.values().all(|count| *count == 2));
+        assert_eq!(log.health().dropped_events, 0);
+    }
+
     #[test]
     fn health_read_does_not_wait_for_the_writer_io_lock() {
         let directory = Directory::new();

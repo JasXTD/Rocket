@@ -95,8 +95,14 @@ if ($checked.Contains($gitManifest)) {
     if (-not $checked.Contains($runtimeChecker)) { throw 'Bundled Git verifier is missing.' }
     # The ordinary release manifest is not an independent trust anchor. Do not
     # execute a replacement helper merely because that manifest was regenerated.
-    if ($hashes[$runtimeChecker].ToLowerInvariant() -cne 'e30aebad51bb28bbbe15935ca91e87178aa0d68f2944c80a12a335b0a9ba3ac5') { throw 'Unreviewed bundled Git verification helper.' }
-    . $runtimeChecker
+    $helperHash = 'ad5dce5943d3887d1bcd6e58aec56561e01f03b924e916c276fb2559cc396016'
+    if ($hashes[$runtimeChecker] -notin @($helperHash,'056553a30a524b70c91a7982eacca57b80551018518e7aedb19d34b668f09ae9')) { throw 'Unreviewed bundled Git verification helper.' }
+    $helperPath = Join-Path $PSScriptRoot 'Git-Runtime.ps1'
+    $helperStream = [IO.File]::OpenRead($helperPath)
+    try {
+        if ((Get-FileHash -InputStream $helperStream -Algorithm SHA256).Hash -ine $helperHash) { throw 'Unreviewed bundled Git verification helper.' }
+        . $helperPath
+    } finally { $helperStream.Dispose() }
     $inventory = Get-RocketGitInventory -Manifest $gitManifest
     $gitRoot = Join-Path $bundleRoot "git/$($inventory.Spec.Version)"
     [void](Test-RocketGitRuntime -RuntimeRoot $gitRoot -Inventory $inventory)

@@ -10,7 +10,16 @@ if (compile.error) throw compile.error;
 assert.equal(compile.status, 0, compile.stdout + compile.stderr);
 const report = { passed: false, cli, cli_sha256: crypto.createHash('sha256').update(fs.readFileSync(cli)).digest('hex'), root, cases: [] };
 try {
-  for (const [version, expected] of [['2.56.0.windows.3', 'ssh'], ['2.56.0.windows.4', 'https:ssh'], ['2.56.0', 'ssh'], ['2.55.0.windows.1', 'ssh']]) {
+  // Local commands also need the merge and patch fixes, even when no transport runs.
+  const local = cp.spawnSync(cli, ['--json', '--no-log', '--git', git, '--repo', root, 'info'], {
+    env: { ...process.env, ROCKET_SECURITY_TEST_GIT_VERSION: '2.56.0.windows.4' },
+    windowsHide: true, encoding: 'utf8', timeout: 15000,
+  });
+  if (local.error) throw local.error;
+  assert.notEqual(local.status, 0);
+  assert.equal(JSON.parse(local.stdout).error.code, 'unsupported');
+  console.log('PASS Git 2.56.0.windows.4 refused for local repository discovery');
+  for (const [version, allowed] of [['2.56.0.windows.4', false], ['2.56.1', false], ['2.56.1.windows.0', false], ['2.56.1.windows.1', true], ['2.57.0.windows.1', true]]) {
     for (const protocol of ['https', 'ssh']) {
       const marker = path.join(root, `policy-${report.cases.length}.txt`), destination = path.join(root, `destination-${report.cases.length}`);
       const env = { ...process.env };
@@ -19,11 +28,11 @@ try {
       const result = cp.spawnSync(cli, ['--json', '--no-log', '--timeout-secs', '5', '--git', git, 'clone', '--url', `${protocol}://audit.invalid/repo.git`, destination], { env, windowsHide: true, encoding: 'utf8', timeout: 15000 });
       if (result.error) throw result.error;
       assert.notEqual(result.status, 0, 'fixture deliberately refuses to clone');
-      assert(fs.existsSync(marker), 'owned Git fixture was not reached: ' + result.stdout + result.stderr);
-      const policy = fs.readFileSync(marker, 'utf8');
-      report.cases.push({ version, protocol, policy, expected });
-      assert.equal(policy, expected, `Wrong protocol policy for Git ${version}`);
-      console.log(`PASS Git ${version}, ${protocol} request: ${policy}`);
+      const policy = fs.existsSync(marker) ? fs.readFileSync(marker, 'utf8') : null;
+      assert.equal(policy, allowed ? 'https:ssh' : null, `Wrong clone decision for Git ${version}`);
+      if (!allowed) assert.match(result.stdout + result.stderr, /Git for Windows 2\.56\.1\.windows\.1 or later required/);
+      report.cases.push({ version, protocol, allowed, policy });
+      console.log(`PASS Git ${version}, ${protocol}: ${allowed ? policy : 'refused during discovery'}`);
     }
   }
   report.passed = true;

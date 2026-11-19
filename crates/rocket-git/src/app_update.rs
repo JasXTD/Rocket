@@ -727,17 +727,24 @@ mod tests {
         let Some(target) = UPDATE_PLATFORM.as_ref() else {
             return;
         };
+        let version = env!("CARGO_PKG_VERSION");
+        let installed = UpdateVersion(0, 92, 5);
         let digest = "a".repeat(64);
-        let asset = format!("Rocket-1.0.0-{}.{}", target.platform, target.extension);
+        let asset = format!("Rocket-{version}-{}.{}", target.platform, target.extension);
+        let other_platform = if target.platform == "linux-x64" {
+            "windows-x64.zip"
+        } else {
+            "linux-x64.tar.gz"
+        };
         let value = format!(
-            r#"{{"draft":false,"prerelease":false,"tag_name":"v1.0.0","html_url":"https://github.com/JasXTD/Rocket/releases/tag/v1.0.0","assets":[{{"name":"{asset}","state":"uploaded","id":1,"size":15,"digest":"sha256:{digest}"}}]}}"#
+            r#"{{"draft":false,"prerelease":false,"tag_name":"v{version}","html_url":"https://github.com/JasXTD/Rocket/releases/tag/v{version}","assets":[{{"name":"{asset}","state":"uploaded","id":1,"size":15,"digest":"sha256:{digest}"}}]}}"#
         );
         assert!(matches!(
-            parse_release(value.as_bytes(), UpdateVersion(0, 87, 3)).unwrap(),
+            parse_release(value.as_bytes(), installed).unwrap(),
             UpdateCheck::Available(_)
         ));
         assert_eq!(
-            parse_release(value.as_bytes(), UpdateVersion(1, 0, 0)).unwrap(),
+            parse_release(value.as_bytes(), UpdateVersion::parse(version).unwrap()).unwrap(),
             UpdateCheck::Current
         );
         for bad in [
@@ -745,18 +752,11 @@ mod tests {
             value.replace("sha256:", "sha512:"),
             value.replace(target.platform, &format!("{}-arm64", target.platform)),
             // Only this platform's bundle: Linux is never offered the Windows ZIP.
-            value.replace(
-                &asset,
-                if target.platform == "linux-x64" {
-                    "Rocket-1.0.0-windows-x64.zip"
-                } else {
-                    "Rocket-1.0.0-linux-x64.tar.gz"
-                },
-            ),
+            value.replace(&asset, &format!("Rocket-{version}-{other_platform}")),
             value.replace("\"prerelease\":false", "\"prerelease\":true"),
             value.replace("github.com/JasXTD", "github.com/other"),
         ] {
-            assert!(parse_release(bad.as_bytes(), UpdateVersion(0, 87, 3)).is_err());
+            assert!(parse_release(bad.as_bytes(), installed).is_err());
         }
     }
 

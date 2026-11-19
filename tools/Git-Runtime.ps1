@@ -1,9 +1,9 @@
 # Shared first-party packaging checks. This script never downloads or executes Git.
 function Get-RocketGitSpec {
     [pscustomobject]@{
-        Version = '2.56.0.windows.4'
-        ManifestSha256 = '94395c3c041d75fd66b5d768844e8545fc35010e368537aaede718eaf4e7ee96'
-        ArchiveSha256 = 'b1f3e52216e2ed6882d1bebfd4d3fdf319bec40d2edbbf9fd26ec4fd3fce7ed1'
+        Version = '2.56.1.windows.1'
+        ManifestSha256 = '094e647a706b68349c44dcabd0fb4863cf00d55de39814355e6dba3b8af3c13a'
+        ArchiveSha256 = '9dd04a608ceb5f6ab32a73709e0ecb159d211da71b697c45ff81f6dd0c6b49c7'
     }
 }
 function Get-RocketGitInventory {
@@ -11,8 +11,13 @@ function Get-RocketGitInventory {
     $spec = Get-RocketGitSpec
     $item = Get-Item -LiteralPath $Manifest -Force
     if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $item.Length -gt 8MB) { throw 'Invalid bundled Git inventory file.' }
-    if ((Get-FileHash -LiteralPath $Manifest -Algorithm SHA256).Hash.ToLowerInvariant() -cne $spec.ManifestSha256) { throw 'Bundled Git inventory is not the reviewed version.' }
-    $lines = [IO.File]::ReadAllLines($item.FullName)
+    $stream = [IO.File]::OpenRead($item.FullName)
+    try {
+        if ($stream.Length -gt 8MB -or (Get-FileHash -InputStream $stream -Algorithm SHA256).Hash.ToLowerInvariant() -cne $spec.ManifestSha256) { throw 'Bundled Git inventory is not the reviewed version.' }
+        $stream.Position = 0
+        $reader = [IO.StreamReader]::new($stream)
+        try { $lines = $reader.ReadToEnd().TrimEnd([char]10,[char]13) -split '\r?\n' } finally { $reader.Dispose() }
+    } finally { $stream.Dispose() }
     if ($lines[0] -cne "ROCKET-MANAGED-GIT-1`t$($spec.Version)") { throw 'Unsupported bundled Git inventory.' }
     $entries = [Collections.Generic.Dictionary[string,object]]::new([StringComparer]::OrdinalIgnoreCase)
     $bytes = 0L

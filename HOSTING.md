@@ -734,9 +734,8 @@ Implementation study and official API references: work/hosting-study/README.md. 
 
 ## Windows Git security prerequisite
 
-Use Git for Windows 2.56.0.windows.4 or newer for HTTP(S) clone, fetch, pull, push
-and remote checks. Rocket restricts older or unrecognized Windows Git builds to
-local/SSH transport, including after URL rewrites. Preferences → Git shows the
-full build suffix and any restriction. Restart Rocket after updating Git.
+Use Git for Windows 2.56.1.windows.1 or newer for all Git operations. Rocket
+rejects older or unrecognized Windows builds during discovery. Preferences → Git
+shows the full build suffix. Restart Rocket after updating your selected Git.
 Hosting API requests use Windows' System32 curl, resolved by the operating system;
 a missing helper is reported without falling back to curl beside Git.

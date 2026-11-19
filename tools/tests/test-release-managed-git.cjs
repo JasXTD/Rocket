@@ -11,7 +11,7 @@ const root=fs.realpathSync(native.root),bundle=fs.realpathSync(native.bundle);
 assert(root.startsWith(allowed)&&bundle.startsWith(root+path.sep));
 assert.equal(fs.readFileSync(path.join(root,'rocket-private-state'),'utf8'),'synthetic-content-only-v1\n');
 assert(!fs.existsSync(path.join(root,'http-profile/access-token')));
-const report={passed:false,root,bundle,cases:[]},version='2.56.0.windows.4';
+const report={passed:false,root,bundle,cases:[]},version='2.56.1.windows.1';
 const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const manifest=path.join(bundle,'SHA256SUMS.txt'),helper=path.join(bundle,'tools/Git-Runtime.ps1');
 const runtime=path.join(bundle,'git',version),inventory=path.join(bundle,'git/manifest.tsv');
@@ -44,7 +44,7 @@ try{
  fs.copyFileSync('tools/Git-Runtime.ps1',helper);
  fs.mkdirSync(path.join(bundle,'runtime/git'),{recursive:true});
  fs.copyFileSync('runtime/git/README.md',path.join(bundle,'runtime/git/README.md'));
- refresh();assert.match(verify(),/Pinned bundled Git 2\.56\.0\.windows\.4 verified \(9612 files\)/);
+ refresh();assert.match(verify(),/Pinned bundled Git 2\.56\.1\.windows\.1 verified \(9618 files\)/);
  pass('Complete bundle, compiled Git inventory, Lua host/worker pair and signed ConPTY pair verify');
  const prior=hash(inventory);assert.match(assemble(),/Existing files were not overwritten/);assert.equal(hash(inventory),prior);
  pass('Assembly reuses an unchanged reviewed runtime without overwriting existing files');
@@ -58,7 +58,7 @@ try{
  });
  pass('Changed verification helper is refused before its code can execute');
  const cli=path.join(bundle,'rocket-cli.exe'),bytes=Buffer.from(fs.readFileSync(cli));
- const digest=Buffer.from('94395c3c041d75fd66b5d768844e8545fc35010e368537aaede718eaf4e7ee96');
+ const digest=Buffer.from('094e647a706b68349c44dcabd0fb4863cf00d55de39814355e6dba3b8af3c13a');
  let offset,count=0;while((offset=bytes.indexOf(digest))>=0){bytes.fill('f',offset,offset+digest.length);count++;}assert(count>0);
  mutate(cli,bytes,()=>verify(/Mismatched compiled Git runtime inventory: rocket-cli.exe/));
  pass('Mixed host/runtime build is rejected even with matching ordinary release checksums');

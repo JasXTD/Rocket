@@ -1,7 +1,6 @@
 {
   "{choice} cannot be used: {error}": "{choice} kann nicht verwendet werden: {error}",
-  "{version} · HTTP blocked": "{version} · HTTP gesperrt",
-  "{version} · needs 2.46": "{version} · benötigt 2.46",
+  "{version} · needs {minimum}": "{version} · benötigt {minimum}",
   "Any git.exe on this computer": "Beliebige git.exe auf diesem Computer",
   "Automatic": "Automatisch",
   "Bundled Git": "Mitgeliefertes Git",

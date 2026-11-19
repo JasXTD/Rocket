@@ -1,7 +1,6 @@
 {
   "{choice} cannot be used: {error}": "{choice} kan inte användas: {error}",
-  "{version} · HTTP blocked": "{version} · HTTP blockerat",
-  "{version} · needs 2.46": "{version} · kräver 2.46",
+  "{version} · needs {minimum}": "{version} · kräver {minimum}",
   "Any git.exe on this computer": "Valfri git.exe på den här datorn",
   "Automatic": "Automatiskt",
   "Bundled Git": "Medföljande Git",

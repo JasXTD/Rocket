@@ -43,7 +43,9 @@ try {
     if ((Get-FileHash -LiteralPath $worker -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) {
         throw 'Worker changed during the host build. Rebuild the complete bundle.'
     }
-    if (Test-Path -LiteralPath (Join-Path $buildRoot 'runtime/git/2.56.0.windows.4') -PathType Container) {
+    . (Join-Path $PSScriptRoot 'Git-Runtime.ps1')
+    $gitSpec = Get-RocketGitSpec
+    if (Test-Path -LiteralPath (Join-Path $buildRoot "runtime/git/$($gitSpec.Version)") -PathType Container) {
         & (Join-Path $PSScriptRoot 'Assemble-GitRuntime.ps1') -Destination (Join-Path $buildTarget $Profile)
     }
     Write-Output "Built unsigned $Profile bundle in $buildTarget/$Profile"

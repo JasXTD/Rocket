@@ -165,6 +165,14 @@ fn project(v: Value) -> Result<Value> {
         "request",
         "time_unix_ms",
         "elapsed_ms",
+        "pid",
+        "verification_id",
+        "worker",
+        "thread_id",
+        "file_index",
+        "file_bytes",
+        "read_bytes",
+        "wait_ms",
         "native_request",
         "queue_ms",
         "validation_ms",
@@ -191,6 +199,12 @@ fn project(v: Value) -> Result<Value> {
     }
     if let Some(n) = v["exit_code"].as_i64() {
         safe.insert("exit_code".into(), json!(n));
+    }
+    if let Some(n) = v["os_error"].as_i64() {
+        safe.insert("os_error".into(), json!(n));
+    }
+    if let Some(hash) = v["manifest_sha256"].as_str().filter(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())) {
+        safe.insert("manifest_sha256".into(), json!(hash));
     }
     for key in [
         "event",
@@ -289,6 +303,7 @@ fn project(v: Value) -> Result<Value> {
         "refreshed",
         "remote_added",
         "has_errors",
+        "cancel_requested",
     ] {
         if let Some(b) = v[key].as_bool() {
             safe.insert(key.into(), json!(b));
@@ -2354,6 +2369,33 @@ mod tests {
         )
         .unwrap();
     }
+    #[test]
+    fn managed_git_wait_evidence_survives_copy_summary_without_paths() {
+        let record = project(row(2, 1, "managed_git_io_wait", json!({
+            "operation":"managed-git-verify", "step":"read_file", "pid":41,
+            "verification_id":3,"worker":1,"thread_id":75,"file_index":17,
+            "file_bytes":8192,"read_bytes":4096,"wait_ms":6000,"checked":9615,"total":9618,
+            "cancel_requested":true,"os_error":5,"manifest_sha256":"a".repeat(64),
+            "path":"PRIVATE path", "contents":"PRIVATE bytes"
+        }))).unwrap();
+        assert_eq!(record["thread_id"], 75);
+        assert_eq!(record["file_index"], 17);
+        assert_eq!(record["read_bytes"], 4096);
+        assert_eq!(record["cancel_requested"], true);
+        assert_eq!(record["os_error"], 5);
+        assert_eq!(record["manifest_sha256"], "a".repeat(64));
+        let snapshot = aggregate(vec![record], &CancellationToken::new()).unwrap();
+        let summary = snapshot.entries[0].summary();
+        assert!(summary.contains("file_index"));
+        assert!(!summary.contains("PRIVATE"));
+        let invalid = project(row(3, 1, "managed_git_io_wait", json!({
+            "thread_id":"PRIVATE", "file_index":"PRIVATE", "manifest_sha256":"PRIVATE"
+        }))).unwrap();
+        assert!(invalid.get("thread_id").is_none());
+        assert!(invalid.get("file_index").is_none());
+        assert!(invalid.get("manifest_sha256").is_none());
+    }
+
     #[test]
     fn process_stop_timing_survives_projection_without_private_fields() {
         let record = project(row(

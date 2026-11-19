@@ -6,7 +6,8 @@ const digest = b => crypto.createHash('sha256').update(b).digest('hex');
 // upstream public known-answer tests. A changed DLL is never covered by this record.
 // https://gitlab.com/gnutls/gnutls/-/blob/master/lib/crypto-selftests-pk.c
 function publicFixture(name,hash,kind) {
-  return kind==='private_key' && name==='git/2.56.0.windows.4/usr/bin/msys-gnutls-30.dll' &&
+  return kind==='private_key' && ['2.56.0.windows.4','2.56.1.windows.1'].some(version=>
+    name===`git/${version}/usr/bin/msys-gnutls-30.dll`) &&
     hash==='5f3019ca853a642a5d26b81661040f295cc11cfc588a43500fbcb2fbee7cc444';
 }
 function sensitivePath(name) {

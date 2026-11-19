@@ -12,7 +12,7 @@ const root = path.resolve('work/mcp-fixtures/actions-' + crypto.randomUUID().rep
 const profile = path.join(root, 'profile'), BRANCH = 'rocket-ui-test/main';
 const token = 'fixture_ACTIONS_' + crypto.randomBytes(12).toString('hex');
 const exe = path.resolve(process.env.ROCKET_ACTIONS_EXE || 'target/release/rocket-mcp.exe');
-const gitExe = path.resolve('target/release/git/2.56.0.windows.4/cmd/git.exe');
+const gitExe = path.resolve('target/release/git/2.56.1.windows.1/cmd/git.exe');
 const shots = path.join(root, 'shots');
 for (const d of ['template', 'no-hooks', 'remotes', 'shots']) fs.mkdirSync(path.join(root, d), { recursive: true });
 fs.writeFileSync(path.join(root, 'empty.config'), '');

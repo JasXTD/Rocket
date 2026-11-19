@@ -1,7 +1,6 @@
 {
   "{choice} cannot be used: {error}": "Невозможно использовать {choice}: {error}",
-  "{version} · HTTP blocked": "{version} · HTTP заблокирован",
-  "{version} · needs 2.46": "{version} · требуется 2.46",
+  "{version} · needs {minimum}": "{version} · требуется {minimum}",
   "Any git.exe on this computer": "Любой git.exe на этом компьютере",
   "Automatic": "Автоматически",
   "Bundled Git": "Встроенный Git",

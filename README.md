@@ -212,7 +212,7 @@ translate or modify your repository.
 
 | Platform | Status |
 | --- | --- |
-| Windows x64 | Main platform, tested mostly on Windows 10. A portable ZIP with Git for Windows 2.56.0.windows.4, Git Credential Manager and Git LFS bundled; runs without installation or administrator access. |
+| Windows x64 | Main platform, tested mostly on Windows 10. A portable ZIP with a verified Git for Windows runtime, Git Credential Manager and Git LFS bundled; runs without installation or administrator access. |
 | Linux x86_64 | Supported under X11 or Wayland; the portable package requires glibc 2.43+. Uses your system Git. Everyday Git work, the terminal, SSH, hosting, Lua extensions and app updates work. |
 | macOS 15+ on Apple Silicon or Intel | Preview, not yet notarized. Native menus, Keychain, system spelling, automatic refresh, a zsh terminal and Lua extensions. Uses your installed Git. |
 
@@ -250,7 +250,9 @@ Add `-Offline` when the locked dependencies are cached, or `-Profile debug` for 
 build. When moving a build, keep everything beside `rocket.exe` together: the CLI, the
 terminal, rebase and Lua helpers, `conpty/` and the bundled `git/`.
 
-**Linux** needs Rust 1.95+, a C compiler and Git 2.46+:
+**Linux** needs Rust 1.95+, a C compiler and a supported Git. Linux and macOS
+accept Git 2.56.1 or newer and patched releases in the 2.50–2.55 series.
+See the [minimum for each Git branch](SECURITY.md#git-version-requirements).
 
 ```bash
 tools/build-local.sh
@@ -274,7 +276,7 @@ private folder you own. Rocket refuses to run as root.
 
 </details>
 
-**macOS** needs Rust 1.99.1, the Xcode command-line tools, Node.js and Git:
+**macOS** needs Rust 1.99.1, the Xcode command-line tools, Node.js and a supported Git.
 
 ```bash
 bash tools/build-macos.sh
@@ -366,9 +368,9 @@ Official comparison sources:
 - **Linux:** Lua needs x86_64 with Landlock. Steps that must never overwrite a file need a
   local filesystem such as ext4, XFS or Btrfs (NFS, some FUSE mounts and WSL's `/mnt` are
   refused). Most MCP acceptance runners and the non-GitHub hosting tests still run on Windows.
-- **Windows:** HTTPS remotes need Git for Windows 2.56.0.windows.4 or newer. An older Git
-  you pick yourself is limited to local and SSH remotes
-  ([why](SECURITY.md#windows-git-http-runtime-gate-2026-10-29)).
+- **Windows:** all Git operations require Git for Windows 2.56.1.windows.1 or newer,
+  including when you select your own Git in Preferences
+  ([security fixes](SECURITY.md#git-version-requirements)).
 - **Hosting:** only GitHub's account sign-in has been checked against the real service.
   GitHub Enterprise Server, GitLab, Bitbucket, Azure DevOps, Gitea and Forgejo are tested against
   local fixtures. Inline capabilities and limits differ by host; see [Hosting](HOSTING.md).

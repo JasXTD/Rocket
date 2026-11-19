@@ -157,6 +157,31 @@ contain private repository information; keep tokens, private keys and private
 file contents out of reports. Log rotation and an **Incomplete** entry can mean
 the available records do not establish the final outcome.
 
+### Bundled Git verification stops making progress on Windows
+
+Keep Rocket open long enough to capture **View → Activity & Diagnostics → Verify
+bundled Git → Copy summary**. You can also find the diagnostic folder under
+**Edit → Preferences → Storage**. Preserve its rotated logs before restarting
+Rocket or Windows, and note the time and whether you pressed Stop.
+
+With diagnostics enabled, a separate monitor checks verification once a second.
+An operation still waiting after five seconds produces `managed_git_io_wait`,
+then at most one set of snapshots every thirty seconds, plus a snapshot when
+Stop is requested during the wait. This is evidence of a
+slow operation, not proof of a driver fault. Records include the process and
+Windows thread IDs, the phase (`open_file`, `file_metadata`, `read_file`,
+`hash_file`, or a directory/setup phase), bytes already read, files checked,
+and whether cancellation was requested. A returned OS error is recorded by
+number; its message is omitted. A later `managed_git_io_end` records completion
+of an observed wait or a file I/O error.
+
+`file_index` is one-based in the compiled inventory's lowercased path order;
+zero means no individual file. `manifest_sha256` identifies that public
+inventory. The records contain no installation paths, repository names or file
+contents. They help locate the blocked operation; identifying an OS component
+may still require thread stacks captured while the stall is happening. A kernel
+or disk stall can also prevent the diagnostic writer from persisting evidence.
+
 ## Stop a command in the terminal
 
 Click the terminal screen and press **Ctrl+C**, or use **Interrupt**. After the

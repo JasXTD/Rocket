@@ -311,7 +311,8 @@ the same byte limits, error propagation and per-chunk cancellation checks.
   Command Line Tools and the default Xcode application. Resolve normal executable
   symlinks, but refuse `/usr/bin/git` and its aliases, including for an explicit
   preference. Nothing executes during discovery. The actual version probe still
-  requires **Git 2.46+** and uses the caller's limits/cancellation. A non-default
+  requires a [security-patched Git](../SECURITY.md#git-version-requirements)
+  and uses the caller's limits/cancellation. A non-default
   Xcode installation can be selected explicitly; Rocket does not change the
   active developer directory or start an installer. Credentials/SSH are covered
   by step 4 below; live hosted authentication from a normal Mac remains pending.

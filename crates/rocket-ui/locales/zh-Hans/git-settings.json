@@ -1,7 +1,6 @@
 {
   "{choice} cannot be used: {error}": "无法使用 {choice}：{error}",
-  "{version} · HTTP blocked": "{version} · HTTP 已阻止",
-  "{version} · needs 2.46": "{version} · 需要 2.46",
+  "{version} · needs {minimum}": "{version} · 需要 {minimum}",
   "Any git.exe on this computer": "此电脑上的任意 git.exe",
   "Automatic": "自动",
   "Bundled Git": "内置 Git",

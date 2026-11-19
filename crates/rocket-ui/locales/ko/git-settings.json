@@ -1,7 +1,6 @@
 {
   "{choice} cannot be used: {error}": "{choice}을(를) 사용할 수 없습니다: {error}",
-  "{version} · HTTP blocked": "{version} · HTTP 차단됨",
-  "{version} · needs 2.46": "{version} · 2.46 필요",
+  "{version} · needs {minimum}": "{version} · {minimum} 필요",
   "Any git.exe on this computer": "이 컴퓨터의 모든 git.exe",
   "Automatic": "자동",
   "Bundled Git": "번들 Git",

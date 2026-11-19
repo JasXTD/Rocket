@@ -43,7 +43,7 @@ function compile(payload,version,name,manifestHash){
   const args=['/DRocketVersion='+version,'/DPayloadInclude='+include,'/DPayloadManifestHash='+(manifestHash??f.sha(fs.readFileSync(path.join(payload,'SHA256SUMS.txt')))),'/DOutputDirectory='+root,'/DOutputBase='+name,'/DProductId=Rocket.InstallerTest.'+id,'/DProductName=Rocket Installer Test '+id,path.resolve('tools/windows/rocket.iss')];
   fs.writeFileSync(path.join(root,name+'-compile.log'),run(compiler,args));return path.join(root,name+'.exe');
 }
-const gitExe=path.join(build.payload,'git/2.56.0.windows.4/cmd/git.exe');
+const gitExe=path.join(build.payload,'git/2.56.1.windows.1/cmd/git.exe');
 const git=(...args)=>run(gitExe,['-C',repo,...args]).trimEnd();
 git('init','-b','rocket-ui-test/installer');git('config','user.name','Installer fixture');git('config','user.email','fixture@example.invalid');git('config','commit.gpgsign','false');
 fs.writeFileSync(path.join(repo,'.git/rocket-ui-fixture'),'rocket-ui-test/installer');

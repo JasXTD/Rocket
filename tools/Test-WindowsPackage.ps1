@@ -194,11 +194,11 @@ try {
         HTTPS_PROXY = 'http://127.0.0.1:1'; HTTP_PROXY = 'http://127.0.0.1:1'
         ALL_PROXY = 'http://127.0.0.1:1'; NO_PROXY = '127.0.0.1,localhost'
     }
-    $verifier = Join-Path $source 'tools/Verify-Release.ps1'
+    $verifier = Join-Path $PSScriptRoot 'Verify-Release.ps1'
     & $verifier -Bundle $source -RequireBundledGit *> (Join-Path $root 'source-verification.log')
     $manifestBefore = (Get-FileHash -LiteralPath (Join-Path $source 'SHA256SUMS.txt') -Algorithm SHA256).Hash
     Copy-Item -LiteralPath $source -Destination $app -Recurse -ErrorAction Stop
-    & (Join-Path $app 'tools/Verify-Release.ps1') -Bundle $app -RequireBundledGit *> (Join-Path $root 'copy-verification.log')
+    & $verifier -Bundle $app -RequireBundledGit *> (Join-Path $root 'copy-verification.log')
     $report.package_manifest_sha256 = $manifestBefore.ToLowerInvariant()
     Pass 'Accepted package and relocated disposable copy pass full inventory verification'
     foreach ($tool in @('git.exe', 'cargo.exe', 'rustc.exe', 'node.exe')) {
@@ -361,7 +361,7 @@ try {
     Assert-That ($null -eq (Get-Process -Id $terminalPid -ErrorAction SilentlyContinue)) 'Owned terminal shell survived closure.'
     Save-Utf8 (Join-Path $root 'mcp.stderr.log') $script:service.Stderr.Result
     Pass 'Normal shutdown reaps the terminal, preserves local changes and keeps logs private'
-    & (Join-Path $app 'tools/Verify-Release.ps1') -Bundle $app -RequireBundledGit *> (Join-Path $root 'final-verification.log')
+    & $verifier -Bundle $app -RequireBundledGit *> (Join-Path $root 'final-verification.log')
     Assert-That ((Get-FileHash -LiteralPath (Join-Path $source 'SHA256SUMS.txt') -Algorithm SHA256).Hash -eq $manifestBefore) 'Accepted source manifest changed.'
     Pass 'Application package remains unchanged after first-run operations'
     $report.passed = $true

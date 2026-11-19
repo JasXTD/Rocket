@@ -16,12 +16,15 @@ use std::{
     },
 };
 
-pub const MANAGED_GIT_VERSION: &str = "2.56.0.windows.4";
+pub const MANAGED_GIT_VERSION: &str = "2.56.1.windows.1";
 pub const MANAGED_GIT_MANIFEST_SHA256: &str =
-    "94395c3c041d75fd66b5d768844e8545fc35010e368537aaede718eaf4e7ee96";
+    "094e647a706b68349c44dcabd0fb4863cf00d55de39814355e6dba3b8af3c13a";
 const MANIFEST: &str = include_str!("managed_git.manifest");
 const MAX_FILES: usize = 20_000;
 const MAX_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+
+mod trace;
+use trace::Trace;
 
 #[cfg(windows)]
 mod change_journal;
@@ -203,13 +206,30 @@ pub fn verify_managed_git(
     cancel: &CancellationToken,
     progress: &ManagedGitProgress,
 ) -> Result<Arc<ManagedGitRuntime>> {
+    verify_managed_git_logged(cancel, progress, None)
+}
+
+/// The Preferences check, with the same stall diagnostics as automatic discovery.
+pub fn verify_managed_git_with_log(
+    cancel: &CancellationToken,
+    progress: &ManagedGitProgress,
+    log: &crate::DiagnosticLog,
+) -> Result<Arc<ManagedGitRuntime>> {
+    verify_managed_git_logged(cancel, progress, Some(log))
+}
+
+fn verify_managed_git_logged(
+    cancel: &CancellationToken,
+    progress: &ManagedGitProgress,
+    log: Option<&crate::DiagnosticLog>,
+) -> Result<Arc<ManagedGitRuntime>> {
     let path = managed_git_path()?;
     verify_root(
         path.parent().unwrap().parent().unwrap(),
         cancel,
         progress,
         false,
-        None,
+        log,
     )
 }
 
@@ -268,13 +288,29 @@ fn verify_root(
     cached: bool,
     log: Option<&crate::DiagnosticLog>,
 ) -> Result<Arc<ManagedGitRuntime>> {
+    let trace = Trace::start(log, cancel, progress);
+    let result = verify_root_traced(root, cancel, progress, cached, log, &trace);
+    trace.finish(&result);
+    result
+}
+fn verify_root_traced(
+    root: &Path,
+    cancel: &CancellationToken,
+    progress: &ManagedGitProgress,
+    cached: bool,
+    log: Option<&crate::DiagnosticLog>,
+    trace: &Trace,
+) -> Result<Arc<ManagedGitRuntime>> {
+    let coordinator = trace.worker(0);
     cancel.check()?;
     if !cfg!(all(windows, target_arch = "x86_64")) {
         return Err(Error::Unsupported(
             "Bundled Git is available in Windows x64 builds".into(),
         ));
     }
+    coordinator.phase("inspect_root");
     normal_directory(root)?;
+    coordinator.phase("resolve_root");
     let root = root
         .canonicalize()
         .map_err(|e| Error::io("resolve bundled Git", e))?;
@@ -291,10 +327,12 @@ fn verify_root(
         };
         if let Some(lease) = cached_lease {
             // Do not hold the global cache mutex during cancellable filesystem I/O.
+            coordinator.phase("cached_recheck");
             lease.revalidate(cancel)?;
             return Ok(lease);
         }
     }
+    coordinator.phase("manifest");
     if crate::sha256_bytes(MANIFEST.as_bytes())? != MANAGED_GIT_MANIFEST_SHA256 {
         return Err(invalid(
             "The compiled inventory does not match its reviewed digest",
@@ -302,7 +340,7 @@ fn verify_root(
     }
     let entries = inventory(MANIFEST)?;
     let runtime = Arc::new(verify_inventory_logged(
-        &root, &entries, cancel, progress, log,
+        &root, &entries, cancel, progress, log, trace,
     )?);
     cancel.check()?;
     let mut leases = leases()
@@ -320,7 +358,9 @@ struct Entry<'a> {
 }
 fn inventory(text: &str) -> Result<BTreeMap<String, Entry<'_>>> {
     let mut lines = text.lines();
-    if lines.next() != Some("ROCKET-MANAGED-GIT-1\t2.56.0.windows.4") {
+    if lines.next().and_then(|line| line.split_once('\t'))
+        != Some(("ROCKET-MANAGED-GIT-1", MANAGED_GIT_VERSION))
+    {
         return Err(invalid("The compiled runtime inventory is invalid"));
     }
     let mut entries = BTreeMap::new();
@@ -400,7 +440,7 @@ fn verify_inventory(
     cancel: &CancellationToken,
     progress: &ManagedGitProgress,
 ) -> Result<ManagedGitRuntime> {
-    verify_inventory_logged(root, entries, cancel, progress, None)
+    verify_inventory_logged(root, entries, cancel, progress, None, &Trace::default())
 }
 fn verify_inventory_logged(
     root: &Path,
@@ -408,7 +448,9 @@ fn verify_inventory_logged(
     cancel: &CancellationToken,
     progress: &ManagedGitProgress,
     log: Option<&crate::DiagnosticLog>,
+    trace: &Trace,
 ) -> Result<ManagedGitRuntime> {
+    let coordinator = trace.worker(0);
     let inventory_started = std::time::Instant::now();
     cancel.check()?;
     normal_directory(root)?;
@@ -424,17 +466,20 @@ fn verify_inventory_logged(
     let mut visited = 0usize;
     while let Some(directory) = directories.pop() {
         cancel.check()?;
+        coordinator.phase("inspect_directory");
         normal_directory(&directory)?;
         let mut children = BTreeMap::new();
         #[cfg(windows)]
         {
             use std::os::windows::fs::OpenOptionsExt;
+            coordinator.phase("open_directory");
             let file = OpenOptions::new()
                 .read(true)
                 .share_mode(3)
                 .custom_flags(0x0220_0000)
                 .open(&directory)
                 .map_err(|e| Error::io("hold bundled Git directory during use", e))?;
+            coordinator.phase("directory_metadata");
             let meta = file
                 .metadata()
                 .map_err(|e| Error::io("inspect bundled Git directory handle", e))?;
@@ -442,10 +487,12 @@ fn verify_inventory_logged(
                 return Err(invalid("The runtime directory changed during verification"));
             }
             if directory == root {
+                coordinator.phase("journal");
                 journal = ChangeJournal::start(root, &file);
             }
             directory_guards.push(file);
         }
+        coordinator.phase("list_directory");
         for item in fs::read_dir(&directory).map_err(|e| Error::io("list bundled Git files", e))? {
             cancel.check()?;
             visited += 1;
@@ -456,6 +503,7 @@ fn verify_inventory_logged(
             let path = item.path();
             // Windows enumeration already supplies no-follow metadata. The
             // subsequent guarded file open checks the actual handle again.
+            coordinator.phase("entry_metadata");
             let meta = item
                 .metadata()
                 .map_err(|e| Error::io("inspect bundled Git file", e))?;
@@ -465,6 +513,7 @@ fn verify_inventory_logged(
             children.insert(item.file_name(), meta.is_dir());
             if meta.is_dir() {
                 directories.push(path);
+                coordinator.phase("list_directory");
                 continue;
             }
             let relative = path
@@ -479,6 +528,7 @@ fn verify_inventory_logged(
                     "Unexpected file in the runtime. Restore the complete reviewed bundle",
                 ));
             }
+            coordinator.phase("list_directory");
         }
         directory_entries.insert(directory, children);
     }
@@ -487,9 +537,11 @@ fn verify_inventory_logged(
             "A runtime file is missing. Restore the complete reviewed bundle",
         ));
     }
+    coordinator.phase("journal");
     #[cfg(windows)]
     journal.cover(&directory_guards);
     if let Some(log) = log {
+        coordinator.phase("log_record");
         log.observation(
             "managed_git_inventory",
             "managed-git-verify",
@@ -498,8 +550,10 @@ fn verify_inventory_logged(
         );
     }
     let hashing_started = std::time::Instant::now();
-    let files = verify_files(root, entries, cancel, progress);
+    coordinator.phase("hash_workers");
+    let files = verify_files(root, entries, cancel, progress, trace);
     if let Some(log) = log {
+        coordinator.phase("log_record");
         log.observation(
             "managed_git_hashes",
             "managed-git-verify",
@@ -525,6 +579,7 @@ fn verify_files(
     entries: &BTreeMap<String, Entry<'_>>,
     cancel: &CancellationToken,
     progress: &ManagedGitProgress,
+    trace: &Trace,
 ) -> Result<Vec<File>> {
     let entries: Vec<_> = entries.values().collect();
     let workers = std::thread::available_parallelism()
@@ -533,15 +588,19 @@ fn verify_files(
         .min(entries.len().max(1));
     let next = AtomicUsize::new(0);
     let stopped = AtomicBool::new(false);
-    let verify = || {
+    let verify = |worker| {
+        let trace = trace.worker(worker + 1);
         let result = (|| {
             let mut files = Vec::new();
             while !stopped.load(Ordering::Acquire) {
                 cancel.check()?;
-                let Some(entry) = entries.get(next.fetch_add(1, Ordering::Relaxed)) else {
+                let index = next.fetch_add(1, Ordering::Relaxed);
+                let Some(entry) = entries.get(index) else {
                     break;
                 };
-                files.push(verify_file(root, entry, cancel)?);
+                trace.file(index + 1, entry.bytes);
+                files.push(verify_file(root, entry, cancel, &trace)?);
+                trace.phase("idle");
                 progress.0.bytes.fetch_add(entry.bytes, Ordering::Relaxed);
                 progress.0.checked.fetch_add(1, Ordering::Relaxed);
             }
@@ -553,7 +612,7 @@ fn verify_files(
         result
     };
     if workers == 1 {
-        return verify();
+        return verify(0);
     }
     // Bound I/O concurrency; keep every successfully hashed file locked. Join
     // all workers on cancellation, spawn failure or integrity failure before
@@ -561,10 +620,11 @@ fn verify_files(
     std::thread::scope(|scope| {
         let mut handles = Vec::new();
         let mut failure = None;
-        for _ in 0..workers {
+        for worker in 0..workers {
+            let verify = &verify;
             match std::thread::Builder::new()
                 .name("git-verify".into())
-                .spawn_scoped(scope, &verify)
+                .spawn_scoped(scope, move || verify(worker))
             {
                 Ok(handle) => handles.push(handle),
                 Err(error) => {
@@ -597,7 +657,7 @@ fn verify_files(
     })
 }
 
-fn verify_file(root: &Path, entry: &Entry<'_>, cancel: &CancellationToken) -> Result<File> {
+fn verify_file(root: &Path, entry: &Entry<'_>, cancel: &CancellationToken, trace: &trace::Worker<'_>) -> Result<File> {
     cancel.check()?;
     let path = root.join(entry.path);
     // Windows OPEN_REPARSE_POINT plus handle metadata replaces a redundant
@@ -620,16 +680,15 @@ fn verify_file(root: &Path, entry: &Entry<'_>, cancel: &CancellationToken) -> Re
         use std::os::windows::fs::OpenOptionsExt;
         options.share_mode(1).custom_flags(0x0020_0000); // FILE_SHARE_READ, OPEN_REPARSE_POINT
     }
-    let mut file = options
-        .open(&path)
+    let mut file = trace.io("open_file", || options.open(&path))
         .map_err(|e| Error::io("open bundled Git file for verification", e))?;
-    let meta = file
-        .metadata()
+    let meta = trace.io("file_metadata", || file.metadata())
         .map_err(|e| Error::io("inspect opened bundled Git file", e))?;
     if linked(&meta) || !meta.is_file() || meta.len() != entry.bytes {
         return Err(invalid("Runtime changed while checking it"));
     }
-    let actual = digest(&mut file, entry.bytes, cancel).map_err(|e| match e {
+    trace.phase("hash_file");
+    let actual = digest(&mut trace.reader(&mut file), entry.bytes, cancel).map_err(|e| match e {
         Error::Cancelled => e,
         _ => invalid(&format!(
             "Could not verify {}. Restore the reviewed bundle",
@@ -802,20 +861,15 @@ mod tests {
     }
     #[test]
     fn managed_path_recognition_preserves_installed_git_choices() {
-        assert!(runtime_root(Path::new("D:/Rocket/git/2.56.0.windows.4/cmd/git.exe")).is_some());
-        assert!(runtime_root(Path::new("D:/Rocket/git/2.56.0.windows.4/bin/git.exe")).is_some());
-        assert!(
-            runtime_root(Path::new(
-                "D:/Rocket/git/2.56.0.windows.4/ucrt64/bin/git.exe"
-            ))
-            .is_some()
-        );
-        assert!(
-            runtime_root(Path::new(
-                "D:/Rocket/git/2.56.0.windows.4/mingw64/bin/git.exe"
-            ))
-            .is_some()
-        );
+        for executable in [
+            "cmd/git.exe",
+            "bin/git.exe",
+            "ucrt64/bin/git.exe",
+            "mingw64/bin/git.exe",
+        ] {
+            let path = format!("D:/Rocket/git/{MANAGED_GIT_VERSION}/{executable}");
+            assert!(runtime_root(Path::new(&path)).is_some(), "{path}");
+        }
         assert!(runtime_root(Path::new("C:/Program Files/Git/cmd/git.exe")).is_none());
         assert!(runtime_root(Path::new("D:/Rocket/git/other/cmd/git.exe")).is_none());
     }

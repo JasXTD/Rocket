@@ -7,7 +7,7 @@ const { create, Fixture } = require('./mcp-github-fixture.cjs');
 const { RocketHttpClient } = require('../mcp/mcp-http-client.cjs');
 const workspace = path.resolve(__dirname, '../..');
 const exe = path.join(workspace, 'target/release/rocket-mcp.exe');
-const git = path.join(workspace, 'target/release/git/2.56.0.windows.4/cmd/git.exe');
+const git = path.join(workspace, 'target/release/git/2.56.1.windows.1/cmd/git.exe');
 const authHolderScript = path.join(__dirname, 'managed-git-auth-holder.ps1');
 const evidence = path.join(workspace, 'tools/maintenance/managed-git-github-20261030');
 const version = fs.readFileSync(path.join(workspace, 'Cargo.toml'), 'utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([^"]+)"/)[1];
@@ -45,7 +45,7 @@ async function run(mode) {
   const root = f.root, profile = path.join(root, 'bundled-http');
   const output = path.join(root, 'bundled-result.json');
   const report = {
-    passed: false, mode, root, version, branch: f.branch, runtime: '2.56.0.windows.4',
+    passed: false, mode, root, version, branch: f.branch, runtime: '2.56.1.windows.1',
     cases: [], cancellations: [], captures: [], phases: [], cleanup: 'pending',
     executable_sha256: hash(exe), git_sha256: hash(git),
     lua_worker_sha256: hash(path.join(workspace, 'target/release/rocket-lua-host.exe')),

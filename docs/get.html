@@ -78,9 +78,10 @@
     <ol class="steps">
       <li><span class="n mono" aria-hidden="true">1</span>
         <h2>Install the tools</h2>
-        <p><strong>Windows:</strong> the Rust MSVC toolchain, 1.89 or newer, with Microsoft C++ build tools, and Git 2.46 or newer.</p>
-        <p><strong>Linux x86_64:</strong> Rust 1.95 or newer, a C compiler and Git 2.46 or newer.</p>
-        <p><strong>macOS 15+ on Apple Silicon or Intel:</strong> Rust 1.99.1, the Xcode command-line tools, Node.js and Git.</p></li>
+        <p><strong>Windows:</strong> the Rust MSVC toolchain, 1.89 or newer, with Microsoft C++ build tools, and Git for Windows 2.56.1.windows.1 or newer.</p>
+        <p><strong>Linux x86_64:</strong> Rust 1.95 or newer, a C compiler and a supported Git.</p>
+        <p><strong>macOS 15+ on Apple Silicon or Intel:</strong> Rust 1.99.1, the Xcode command-line tools, Node.js and a supported Git.</p>
+        <p>Linux and macOS source builds accept stable Git 2.56.1 or newer. Older supported branches start at 2.50.2, 2.51.3, 2.52.1, 2.53.1, 2.54.1 or 2.55.1 respectively.</p></li>
       <li><span class="n mono" aria-hidden="true">2</span>
         <h2>Get the source</h2>
         <pre class="code mono" tabindex="0" role="region" aria-label="Clone commands">git clone https://github.com/JasXTD/Rocket.git
@@ -113,7 +114,7 @@ open target/macos-stage1/Rocket-macos-x64-development/Rocket.app</pre>
         <tr><th scope="row">Windows x64</th><td>The main platform. Testing has focused on Windows 10.</td></tr>
         <tr><th scope="row">Linux x86_64</th><td>X11 or Wayland, with your system Git. The portable 0.92.5 archive needs glibc 2.43+.</td></tr>
         <tr><th scope="row">macOS 15+</th><td>Apple Silicon or Intel, with your installed Git. Not yet notarized.</td></tr>
-        <tr><th scope="row">Git</th><td>A build from a fresh clone uses the Git you installed. On Windows, HTTPS needs Git for Windows 2.56.0.windows.4 or newer; older builds stay on local and SSH.</td></tr>
+        <tr><th scope="row">Git</th><td>A build from a fresh clone uses the Git you installed. On Windows, all Git operations require Git for Windows 2.56.1.windows.1 or newer.</td></tr>
         <tr><th scope="row">Git Credential Manager</th><td>For the supported browser sign-in flows.</td></tr>
         <tr><th scope="row">OpenSSH</th><td>For SSH keys and profiles.</td></tr>
         <tr><th scope="row">Git LFS 3.8.1+</th><td>Only for Git LFS operations.</td></tr>

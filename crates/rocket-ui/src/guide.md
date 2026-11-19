@@ -894,9 +894,9 @@ kept only in memory; Activity & diagnostics retains the individual read events.
 
 ### Git program and identity
 
-- Edit → Preferences → Git lists Automatic, Bundled Git, installed copies and Custom path. Automatic prefers the Git included with Rocket; if this build has no bundle, it finds Git on PATH. Explicit installed/custom choices take priority. Choosing a copy checks its version (Git 2.46 or later is required) and saves it only when the check passes. Rocket switches after a restart. Only choose a trusted Git installation.
+- Edit → Preferences → Git lists Automatic, Bundled Git, installed copies and Custom path. Automatic prefers the Git included with Rocket; if this build has no bundle, it finds Git on PATH. Explicit installed/custom choices take priority. Choosing a copy checks its version and saves it only when the check passes. Rocket switches after a restart. Only choose a trusted Git installation.
 - Bundled Git travels with the app and includes its supporting tools. Its files are verified before use. Verify files repeats the full check with progress and Stop; a stopped or failed check leaves your saved choice intact. Missing/changed runtime files require a complete matching bundle or selecting another trusted installation. A choice changed by another writer must be reloaded before saving. This does not replace system Git or change PATH, credentials or SSH settings.
-- Windows HTTP(S) Git operations require Git for Windows 2.56.0.windows.4 or newer. Preferences retains the full build suffix and shows HTTP blocked for older or unrecognized builds; local/SSH work remains available. Restart Rocket after updating Git.
+- Windows requires Git for Windows 2.56.1.windows.1 or newer. Linux and macOS accept stable Git 2.56.1 or newer and patched maintenance releases starting at 2.50.2, 2.51.3, 2.52.1, 2.53.1, 2.54.1 or 2.55.1 on their respective branches. Preferences shows the detected version and the update required for that branch.
 - Commit identity sets the name and email for every repository on this computer, in your global Git config; a repository's own settings can override them. The info icon names the file. After an edit, Save writes it and Discard drops it. Leaving a field blank removes only that direct setting, and a value set elsewhere shows as the field's hint.
 
 ### Keyboard and mouse shortcuts

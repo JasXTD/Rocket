@@ -1,7 +1,6 @@
 {
   "{choice} cannot be used: {error}": "لا يمكن استخدام {choice}: {error}",
-  "{version} · HTTP blocked": "{version} · HTTP محظور",
-  "{version} · needs 2.46": "{version} · يتطلب 2.46",
+  "{version} · needs {minimum}": "{version} · يتطلب {minimum}",
   "Any git.exe on this computer": "أي ملف git.exe على هذا الكمبيوتر",
   "Automatic": "تلقائي",
   "Bundled Git": "Git المرفق",

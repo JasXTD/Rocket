@@ -10,7 +10,7 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
-## Unreleased — Modules in Java, Kotlin, C, C++ and C#
+## 0.92.6 — Git security, Code Map and Windows updates (unreleased)
 
 - Map → Code → Modules reads Java and Kotlin projects (Maven and Gradle builds; a card
   is a package), C and C++ projects (CMake, Meson, Make and similar builds; a card is a
@@ -18,6 +18,20 @@ keep detailed test evidence in `VALIDATION.md`.
   namespace, connected by `using` lines and the type names a file uses). The Folders
   code map draws their arrows too, also between projects. Test source sets,
   module-info.java and Kotlin scripts are left out; nothing is compiled or run.
+- Linux and macOS check the upstream security patch level before opening or
+  cloning a repository. Git 2.56.1 and later stable releases are supported, as
+  are the patched 2.50 through 2.55 maintenance branches. Preferences identifies
+  the required version for an older installation's branch.
+- The portable updater can offer this build to Rocket 0.92.5 installations once
+  published.
+- Record slow bundled-Git verification operations in local diagnostics, including
+  the Windows thread, inventory file number, read offset and Stop state. These
+  records are available while a read is still waiting and omit paths and contents.
+- Require Git for Windows 2.56.1.windows.1 or newer for local and remote
+  operations, including when selecting an installed or custom Git.
+- Update the bundled Windows Git runtime to 2.56.1.windows.1 for upstream security
+  fixes, with a new pinned inventory. System Git, credentials and SSH keys remain
+  unchanged.
 
 ## 0.92.5 — Code Map, connected Agents and Windows installer
 

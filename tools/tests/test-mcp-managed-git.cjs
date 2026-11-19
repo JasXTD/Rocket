@@ -3,7 +3,7 @@
 const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process');
 const crypto=require('node:crypto'),net=require('node:net'),assert=require('node:assert/strict');
 const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');
-const version='2.56.0.windows.4',branch='rocket-ui-test/managed-git';
+const version='2.56.1.windows.1',branch='rocket-ui-test/managed-git';
 const root=path.resolve('tools/maintenance/managed-git-20261030/resumed/runs/native-'+crypto.randomUUID());
 const profile=path.join(root,'http-profile'),repo=path.join(root,'研究 repo'),storage=path.join(root,'rocket-ui-state');
 let bundle=path.join(root,'Rocket portable 文'),service,client,state,port;
@@ -62,6 +62,8 @@ async function main(){try{
  const source=path.resolve(process.env.ROCKET_MANAGED_BUILD||'target/release');
  for(const name of ['rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-lua-host.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-ssh.exe'])fs.copyFileSync(path.join(source,name),path.join(bundle,name),fs.constants.COPYFILE_EXCL);
  fs.cpSync(path.join(source,'conpty'),path.join(bundle,'conpty'),{recursive:true,errorOnExist:true,force:false});
+ // Match current packaging: the app-local CRT is part of the verified bundle.
+ run('C:/Program Files/PowerShell/7/pwsh.exe',['-NoProfile','-File',path.resolve('tools/Copy-VcRuntime.ps1'),'-Destination',bundle],{env:{...env,PATH:process.env.PATH}});
  console.log('Preparing one disposable runtime bundle...');
  run('C:/Program Files/PowerShell/7/pwsh.exe',['-NoProfile','-File',path.resolve('tools/Assemble-GitRuntime.ps1'),'-Destination',bundle],{env:{...env,PATH:process.env.PATH},timeout:180000});
  result.executable_sha256=hash(path.join(bundle,'rocket-mcp.exe'));result.driver_sha256=hash(__filename);
@@ -114,7 +116,7 @@ async function main(){try{
  await prefs();await click('git-automatic');await stop();await start();assert(g().automatic);assert.equal(normal(g().active_executable),normal(path.join(bundle,'git',version,'cmd/git.exe')));pass('Automatic uses bundled Git without a separate Git installation');
  await click('git-managed');await stop();const relocated=path.join(root,'Moved Rocket 空間');move(bundle,relocated);bundle=relocated;await start();assert.equal(normal(g().active_executable),normal(path.join(bundle,'git',version,'cmd/git.exe')));assert(g().managed);await capture('relocated');
  pass('Moving the complete app to a Unicode folder preserves bundled selection after restart');
- const binary=path.join(bundle,'git',version,'cmd/git.exe');result.helpers={git:run(binary,['--version']),lfs:run(binary,['lfs','version']),credentials:run(binary,['credential-manager','--version'])};assert.match(result.helpers.git,/2\.56\.0\.windows\.4/);assert.match(result.helpers.lfs,/git-lfs/);await stop();
+ const binary=path.join(bundle,'git',version,'cmd/git.exe');result.helpers={git:run(binary,['--version']),lfs:run(binary,['lfs','version']),credentials:run(binary,['credential-manager','--version'])};assert.match(result.helpers.git,/2\.56\.1\.windows\.1/);assert.match(result.helpers.lfs,/git-lfs/);await stop();
  run(binary,['-C',repo,'commit','--allow-empty','-m','Disposable portable-shell compatibility check']);assert.equal(fs.readFileSync(path.join(repo,'.git/runtime-hook-ran'),'utf8'),'portable shell hook ran\n');
  pass('Independent bundled-Git hook compatibility check uses its portable shell without system Git on PATH');
  const cli=JSON.parse(run(path.join(bundle,'rocket-cli.exe'),['--repo',repo,'--json','status']));assert.equal(cli.ok,true);

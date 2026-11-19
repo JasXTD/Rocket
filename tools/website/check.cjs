@@ -4,8 +4,12 @@
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const project = path.resolve(__dirname, '../..'), docs = path.join(project, 'docs');
 const GITHUB = 'https://github.com/JasXTD/Rocket', SITE = 'https://jasxtd.github.io/Rocket/';
-const VERSION = fs.readFileSync(path.join(project, 'Cargo.toml'), 'utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"/)[1];
-const releaseAssets = new Set(['Setup-x64.exe', 'windows-x64.zip', 'linux-x64.tar.gz', 'macos-arm64-preview.zip', 'macos-x64-preview.zip'].map(name => `Rocket-${VERSION}-${name}`));
+// Downloads follow the release advertised in the README while Cargo builds the next candidate.
+const readme = fs.readFileSync(path.join(project, 'README.md'), 'utf8');
+const advertised = readme.match(/\[Download Rocket (\d+\.\d+\.\d+)\]\(https:\/\/github\.com\/JasXTD\/Rocket\/releases\/tag\/v\1\)/);
+if (!advertised) throw new Error('README must identify the published Rocket download and its matching tag.');
+const publishedVersion = advertised[1];
+const releaseAssets = new Set(['Setup-x64.exe', 'windows-x64.zip', 'linux-x64.tar.gz', 'macos-arm64-preview.zip', 'macos-x64-preview.zip'].map(name => `Rocket-${publishedVersion}-${name}`));
 const pages = ['index.html', 'get.html', '404.html', 'privacy.html'];
 // These are navigable policy/contact links, never permission to load remote assets.
 const policyLinks = new Set([
@@ -38,8 +42,8 @@ for (const page of pages) {
       if (element === 'a' && policyLinks.has(value)) continue;
       if (value === GITHUB || value === GITHUB + '.git') continue;
       const release = GITHUB + '/releases/';
-      const download = release + `download/v${VERSION}/`;
-      if (value === release + `tag/v${VERSION}` || value === download + 'SHA256SUMS'
+      const download = release + `download/v${publishedVersion}/`;
+      if (value === release + `tag/v${publishedVersion}` || value === download + 'SHA256SUMS'
         || (value.startsWith(download) && releaseAssets.has(value.slice(download.length)))) {
         seen.github++; continue;
       }

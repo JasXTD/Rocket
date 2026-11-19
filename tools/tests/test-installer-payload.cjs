@@ -77,6 +77,8 @@ test('the reviewed vendor fixture record cannot hide changed bytes or another fi
   const name='git/2.56.0.windows.4/usr/bin/msys-gnutls-30.dll';
   const hash='5f3019ca853a642a5d26b81661040f295cc11cfc588a43500fbcb2fbee7cc444';
   assert(publicFixture(name,hash,'private_key'));
+  assert(publicFixture('git/2.56.1.windows.1/usr/bin/msys-gnutls-30.dll',hash,'private_key'));
+  assert(!publicFixture('git/unreviewed/usr/bin/msys-gnutls-30.dll',hash,'private_key'));
   assert(!publicFixture(name,hash.slice(0,-1)+'5','private_key'));
   assert(!publicFixture('other.dll',hash,'private_key'));
   assert(!publicFixture(name,hash,'github_token'));

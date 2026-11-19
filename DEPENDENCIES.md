@@ -460,7 +460,29 @@ it. Each enabled push scans committed lockfiles offline; no automatic advisory
 download occurs. Warnings require review, and scanner/data failures stop the push.
 See SECURITY.md for coverage, lifecycle and persistence limits.
 
-## Bundled Git for Windows — 2026-10-30
+## Bundled Git security update — 2026-11-18
+
+The Rocket 0.92.6 Windows packages use PortableGit **2.56.1.windows.1 x64** from
+the [official security release](https://github.com/git-for-windows/git/releases/tag/v2.56.1.windows.1).
+The approved 60,125,512-byte archive has SHA-256
+`9dd04a608ceb5f6ab32a73709e0ecb159d211da71b697c45ff81f6dd0c6b49c7`.
+Its Johannes Schindelin Authenticode signature and Microsoft timestamp verified;
+the user reported a clean Malwarebytes scan before extraction and execution.
+The complete 9,618-file runtime is pinned and verified using the same managed-Git
+checks. System Git, PATH, global configuration, credentials and SSH keys are not
+updated. Published 0.92.5 artifacts still contain the preceding runtime; this
+source update does not replace already downloaded or published packages.
+
+Rocket 0.92.6 also enforces the per-branch upstream security fixes in installed
+Git on Linux and macOS. See the [Git version requirements](SECURITY.md#git-version-requirements).
+
+This release addresses CVE-2026-111760, CVE-2026-113408, CVE-2026-114466,
+CVE-2026-114467, CVE-2026-114469 and CVE-2026-105437. It retains the same signed
+MSAL NativeInterop 0.20.6 assembly; its optional WACK debug-metadata finding is
+documented, not suppressed by changing vendor bytes. Git LFS remains 3.8.1 and
+Git Credential Manager remains 2.9.1. No separate system software is installed.
+
+## Initial bundled Git for Windows — 2026-10-30
 
 The new Windows x64 bundle includes official PortableGit **2.56.0.windows.4**,
 the latest stable release verified on 2026-10-30. It is a separate helper runtime,

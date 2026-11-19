@@ -10,7 +10,7 @@ const report={passed:false,root,evidence,cases:[]};
 fs.mkdirSync(root,{recursive:true});fs.mkdirSync(evidence,{recursive:true});fs.mkdirSync(repo);fs.mkdirSync(path.join(root,'template'));fs.writeFileSync(path.join(root,'empty.config'),'');
 const env={...process.env};for(const key of Object.keys(env))if(/^(GIT_|SSH_|ROCKET_)|_PROXY$/i.test(key))delete env[key];
 Object.assign(env,{GIT_CONFIG_GLOBAL:path.join(root,'empty.config'),GIT_CONFIG_SYSTEM:path.join(root,'empty.config'),GIT_CONFIG_NOSYSTEM:'1',GIT_TERMINAL_PROMPT:'0',GIT_TEMPLATE_DIR:path.join(root,'template'),GIT_OPTIONAL_LOCKS:'0'});
-const git=path.join(project,'target/release/git/2.56.0.windows.4/cmd/git.exe');
+const git=path.join(project,'target/release/git/2.56.1.windows.1/cmd/git.exe');
 const g=(...args)=>cp.execFileSync(git,args,{cwd:repo,env,windowsHide:true,encoding:'utf8'}).trim();
 const digest=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
