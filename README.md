@@ -218,9 +218,10 @@ translate or modify your repository.
 
 See [Current limits](#current-limits) for what still differs between platforms.
 
-An optional [Windows installer build](docs/Windows-installer.md) uses the same
-verified portable payload, with per-user shortcuts and guarded uninstall. It is
-prepared locally; the published portable ZIP remains available.
+Windows supports an [Inno Setup installer](docs/Windows-installer.md) and a portable
+ZIP. [MSIX packaging](docs/Windows-MSIX.md) adds a Microsoft Store option using the
+**GitRocket** identity; it has not been submitted to the Store. All three packaging
+routes remain supported, and the published 0.92.5 installer and ZIP remain available.
 
 ## Command-line interface
 

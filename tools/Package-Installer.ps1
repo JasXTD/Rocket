@@ -27,6 +27,19 @@ foreach($name in @('ISCmplr.dll','ISPP.dll','islzma.dll','islzma64.exe')){
     if($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)O=Pyrsys B\.V\.(?:,|$)'){throw "Inno supporting component signature failed: $name"}
 }
 [void](Get-Command node -ErrorAction Stop)
+function Copy-PayloadEntry([IO.Stream]$InputStream,[IO.Stream]$OutputStream,[long]$Length) {
+    if($Length -lt 0 -or $Length -gt 268435456){throw 'Unsupported archive entry size.'}
+    $buffer=[byte[]]::new(65536)
+    [long]$remaining=$Length
+    while(($count=$InputStream.Read($buffer,0,[int][Math]::Min($buffer.Length,$remaining+1))) -gt 0){
+        # Enforce the declared limit while reading, before writing excess bytes.
+        # The ZIP directory alone is not a trustworthy decompression bound.
+        if($count -gt $remaining){throw 'Archive entry exceeds its declared size.'}
+        $OutputStream.Write($buffer,0,$count)
+        $remaining-=$count
+    }
+    if($remaining -ne 0){throw 'Archive entry is shorter than its declared size.'}
+}
 $job=Join-Path $projectRoot ('work/installer-build-'+[Guid]::NewGuid().ToString('N'))
 $payload=Join-Path $job 'payload'
 [void][IO.Directory]::CreateDirectory($payload)
@@ -50,7 +63,7 @@ try {
         if(-not $destination.StartsWith($payload+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Archive path leaves staging.'}
         [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($destination))
         $entryStream=$entry.Open();$file=[IO.File]::Open($destination,[IO.FileMode]::CreateNew,[IO.FileAccess]::Write,[IO.FileShare]::None)
-        try{$entryStream.CopyTo($file);if($file.Length -ne $entry.Length){throw 'Extracted file length differs from the ZIP directory.'}}
+        try{Copy-PayloadEntry $entryStream $file $entry.Length}
         finally{$file.Dispose();$entryStream.Dispose()}
     }
 }finally{$zip.Dispose()}
@@ -66,9 +79,10 @@ if($metadata.schema -ne 1 -or $metadata.platform -cne 'windows-x64' -or $metadat
 $auditPath=Join-Path $job 'payload-audit.json'
 $auditArgs=@((Join-Path $PSScriptRoot 'windows/audit-payload.cjs'),$payload,$auditPath)
 if($CompareLocalSshKeys){$auditArgs+='--compare-local-ssh'}
-& node @auditArgs
+$auditSummary=& node @auditArgs
 if($LASTEXITCODE -ne 0){throw 'Package privacy check refused the payload. See the value-free audit report.'}
-$audit=Get-Content -LiteralPath $auditPath -Raw|ConvertFrom-Json
+. (Join-Path $PSScriptRoot 'windows/Package-Audit.ps1')
+$audit=Read-PackageAudit $auditPath $auditSummary
 function Quote-Inno([string]$value){return '"'+$value.Replace('"','""').Replace('{','{{')+'"'}
 $lines=foreach($entry in $audit.inventory){
     $native=$entry.path.Replace('/','\')
@@ -78,7 +92,8 @@ $lines=foreach($entry in $audit.inventory){
 }
 $include=Join-Path $job 'payload.iss'
 [IO.File]::WriteAllLines($include,$lines,[Text.UTF8Encoding]::new($true))
-$manifestHash=(Get-FileHash -LiteralPath (Join-Path $payload 'SHA256SUMS.txt') -Algorithm SHA256).Hash.ToLowerInvariant()
+$manifestHash=($audit.inventory | Where-Object path -CEQ 'SHA256SUMS.txt').sha256
+if($manifestHash -cnotmatch '^[a-f0-9]{64}$'){throw 'Audited release manifest missing.'}
 $base="Rocket-$version-Setup-x64"
 $definitions=@("/DRocketVersion=$version","/DPayloadInclude=$include","/DPayloadManifestHash=$manifestHash","/DOutputDirectory=$job")
 if($TestIdentity){$base+="-test-$TestIdentity";$definitions+=@("/DProductId=Rocket.InstallerTest.$TestIdentity","/DProductName=Rocket Installer Test $TestIdentity")}

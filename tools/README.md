@@ -1,15 +1,33 @@
 # Rocket development tools
 
-## Windows installer packaging
+## Windows MSIX packaging
 
-`Package-Installer.ps1` wraps an existing verified Windows ZIP using the approved
-Inno Setup 6.7.3 compiler. It requires the ZIP's reviewed SHA-256, creates an exact
-file inventory, audits package contents and leaves the ZIP unchanged. It does not
-download, build Rocket or publish anything. See [Windows installer](../docs/Windows-installer.md)
-for paths, local-key comparison, recovery behavior and the focused native runner.
-Use `test-installer-payload.cjs` for the package audit and `test-inno-installer.cjs`
-for install/upgrade/uninstall with a separate test AppId. Reserve the shared
-build/MCP slot for the native runner.
+`Package-MSIX.ps1` wraps a reviewed Windows ZIP with the installed Microsoft SDK,
+audits its contents and verifies the bytes inside the resulting unsigned MSIX.
+It never executes the supplied payload. Store Name/Publisher are explicit inputs;
+compatibility tests use a distinct disposable identity. No signing, installation
+or publishing is automatic. See [Windows MSIX](../docs/Windows-MSIX.md).
+
+`test-msix-lifecycle.cjs` drives native signed-package install/update/uninstall and
+localhost MCP. `MSIX-TestHost.ps1` separates disposable signing from the explicitly
+approved trust step. Reserve the shared build/MCP slot for the native runner.
+`Package-Release.ps1 -OutputDirectory <temporary directory>` prepares a candidate
+portable ZIP without overwriting published release packages.
+
+## Windows Inno Setup packaging
+
+`Package-Installer.ps1` remains supported alongside MSIX and the portable ZIP.
+It wraps a reviewed Windows ZIP using the approved Inno Setup 6.7.3 compiler,
+audits the exact payload and leaves the ZIP unchanged. It does not download,
+build Rocket or publish anything. See [Windows installer](../docs/Windows-installer.md)
+for local-key comparison, recovery behavior and the focused native runner.
+`test-inno-installer.cjs` tests install/upgrade/uninstall with a separate test AppId;
+reserve the shared build/MCP slot before running it.
+
+Both packagers use `test-installer-payload.cjs` for the package audit. Run
+`Test-InstallerInput.ps1 -ScriptPath tools/Package-Installer.ps1` and
+`Test-InstallerInput.ps1 -ScriptPath tools/Package-MSIX.ps1` to check metadata,
+absence of payload execution and bounded extraction for each route.
 
 ## CLI hosting and GitLab/Gitea inline reviews
 

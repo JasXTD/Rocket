@@ -43,14 +43,14 @@ tools/build-local.sh release $offline
 source="$root/target/release"
 # The update checks need every one of these (BINARIES in crates/rocket-ui/src/app_updates).
 binaries="rocket rocket-mcp rocket-cli rocket-rebase-editor rocket-lua-host rocket-ssh"
-documents="CHANGELOG.md CLI.md DEPENDENCIES.md HOSTING.md INTEGRATIONS.md LICENSE-APACHE
-LICENSE-MIT README.md SECURITY.md THIRD-PARTY-NOTICES.md docs/images/rocket-logo.png
-crates/rocket-ui/src/guide.md tools/README.md"
+documents=$(tr -d '\r' < "$root/tools/portable-documents.list")
 # User-facing wiki pages ship with the app, as on Windows.
 documents="$documents $(cd "$root" && ls docs/wiki/*.md)"
-if [ -f "$root/docs/releases/$version.md" ]; then
-    documents="$documents docs/releases/$version.md"
-fi
+for note in "$root"/docs/releases/*.md; do
+    [ -f "$note" ] || continue
+    basename "$note" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.md$' || continue
+    documents="$documents docs/releases/${note##*/}"
+done
 for file in $binaries; do
     [ -f "$source/$file" ] || fail "Missing build output: $file"
 done

@@ -4,6 +4,9 @@ Rocket keeps the portable ZIP. The optional Inno Setup package wraps the same
 verified files; it does not download Git or another runtime during installation.
 Download Setup or the portable ZIP from [GitHub Releases](https://github.com/JasXTD/Rocket/releases/tag/v0.92.5).
 
+[MSIX packaging](Windows-MSIX.md) provides a separate Microsoft Store option
+under the GitRocket identity. It does not replace this installer or the ZIP.
+
 ## Installation and removal
 
 The installer uses a per-user folder, normally
@@ -60,15 +63,16 @@ from that ZIP's verification record:
 
 ```powershell
 .\tools\Package-Installer.ps1 `
-  -Archive 'tools\releases\Rocket-0.92.5-windows-x64.zip' `
+  -Archive 'tools\releases\Rocket-0.92.6-windows-x64.zip' `
   -ArchiveSha256 '<reviewed ZIP SHA-256>' `
   -Compiler '<verified Inno Setup 6.7.3 directory>\ISCC.exe' `
   -CompareLocalSshKeys
 ```
 
-The script validates archive paths and size limits, uses Rocket's trusted release
-verifier, validates version metadata as data, audits the exact payload and creates an explicit
-Inno file list. It rechecks payload hashes after compilation. It refuses to
+The script validates archive paths and enforces size limits during extraction.
+It uses Rocket's trusted release verifier, validates version metadata as data,
+audits the exact payload and creates an explicit Inno file list. It rechecks
+payload hashes after compilation. It refuses to
 overwrite output. Results are a local `Rocket-<version>-Setup-x64.exe`, its
 `.sha256` sidecar, and `work/installer-build-.../result.json` with the build inputs
 and audit. The portable ZIP is unchanged. Rocket's installer remains unsigned
@@ -94,6 +98,7 @@ Run with the shared build/MCP slot reserved:
 
 ```powershell
 node --test tools/tests/test-installer-payload.cjs
+.\tools\tests\Test-InstallerInput.ps1 -ScriptPath .\tools\Package-Installer.ps1
 node tools/tests/test-app-update-installer.cjs
 node tools/tests/test-inno-installer.cjs '<build result.json>' '<verified ISCC.exe>'
 ```

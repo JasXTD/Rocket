@@ -1,5 +1,6 @@
 //! A fresh capability-free LPAC per invocation. Only three anonymous pipes enter
 //! the container; its temporary per-user profile is removed after the process exits.
+mod bridge;
 use super::IntegrationWorker;
 use crate::{
     CancellationToken, CommandLimits, Error, Result,
@@ -35,6 +36,7 @@ const ATTRIBUTE_JOB_LIST: usize = 0x2000d;
 const ATTRIBUTE_CHILD_PROCESS_POLICY: usize = 0x2000e;
 const ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY: usize = 0x2000f;
 const ATTRIBUTE_MITIGATION_POLICY: usize = 0x20007;
+const ATTRIBUTE_DESKTOP_APP_POLICY: usize = 0x20012;
 #[repr(C)]
 struct SecurityAttributes {
     size: u32,
@@ -124,6 +126,18 @@ unsafe extern "system" {
         size: u32,
     ) -> i32;
     fn SetHandleInformation(handle: Handle, mask: u32, flags: u32) -> i32;
+    fn GetHandleInformation(handle: Handle, flags: *mut u32) -> i32;
+    fn CreateEventW(security: Handle, manual: i32, initial: i32, name: *const u16) -> Handle;
+    fn SetEvent(event: Handle) -> i32;
+    fn DuplicateHandle(
+        source_process: Handle,
+        source: Handle,
+        target_process: Handle,
+        target: *mut Handle,
+        access: u32,
+        inherit: i32,
+        options: u32,
+    ) -> i32;
     fn InitializeProcThreadAttributeList(
         list: Handle,
         count: u32,
@@ -446,11 +460,11 @@ pub(super) fn check_current() -> Result<()> {
 
 struct Attributes(Vec<usize>);
 impl Attributes {
-    fn new() -> io::Result<Self> {
+    fn new(count: u32) -> io::Result<Self> {
         let mut bytes = 0;
-        // SAFETY: the first call obtains the allocation size for six attributes.
+        // SAFETY: the first call obtains the allocation size for the requested attributes.
         unsafe {
-            InitializeProcThreadAttributeList(ptr::null_mut(), 6, 0, &mut bytes);
+            InitializeProcThreadAttributeList(ptr::null_mut(), count, 0, &mut bytes);
         }
         if bytes == 0 {
             return Err(io::Error::last_os_error());
@@ -458,7 +472,7 @@ impl Attributes {
         let mut storage = vec![0usize; bytes.div_ceil(size_of::<usize>())];
         // SAFETY: storage is correctly aligned and sized, and remains owned until Drop.
         checked(unsafe {
-            InitializeProcThreadAttributeList(storage.as_mut_ptr().cast(), 6, 0, &mut bytes)
+            InitializeProcThreadAttributeList(storage.as_mut_ptr().cast(), count, 0, &mut bytes)
         })?;
         Ok(Self(storage))
     }
@@ -666,10 +680,19 @@ fn pipe(child_reads: bool) -> io::Result<(File, OwnedHandle)> {
 struct Process {
     process: OwnedHandle,
     job: OwnedHandle,
+    cancel_event: Option<OwnedHandle>,
 }
 impl RunningProcess for Process {
     fn terminate(&self) -> io::Result<()> {
-        /* SAFETY: unique live job, with one contained process. */
+        if let Some(event) = &self.cancel_event {
+            // Give the trusted relay a bounded chance to reap Lua and remove its
+            // native profile. A crash/hang still falls back to killing both.
+            unsafe {
+                SetEvent(event.as_raw_handle());
+                WaitForSingleObject(self.process.as_raw_handle(), 1000);
+            }
+        }
+        /* SAFETY: unique live job; includes the bridge's child when present. */
         checked(unsafe { TerminateJobObject(self.job.as_raw_handle(), 1) })
     }
     fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
@@ -717,13 +740,31 @@ fn system_directory(windows: bool) -> io::Result<Vec<u16>> {
     Ok(value)
 }
 fn spawn(stage: &Stage, sid: &Sid) -> io::Result<(Process, ProcessPipes<File, File, File>)> {
+    spawn_paths(&stage.executable, &stage.directory, Launch::Worker(sid))
+}
+enum Launch<'a> {
+    Worker(&'a Sid),
+    Bridge(&'a str),
+}
+fn spawn_paths(
+    exe: &Path,
+    dir: &Path,
+    launch: Launch<'_>,
+) -> io::Result<(Process, ProcessPipes<File, File, File>)> {
+    let is_bridge = matches!(launch, Launch::Bridge(_));
     // SAFETY: unnamed job with default security; the handle is never inherited.
     let job = owned(unsafe { CreateJobObjectW(ptr::null_mut(), ptr::null()) })?;
     let mut limits = JobLimits::default();
-    limits.basic.flags = 0x2000 | 8 | 0x100 | 2; // kill on close, one process, memory and CPU caps.
-    limits.basic.active_processes = 1;
+    limits.basic.flags = 0x2000 | 8 | 0x100 | 2; // kill on close, process-count, memory and CPU caps.
+    limits.basic.active_processes = if is_bridge { 2 } else { 1 };
     limits.basic.process_time = 50_000_000;
     limits.process_memory = 128 * 1024 * 1024;
+    if is_bridge {
+        // One trusted byte-relay and one LPAC child. The latter keeps its own
+        // one-process/128 MiB job; this outer job bounds their combined memory.
+        limits.basic.flags |= 0x200; // JOB_OBJECT_LIMIT_JOB_MEMORY
+        limits.job_memory = bridge::JOB_MEMORY;
+    }
     // SAFETY: SDK-compatible JOBOBJECT_EXTENDED_LIMIT_INFORMATION, live job.
     checked(unsafe {
         SetInformationJobObject(
@@ -741,9 +782,39 @@ fn spawn(stage: &Stage, sid: &Sid) -> io::Result<(Process, ProcessPipes<File, Fi
         child_stdout.as_raw_handle(),
         child_stderr.as_raw_handle(),
     ];
+    let stop = if is_bridge {
+        // SAFETY: unnamed, initially unsignaled event; no handle inheritance.
+        let parent = owned(unsafe { CreateEventW(ptr::null_mut(), 1, 0, ptr::null()) })?;
+        let mut child = ptr::null_mut();
+        // The trusted bridge receives wait-only access. Lua receives no event.
+        checked(unsafe {
+            DuplicateHandle(
+                GetCurrentProcess(),
+                parent.as_raw_handle(),
+                GetCurrentProcess(),
+                &mut child,
+                0x0010_0000,
+                1,
+                0,
+            )
+        })?;
+        Some((parent, owned(child)?))
+    } else {
+        None
+    };
+    let bridge_handles = [
+        handles[0],
+        handles[1],
+        handles[2],
+        stop.as_ref()
+            .map_or(ptr::null_mut(), |(_, child)| child.as_raw_handle()),
+    ];
     let jobs = [job.as_raw_handle()];
     let capabilities = Capabilities {
-        sid: sid.0,
+        sid: match &launch {
+            Launch::Worker(sid) => sid.0,
+            Launch::Bridge(_) => ptr::null_mut(),
+        },
         capabilities: ptr::null_mut(),
         count: 0,
         reserved: 0,
@@ -751,16 +822,25 @@ fn spawn(stage: &Stage, sid: &Sid) -> io::Result<(Process, ProcessPipes<File, Fi
     let lpac: u32 = 1;
     let no_children: u32 = 1;
     let mitigations: u64 = (1 << 28) | (1 << 32) | (1 << 36) | (1 << 52) | (1 << 56) | (1 << 60);
-    let mut attributes = Attributes::new()?;
+    let breakaway: u32 = 1; // DESKTOP_APP_BREAKAWAY_ENABLE_PROCESS_TREE
+    let mut attributes = Attributes::new(if is_bridge { 4 } else { 6 })?;
     // SAFETY: every referenced value and its owned handles/SID outlive attributes
     // and CreateProcess. No value is modified after its address is registered.
     unsafe {
-        attributes.add(ATTRIBUTE_HANDLE_LIST, &handles)?;
-        attributes.add(ATTRIBUTE_SECURITY_CAPABILITIES, &capabilities)?;
+        if is_bridge {
+            attributes.add(ATTRIBUTE_HANDLE_LIST, &bridge_handles)?;
+        } else {
+            attributes.add(ATTRIBUTE_HANDLE_LIST, &handles)?;
+        }
         attributes.add(ATTRIBUTE_JOB_LIST, &jobs)?;
-        attributes.add(ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, &lpac)?;
-        attributes.add(ATTRIBUTE_CHILD_PROCESS_POLICY, &no_children)?;
         attributes.add(ATTRIBUTE_MITIGATION_POLICY, &mitigations)?;
+        if is_bridge {
+            attributes.add(ATTRIBUTE_DESKTOP_APP_POLICY, &breakaway)?;
+        } else {
+            attributes.add(ATTRIBUTE_SECURITY_CAPABILITIES, &capabilities)?;
+            attributes.add(ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, &lpac)?;
+            attributes.add(ATTRIBUTE_CHILD_PROCESS_POLICY, &no_children)?;
+        }
     }
     let startup = StartupInfoEx {
         info: StartupInfo {
@@ -773,11 +853,18 @@ fn spawn(stage: &Stage, sid: &Sid) -> io::Result<(Process, ProcessPipes<File, Fi
         },
         attributes: attributes.pointer(),
     };
-    let executable = wide(stage.executable.as_os_str())?;
+    let executable = wide(exe.as_os_str())?;
     let mut command = vec![b'"' as u16];
     command.extend_from_slice(&executable[..executable.len() - 1]);
-    command.extend([b'"' as u16, 0]);
-    let directory = wide(stage.directory.as_os_str())?;
+    command.push(b'"' as u16);
+    if let Launch::Bridge(nonce) = launch {
+        bridge::validate_nonce(nonce)?;
+        command.extend(
+            format!(" --msix-lua-bridge {nonce} {}", bridge_handles[3] as usize).encode_utf16(),
+        );
+    }
+    command.push(0);
+    let directory = wide(dir.as_os_str())?;
     // Windows needs these base directory variables while constructing the
     // AppContainer environment. Never inherit the user's environment or secrets.
     let stage_path = &directory[..directory.len() - 1];
@@ -821,9 +908,16 @@ fn spawn(stage: &Stage, sid: &Sid) -> io::Result<(Process, ProcessPipes<File, Fi
     let process = Process {
         process: owned(info.process)?,
         job,
+        cancel_event: stop.map(|(parent, _child)| parent),
     };
     let thread = owned(info.thread)?;
-    assert_container(process.process.as_raw_handle()).map_err(|e| at("verify sandbox token", e))?;
+    if is_bridge {
+        bridge::assert_unpacked(process.process.as_raw_handle())
+            .map_err(|e| at("verify unpackaged Lua bridge", e))?;
+    } else {
+        assert_container(process.process.as_raw_handle())
+            .map_err(|e| at("verify sandbox token", e))?;
+    }
     // SAFETY: containment and token checks passed; this is the suspended primary thread.
     if unsafe { ResumeThread(thread.as_raw_handle()) } == u32::MAX {
         return Err(io::Error::last_os_error());
@@ -853,6 +947,19 @@ fn run_observed(
     limits: &CommandLimits,
     cancel: &CancellationToken,
     on_spawn: impl FnOnce(Handle),
+) -> Result<Output> {
+    let use_bridge = crate::windows_package::identity()
+        .map_err(|_| failure("Cannot determine package identity for the Lua launch."))?;
+    run_observed_mode(worker, input, limits, cancel, on_spawn, use_bridge)
+}
+
+fn run_observed_mode(
+    worker: &IntegrationWorker,
+    input: Vec<u8>,
+    limits: &CommandLimits,
+    cancel: &CancellationToken,
+    on_spawn: impl FnOnce(Handle),
+    use_bridge: bool,
 ) -> Result<Output> {
     if limits.timeout.is_zero() || limits.stdout_bytes == 0 || limits.stderr_bytes == 0 {
         return Err(failure("Invalid worker limits."));
@@ -884,17 +991,37 @@ fn run_observed(
         return Err(failure("Cannot create a fresh sandbox identity."));
     }
     let nonce: String = random.iter().map(|b| format!("{b:02x}")).collect();
-    let mut profile = Profile::new(&nonce).map_err(|e| Error::io("create Lua container", e))?;
-    let mut stage = Stage::new(&bytes, &profile.sid, &nonce)
-        .map_err(|e| Error::io("prepare Lua sandbox", e))?;
+    // A packaged creator's profile is not visible to an unpackaged process on
+    // Windows 10. Derive the stage ACL SID here; only the bridge creates/owns it.
+    let mut profile = if use_bridge {
+        None
+    } else {
+        Some(Profile::new(&nonce).map_err(|e| Error::io("create Lua container", e))?)
+    };
+    let derived = if use_bridge {
+        Some(bridge::derive_sid(&nonce).map_err(|e| Error::io("derive Lua container", e))?)
+    } else {
+        None
+    };
+    let sid = profile
+        .as_ref()
+        .map(|p| &p.sid)
+        .or(derived.as_ref())
+        .expect("one container identity");
+    let mut stage =
+        Stage::new(&bytes, sid, &nonce).map_err(|e| Error::io("prepare Lua sandbox", e))?;
     let staged_hash =
         crate::advisory_tool::digest(stage.file.as_mut().unwrap(), MAX_WORKER, cancel)?;
     if staged_hash != worker.sha256 {
         return Err(failure("Staged Lua worker failed verification."));
     }
     cancel.check()?;
-    let (mut process, pipes) =
-        spawn(&stage, &profile.sid).map_err(|e| Error::io("start isolated Lua worker", e))?;
+    let started = if use_bridge {
+        spawn_paths(&stage.executable, &stage.directory, Launch::Bridge(&nonce))
+    } else {
+        spawn(&stage, sid)
+    };
+    let (mut process, pipes) = started.map_err(|e| Error::io("start isolated Lua worker", e))?;
     on_spawn(process.process.as_raw_handle());
     let result = runner::collect_worker_process(&mut process, pipes, input, limits, cancel);
     drop(process);
@@ -903,12 +1030,17 @@ fn run_observed(
         .cleanup()
         .map_err(|e| Error::io("clean Lua sandbox", e));
     let profile_cleaned = profile
-        .cleanup()
+        .as_mut()
+        .map_or(Ok(()), Profile::cleanup)
         .map_err(|e| Error::io("clean Lua container", e));
     let output = result?;
     stage_cleaned?;
     profile_cleaned?;
     Ok(output)
+}
+
+pub(super) fn bridge_entry(nonce: &str, cancel_event: usize) -> Result<()> {
+    bridge::entry(nonce, cancel_event).map_err(|e| Error::io("run MSIX Lua launch bridge", e))
 }
 
 #[cfg(test)]

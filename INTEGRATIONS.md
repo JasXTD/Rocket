@@ -309,6 +309,14 @@ the verified worker are supplied. Direct network access and private user-file
 access are denied; approved HTTP requests still pass through Rocket's native broker.
 The worker refuses direct execution outside this container.
 
+MSIX uses a native launch bridge in the same verified helper to avoid inheriting
+Windows package capabilities. This bridge never evaluates scripts. It launches
+the usual LPAC child, then relays bytes; a two-process, 160 MiB outer job contains
+both, while the Lua child's original 128 MiB and isolation limits remain. The
+bridge creates the fresh native profile and removes it after Lua exits. A wait-only
+stop event reaches only the bridge; Lua still inherits only three pipes. Stopping
+allows bounded cleanup before forcing termination; parent exit kills the whole tree.
+
 On Linux x86_64 the worker runs from a sealed copy in memory, with only its
 input/output pipes, and locks itself down before it reads the script. Landlock
 denies all file access, and network connections and signals on kernels that support

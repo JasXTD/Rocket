@@ -9,6 +9,7 @@ for mode in normal create-failure list-failure; do
     repo="$fixtures/$mode"
     mkdir -p "$repo/tools" "$repo/target/release" "$repo/bin"
     cp "$root/tools/package-release.sh" "$repo/tools/package-release.sh"
+    cp "$root/tools/portable-documents.list" "$repo/tools/portable-documents.list"
     printf '[workspace.package]\nversion = "9.0.0"\n' > "$repo/Cargo.toml"
     printf '#!/bin/sh\nexit 0\n' > "$repo/tools/build-local.sh"
     chmod 0755 "$repo/tools/build-local.sh"
@@ -16,7 +17,7 @@ for mode in normal create-failure list-failure; do
         printf '#!/bin/sh\nprintf '\''{"ok":true,"version":"9.0.0"}\\n'\''\n' > "$repo/target/release/$program"
         chmod 0755 "$repo/target/release/$program"
     done
-    for file in CHANGELOG.md CLI.md DEPENDENCIES.md HOSTING.md INTEGRATIONS.md LICENSE-APACHE LICENSE-MIT README.md SECURITY.md THIRD-PARTY-NOTICES.md docs/images/rocket-logo.png crates/rocket-ui/src/guide.md tools/README.md docs/wiki/Quick-start.md; do
+    for file in $(tr -d '\r' < "$repo/tools/portable-documents.list") docs/wiki/Quick-start.md docs/releases/8.0.0.md; do
         mkdir -p "$repo/$(dirname "$file")"
         printf 'synthetic release fixture\n' > "$repo/$file"
     done
@@ -45,6 +46,9 @@ SH
         /usr/bin/tar -xzf "$archive" -C "$repo/unpacked"
         (cd "$repo/unpacked/Rocket-9.0.0-linux-x64" && sha256sum --check --quiet --strict SHA256SUMS.txt)
         test -f "$repo/unpacked/Rocket-9.0.0-linux-x64/THIRD-PARTY-NOTICES.md"
+        for doc in PRIVACY.md docs/Windows-installer.md docs/Windows-MSIX.md docs/releases/8.0.0.md; do
+            test -f "$repo/unpacked/Rocket-9.0.0-linux-x64/$doc"
+        done
         test ! -e "$repo/unpacked/Rocket-9.0.0-linux-x64/THIRD-PARTY-NOTICES.txt"
         printf 'PASS normal archive and extracted checksums\n'
     elif [ "$code" != 0 ] && [ ! -e "$archive" ]; then

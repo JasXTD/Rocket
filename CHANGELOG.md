@@ -28,11 +28,29 @@ keep detailed test evidence in `VALIDATION.md`.
 - Record slow bundled-Git verification operations in local diagnostics, including
   the Windows thread, inventory file number, read offset and Stop state. These
   records are available while a read is still waiting and omit paths and contents.
+- Add MSIX alongside the Inno Setup installer and portable ZIP, using a reviewed payload,
+  Microsoft SDK manifest validation and verification of the packed bytes.
+- Configure the supplied Microsoft Store identity `TwinCatz.GitRocket`, displayed
+  as **GitRocket**, published by **TwinCatz**, with package version 1.92.6.0.
+  Windows-managed update instructions are available in all nine UI languages.
+- Add an MSIX-only native Lua launch bridge while preserving the existing LPAC
+  restrictions, bound helper verification, cancellation and parent-exit cleanup.
+- Windows package identity disables Rocket's portable self-updater; Help directs
+  MSIX installations to Windows-managed updates. Portable update behavior stays
+  available for existing installations.
+- Isolated install/update/uninstall acceptance uses a disposable package identity,
+  temporary repositories, settings and signing/SSH keys. No Store publication yet.
+- Keep the published 0.92.5 installer, existing installations and their uninstallers;
+  the MSIX preparation does not remove or migrate user data.
+- Enforce ZIP entry size limits during extraction in both Windows packagers,
+  before excess decompressed bytes can reach the staging files.
 - Require Git for Windows 2.56.1.windows.1 or newer for local and remote
   operations, including when selecting an installed or custom Git.
 - Update the bundled Windows Git runtime to 2.56.1.windows.1 for upstream security
   fixes, with a new pinned inventory. System Git, credentials and SSH keys remain
   unchanged.
+- Add reviewed Microsoft Store capability explanations and record required
+  versus optional Windows App Certification Kit results separately.
 
 ## 0.92.5 — Code Map, connected Agents and Windows installer
 

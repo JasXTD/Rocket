@@ -72,8 +72,9 @@ if(require.main===module) {
     const [root,output,flag]=process.argv.slice(2);if(!root||!output)throw Error('Usage: node audit-payload.cjs BUNDLE REPORT [--compare-local-ssh]');
     if(flag && flag!=='--compare-local-ssh')throw Error('Unknown audit option');
     const r=audit(root,{sshHome:flag?path.join(process.env.USERPROFILE,'.ssh'):undefined});
-    fs.writeFileSync(output,JSON.stringify(r,null,2)+'\n',{flag:'wx'});
-    console.log(JSON.stringify({passed:r.passed,files:r.files,bytes:r.bytes,localPrivateKeysCompared:r.localPrivateKeysCompared,localPublicKeysCompared:r.localPublicKeysCompared,localKeysUnchanged:r.localKeysUnchanged,findings:r.findings}));
+    const report=Buffer.from(JSON.stringify(r,null,2)+'\n');
+    fs.writeFileSync(output,report,{flag:'wx'});
+    console.log(JSON.stringify({reportSha256:digest(report),passed:r.passed,files:r.files,bytes:r.bytes,localPrivateKeysCompared:r.localPrivateKeysCompared,localPublicKeysCompared:r.localPublicKeysCompared,localKeysUnchanged:r.localKeysUnchanged,findings:r.findings}));
     if(!r.passed)process.exitCode=1;
   }catch(e){console.error(e.message);process.exitCode=1;}
 }

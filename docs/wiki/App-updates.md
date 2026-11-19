@@ -2,10 +2,16 @@
 
 [Wiki home](Home.md) · [Project overview](../../README.md)
 
-Rocket checks public releases from
+Portable and existing Inno installations check public releases from
 [JasXTD/Rocket](https://github.com/JasXTD/Rocket/releases) once when the desktop app
 starts. The request runs in the background. There is no periodic check or silent
 installation. Use **Help → Check for Updates** for another check.
+
+An MSIX installation uses Windows-managed updates instead. **Help → Check for
+Updates** offers Microsoft Store's update page; Rocket does not download or swap
+portable ZIPs in that installation. Sideloaded test MSIX packages require a newer
+signed package with the same identity. This does not affect your repositories or
+settings. MSIX compatibility packaging is not yet a published Store release.
 
 The 0.92.5 packages are also available for manual download from GitHub Releases.
 The Mac preview ZIP cannot be installed through the updater because Developer ID

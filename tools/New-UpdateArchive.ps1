@@ -41,6 +41,7 @@ try {
     }finally{$zip.Dispose()}
 }finally{$stream.Dispose()}
 if((Get-Item -LiteralPath $partial).Length -gt 536870912){throw 'Compressed update exceeds 512 MiB; candidate retained for inspection.'}
+& (Join-Path $PSScriptRoot 'Test-PortableDocumentLinks.ps1') -Archive $partial
 foreach($record in $records){if((Get-FileHash -LiteralPath (Join-Path $bundleRoot $record.path) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $record.sha256){throw 'Bundle changed while archiving; candidate retained.'}}
 if((Get-FileHash -LiteralPath (Join-Path $bundleRoot 'SHA256SUMS.txt') -Algorithm SHA256).Hash -ne $originalSums -or @(Get-ChildItem -LiteralPath $bundleRoot -Recurse -Force -File).Count -ne ($files.Count+1)){throw 'Bundle inventory changed while archiving; candidate retained.'}
 [IO.File]::Move($partial,$archivePath)

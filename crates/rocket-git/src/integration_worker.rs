@@ -18,6 +18,13 @@ pub struct IntegrationWorker {
 }
 
 impl IntegrationWorker {
+    /// Internal entry point of the hash-bound Windows helper. It relays bytes
+    /// only; Lua compilation still happens exclusively in a verified LPAC child.
+    #[cfg(windows)]
+    pub fn run_msix_bridge(nonce: &str, cancel_event: usize) -> Result<()> {
+        crate::ensure_unprivileged_process()?;
+        windows::bridge_entry(nonce, cancel_event)
+    }
     /// Resolve the helper shipped with this host. The digest must be embedded in
     /// trusted host code, never loaded from the bundle's informational manifest.
     pub fn for_host_executable(host: &std::path::Path, embedded_sha256: &str) -> Option<Self> {

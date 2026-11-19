@@ -78,7 +78,20 @@ fn worker_hash_rejects_unbound_and_changed_files_before_start() {
 
 #[test]
 fn windows_container_denies_private_files_network_children_and_executable_memory() {
-    let worker = fixture();
+    verify_os_isolation(fixture(), false);
+}
+
+#[test]
+#[ignore = "requires the built windows_lua_sandbox_probe example and independently verified digest"]
+fn msix_bridge_preserves_raw_os_isolation() {
+    let worker = IntegrationWorker::new(
+        PathBuf::from(std::env::var_os("ROCKET_TEST_BRIDGE_PROBE").expect("set built probe path")),
+        &std::env::var("ROCKET_TEST_BRIDGE_PROBE_SHA256").expect("set independent probe digest"),
+    );
+    verify_os_isolation(&worker, true);
+}
+
+fn verify_os_isolation(worker: &IntegrationWorker, use_bridge: bool) {
     let root = worker.path.parent().unwrap();
     let private = root.join("private-fixture");
     let denied = root.join("must-not-exist");
@@ -107,9 +120,15 @@ fn windows_container_denies_private_files_network_children_and_executable_memory
         listener.local_addr().unwrap(),
         sentinel.as_raw_handle() as usize
     );
-    let output = worker
-        .run(input.into_bytes(), &limits(), &CancellationToken::new())
-        .unwrap();
+    let output = run_observed_mode(
+        worker,
+        input.into_bytes(),
+        &limits(),
+        &CancellationToken::new(),
+        |_| {},
+        use_bridge,
+    )
+    .unwrap();
     assert!(
         output.status.success(),
         "status={} stdout={} stderr={}",
@@ -229,15 +248,19 @@ fn parent_exit_helper() {
 #[test]
 fn abrupt_parent_exit_kills_the_contained_worker() {
     let worker = fixture();
+    verify_parent_exit(
+        worker,
+        "integration_worker::windows::tests::parent_exit_helper",
+        1,
+    );
+}
+
+fn verify_parent_exit(worker: &IntegrationWorker, helper: &str, count: usize) {
     let output = Command::new(std::env::current_exe().unwrap())
-        .args([
-            "--exact",
-            "integration_worker::windows::tests::parent_exit_helper",
-            "--ignored",
-            "--nocapture",
-        ])
+        .args(["--exact", helper, "--ignored", "--nocapture"])
         .env("ROCKET_CRASH_PROBE", &worker.path)
         .env("ROCKET_CRASH_HASH", &worker.sha256)
+        .env_remove("ROCKET_TEST_CANCEL_BRIDGE")
         .output()
         .unwrap();
     assert!(
@@ -246,29 +269,31 @@ fn abrupt_parent_exit_kills_the_contained_worker() {
         String::from_utf8_lossy(&output.stderr)
     );
     let text = String::from_utf8(output.stdout).unwrap();
-    let id: u32 = text
+    let ids: Vec<u32> = text
         .lines()
-        .find_map(|line| line.strip_prefix("WORKER:"))
-        .expect("worker started")
-        .parse()
-        .unwrap();
-    assert_ne!(id, 0);
-    // SAFETY: only synchronize access to the exact child PID reported by our helper.
-    let handle = unsafe { OpenProcess(0x0010_0000, 0, id) };
-    if handle.is_null() {
-        assert_eq!(
-            io::Error::last_os_error().raw_os_error(),
-            Some(87),
-            "worker exit must be confirmed, not an access denial"
-        );
-    } else {
-        let handle = owned(handle).unwrap();
-        // SAFETY: live owned process handle; a signaled process is terminated.
-        assert_eq!(
-            unsafe { WaitForSingleObject(handle.as_raw_handle(), 5000) },
-            0,
-            "orphan worker survived its parent"
-        );
+        .filter_map(|line| line.strip_prefix("WORKER:"))
+        .map(|id| id.parse().unwrap())
+        .collect();
+    assert_eq!(ids.len(), count, "all expected processes started: {text}");
+    for id in ids {
+        assert_ne!(id, 0);
+        // SAFETY: only synchronize access to the exact child PID reported by our helper.
+        let handle = unsafe { OpenProcess(0x0010_0000, 0, id) };
+        if handle.is_null() {
+            assert_eq!(
+                io::Error::last_os_error().raw_os_error(),
+                Some(87),
+                "worker exit must be confirmed, not an access denial"
+            );
+        } else {
+            let handle = owned(handle).unwrap();
+            // SAFETY: live owned process handle; a signaled process is terminated.
+            assert_eq!(
+                unsafe { WaitForSingleObject(handle.as_raw_handle(), 5000) },
+                0,
+                "orphan worker survived its parent"
+            );
+        }
     }
     // A forced parent exit intentionally skips temporary-storage cleanup. Remove
     // only the exact, validated test artifacts after proving the child is gone.
@@ -366,7 +391,11 @@ fn a_cleanup_failure_never_hides_how_the_run_ended() {
         held = Some((locked_file(&path).unwrap(), path));
         cancel.cancel();
     });
-    assert!(matches!(result, Err(Error::Cancelled)), "{:?}", result.err());
+    assert!(
+        matches!(result, Err(Error::Cancelled)),
+        "{:?}",
+        result.err()
+    );
     let (holder, executable) = held.unwrap();
     drop(holder);
     fs::remove_file(&executable).unwrap();
@@ -422,4 +451,280 @@ fn actual_lua_worker_runs_only_in_the_verified_container() {
         let result = String::from_utf8(output.stdout).unwrap();
         assert!(result.contains(expected), "expected {expected} in {result}");
     }
+}
+
+fn actual_worker() -> IntegrationWorker {
+    IntegrationWorker::new(
+        PathBuf::from(std::env::var_os("ROCKET_TEST_LUA_WORKER").expect("set built worker path")),
+        &std::env::var("ROCKET_TEST_LUA_SHA256").expect("set independently verified digest"),
+    )
+}
+
+#[test]
+fn bridge_rejects_malformed_stage_identifiers() {
+    for text in ["", "..", "00 --anything", &"0".repeat(31), &"z".repeat(32)] {
+        assert!(bridge::validate_nonce(text).is_err());
+    }
+}
+
+#[test]
+#[ignore = "requires built worker and ROCKET_TEST_LUA_WORKER / ROCKET_TEST_LUA_SHA256"]
+fn actual_msix_bridge_preserves_lua_isolation_limits_and_cancellation() {
+    let worker = actual_worker();
+    let direct = Command::new(&worker.path)
+        .args(["--msix-lua-bridge", &"0".repeat(32), "4"])
+        .output()
+        .unwrap();
+    assert!(
+        !direct.status.success(),
+        "a bridge without its owner job/stage must refuse"
+    );
+    assert!(direct.stdout.is_empty());
+    for (input, expected) in [
+        (
+            r#"{"api":1,"source":"return function() assert(os==nil and io==nil and require==nil and package==nil); return ui.text('資料 🚀') end","context":{}}"#,
+            r#""kind":"view""#,
+        ),
+        (
+            r#"{"api":1,"source":"return function() while true do end end","context":{}}"#,
+            r#""code":"instructions""#,
+        ),
+        (
+            r#"{"api":1,"source":"return function() return string.rep('x',67108864) end","context":{}}"#,
+            r#""kind":"error""#,
+        ),
+        (
+            r#"{"api":1,"source":"\u001bLua","context":{}}"#,
+            r#""kind":"error""#,
+        ),
+    ] {
+        let output = run_observed_mode(
+            &worker,
+            input.as_bytes().to_vec(),
+            &limits(),
+            &CancellationToken::new(),
+            |_| {},
+            true,
+        )
+        .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stdout).contains(expected),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+    }
+    let cancel = CancellationToken::new();
+    let mut staged = String::new();
+    let result = run_observed_mode(
+        &worker,
+        Vec::new(),
+        &limits(),
+        &cancel,
+        |process| {
+            staged = image_path(process);
+            cancel.cancel();
+        },
+        true,
+    );
+    assert!(matches!(result, Err(Error::Cancelled)));
+    assert!(
+        !Path::new(&staged).exists(),
+        "cancelled bridge stage remains"
+    );
+    let name = Path::new(&staged)
+        .parent()
+        .unwrap()
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap();
+    let nonce = name.strip_prefix("rocket-lua-").unwrap();
+    // A fresh profile can only be created if the relay removed its own profile.
+    let mut fresh = Profile::new(nonce).expect("cancelled native profile remains");
+    fresh.cleanup().unwrap();
+}
+
+#[test]
+#[ignore = "invoked only by the MSIX bridge parent-exit regression"]
+fn msix_bridge_parent_exit_helper() {
+    let worker = IntegrationWorker::new(
+        PathBuf::from(std::env::var_os("ROCKET_CRASH_PROBE").unwrap()),
+        &std::env::var("ROCKET_CRASH_HASH").unwrap(),
+    );
+    let mut file = locked_file(&worker.path).unwrap();
+    assert_eq!(
+        crate::advisory_tool::digest(&mut file, MAX_WORKER, &CancellationToken::new()).unwrap(),
+        worker.sha256
+    );
+    file.rewind().unwrap();
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes).unwrap();
+    let nonce = format!(
+        "{:032x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let sid = bridge::derive_sid(&nonce).unwrap();
+    let mut stage = Stage::new(&bytes, &sid, &nonce).unwrap();
+    let (mut process, pipes) =
+        spawn_paths(&stage.executable, &stage.directory, Launch::Bridge(&nonce)).unwrap();
+    // Keep input open: the bridge must start a contained child before it reads
+    // untrusted bytes, so both are alive and blocked when the owner exits.
+    #[repr(C)]
+    #[derive(Default)]
+    struct Pids {
+        assigned: u32,
+        count: u32,
+        ids: [usize; 4],
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn QueryInformationJobObject(
+            job: Handle,
+            class: i32,
+            info: Handle,
+            size: u32,
+            returned: *mut u32,
+        ) -> i32;
+    }
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let ids = loop {
+        let mut pids = Pids::default();
+        // SAFETY: owned job, bounded/aligned PID-list output; at most two members.
+        checked(unsafe {
+            QueryInformationJobObject(
+                process.job.as_raw_handle(),
+                3,
+                (&mut pids as *mut Pids).cast(),
+                size_of::<Pids>() as u32,
+                ptr::null_mut(),
+            )
+        })
+        .unwrap();
+        assert!(pids.count <= 2);
+        if pids.count == 2 {
+            break pids.ids[..2].to_vec();
+        }
+        assert!(
+            Instant::now() < deadline,
+            "bridge did not create its LPAC child"
+        );
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    if std::env::var_os("ROCKET_TEST_CANCEL_BRIDGE").is_some() {
+        // Two live processes prove that the native profile/LPAC already exist;
+        // cancellation before startup alone would not exercise profile cleanup.
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let started = Instant::now();
+        let result =
+            runner::collect_worker_process(&mut process, pipes, b"{}".to_vec(), &limits(), &cancel);
+        assert!(matches!(result, Err(Error::Cancelled)));
+        drop(process);
+        stage.cleanup().unwrap();
+        let mut fresh = Profile::new(&nonce).expect("native bridge profile survived cancellation");
+        fresh.cleanup().unwrap();
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "bridge stop exceeded bounded cleanup"
+        );
+        println!("STOP_MS:{}", started.elapsed().as_millis());
+        return;
+    }
+    // SAFETY: live parent-owned bridge handle; read-only identifier query.
+    let bridge_id = unsafe { GetProcessId(process.process.as_raw_handle()) };
+    for id in ids {
+        if id as u32 != bridge_id {
+            // SAFETY: exact PID from our two-process job; query/synchronize only.
+            let handle = owned(unsafe { OpenProcess(0x1000 | 0x0010_0000, 0, id as u32) }).unwrap();
+            assert_container(handle.as_raw_handle()).unwrap();
+        }
+        println!("WORKER:{id}");
+    }
+    println!("STAGE:{}", stage.executable.display());
+    std::io::stdout().flush().unwrap();
+    std::process::exit(0);
+}
+
+#[test]
+#[ignore = "requires built worker and ROCKET_TEST_LUA_WORKER / ROCKET_TEST_LUA_SHA256"]
+fn actual_msix_bridge_parent_exit_kills_both_processes() {
+    verify_parent_exit(
+        &actual_worker(),
+        "integration_worker::windows::tests::msix_bridge_parent_exit_helper",
+        2,
+    );
+}
+
+#[test]
+#[ignore = "requires built worker and ROCKET_TEST_LUA_WORKER / ROCKET_TEST_LUA_SHA256"]
+fn actual_msix_bridge_cancellation_cleans_registered_profile() {
+    let worker = actual_worker();
+    let output = Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "integration_worker::windows::tests::msix_bridge_parent_exit_helper",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("ROCKET_CRASH_PROBE", &worker.path)
+        .env("ROCKET_CRASH_HASH", &worker.sha256)
+        .env("ROCKET_TEST_CANCEL_BRIDGE", "1")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{} {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("STOP_MS:"));
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+}
+
+#[test]
+#[ignore = "requires built worker and ROCKET_TEST_LUA_WORKER / ROCKET_TEST_LUA_SHA256"]
+fn actual_msix_bridge_refuses_and_preserves_existing_profile() {
+    let worker = actual_worker();
+    let bytes = fs::read(&worker.path).unwrap();
+    assert_eq!(
+        crate::advisory_tool::sha256_bytes(&bytes).unwrap(),
+        worker.sha256
+    );
+    let nonce = format!(
+        "{:032x}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let mut existing = Profile::new(&nonce).unwrap();
+    let mut stage = Stage::new(&bytes, &existing.sid, &nonce).unwrap();
+    let (mut process, pipes) =
+        spawn_paths(&stage.executable, &stage.directory, Launch::Bridge(&nonce)).unwrap();
+    let output = runner::collect_worker_process(
+        &mut process,
+        pipes,
+        Vec::new(),
+        &limits(),
+        &CancellationToken::new(),
+    )
+    .unwrap();
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("CreateAppContainerProfile failed"));
+    drop(process);
+    stage.cleanup().unwrap();
+    match Profile::new(&nonce) {
+        Ok(_) => panic!("the bridge deleted a profile it did not create"),
+        Err(error) => assert!(error.to_string().contains("0x800700b7"), "{error}"),
+    }
+    existing.cleanup().unwrap();
 }

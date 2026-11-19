@@ -18,7 +18,7 @@ unsafe extern "system" {
 unsafe extern "system" {
     fn WSAStartup(version: u16, data: *mut c_void) -> i32;
 }
-fn main() {
+pub fn main() {
     let mut input = String::new();
     std::io::stdin().read_to_string(&mut input).unwrap();
     let mut lines = input.lines();

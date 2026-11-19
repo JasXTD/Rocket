@@ -114,6 +114,7 @@ pub fn handoff(
     repositories: &[PathBuf],
     cancel: &CancellationToken,
 ) -> Result<Handoff> {
+    super::windows_package::require_unmanaged()?;
     cancel.check()?;
     rocket_git::ensure_unprivileged_process()?;
     if !is_packaged(target) {
@@ -236,6 +237,7 @@ pub fn cancel(handoff: &Handoff) {
 
 /// Invoked only by Rocket's explicit installer mode. Receipts are local data.
 pub fn apply(path: &Path) -> Result<()> {
+    super::windows_package::require_unmanaged()?;
     apply_verified(path, |app, version, cancel| {
         #[cfg(target_os = "macos")]
         {

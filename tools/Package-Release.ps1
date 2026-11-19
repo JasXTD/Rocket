@@ -1,28 +1,27 @@
 # Build and verify a new local unsigned release; never replace an existing version.
 [CmdletBinding()]
-param([switch]$Offline, [switch]$WithoutBundledGit, [string]$VcRuntimeDirectory)
+param([switch]$Offline, [switch]$WithoutBundledGit, [string]$VcRuntimeDirectory, [string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $packageRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $manifest = [IO.File]::ReadAllText((Join-Path $packageRoot 'Cargo.toml'))
 $section = [regex]::Match($manifest, '(?ms)^\[workspace\.package\]\s*\r?\n(.*?)(?=^\[|\z)').Groups[1].Value
 $version = [regex]::Match($section, '(?m)^version\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"\s*$').Groups[1].Value
 if (-not $version) { throw 'Expected an explicit three-part workspace release version.' }
-$releaseRoot = Join-Path $packageRoot 'tools/releases'
+$releaseRoot = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory) } else { Join-Path $packageRoot 'tools/releases' }
 $bundle = Join-Path $releaseRoot $version
 if (Test-Path -LiteralPath $bundle) { throw "Release $version already exists; choose a new version instead of replacing it." }
 
 & (Join-Path $PSScriptRoot 'Build-Local.ps1') -Offline:$Offline
 $source = Join-Path $packageRoot 'target/release'
 $binaries = @('rocket.exe','rocket-mcp.exe','rocket-cli.exe','rocket-rebase-editor.exe','rocket-terminal-host.exe','rocket-lua-host.exe','rocket-ssh.exe')
-$documents = @('CHANGELOG.md','CLI.md','DEPENDENCIES.md','HOSTING.md','INTEGRATIONS.md','LICENSE-APACHE','LICENSE-MIT','README.md','SECURITY.md','THIRD-PARTY-NOTICES.md','tools/Verify-Release.ps1',
-    'docs/images/rocket-logo.png','crates/rocket-ui/src/guide.md','tools/README.md','runtime/conpty/1.25.260930003/README.md',
+$documents = @(Get-Content -LiteralPath (Join-Path $PSScriptRoot 'portable-documents.list'))
+$documents += @('tools/Verify-Release.ps1','runtime/conpty/1.25.260930003/README.md',
     'runtime/git/README.md','tools/Git-Runtime.ps1','runtime/vc/README.md')
 # User-facing wiki pages ship with the app. Developer/test notes stay local,
 # matching their source-publication exclusions in .gitignore.
 $documents += @(Get-ChildItem -LiteralPath (Join-Path $packageRoot 'docs/wiki') -File -Filter '*.md' | ForEach-Object { 'docs/wiki/' + $_.Name })
-if (Test-Path -LiteralPath (Join-Path $packageRoot "docs/releases/$version.md") -PathType Leaf) {
-    $documents += "docs/releases/$version.md"
-}
+$documents += @(Get-ChildItem -LiteralPath (Join-Path $packageRoot 'docs/releases') -File -Filter '*.md' |
+    Where-Object Name -Match '^\d+\.\d+\.\d+\.md$' | ForEach-Object { 'docs/releases/' + $_.Name })
 foreach ($name in $binaries) {
     if (-not (Test-Path -LiteralPath (Join-Path $source $name) -PathType Leaf)) { throw "Missing build output: $name" }
 }
@@ -64,7 +63,7 @@ $hashes = foreach ($file in Get-ChildItem -LiteralPath $stage -Recurse -File | S
     (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $relative
 }
 [IO.File]::WriteAllLines((Join-Path $stage 'SHA256SUMS.txt'), $hashes, [Text.UTF8Encoding]::new($false))
-& (Join-Path $stage 'tools/Verify-Release.ps1') -Bundle $stage -RequireBundledGit:(-not $WithoutBundledGit)
+& (Join-Path $PSScriptRoot 'Verify-Release.ps1') -Bundle $stage -RequireBundledGit:(-not $WithoutBundledGit)
 foreach ($name in $binaries) {
     if ((Get-FileHash -LiteralPath (Join-Path $stage $name) -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath (Join-Path $source $name) -Algorithm SHA256).Hash) { throw "Build output changed while packaging: $name" }
 }

@@ -8,6 +8,7 @@ type Widgets = HashMap<String, crate::app::UiControl>;
 
 #[derive(Default)]
 struct Actions {
+    store: bool,
     close: bool,
     check: bool,
     download: bool,
@@ -137,6 +138,11 @@ impl Rocket {
             && !self.ssh.running()
             && !self.integrations.running();
         let mut action = dialog(ctx, &mut self.updates, &mut self.frame_widgets, can_install);
+        if action.store {
+            let url = "ms-windows-store://downloadsandupdates".to_owned();
+            if let Some(urls) = &mut self.opened_urls { urls.push(url); }
+            else { ctx.open_url(OpenUrl::new_tab(url)); }
+        }
         if action.browse
             && let Some(release) = &self.updates.release
         {
@@ -475,7 +481,9 @@ fn body_ui(
 fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a: &mut Actions) {
     let running = s.running();
     let retry_download = s.release.is_some() && s.operation != Operation::Check;
-    let hint = if running {
+    let hint = if !s.self_update_supported() {
+        crate::i18n::tr("Rocket does not replace files in a Windows-managed installation.")
+    } else if running {
         crate::i18n::tr("Your current installation stays in place.")
     } else if s.ready() {
         crate::i18n::tr("Save your work before restarting. Active terminals will close.")
@@ -510,7 +518,9 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
                     false,
                 );
             } else {
-                if s.error.is_some() || s.status == "cancelled" {
+                if s.status == "windows_managed" {
+                    a.store = button(ui, widgets, "update-store", crate::i18n::tr("Open Microsoft Store"), true, true);
+                } else if s.error.is_some() || s.status == "cancelled" {
                     let retry = button(
                         ui,
                         widgets,
@@ -520,7 +530,7 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
                             "update-check"
                         },
                         crate::i18n::tr("Try again"),
-                        s.endpoint.is_some(),
+                        s.endpoint.is_some() && s.self_update_supported(),
                         true,
                     );
                     if retry_download {
@@ -552,7 +562,7 @@ fn footer_ui(ui: &mut Ui, s: &State, widgets: &mut Widgets, can_install: bool, a
                         widgets,
                         "update-check",
                         crate::i18n::tr("Check again"),
-                        s.endpoint.is_some(),
+                        s.endpoint.is_some() && s.self_update_supported(),
                         true,
                     );
                 }
@@ -601,6 +611,7 @@ fn title(s: &State) -> String {
         "current" => crate::i18n::tr("You’re up to date"),
         "unavailable" => crate::i18n::tr("No public release yet"),
         "disabled" => crate::i18n::tr("Updates are unavailable"),
+        "windows_managed" => crate::i18n::tr("Updates managed by Windows"),
         "downloading" => crate::i18n::tr("Downloading your update"),
         "verifying_archive" | "verifying_files" => crate::i18n::tr("Verifying your update"),
         "preparing_restart" => crate::i18n::tr("Preparing to restart"),

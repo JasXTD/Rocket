@@ -2,6 +2,7 @@
 pub mod install;
 mod package;
 mod view;
+use rocket_git::windows_package;
 use crate::{app::Rocket, backend::user_error};
 use eframe::egui::*;
 use rocket_git::{
@@ -53,16 +54,18 @@ pub struct State {
     operation: Operation,
     check_requested: bool,
     install_task: bool,
+    windows_identity: std::result::Result<bool, u32>,
 }
 impl Default for State {
     fn default() -> Self {
+        let windows_identity = windows_package::identity();
         Self {
             endpoint: None,
             open: false,
-            started: false,
-            status: "idle",
-            message: None,
-            error: None,
+            started: windows_identity != Ok(false),
+            status: if windows_identity == Ok(true) { "windows_managed" } else if windows_identity.is_err() { "error" } else { "idle" },
+            message: (windows_identity == Ok(true)).then(|| crate::i18n::tr("Windows manages this MSIX installation. Use Microsoft Store for Store updates, or install a newer signed MSIX package. Your repositories and settings are preserved.").into()),
+            error: windows_identity.err().map(|code| format!("Could not determine Windows package identity (error {code}); self-update is disabled.")),
             release: None,
             last_result: None,
             result_directory: None,
@@ -78,10 +81,14 @@ impl Default for State {
             operation: Operation::Check,
             check_requested: false,
             install_task: false,
+            windows_identity,
         }
     }
 }
 impl State {
+    pub fn self_update_supported(&self) -> bool {
+        self.windows_identity == Ok(false)
+    }
     pub fn running(&self) -> bool {
         self.task.is_some()
     }
@@ -96,7 +103,7 @@ impl State {
     }
     pub fn open(&mut self) {
         self.reveal();
-        if !self.running() && self.prepared.is_none() {
+        if self.self_update_supported() && !self.running() && self.prepared.is_none() {
             self.check_requested = true;
         }
     }
@@ -162,6 +169,7 @@ impl State {
 }
 impl Rocket {
     fn start_update_check(&mut self, ctx: &Context) {
+        if !self.updates.self_update_supported() { return; }
         self.updates.check_requested = false;
         self.updates.started = true;
         let Some(endpoint) = self.updates.endpoint else {
@@ -213,6 +221,7 @@ impl Rocket {
         }
     }
     fn download_update(&mut self, ctx: &Context) {
+        if !self.updates.self_update_supported() { return; }
         let (Some(endpoint), Some(release)) = (self.updates.endpoint, self.updates.release.clone())
         else {
             return;
@@ -255,6 +264,7 @@ impl Rocket {
         self.assign_update_task(task);
     }
     fn install_update(&mut self, ctx: &Context) {
+        if !self.updates.self_update_supported() { return; }
         if self.write.is_some()
             || self.external.running()
             || self.forge.running()

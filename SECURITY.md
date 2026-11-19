@@ -1035,6 +1035,21 @@ blocks child processes, dynamic executable memory and Win32k calls, with 128 MiB
 process memory and five-second CPU limits. Existing wall-clock, input/output and
 Lua VM limits remain. Network access goes only through the reviewed native broker.
 
+In an MSIX installation, Windows Desktop Bridge otherwise adds package
+capabilities to the Lua child, which these checks reject. The hash-bound helper
+therefore has a native launch-bridge mode: a verified, locked copy leaves package
+context and starts the same LPAC child before reading any request bytes. The bridge
+only relays bounded bytes; it never parses or evaluates Lua. It requires the exact
+owned stage, an empty capability set, pipe handles and the parent's bounded job.
+The child retains all the sandbox checks and limits above. An outer kill-on-close
+job permits only the bridge plus that child, caps combined committed memory at
+160 MiB, and is never inherited as a handle. The parent owns the executable stage;
+the unpackaged bridge creates and removes the native profile, refusing existing
+profiles. A wait-only stop event reaches only the trusted bridge, never Lua.
+Cancellation allows up to one second for reaping/profile cleanup before forcibly
+terminating the entire job. Parent exit kills both immediately; an abrupt crash
+can leave temporary storage, as with the portable worker path.
+
 Every invocation creates temporary per-user AppContainer storage and a separate
 read/execute staging directory, then removes them after reaping the worker.
 Cancellation and failures terminate the owned job; closing the host's job handle
