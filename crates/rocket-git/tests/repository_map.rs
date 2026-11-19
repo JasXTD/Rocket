@@ -690,6 +690,69 @@ fn committed_java_kotlin_c_and_csharp_projects() {
 }
 
 #[test]
+fn source_discovery_keeps_production_java_and_kotlin_folders() {
+    isolated("ROCKET_MAP_TEST", "source_discovery_keeps_production_java_and_kotlin_folders", || {
+        let f = Fixture::new();
+        f.write("build.gradle.kts", concat!(
+            "plugins { kotlin(\"jvm\") }\n",
+            "sourceSets.main { java.srcDir(\"src/latest/java\") }\n",
+            "kotlin.sourceSets.named(\"main\") { kotlin.srcDir(\"src/contest/kotlin\") }\n",
+        ));
+        f.write("src/main/java/core/Stable.java", "package core;\npublic class Stable {}\n");
+        f.write("src/latest/java/latest/Latest.java", "package latest;\npublic class Latest {}\n");
+        f.write("src/contest/kotlin/contest/Game.kt", "package contest\nclass Game\n");
+        for set in ["test", "testFixtures", "jvmTest", "androidTestDebug", "integration-test"] {
+            f.write(&format!("src/{set}/java/excluded/Check.java"), "package excluded;\nclass Check {}\n");
+        }
+        f.commit("production and test source sets");
+
+        let code = read(&f, MapKind::Code);
+        assert_eq!(code.module_packages[0].files, 3);
+        let modules = read(&f, MapKind::Modules);
+        let mut packages: Vec<_> = modules.nodes.iter().filter(|n| n.detail == b"Java package").map(|n| std::str::from_utf8(&n.label).unwrap()).collect();
+        packages.sort_unstable();
+        assert_eq!(packages, ["contest", "core", "latest"]);
+    });
+}
+
+#[test]
+fn source_discovery_recognizes_cpp_interfaces_and_uppercase_c() {
+    isolated("ROCKET_MAP_TEST", "source_discovery_recognizes_cpp_interfaces_and_uppercase_c", || {
+        let f = Fixture::new();
+        f.write("modules/CMakeLists.txt", concat!(
+            "cmake_minimum_required(VERSION 3.28)\nproject(math LANGUAGES CXX)\nadd_library(math)\n",
+            "target_compile_features(math PUBLIC cxx_std_20)\n",
+            "target_sources(math PUBLIC FILE_SET CXX_MODULES FILES math.cppm)\n",
+        ));
+        f.write("modules/math.cppm", "export module math;\nexport int sum(int a, int b) { return a + b; }\n");
+        f.write("classic/CMakeLists.txt", "project(classic LANGUAGES CXX)\nadd_library(classic legacy.C)\n");
+        f.write("classic/legacy.C", "class Legacy {};\n");
+        f.write("plain/CMakeLists.txt", "project(plain LANGUAGES C)\nadd_library(plain plain.c)\n");
+        f.write("plain/plain.c", "int plain(void) { return 1; }\n");
+        f.commit("C++ modules, uppercase C++ source and plain C");
+
+        let code = read(&f, MapKind::Code);
+        let projects: Vec<_> = code.module_packages.iter().map(|p| (std::str::from_utf8(&p.folder).unwrap(), p.dialect, p.files)).collect();
+        assert_eq!(projects, [("classic", Some(Dialect::Cpp), 1), ("modules", Some(Dialect::Cpp), 1), ("plain", None, 1)]);
+        let repo = f.repo();
+        for (folder, path, detail) in [
+            ("classic", "classic/legacy.C", "C++ source"),
+            ("modules", "modules/math.cppm", "C++ source"),
+            ("plain", "plain/plain.c", "C source"),
+        ] {
+            let options = MapOptions {
+                kind: MapKind::Modules,
+                package: Some(PackageRef { folder: folder.as_bytes().to_vec(), language: ModuleLanguage::C }),
+                ..Default::default()
+            };
+            let modules = repo.repository_map(&options, &token()).unwrap();
+            let file = modules.nodes.iter().find(|n| n.path.as_deref() == Some(path.as_bytes())).unwrap_or_else(|| panic!("missing {path}"));
+            assert_eq!(file.detail, detail.as_bytes(), "{path}");
+        }
+    });
+}
+
+#[test]
 fn code_links_name_packages_whole_reach_the_top_folder_and_survive_folder_reads() {
     isolated("ROCKET_MAP_TEST", "code_links_name_packages_whole_reach_the_top_folder_and_survive_folder_reads", || {
         let f = Fixture::new();

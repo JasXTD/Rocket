@@ -52,9 +52,9 @@ const CONFIG: &[&str] = &[
     "editorconfig", "gitignore", "gitattributes", "gitmodules", "dockerignore", "npmrc", "nvmrc", "babelrc", "eslintrc", "prettierrc",
     "mailmap", "gradle", "cmake", "mk",
 ];
-const CODE: &[&str] = &[
+const OTHER_CODE: &[&str] = &[
     "rs", "js", "cjs", "mjs", "jsx", "ts", "cts", "mts", "tsx", "py", "pyi", "go", "java", "kt", "kts", "scala", "swift", "m", "mm",
-    "c", "h", "cc", "cpp", "cxx", "hpp", "hh", "hxx", "cs", "fs", "vb", "rb", "php", "pl", "pm", "lua", "r", "dart", "ex", "exs",
+    "cs", "fs", "vb", "rb", "php", "pl", "pm", "lua", "r", "dart", "ex", "exs",
     "erl", "hrl", "hs", "clj", "cljs", "elm", "ml", "mli", "zig", "nim", "v", "sv", "vhd", "sh", "bash", "zsh", "fish", "ps1", "psm1",
     "psd1", "bat", "cmd", "html", "htm", "css", "scss", "sass", "less", "vue", "svelte", "astro", "sql", "graphql", "gql", "proto",
     "groovy", "jl", "f", "f90", "asm", "s",
@@ -80,14 +80,15 @@ pub fn file_kind(path: &[u8]) -> FileKind {
     }
     // Names like CHANGES or LICENSE-MIT are documents unless they are code: changes.rs
     // is code.
-    let doc_name = !CODE.contains(&ext.as_str()) && DOC_NAMES.iter().any(|d| stem == *d || name == *d || name.starts_with(&format!("{d}-")) || name.starts_with(&format!("{d}_")));
+    let is_code = OTHER_CODE.contains(&ext.as_str()) || packages::c_extension(ext.as_bytes());
+    let doc_name = !is_code && DOC_NAMES.iter().any(|d| stem == *d || name == *d || name.starts_with(&format!("{d}-")) || name.starts_with(&format!("{d}_")));
     if DOCS.contains(&ext.as_str()) || doc_name {
         return FileKind::Docs;
     }
     if CONFIG.contains(&ext.as_str()) {
         return FileKind::Config;
     }
-    if !CODE.contains(&ext.as_str()) {
+    if !is_code {
         return FileKind::Other;
     }
     let folders = path.split(|b| *b == b'/').collect::<Vec<_>>();
@@ -1192,6 +1193,9 @@ mod tests {
         assert_eq!(k("crates/rocket-ui/src/agents/changes.rs"), FileKind::Code);
         assert_eq!(k("crates/rocket-ui/src/changes_tests.rs"), FileKind::Tests);
         assert_eq!(k("src/license.py"), FileKind::Code);
+        assert_eq!(k("modules/math.cppm"), FileKind::Code);
+        assert_eq!(k("src/changes.ixx"), FileKind::Code);
+        assert_eq!(k("tests/partition.cxxm"), FileKind::Tests);
     }
 
     #[test]

@@ -70,17 +70,39 @@ pub(super) fn python_file(path: &[u8]) -> bool {
 pub(super) fn go_file(path: &[u8]) -> bool {
     path.ends_with(b".go") && !path.ends_with(b"_test.go") && file_name(path).len() > 3
 }
-/// A file's extension, lowercased; empty when it has none.
-fn extension(path: &[u8]) -> Vec<u8> {
+/// Returns the file's original extension, or an empty slice when it has none.
+fn extension(path: &[u8]) -> &[u8] {
     let name = file_name(path);
     match name.iter().rposition(|b| *b == b'.') {
-        Some(at) if at > 0 => name[at + 1..].to_ascii_lowercase(),
-        _ => Vec::new(),
+        Some(at) if at > 0 => &name[at + 1..],
+        _ => b"",
     }
 }
 pub(super) fn kotlin_file(path: &[u8]) -> bool {
     path.ends_with(b".kt") && file_name(path).len() > 3
 }
+
+/// Match whole words in source-set names such as `testFixtures`, `androidTestDebug` and
+/// `integration-test`. The last letters of a production name such as `latest` are part of that word.
+fn test_source_set(name: &[u8]) -> bool {
+    name.split(|b| b.is_ascii() && !b.is_ascii_alphabetic()).any(|part| {
+        let mut start = 0;
+        for end in 1..=part.len() {
+            // A capital can also start a word at the end of an acronym, as in JVMTest.
+            if end == part.len() || part[end].is_ascii_uppercase()
+                && (part[end - 1].is_ascii_lowercase() || part.get(end + 1).is_some_and(u8::is_ascii_lowercase))
+            {
+                let word = &part[start..end];
+                if word.eq_ignore_ascii_case(b"test") || word.eq_ignore_ascii_case(b"tests") {
+                    return true;
+                }
+                start = end;
+            }
+        }
+        false
+    })
+}
+
 /// A Java or Kotlin file of a build's main code. Test source sets (`src/test`,
 /// `src/androidTest`, `src/jvmTest` and the like) are left out, as Go's tests are: their
 /// classes share the packages of the code they test. So are module-info.java, which
@@ -90,17 +112,34 @@ pub(super) fn java_file(path: &[u8]) -> bool {
     if !(path.ends_with(b".java") && name.len() > 5 || kotlin_file(path)) || name == b"module-info.java" {
         return false;
     }
-    let folders: Vec<&[u8]> = path.split(|b| *b == b'/').collect();
-    let sets = folders.len().saturating_sub(2);
-    !(0..sets).any(|i| folders[i] == b"src" && folders[i + 1].to_ascii_lowercase().windows(4).any(|w| w == b"test"))
+    let mut after_src = false;
+    for folder in parent(path).split(|b| *b == b'/') {
+        if after_src && test_source_set(folder) {
+            return false;
+        }
+        after_src = folder == b"src";
+    }
+    true
 }
 /// A C or C++ source file or header; `.inl` holds inline code in both.
 pub(super) fn c_file(path: &[u8]) -> bool {
-    matches!(extension(path).as_slice(), b"c" | b"h" | b"inl") || cpp_file(path)
+    c_extension(extension(path))
+}
+/// Source and header extensions shared by the Code and Modules views.
+pub(super) fn c_extension(ext: &[u8]) -> bool {
+    ext.eq_ignore_ascii_case(b"c") || ext.eq_ignore_ascii_case(b"h") || ext.eq_ignore_ascii_case(b"inl") || cpp_extension(ext)
 }
 /// A file only C++ has.
 pub(super) fn cpp_file(path: &[u8]) -> bool {
-    matches!(extension(path).as_slice(), b"cc" | b"cpp" | b"cxx" | b"c++" | b"hh" | b"hpp" | b"hxx" | b"h++" | b"ipp" | b"tpp")
+    cpp_extension(extension(path))
+}
+fn cpp_extension(ext: &[u8]) -> bool {
+    const EXTENSIONS: &[&[u8]] = &[
+        b"cc", b"cpp", b"cxx", b"c++", b"hh", b"hpp", b"hxx", b"h++", b"ipp", b"tpp",
+        b"cppm", b"ixx", b"mpp", b"ccm", b"cxxm", b"c++m",
+    ];
+    // Uppercase .C is C++ even when it is the only source in a project.
+    ext == b"C" || EXTENSIONS.iter().any(|other| ext.eq_ignore_ascii_case(other))
 }
 pub(super) fn csharp_file(path: &[u8]) -> bool {
     path.ends_with(b".cs") && file_name(path).len() > 3
@@ -334,7 +373,7 @@ fn c(paths: &[&[u8]]) -> Vec<Found> {
     let mut builds: HashMap<&[u8], Vec<u8>> = HashMap::new();
     for path in paths.iter().filter(|p| !skipped(p, language)) {
         let name = file_name(path);
-        let rank = C_BUILDS.iter().position(|b| *b == name).or_else(|| extension(path).eq(b"vcxproj").then_some(C_BUILDS.len()));
+        let rank = C_BUILDS.iter().position(|b| *b == name).or_else(|| extension(path).eq_ignore_ascii_case(b"vcxproj").then_some(C_BUILDS.len()));
         if let Some(rank) = rank {
             let best = builds.entry(parent(path)).or_insert_with(|| path.to_vec());
             let current = C_BUILDS.iter().position(|b| *b == file_name(best)).unwrap_or(C_BUILDS.len());
@@ -412,7 +451,7 @@ fn c(paths: &[&[u8]]) -> Vec<Found> {
 fn csharp(paths: &[&[u8]]) -> Vec<Found> {
     let language = ModuleLanguage::CSharp;
     let mut projects: BTreeMap<&[u8], &[u8]> = BTreeMap::new();
-    for &path in paths.iter().filter(|p| extension(p) == b"csproj" && !skipped(p, language)) {
+    for &path in paths.iter().filter(|p| extension(p).eq_ignore_ascii_case(b"csproj") && !skipped(p, language)) {
         // Two in one folder: the first by name.
         let entry = projects.entry(parent(path)).or_insert(path);
         if path < *entry {
@@ -452,7 +491,7 @@ fn csharp(paths: &[&[u8]]) -> Vec<Found> {
 /// .csproj's own file name. None when it names none plainly (a `${…}` name too).
 pub(super) fn project_name(manifest: &[u8], text: Option<&str>) -> Option<String> {
     let name = file_name(manifest);
-    if extension(manifest) == b"csproj" {
+    if extension(manifest).eq_ignore_ascii_case(b"csproj") {
         let stem = &name[..name.len() - b".csproj".len()];
         return (!stem.is_empty()).then(|| String::from_utf8_lossy(stem).into_owned());
     }
@@ -897,6 +936,26 @@ mod tests {
         // C++ by any C++ file; a .h alone is C.
         let bytes: Vec<&[u8]> = ["Makefile", "main.cpp", "util.h"].iter().map(|p| p.as_bytes()).collect();
         assert_eq!(find(&bytes).0[0].dialect, Some(Dialect::Cpp));
+    }
+
+    #[test]
+    fn jvm_test_source_sets_use_word_boundaries() {
+        for set in ["latestDebug", "CONTEST", "testimonials", "Testimony", "détesté"] {
+            assert!(java_file(format!("src/{set}/App.kt").as_bytes()), "{set}");
+        }
+        for set in ["tests", "unit_tests", "JVMTest", "testRelease", "iosSimulatorArm64Test"] {
+            assert!(!java_file(format!("src/{set}/App.kt").as_bytes()), "{set}");
+        }
+    }
+
+    #[test]
+    fn cpp_module_interface_extensions_are_source_files() {
+        for file in ["a.cppm", "a.ixx", "a.mpp", "a.ccm", "a.cxxm", "a.c++m", "a.CPPM"] {
+            assert!(c_file(file.as_bytes()) && cpp_file(file.as_bytes()), "{file}");
+        }
+        for file in ["a.ifc", "a.pcm", ".C"] {
+            assert!(!c_file(file.as_bytes()), "{file}");
+        }
     }
 
     #[test]
