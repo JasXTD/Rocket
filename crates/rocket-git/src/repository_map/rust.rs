@@ -27,6 +27,8 @@ pub(super) struct Facts {
     pub paths: Vec<Path>,
     /// Items each module of the file declares: inline module path and name.
     pub items: Vec<(Vec<String>, String)>,
+    /// Inline module, Rust binding and linker symbol of an extern "C" function.
+    pub native: Vec<(Vec<String>, String, String)>,
     /// The file's own top level, in order.
     pub outline: Vec<OutlineItem>,
     /// Names the file uses on their own, for `use …::*` lines: inline module path and name.
@@ -243,6 +245,77 @@ fn lex(source: &str) -> Vec<Token> {
 
 const ITEMS: [&str; 8] = ["fn", "struct", "enum", "trait", "type", "const", "static", "union"];
 
+/// Literal native sources in complete build statements in the build script's main.
+/// A string in a macro, an unused helper, or a partially understood builder is no input.
+pub(super) fn native_inputs(source: &str, helper_exists: impl Fn(&str) -> bool) -> Vec<(String, bool)> {
+    use Token::{Ident, Punct, Str};
+    if !source.contains("build_objc") && !source.contains("Build") { return Vec::new(); }
+    let tokens = lex(source);
+    let mut depth = 0usize;
+    let mut main = None;
+    let mut objc_helper = false;
+    for (i, t) in tokens.iter().enumerate() {
+        if depth == 0 {
+            match &tokens[i..] {
+                [Ident(f), Ident(name), Punct("("), Punct(")"), Punct("{"), ..] if f == "fn" && name == "main" => main = Some(i + 5),
+                [Ident(f), Punct("!"), Punct("("), Str(path), Punct(")"), Punct(";"), ..]
+                    if f == "include" && path.rsplit('/').next() == Some("build-objc.rs") => objc_helper |= helper_exists(path),
+                _ => {}
+            }
+        }
+        match t {
+            Punct("{" | "(" | "[") => depth += 1,
+            Punct("}" | ")" | "]") => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    let Some(start) = main else { return Vec::new() };
+    let mut result = Vec::new();
+    let mut statement = start;
+    depth = 0;
+    for (i, t) in tokens.iter().enumerate().skip(start) {
+        match t {
+            Punct("}") if depth == 0 => break,
+            Punct("{" | "(" | "[") => depth += 1,
+            Punct("}" | ")" | "]") => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 && *t == Punct("}") { statement = i + 1; }
+            }
+            Punct(";") if depth == 0 => {
+                match &tokens[statement..i] {
+                    [Ident(f), Punct("("), Str(file), Punct(","), Str(archive), Punct(")")]
+                        if objc_helper && f == "build_objc" && !archive.is_empty() => result.push((file.clone(), false)),
+                    [Ident(f), Punct("("), ..] if objc_helper && f == "build_objc" => return Vec::new(),
+                    [Ident(cc), Punct("::"), Ident(build), Punct("::"), Ident(new), Punct("("), Punct(")"), tail @ ..]
+                        if cc == "cc" && build == "Build" && new == "new" => {
+                        let mut tail = tail;
+                        let before = result.len();
+                        let mut cpp = false;
+                        while let [Punct("."), Ident(method), Punct("("), arg, Punct(")"), rest @ ..] = tail {
+                            match (method.as_str(), arg) {
+                                ("file", Str(file)) => result.push((file.clone(), false)),
+                                ("cpp", Ident(v)) if v == "true" || v == "false" => cpp = v == "true",
+                                _ => break,
+                            }
+                            tail = rest;
+                        }
+                        if !matches!(tail, [Punct("."), Ident(m), Punct("("), Str(archive), Punct(")")] if m == "compile" && !archive.is_empty()) {
+                            // An unknown input could define the same symbol as a known one.
+                            return Vec::new();
+                        } else if cpp {
+                            for (_, cpp) in &mut result[before..] { *cpp = true; }
+                        }
+                    }
+                    _ => {}
+                }
+                statement = i + 1;
+            }
+            _ => {}
+        }
+    }
+    result
+}
+
 /// Read one file and charge its flattened imports to the whole map request.
 pub(super) fn read_with_budget(source: &str, map_import_bytes: &mut usize) -> Facts {
     // A byte-order mark is no part of the first line.
@@ -258,6 +331,7 @@ pub(super) fn read_with_budget(source: &str, map_import_bytes: &mut usize) -> Fa
     };
     // Some(name) for an inline module's braces, None for any other.
     let mut scopes: Vec<Option<String>> = Vec::new();
+    let mut foreign_depth = None;
     let chain = |scopes: &[Option<String>]| scopes.iter().flatten().cloned().collect::<Vec<_>>();
     let module_level = |scopes: &[Option<String>]| scopes.iter().all(Option::is_some);
     let mut attributes: Vec<Vec<Token>> = Vec::new();
@@ -298,6 +372,7 @@ pub(super) fn read_with_budget(source: &str, map_import_bytes: &mut usize) -> Fa
                 match *p {
                     "{" => scopes.push(None),
                     "}" => {
+                        if foreign_depth == Some(scopes.len()) { foreign_depth = None; }
                         scopes.pop();
                     }
                     _ => {}
@@ -327,6 +402,29 @@ pub(super) fn read_with_budget(source: &str, map_import_bytes: &mut usize) -> Fa
                 visibility = Some(text);
                 k += 1;
                 continue;
+            }
+            Token::Ident(w) if w == "extern" && module_level(&scopes)
+                && matches!(t.get(k + 1), Some(Token::Str(abi)) if abi == "C")
+                && is(k + 2, "{") => {
+                // Explicit library attributes can name an SDK or another archive.
+                // Only unqualified blocks participate in the local build match.
+                let linked = attributes.iter().any(|a| matches!(a.first(), Some(Token::Ident(s)) if s == "link" || s == "cfg_attr"));
+                if !linked { foreign_depth = Some(scopes.len() + 1); }
+                k += 2;
+                continue;
+            }
+            Token::Ident(w) if w == "fn" && foreign_depth == Some(scopes.len()) => {
+                if let Some(binding) = name(k + 1) && is(k + 2, "(") {
+                    let mut symbol = Some(binding.clone());
+                    for attr in &attributes {
+                        match attr.as_slice() {
+                            [Token::Ident(n), Token::Punct("="), Token::Str(s)] if n == "link_name" => symbol = Some(s.clone()),
+                            [Token::Ident(n), ..] if matches!(n.as_str(), "link_name" | "cfg_attr" | "link_ordinal") => { symbol = None; break; }
+                            _ => {}
+                        }
+                    }
+                    if let Some(symbol) = symbol { facts.native.push((chain(&scopes), binding, symbol)); }
+                }
             }
             Token::Ident(w) if w == "mod" && fresh && module_level(&scopes) => {
                 if let Some(module) = name(k + 1) {

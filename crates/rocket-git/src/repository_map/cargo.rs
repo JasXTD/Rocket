@@ -111,9 +111,14 @@ fn dependency_entry(table: &str) -> bool {
         .any(|p| table.starts_with(p))
 }
 pub(super) fn manifest(text: &str) -> (Option<String>, Vec<String>) {
+    let (name, paths, _) = manifest_with_build(text);
+    (name, paths)
+}
+pub(super) fn manifest_with_build(text: &str) -> (Option<String>, Vec<String>, Option<String>) {
     let mut section = String::new();
     let mut name = None;
     let mut paths = Vec::new();
+    let mut build = Some(String::from("build.rs"));
     // Unrecognized/multiline declarations stay unlinked instead of guessed.
     let mut multiline = None;
     for raw in text.lines() {
@@ -123,6 +128,10 @@ pub(super) fn manifest(text: &str) -> (Option<String>, Vec<String>) {
                 multiline = None;
             }
             continue;
+        }
+        if matches!(section.as_str(), "package" | "project")
+            && assignment(line).is_some_and(|(k, v)| k == "build" && (v.starts_with("\"\"\"") || v.starts_with("'''"))) {
+            build = None;
         }
         if line.contains("\"\"\"") {
             if line.matches("\"\"\"").count() % 2 == 1 {
@@ -151,6 +160,9 @@ pub(super) fn manifest(text: &str) -> (Option<String>, Vec<String>) {
         if section == "package" && key == "name" {
             name = literal(value);
         }
+        if matches!(section.as_str(), "package" | "project") && key == "build" {
+            build = if value == "true" { Some("build.rs".into()) } else { literal(value) };
+        }
         if dependency_entry(&section)
             && key == "path"
             && let Some(path) = literal(value)
@@ -169,7 +181,7 @@ pub(super) fn manifest(text: &str) -> (Option<String>, Vec<String>) {
             }
         }
     }
-    (name, paths)
+    (name, paths, build)
 }
 pub(super) fn relative(base: &[u8], path: &[u8]) -> Option<Vec<u8>> {
     if path.is_empty()

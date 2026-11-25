@@ -20,6 +20,91 @@ fn pairs(links: &CodeLinks) -> Vec<String> {
 }
 
 #[test]
+fn native_bridges_follow_the_selected_build_and_committed_symbols() {
+    isolated("ROCKET_CODE_MAP_TEST", "native_bridges_follow_the_selected_build_and_committed_symbols", || {
+        let f = Fixture::new();
+        f.write("crates/spell/Cargo.toml", "[package]\nname='spell'\n");
+        f.write("crates/spell/build.rs", include_str!("../../rocket-spell/build.rs"));
+        f.write("tools/build-objc.rs", include_str!("../../../tools/build-objc.rs"));
+        f.write("crates/spell/src/lib.rs", "mod macos;");
+        f.write("crates/spell/src/macos.rs", include_str!("../../rocket-spell/src/macos.rs"));
+        f.write("crates/spell/src/macos.m", include_str!("../../rocket-spell/src/macos.m"));
+        f.write("bindings/Cargo.toml", "[package]\nname='bindings'\n");
+        f.write("bindings/build.rs", r#"
+            fn unused() { cc::Build::new().file("src/native/decoy.c").compile("decoy"); }
+            fn main() {
+                stringify!(cc::Build::new().file("src/native/decoy.c").compile("decoy"));
+                cc::Build::new().file("src/native/介面.mm").file("src/native/other.c").compile("bridge");
+            }"#);
+        f.write("bindings/src/lib.rs", "mod ffi; pub fn read() { unsafe { ffi::local() } }");
+        f.write("bindings/src/ffi.rs", r#"unsafe extern "C" {
+            #[link_name = "shared_name"] pub fn local();
+            fn internal(); fn prototype(); fn mangled(); fn duplicate(); fn only_elsewhere();
+            fn inherited_static(); fn cpp_block(); fn inline_only();
+        }
+        #[link(name = "an_external_library")] unsafe extern "C" { fn wrong_library(); }
+        "#);
+        f.write("bindings/src/native/介面.mm", r#"#import "標頭.h"
+#import <AppKit/AppKit.h>
+extern "C" { void shared_name() {} void duplicate() {} static void internal() {} }
+extern "C" { extern "C++" { void cpp_block() {} } }
+extern "C" void prototype();
+void mangled() {}
+void wrong_library() {}
+"#);
+        f.write("bindings/src/native/標頭.h", "#include <stdint.h>\n");
+        f.write("bindings/src/native/other.c", "void duplicate() {} void wrong_library() {} static void inherited_static(void); void inherited_static(void) {} inline void inline_only() {}");
+        f.write("bindings/src/native/decoy.c", "void shared_name() {}");
+        f.write("crates/spell/src/decoy.m", "void shared_name() {} void only_elsewhere() {}");
+        f.commit("native targets and framework imports");
+        let tip = head(&f);
+        f.write("bindings/src/native/介面.mm", "// unsaved edits must survive\n");
+        let repo = f.repo();
+        let links = repo.code_links(&tip, None, &token()).unwrap();
+        let symbols = |from: &str, to: &str| links.links.iter().find(|l|
+            links.ends[l.from].path == from.as_bytes() && links.ends[l.to].path == to.as_bytes()).map(|l| &l.names);
+        assert!(symbols("crates/spell/src/macos.rs", "crates/spell/src/macos.m").is_some_and(|n| n.iter().any(|s| s == "rocket_spell_check")), "missing Rocket spelling bridge");
+        for from in ["bindings/src/lib.rs", "bindings/src/ffi.rs"] {
+            assert_eq!(symbols(from, "bindings/src/native/介面.mm").unwrap(), &["shared_name"]);
+            assert!(symbols(from, "bindings/src/native/other.c").is_none());
+            assert!(symbols(from, "crates/spell/src/decoy.m").is_none());
+        }
+        assert!(symbols("bindings/src/native/介面.mm", "bindings/src/native/標頭.h").is_some());
+        let partial = repo.code_links(&tip, Some(&[b"bindings".to_vec()]), &token()).unwrap();
+        assert!(pairs(&partial).contains(&"bindings/src/lib.rs -> bindings/src/native/介面.mm".to_owned()));
+        let stopped = token();
+        stopped.cancel();
+        assert!(matches!(repo.code_links(&tip, None, &stopped), Err(Error::Cancelled)));
+    });
+}
+
+#[test]
+fn native_builds_respect_manifest_selection_and_incomplete_sources() {
+    isolated("ROCKET_CODE_MAP_TEST", "native_builds_respect_manifest_selection_and_incomplete_sources", || {
+        let f = Fixture::new();
+        let build = r#"fn main() { cc::Build::new().file("native.c").compile("example"); }"#;
+        let rust = r#"unsafe extern "C" { fn example(); }"#;
+        for (folder, setting) in [("custom", "build='tools/custom.rs'"), ("disabled", "build=false"), ("partial", "")] {
+            f.write(&format!("{folder}/Cargo.toml"), format!("[package]\nname='{folder}'\n{setting}\n"));
+            f.write(&format!("{folder}/src/lib.rs"), rust);
+            f.write(&format!("{folder}/native.c"), "int example(void) { return 7; }");
+            f.write(&format!("{folder}/build.rs"), build);
+        }
+        f.write("custom/build.rs", r#"fn main() { cc::Build::new().file("decoy.c").compile("wrong"); }"#);
+        f.write("custom/decoy.c", "int example(void) { return 1; }");
+        f.write("custom/tools/custom.rs", build);
+        f.write("partial/build.rs", r#"fn main() { cc::Build::new().file("native.c").file("large.c").compile("example"); }"#);
+        f.write("partial/large.c", " ".repeat(1024 * 1024 + 1));
+        f.commit("native build choices");
+        let repo = f.repo();
+        let links = repo.code_links(&head(&f), None, &token()).unwrap();
+        assert!(links.limited && links.sources_limited);
+        let native: Vec<_> = pairs(&links).into_iter().filter(|p| p.ends_with(".c")).collect();
+        assert_eq!(native, ["custom/src/lib.rs -> custom/native.c"]);
+    });
+}
+
+#[test]
 fn script_loads_link_only_committed_helpers_in_both_maps() {
     isolated("ROCKET_CODE_MAP_TEST", "script_loads_link_only_committed_helpers_in_both_maps", || {
         let f = Fixture::new();

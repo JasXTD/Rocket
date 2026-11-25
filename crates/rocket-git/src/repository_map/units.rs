@@ -929,6 +929,8 @@ pub(super) fn c(folder: &[u8], texts: &BTreeMap<Vec<u8>, String>, files_of_proje
     // A `.h` in a project with C++ files is C++'s.
     let cpp = texts.keys().any(|p| packages::cpp_file(p));
     let (mut built, file_unit) = file_units(folder, texts, |path| {
+        if path.ends_with(b".mm") { return b"Objective-C++ source"; }
+        if path.ends_with(b".m") { return b"Objective-C source"; }
         let is_cpp = packages::cpp_file(path) || cpp && !path.ends_with(b".c");
         match (is_cpp, cfamily::header(path)) {
             (true, true) => b"C++ header",

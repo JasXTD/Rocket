@@ -295,7 +295,11 @@
   "Java project · packages": "Java-projekt · paket",
   "Java folder · packages": "Java-mapp · paket",
   "C++ project · files": "C++-projekt · filer",
+  "Objective-C project · files": "Objective-C-projekt · filer",
+  "Objective-C++ project · files": "Objective-C++-projekt · filer",
   "C++ folder · files": "C++-mapp · filer",
+  "Objective-C folder · files": "Objective-C-mapp · filer",
+  "Objective-C++ folder · files": "Objective-C++-mapp · filer",
   "C project · files": "C-projekt · filer",
   "C folder · files": "C-mapp · filer",
   "C# project · namespaces": "C#-projekt · namnrymder",
@@ -313,6 +317,14 @@
   "{n} C++ files": {
     "one": "{n} C++-fil",
     "other": "{n} C++-filer"
+  },
+  "{n} Objective-C files": {
+    "one": "{n} Objective-C-fil",
+    "other": "{n} Objective-C-filer"
+  },
+  "{n} Objective-C++ files": {
+    "one": "{n} Objective-C++-fil",
+    "other": "{n} Objective-C++-filer"
   },
   "{n} C files": {
     "one": "{n} C-fil",
@@ -333,7 +345,7 @@
   },
   "Bash scripts": "Bash-skript",
   "No package to read in this snapshot": "Inget paket att läsa i den här ögonblicksbilden",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.": "Vyn Moduler läser Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell och Bash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell and Bash.": "Vyn Moduler läser Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell och Bash.",
   "The package to map": "Paketet att kartlägga",
   "OUTSIDE": "UTANFÖR",
   "build ignore": "utesluten ur byggen",

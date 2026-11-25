@@ -5,10 +5,12 @@ const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');
 const root=path.resolve('work/mcp-fixtures/repository-map-'+crypto.randomUUID().replaceAll('-',''));
 const profile=path.join(root,'http-profile'),branch='rocket-ui-test/repository-map';
 const scriptsOnly=process.argv.includes('--scripts-only');
-const evidence=path.resolve('tools/maintenance',scriptsOnly?'script-code-map':'repository-map-redesign-20261105');
+const nativeOnly=process.argv.includes('--native-only');
+const focused=scriptsOnly||nativeOnly;
+const evidence=path.resolve('tools/maintenance',nativeOnly?'native-code-map':scriptsOnly?'script-code-map':'repository-map-redesign-20261105');
 const version=fs.readFileSync('Cargo.toml','utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([^"]+)"/)[1];
 const edgesOnly=process.argv.includes('--edges-only'),privateIds=[];
-const report={passed:false,version,root,scope:scriptsOnly?'scripts-only':edgesOnly?'edges-only':'full-map',cases:[]};
+const report={passed:false,version,root,scope:nativeOnly?'native-only':scriptsOnly?'scripts-only':edgesOnly?'edges-only':'full-map',cases:[]};
 fs.mkdirSync(root,{recursive:true});fs.mkdirSync(evidence,{recursive:true});
 fs.writeFileSync(path.join(root,'rocket-private-state'),'synthetic-content-only-v1\n');
 fs.mkdirSync(path.join(root,'empty-template'));fs.writeFileSync(path.join(root,'empty.config'),'');
@@ -120,6 +122,94 @@ async function scriptLoads(){
  assert(map().code_map.picture.arrows.some(a=>a.from===folderId('start') && a.to===folderId('shared')));
  passed('A second checkout links an explicit extensionless helper and skips ambiguous, PATH, dynamic and symlink loads. Local edits and helper contents were preserved');
 }
+async function nativeBridges(){
+ async function folders(f,tip){
+  await open(f);
+  if(control('map-mode-folders')) await click('map-mode-folders');
+  await until(()=>map().data?.tip===tip && !map().alternate && map().code_map.links && !map().code_map.running,'committed native file links');
+ }
+ async function expand(paths){
+  for(const p of paths){
+   const folder=map().data.nodes.find(n=>n.path===p);
+   assert(folder,p);
+   if(map().collapsed.includes(p)) await click('map-toggle-'+folder.index);
+  }
+ }
+ const node=p=>{const n=map().data.nodes.find(n=>n.path===p); assert(n,p);return n;};
+ const arrow=(a,b)=>map().code_map.picture.arrows.find(e=>e.from===node(a).index && e.to===node(b).index);
+ const f=fixture('native imports 資料');
+ f.write('Cargo.toml',"[package]\nname='preview'\n");
+ f.write('build.rs','fn main() { cc::Build::new().file("native/介面.mm").compile("native"); }\n');
+ f.write('src/lib.rs','mod ffi; pub fn run() { unsafe { ffi::read() } }\n');
+ f.write('src/ffi.rs','unsafe extern "C" { #[link_name="native_read"] pub fn read(); fn hidden(); fn cpp_only(); fn external(); }\n');
+ f.write('native/CMakeLists.txt','project(Preview)\n');
+ f.write('native/介面.mm','#import "標頭.h"\n#import <AppKit/AppKit.h>\n#include <Foundation/Foundation.h>\nextern "C" int native_read() { return PREVIEW_VALUE; }\nstatic void hidden() {}\nvoid cpp_only() {}\n');
+ f.write('native/標頭.h','#define PREVIEW_VALUE 7\n');
+ f.write('unrelated/decoy.m','void native_read() {} void external() {}\n');
+ const tip=f.commit('Native imports and foreign calls');
+ f.write('native/介面.mm','local edit to keep\n'); f.write('src/unstaged.m','void never_indexed() {}\n');
+ const before=snapshot(f);
+ await folders(f,tip); await expand(['src','native']);
+ for(const p of ['src/lib.rs','src/ffi.rs']){
+  assert.deepEqual(arrow(p,'native/介面.mm')?.names,['native_read'],p+' resolves only the reviewed native symbol');
+ }
+ assert(arrow('native/介面.mm','native/標頭.h')?.names.includes('PREVIEW_VALUE'));
+ assert(!map().data.nodes.some(n=>n.path==='src/unstaged.m'));
+ await click('map-node-'+node('src/ffi.rs').index);
+ assert(control('map-link-0'),'binding details show a native dependency');
+ passed('Folders connects the Rust caller and its renamed binding to the C-linkage Objective-C++ definition and shows the imported Unicode header');
+ await click('map-mode-modules');await until(()=>!map().running && map().data?.kind==='Modules','native package picker');
+ const i=map().data.module_packages.findIndex(p=>p.dialect==='ObjectiveCpp' && p.folder==='native');
+ assert(i>=0,'Objective-C++ package');assert(map().data.module_packages.some(p=>p.dialect==='ObjectiveC'));
+ if(map().package!=='native'||map().package_language!=='C'){
+  await click('map-module-package');await click('map-module-package-'+i);
+ }
+ await until(()=>!map().running && map().package==='native' && map().data?.modules?.language==='C','Objective-C++ modules');
+ const source=node('native/介面.mm'), header=node('native/標頭.h');
+ assert.equal(source.detail,'Objective-C++ source');
+ assert(map().data.links.some(e=>e.kind==='DependsOn' && e.from===source.index && e.to===header.index));
+ assert.deepEqual(map().data.modules.outside.find(e=>e.node===source.index)?.names,['AppKit','Foundation']);
+ await click('map-module-'+source.index);assert.equal(map().selected,source.index);
+ assert(map().visible.includes(header.index));checkBounds();
+ await click('map-node-'+header.index);assert.equal(map().selected,header.index);
+ assert(map().visible.includes(source.index),'header shows the file that imports it');
+ await click('map-node-'+source.index);assert.equal(map().selected,source.index);
+ await resize(780,620);assert(control('map-module-switcher'));checkBounds();
+ assert.deepEqual(snapshot(f),before);
+ passed('Modules distinguishes both Objective-C dialects, navigates from the header back to its importer, and lists AppKit and Foundation under Outside. Compact controls and working edits survived');
+ const g=fixture('Rocket spelling snapshot');
+ const repoRoot=path.resolve(__dirname,'../..');
+ for(const p of ['crates/rocket-spell/Cargo.toml','crates/rocket-spell/build.rs','crates/rocket-spell/src/macos.rs','crates/rocket-spell/src/macos.m','tools/build-objc.rs']){
+  g.write(p,cp.execFileSync('git',['-C',repoRoot,'show','HEAD:'+p],{env,windowsHide:true}));
+ }
+ g.write('crates/rocket-spell/src/lib.rs','mod macos;\n');
+ const spellTip=g.commit('Committed Rocket spelling adapter');const spellBefore=snapshot(g);
+ await folders(g,spellTip);await expand(['crates','crates/rocket-spell','crates/rocket-spell/src']);
+ const bridge=arrow('crates/rocket-spell/src/macos.rs','crates/rocket-spell/src/macos.m');
+ assert(bridge?.names.includes('rocket_spell_check'),'the real spelling bridge is visible');
+ assert.deepEqual(snapshot(g),spellBefore);
+ passed('A separate temporary repository displays rocket_spell_check from Rocket’s committed Rust declaration to its Cocoa implementation');
+ const h=fixture('native cancellation');
+ h.write('Cargo.toml',"[package]\nname='cancel_native'\n");
+ h.write('src/lib.rs','unsafe extern "C" { fn bridge(); }\n');
+ h.write('build.rs','fn main() { cc::Build::new().file("native.m").compile("bridge"); }\n');
+ h.write('native.m','void bridge(void) {}\n');const light=h.commit('Small native map');
+ const bulkSource=Array.from({length:3000},(_,i)=>'int item_'+i+'(void) { return '+i+'; }').join('\n');
+ for(let i=0;i<32;i++) h.write('bulk/bridge'+i+'.mm','// source '+i+'\n'+bulkSource);
+ const heavy=h.commit('Larger native map');const unchanged=snapshot(h);
+ await open(h);await load(light);
+ if(control('map-mode-folders')) await click('map-mode-folders');
+ await until(()=>map().data?.tip===light && map().code_map.links && !map().code_map.running,'small native map');
+ await openRevision();await type('map-revision',heavy);
+ await client.tool('rocket_click',{target:'map-load',expected_tab:state.active_tab});
+ await until(()=>map().code_map.reading_links && control('map-code-stop')?.enabled,'active native code read');
+ await client.tool('rocket_click',{target:'map-code-stop',expected_tab:state.active_tab});
+ await until(()=>!state.input_pending && map().code_map.stopped && !map().code_map.running,'stopped native code read');
+ await load(light);await until(()=>map().data?.tip===light && map().code_map.links && !map().code_map.running,'reload after Stop');
+ await expand(['src']);assert.deepEqual(arrow('src/lib.rs','native.m')?.names,['bridge']);
+ assert.deepEqual(snapshot(h),unchanged);
+ passed('Stop cancels an in-flight native map read; the earlier revision can be reloaded with its original bridge and unchanged working files');
+}
 async function run(){try{
  const exe=path.resolve('target/release/rocket-mcp.exe');report.executable_sha256=hash(exe);cp.execFileSync(exe,['--init-http',profile,root],{env,windowsHide:true});
  const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r));
@@ -128,6 +218,7 @@ async function run(){try{
  for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break;}catch(e){if(i===100)throw e;await delay(100);}}
  assert.equal((await client.initialize()).serverInfo.version,version);
  if(scriptsOnly){await scriptLoads();return;}
+ if(nativeOnly){await nativeBridges();return;}
  if(!edgesOnly){
  const f=fixture('PRIVATE_MAP_検索 🚀');
  f.write('Cargo.toml',"[workspace]\nmembers=['应用','core']\n");f.write('应用/Cargo.toml',"[package]\nname='界面'\n[dependencies]\ncore={path='../core'}\n");f.write('core/Cargo.toml',"[package]\nname='engine'\n");
@@ -295,12 +386,12 @@ async function run(){try{
  passed('Paired request/step logs with named map operations, error/cancellation outcomes, zero dropped events and no private payloads');report.passed=true;
 }catch(error){report.failure=error.stack;if(client)try{await capture('failure');}catch{}throw error;}
 finally{
- fs.writeFileSync(path.join(root,'last-state.json'),JSON.stringify(state??null,null,2));fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(evidence,'mcp-last-result.json'),JSON.stringify(report,null,2));if(!scriptsOnly)console.log(JSON.stringify(report,null,2));
+ fs.writeFileSync(path.join(root,'last-state.json'),JSON.stringify(state??null,null,2));fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(evidence,'mcp-last-result.json'),JSON.stringify(report,null,2));if(!focused)console.log(JSON.stringify(report,null,2));
  if(service&&service.exitCode===null){try{await closeWindow();await client.raw('POST','/shutdown');}catch{}for(let n=0;n<40&&service.exitCode===null;n++)await delay(100);if(service.exitCode===null){report.forced_service_stop=true;service.kill();}}if(client)await client.finish();
  const token=path.join(profile,'access-token');if(fs.existsSync(token))fs.unlinkSync(token);
  report.cleanup={service_exit:service?.exitCode,token_removed:!fs.existsSync(token)};
  fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(evidence,'mcp-last-result.json'),JSON.stringify(report,null,2));
- if(scriptsOnly && !report.failure){
+ if(focused && !report.failure){
   try{
    assert.equal(report.cleanup.service_exit,0,'isolated MCP service did not exit cleanly');
    assert(report.cleanup.token_removed && !report.forced_service_stop);

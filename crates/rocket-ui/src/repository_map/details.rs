@@ -290,7 +290,7 @@ fn node_heading(s: &MapPage, data: &RepositoryMap, i: usize) -> (Mark, String, S
                 b"Folder" => trf!("Folder · {package}", package = package),
                 b"Go package" | b"Python package" | b"Java package" => trf!("Package · {package}", package = package),
                 b"C# namespace" => trf!("Namespace · {package}", package = package),
-                b"C source" | b"C header" | b"C++ source" | b"C++ header" | b"PowerShell script" | b"Bash script" => trf!("File · {package}", package = package),
+                b"C source" | b"C header" | b"C++ source" | b"C++ header" | b"Objective-C source" | b"Objective-C++ source" | b"PowerShell script" | b"Bash script" => trf!("File · {package}", package = package),
                 _ => trf!("Module · {package}", package = package),
             };
             let mark = if n.detail == b"Folder" { Icon::Folder } else { Icon::Braces };

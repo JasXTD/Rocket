@@ -115,12 +115,14 @@ pub(super) fn tree(
 #[derive(Clone)]
 enum Found {
     At(usize, String, bool),
+    Native(usize, String, String),
     Outside,
 }
 struct Index<'a> {
     modules: HashMap<Vec<String>, usize>,
     inline: HashMap<Vec<String>, usize>,
     items: HashMap<Vec<String>, HashSet<&'a str>>,
+    native: HashMap<Vec<String>, HashMap<&'a str, Option<&'a str>>>,
     uses: HashMap<Vec<String>, Vec<&'a rust::Use>>,
     /// Finished searches by module and name: many files ask for the same names.
     found: std::cell::RefCell<HashMap<Lookup, Found>>,
@@ -135,6 +137,7 @@ impl<'a> Index<'a> {
             modules: modules.iter().enumerate().map(|(i, m)| (m.path.clone(), i)).collect(),
             inline: HashMap::new(),
             items: HashMap::new(),
+            native: HashMap::new(),
             uses: HashMap::new(),
             found: Default::default(),
             imports: Default::default(),
@@ -147,6 +150,12 @@ impl<'a> Index<'a> {
             }
             for (chain, name) in &f.items {
                 index.items.entry(within(m, chain)).or_default().insert(name.as_str());
+            }
+            for (chain, binding, symbol) in &f.native {
+                let names = index.native.entry(within(m, chain)).or_default();
+                names.entry(binding).and_modify(|entry| {
+                    if *entry != Some(symbol.as_str()) { *entry = None; }
+                }).or_insert(Some(symbol));
             }
             for u in &f.uses {
                 index.uses.entry(within(m, &u.chain)).or_default().push(u);
@@ -270,6 +279,12 @@ impl<'a> Index<'a> {
         if self.items.get(module).is_some_and(|names| names.contains(name)) {
             return Found::At(owner, name.into(), true);
         }
+        if let Some(symbol) = self.native.get(module).and_then(|names| names.get(name)) {
+            return match symbol {
+                Some(symbol) => Found::Native(owner, name.into(), (*symbol).into()),
+                None => Found::At(owner, name.into(), true),
+            };
+        }
         if depth > 6 || !seen.insert(module.to_vec()) {
             return Found::At(owner, name.into(), false);
         }
@@ -289,7 +304,7 @@ impl<'a> Index<'a> {
                 continue;
             }
             match self.search(&glob, name, depth + 1, seen) {
-                found @ (Found::At(_, _, true) | Found::Outside) => return found,
+                found @ (Found::At(_, _, true) | Found::Native(..) | Found::Outside) => return found,
                 Found::At(..) => {}
             }
         }
@@ -302,6 +317,7 @@ impl<'a> Index<'a> {
 /// also the other crates each module's `use` lines name.
 pub(super) struct Links {
     pub uses: BTreeMap<(usize, usize), BTreeSet<String>>,
+    pub native: BTreeSet<(usize, String)>,
     pub followed: usize,
     pub unknown: usize,
     pub outside: BTreeMap<usize, BTreeSet<String>>,
@@ -310,19 +326,26 @@ pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel:
     let index = Index::new(modules, facts);
     let mut out = Links {
         uses: BTreeMap::new(),
+        native: BTreeSet::new(),
         followed: 0,
         unknown: 0,
         outside: BTreeMap::new(),
     };
     let add = |from: usize, found: Found, out: &mut Links| {
-        if let Found::At(to, name, known) = found {
-            out.followed += 1;
-            if !known {
-                out.unknown += 1;
+        let (to, name, known) = match found {
+            Found::At(to, name, known) => (to, name, known),
+            Found::Native(to, binding, symbol) => {
+                out.native.insert((from, symbol));
+                (to, binding, true)
             }
-            if from != to {
-                out.uses.entry((from, to)).or_default().insert(name);
-            }
+            Found::Outside => return,
+        };
+        out.followed += 1;
+        if !known {
+            out.unknown += 1;
+        }
+        if from != to {
+            out.uses.entry((from, to)).or_default().insert(name);
         }
     };
     for (m, module) in modules.iter().enumerate() {
@@ -375,7 +398,7 @@ pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel:
                 if !seen.insert(name.as_str()) || index.items.get(&within(chain)).is_some_and(|own| own.contains(name.as_str())) {
                     continue;
                 }
-                if let found @ Found::At(_, _, true) = index.find(&glob, name, 0) {
+                if let found @ (Found::At(_, _, true) | Found::Native(..)) = index.find(&glob, name, 0) {
                     add(m, found, &mut out);
                 }
             }

@@ -1534,6 +1534,13 @@ fn modules_java_packages_stand_alone_and_each_language_names_its_units() {
         assert_eq!(keywords, ["function", "#define", "typedef", "struct", "extern"]);
         let cpp = modules::Words { language: ModuleLanguage::C, dialect: Some(Dialect::Cpp) };
         assert_eq!((cpp.files(9), cpp.package_kind(true)), ("9 C++ files".to_owned(), "C++ project · files"));
+        for (dialect, name) in [(Dialect::ObjectiveC, "Objective-C"), (Dialect::ObjectiveCpp, "Objective-C++")] {
+            let words = modules::Words { language: ModuleLanguage::C, dialect: Some(dialect) };
+            assert_eq!(modules::language_name(words.language, words.dialect), name);
+            assert_eq!(words.files(2), format!("2 {name} files"));
+            assert_eq!(words.package_kind(false), format!("{name} folder · files"));
+            assert_eq!(words.package_kind(true), format!("{name} project · files"));
+        }
         let names: Vec<&str> = [(ModuleLanguage::Java, None), (ModuleLanguage::Java, Some(Dialect::Kotlin)), (ModuleLanguage::C, None), (ModuleLanguage::C, Some(Dialect::Cpp)), (ModuleLanguage::CSharp, None)]
             .iter()
             .map(|(l, d)| modules::language_name(*l, *d))

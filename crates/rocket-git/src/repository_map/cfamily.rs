@@ -13,6 +13,8 @@ enum Token {
     Ident(String),
     /// A string, a character or a number.
     Value,
+    /// Exact ABI literal in an extern declaration.
+    AbiC,
     Punct(char),
 }
 
@@ -26,6 +28,8 @@ pub(super) struct Facts {
     pub names: BTreeSet<String>,
     /// Enumerators the file declares: other files use them by name too.
     pub constants: BTreeSet<String>,
+    /// Populated only for the crate's explicitly compiled native sources.
+    pub definitions: BTreeSet<String>,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Include {
@@ -237,8 +241,9 @@ fn lex(source: &str) -> Lexed {
         opened = true;
         let reading = branches.iter().all(|b| b.taken);
         let token = if x == '"' {
+            let abi_c = c.get(i..i + 3) == Some(&['"', 'C', '"']);
             i = string_end(&c, i);
-            Token::Value
+            if abi_c { Token::AbiC } else { Token::Value }
         } else if x == '\'' {
             let mut j = i + 1;
             while j < c.len() && c[j] != '\'' && c[j] != '\n' {
@@ -326,6 +331,7 @@ enum Scope {
     /// A namespace or `extern "C"`: what is inside is at the top level; anonymous when
     /// its names are the file's own.
     Open { anonymous: bool },
+    Linkage { previous_c: bool },
     /// A class, struct or union declared at the top level, by outline index and name.
     Type(Option<usize>, String),
     Enum,
@@ -335,6 +341,22 @@ enum Scope {
 
 /// Reads one file; `header` for a `.h`, `.hpp` and the like.
 pub(super) fn read(source: &str, header: bool) -> Facts {
+    parse(source, header, None)
+}
+
+pub(super) fn definitions(source: &str, cpp: bool) -> Option<BTreeSet<String>> {
+    let mut facts = parse(source, false, Some(cpp));
+    if facts.outline.len() >= OUTLINE || facts.definitions.len() >= OUTLINE { return None; }
+    // A prior static prototype also gives a later definition internal linkage.
+    for item in &facts.outline {
+        if item.kind == OutlineKind::Function && !item.exported && let Ok(name) = std::str::from_utf8(&item.name) {
+            facts.definitions.remove(name);
+        }
+    }
+    Some(facts.definitions)
+}
+
+fn parse(source: &str, header: bool, cpp: Option<bool>) -> Facts {
     let source = source.strip_prefix('\u{feff}').unwrap_or(source);
     let lexed = lex(source);
     let t = &lexed.tokens;
@@ -343,7 +365,7 @@ pub(super) fn read(source: &str, header: bool) -> Facts {
         ..Default::default()
     };
     for token in t {
-        if let Token::Ident(x) = token
+        if cpp.is_none() && let Token::Ident(x) = token
             && facts.names.len() < NAMES
             && !facts.names.contains(x.as_str())
         {
@@ -388,6 +410,9 @@ pub(super) fn read(source: &str, header: bool) -> Facts {
     // as they open and close: a file of many braces costs no more per token.
     let mut closed_in = 0usize;
     let mut anonymous_in = 0usize;
+    let mut extern_c = false;
+    let mut statement_abi = None;
+    let mut statement_inline = false;
     // The statement being read at the top level.
     let mut statement_static = false;
     // `extern int counter;`: a variable other files use, unless the statement declares a function.
@@ -411,6 +436,7 @@ pub(super) fn read(source: &str, header: bool) -> Facts {
             Token::Punct('{') => {
                 let scope = next_scope.take().unwrap_or(Scope::Other);
                 match scope {
+                    Scope::Linkage { .. } => {}
                     Scope::Open { anonymous: true } => anonymous_in += 1,
                     Scope::Open { anonymous: false } => {}
                     _ => closed_in += 1,
@@ -422,18 +448,23 @@ pub(super) fn read(source: &str, header: bool) -> Facts {
             Token::Punct('}') => {
                 let closed = scopes.pop();
                 match closed {
+                    Some(Scope::Linkage { previous_c }) => extern_c = previous_c,
                     Some(Scope::Open { anonymous: true }) => anonymous_in -= 1,
                     Some(Scope::Open { anonymous: false }) | None => {}
                     Some(_) => closed_in -= 1,
                 }
                 // A function's body ends its statement; a type's goes on to its `;`.
                 if matches!(closed, Some(Scope::Other)) && closed_in == 0 && !typedef {
+                    statement_abi = None;
+                    statement_inline = false;
                     statement_static = false;
                     statement_extern = false;
                     statement_function = false;
                     last_name = None;
                 }
-                if matches!(closed, Some(Scope::Open { .. })) {
+                if matches!(closed, Some(Scope::Open { .. } | Scope::Linkage { .. })) {
+                    statement_abi = None;
+                    statement_inline = false;
                     statement_static = false;
                     statement_extern = false;
                     statement_function = false;
@@ -454,6 +485,8 @@ pub(super) fn read(source: &str, header: bool) -> Facts {
             Token::Punct('[') => squares += 1,
             Token::Punct(']') => squares = squares.saturating_sub(1),
             Token::Punct(';') if top => {
+                statement_abi = None;
+                statement_inline = false;
                 if typedef && let Some(name) = pointer_name.take().or(last_name.take()) {
                     add(&mut facts, OutlineKind::Type, &name, false, header && !anonymous);
                 } else if statement_extern
@@ -475,6 +508,7 @@ pub(super) fn read(source: &str, header: bool) -> Facts {
             Token::Punct(';') => next_scope = None,
             Token::Ident(w) if top && parens == 0 => match w.as_str() {
                 "static" => statement_static = true,
+                "inline" | "__inline" | "__forceinline" => statement_inline = true,
                 "typedef" => typedef = true,
                 "namespace" => {
                     // namespace a::b { … }, namespace { … }; an alias (`namespace fs = …;`) opens nothing.
@@ -490,11 +524,15 @@ pub(super) fn read(source: &str, header: bool) -> Facts {
                         continue;
                     }
                 }
-                "extern" if !matches!(t.get(k + 1), Some(Token::Value)) || !punct(k + 2, '{') => statement_extern = true,
-                "extern" => {
-                    next_scope = Some(Scope::Open { anonymous: false });
+                "extern" if matches!(t.get(k + 1), Some(Token::AbiC | Token::Value)) && punct(k + 2, '{') => {
+                    next_scope = Some(Scope::Linkage { previous_c: extern_c });
+                    extern_c = t[k + 1] == Token::AbiC;
                     k += 2;
                     continue;
+                }
+                "extern" => {
+                    statement_extern = true;
+                    statement_abi = match t.get(k + 1) { Some(Token::AbiC) => Some(true), Some(Token::Value) => Some(false), _ => None };
                 }
                 "template" if punct(k + 1, '<') => {
                     // Its parameters: what follows is the declaration.
@@ -583,8 +621,14 @@ pub(super) fn read(source: &str, header: bool) -> Facts {
                     // A definition's body is read on as any `{`; a method defined outside its
                     // class (`int Cache::get() {`) is counted where the class declares it.
                     let qualified = k >= 2 && punct(k - 1, ':') && punct(k - 2, ':');
-                    if !qualified && !typedef && typed_before(t, k) && function_end(t, k).is_some() {
+                    if !qualified && !typedef && typed_before(t, k) && let Some(end) = function_end(t, k) {
                         add(&mut facts, OutlineKind::Function, w, statement_static, !anonymous);
+                        if cpp.is_some_and(|cpp| !cpp || statement_abi.unwrap_or(extern_c))
+                            && !statement_static && !statement_inline && !anonymous && punct(end, '{')
+                            && facts.definitions.len() < OUTLINE
+                        {
+                            facts.definitions.insert(w.clone());
+                        }
                         statement_function = true;
                     }
                     last_name = Some(w.clone());
@@ -649,7 +693,7 @@ fn typed_before(t: &[Token], k: usize) -> bool {
                             return j > 0 && matches!(&t[j - 1], Token::Ident(m) if shouting(m));
                         }
                     }
-                    Token::Value | Token::Punct(',') => return false,
+                    Token::Value | Token::AbiC | Token::Punct(',') => return false,
                     _ => {}
                 }
                 if j == 0 {
@@ -668,7 +712,7 @@ fn typed_before(t: &[Token], k: usize) -> bool {
 /// follows the parameters is what a function's declaration can have. Parameters never
 /// start with a value: `std::string name("x");` is a variable.
 fn function_end(t: &[Token], k: usize) -> Option<usize> {
-    if matches!(t.get(k + 2), Some(Token::Value)) {
+    if matches!(t.get(k + 2), Some(Token::Value | Token::AbiC)) {
         return None;
     }
     let mut depth = 0usize;

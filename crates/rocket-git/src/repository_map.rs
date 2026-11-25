@@ -112,7 +112,7 @@ impl Default for MapOptions {
     }
 }
 /// The languages Modules reads. TypeScript is read as JavaScript, Kotlin with Java and
-/// C++ with C; the package's [`Dialect`] names which.
+/// C++, Objective-C and Objective-C++ with C; the package's [`Dialect`] names which.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ModuleLanguage {
     #[default]
@@ -122,7 +122,7 @@ pub enum ModuleLanguage {
     Go,
     /// Java and Kotlin: a unit is a package.
     Java,
-    /// C and C++: a unit is a file.
+    /// C-family sources and headers: a unit is a file.
     C,
     /// A unit is a namespace.
     CSharp,
@@ -146,6 +146,8 @@ pub enum Dialect {
     Kotlin,
     /// A C project with C++ files.
     Cpp,
+    ObjectiveC,
+    ObjectiveCpp,
 }
 /// A package Modules can read, named by its folder (empty for the top folder) and
 /// language: one folder can hold a Cargo package and a JavaScript project.

@@ -4,7 +4,7 @@
 //! changes against a base. Reads committed objects only; nothing is compiled or run.
 use super::owners::{CODEOWNERS_BYTES, CODEOWNERS_FILES, CodeOwners, Ownership, MatchWork};
 use super::*;
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 /// Code files one read takes; past this, the packages left are read when their folder
 /// is opened.
@@ -362,9 +362,17 @@ impl Repository {
                 })),
         );
         let mut crates = BTreeMap::new();
+        let mut builds = BTreeMap::new();
         for (path, text) in self.code_texts("read-manifests", &cargo_batch, cancel)? {
-            if let (Some(name), _) = cargo::manifest(&text) {
-                crates.insert(packages::parent(&path).to_vec(), name.replace('-', "_"));
+            if let (Some(name), _, build) = cargo::manifest_with_build(&text) {
+                let folder = packages::parent(&path);
+                if let Some(script) = build.and_then(|p| cargo::relative(folder, p.as_bytes()))
+                    && blobs.contains_key(script.as_slice())
+                    && within_package(&script, folder, &blobs)
+                {
+                    builds.insert(folder.to_vec(), script);
+                }
+                crates.insert(folder.to_vec(), name.replace('-', "_"));
             }
         }
         let small = self.code_texts("read-manifests", &small_batch, cancel)?;
@@ -421,7 +429,8 @@ impl Repository {
             packages_planned += 1;
             let (files, own): (BTreeSet<Vec<u8>>, Batch) = match other {
                 None => {
-                    let files = rust_files(&folder, &blobs);
+                    let mut files = rust_files(&folder, &blobs);
+                    if let Some(script) = builds.get(&folder) { files.insert(script.clone()); }
                     let own = files.iter().filter_map(|p| readable(&blobs, p)).collect();
                     (files, own)
                 }
@@ -514,7 +523,7 @@ impl Repository {
                         lines: &mut out.lines,
                         limited: &mut out.sources_limited,
                     };
-                    self.code_rust(&reference.folder, name, &files, &crate_names, &blobs, &mut read, &mut b, cancel)?;
+                    self.code_rust(&reference.folder, name, builds.get(&reference.folder).map(Vec::as_slice), &files, &crate_names, &blobs, &mut read, &mut b, cancel)?;
                 }
                 Some(i) => {
                     let names = Names {
@@ -628,6 +637,7 @@ impl Repository {
         &self,
         folder: &[u8],
         name: &str,
+        build: Option<&[u8]>,
         files: &BTreeSet<Vec<u8>>,
         crate_names: &HashMap<String, Vec<u8>>,
         blobs: &BTreeMap<&[u8], (ObjectId, usize)>,
@@ -637,6 +647,7 @@ impl Repository {
     ) -> Result<()> {
         let mut facts: HashMap<Vec<u8>, rust::Facts> = HashMap::new();
         for path in files {
+            cancel.check()?;
             if let Some(text) = read.texts.get(path) {
                 facts.insert(path.clone(), rust::read_with_budget(text, &mut read.budget.import_bytes));
             }
@@ -645,6 +656,10 @@ impl Repository {
         let (library, others) = rust_roots(folder, files);
         let mut roots: Vec<Vec<u8>> = library.iter().cloned().collect();
         roots.extend(others);
+        let native = match build {
+            Some(script) => self.native_definitions(folder, script, blobs, read, cancel)?,
+            None => BTreeMap::new(),
+        };
         for root in &roots {
             cancel.check()?;
             if !facts.contains_key(root) {
@@ -684,6 +699,20 @@ impl Repository {
                 (crate_modules, wanted) = modules::tree(root, &facts, &known);
             }
             let found = modules::links(&crate_modules, &facts, cancel)?;
+            if !native.is_empty() && Some(root.as_slice()) != build && root != &packages::join(folder, b"build.rs") {
+                for (m, module) in crate_modules.iter().enumerate() {
+                    cancel.check()?;
+                    if let Some(f) = facts.get(&module.file) {
+                        let declared = f.native.iter().map(|(_, _, symbol)| symbol);
+                        let used = found.native.range((m, String::new())..).take_while(|(at, _)| *at == m).map(|(_, symbol)| symbol);
+                        for symbol in declared.chain(used) {
+                            if let Some(Some(file)) = native.get(symbol) {
+                                b.link(&module.file, false, file, false, [symbol.clone()]);
+                            }
+                        }
+                    }
+                }
+            }
             for ((from, to), names) in found.uses {
                 b.link(&crate_modules[from].file, false, &crate_modules[to].file, false, names);
             }
@@ -711,6 +740,66 @@ impl Repository {
         *read.limited |= facts.values().any(|f| f.limited);
         Ok(())
     }
+
+    /// Match symbols only among literal inputs of this crate's build. An unread
+    /// input can hide a duplicate definition, so an incomplete set yields no links.
+    fn native_definitions(
+        &self, folder: &[u8], script: &[u8], blobs: &BTreeMap<&[u8], (ObjectId, usize)>,
+        read: &mut Read, cancel: &CancellationToken,
+    ) -> Result<BTreeMap<String, Option<Arc<[u8]>>>> {
+        let mut symbols = BTreeMap::new();
+        let Some(text) = read.texts.get(script) else { return Ok(symbols) };
+        let inputs = rust::native_inputs(text, |p| {
+            cargo::relative(packages::parent(script), p.as_bytes()).is_some_and(|path| blobs.contains_key(path.as_slice()))
+        });
+        let mut sources = BTreeMap::new();
+        let mut batch = Vec::new();
+        for (input, cpp) in inputs {
+            cancel.check()?;
+            let Some(path) = cargo::relative(folder, input.as_bytes()) else { return Ok(symbols) };
+            if !packages::c_file(&path) || cfamily::header(&path) || !within_package(&path, folder, blobs) { return Ok(symbols); }
+            let cpp = cpp || packages::cpp_file(&path) || path.ends_with(b".mm");
+            if let Some(previous) = sources.insert(path.clone(), cpp) {
+                if previous != cpp { return Ok(symbols); }
+                continue;
+            }
+            if !read.texts.contains_key(&path) {
+                let Some(entry) = readable(blobs, &path) else {
+                    *read.limited |= blobs.contains_key(path.as_slice());
+                    return Ok(symbols);
+                };
+                batch.push(entry);
+            }
+        }
+        if !read.budget.reserve(batch.len(), batch.iter().map(|e| e.2).sum()) {
+            *read.limited = true;
+            return Ok(symbols);
+        }
+        for (path, text) in self.code_texts("read-sources", &batch, cancel)? {
+            read.lines.insert(path.clone(), text.lines().count().max(1));
+            read.texts.insert(path, text);
+        }
+        for (path, cpp) in sources {
+            cancel.check()?;
+            let Some(text) = read.texts.get(&path) else { return Ok(BTreeMap::new()) };
+            let Some(definitions) = cfamily::definitions(text, cpp) else { *read.limited = true; return Ok(BTreeMap::new()) };
+            let path = Arc::<[u8]>::from(path);
+            for symbol in definitions {
+                symbols.entry(symbol).and_modify(|p| *p = None).or_insert_with(|| Some(path.clone()));
+            }
+        }
+        Ok(symbols)
+    }
+}
+
+/// The file belongs to this package, including when the repo root is a workspace.
+fn within_package(path: &[u8], folder: &[u8], blobs: &BTreeMap<&[u8], (ObjectId, usize)>) -> bool {
+    let mut parent = packages::parent(path);
+    while parent != folder {
+        if parent.is_empty() || blobs.contains_key(packages::join(parent, b"Cargo.toml").as_slice()) { return false; }
+        parent = packages::parent(parent);
+    }
+    true
 }
 
 /// The sources read so far, for a Rust package's `#[path]` rounds.

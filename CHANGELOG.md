@@ -12,6 +12,9 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Code Map follows Objective-C and Objective-C++ header imports and lists external Apple frameworks.
+  Folders also connects Rust foreign-function declarations and uses to matching native definitions in a Cargo package's build.
+
 - Code Map shows which committed PowerShell and Bash scripts load local helpers.
   Select a script in Modules to see its dependencies, or open Folders to trace loads across directories.
 

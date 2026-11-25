@@ -340,7 +340,11 @@
   "Java project · packages": "Проект Java · пакеты",
   "Java folder · packages": "Папка Java · пакеты",
   "C++ project · files": "Проект C++ · файлы",
+  "Objective-C project · files": "Проект Objective-C · файлы",
+  "Objective-C++ project · files": "Проект Objective-C++ · файлы",
   "C++ folder · files": "Папка C++ · файлы",
+  "Objective-C folder · files": "Папка Objective-C · файлы",
+  "Objective-C++ folder · files": "Папка Objective-C++ · файлы",
   "C project · files": "Проект C · файлы",
   "C folder · files": "Папка C · файлы",
   "C# project · namespaces": "Проект C# · пространства имён",
@@ -364,6 +368,18 @@
     "few": "{n} файла C++",
     "many": "{n} файлов C++",
     "other": "{n} файла C++"
+  },
+  "{n} Objective-C files": {
+    "one": "{n} файл Objective-C",
+    "few": "{n} файла Objective-C",
+    "many": "{n} файлов Objective-C",
+    "other": "{n} файла Objective-C"
+  },
+  "{n} Objective-C++ files": {
+    "one": "{n} файл Objective-C++",
+    "few": "{n} файла Objective-C++",
+    "many": "{n} файлов Objective-C++",
+    "other": "{n} файла Objective-C++"
   },
   "{n} C files": {
     "one": "{n} файл C",
@@ -392,7 +408,7 @@
   },
   "Bash scripts": "Скрипты Bash",
   "No package to read in this snapshot": "В этом снимке нет пакетов для чтения",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.": "Вид «Модули» читает Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell и Bash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell and Bash.": "Вид «Модули» читает Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell и Bash.",
   "The package to map": "Пакет для карты",
   "OUTSIDE": "ВНЕШНИЕ",
   "build ignore": "исключён из сборки",

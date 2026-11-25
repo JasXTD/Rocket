@@ -4081,7 +4081,8 @@ fn code_map_state(p:&rocket_ui::repository_map::MapPage)->Value {
         rocket_ui::repository_map::CodeItem::Files(None)=>json!("files:top")}};
     let picture=c.layout.as_ref().map(|l|json!({
         "placed":l.placed.iter().map(|q|json!({"item":item(&q.item),"open":q.open,"parent":q.parent,"chain":q.chain,"sub":q.paint.sub,"badge":q.paint.badge.map(|b|b.to_string()),"hatched":q.paint.hatched,"dashed":q.paint.dashed,"bands":q.paint.band.len()})).collect::<Vec<_>>(),
-        "arrows":l.arrows.iter().map(|a|json!({"from":item(&l.placed[a.from].item),"to":item(&l.placed[a.to].item),"files":a.files,"links":a.links,"up":a.up})).collect::<Vec<_>>(),
+        "arrows":l.arrows.iter().map(|a|json!({"from":item(&l.placed[a.from].item),"to":item(&l.placed[a.to].item),"files":a.files,"links":a.links,"up":a.up,
+            "names":a.names.iter().take(8).map(|n|n.chars().take(128).collect::<String>()).collect::<Vec<_>>()})).collect::<Vec<_>>(),
         "captions":l.captions.len(),"cut":l.cut,
         "legend":json!({"kinds":l.legend.kinds.iter().map(|k|format!("{k:?}")).collect::<Vec<_>>(),"most":l.legend.most,"owners":l.legend.owners.iter().map(|(_,n)|n.clone()).collect::<Vec<_>>(),"owners_from":l.legend.owners_from,"added":l.legend.added,"changed":l.legend.changed,"uses":l.legend.uses})}));
     json!({"colour":format!("{:?}",c.colour),"period":c.period.key(),"base":c.base,"changed_only":c.changed_only,

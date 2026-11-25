@@ -127,7 +127,7 @@ pub(super) fn c_file(path: &[u8]) -> bool {
 }
 /// Source and header extensions shared by the Code and Modules views.
 pub(super) fn c_extension(ext: &[u8]) -> bool {
-    ext.eq_ignore_ascii_case(b"c") || ext.eq_ignore_ascii_case(b"h") || ext.eq_ignore_ascii_case(b"inl") || cpp_extension(ext)
+    matches!(ext, b"m" | b"mm") || ext.eq_ignore_ascii_case(b"c") || ext.eq_ignore_ascii_case(b"h") || ext.eq_ignore_ascii_case(b"inl") || cpp_extension(ext)
 }
 /// A file only C++ has.
 pub(super) fn cpp_file(path: &[u8]) -> bool {
@@ -468,9 +468,13 @@ fn c(paths: &[&[u8]]) -> Vec<Found> {
     }
     for f in &mut list {
         f.files.sort();
-        if f.files.iter().any(|p| cpp_file(p)) {
-            f.dialect = Some(Dialect::Cpp);
-        }
+        f.dialect = if f.files.iter().any(|p| extension(p) == b"mm") {
+            Some(Dialect::ObjectiveCpp)
+        } else if f.files.iter().any(|p| extension(p) == b"m") {
+            Some(Dialect::ObjectiveC)
+        } else {
+            f.files.iter().any(|p| cpp_file(p)).then_some(Dialect::Cpp)
+        };
     }
     list
 }

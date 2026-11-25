@@ -387,7 +387,11 @@
   "Java project · packages": "مشروع Java · الحزم",
   "Java folder · packages": "مجلد Java · الحزم",
   "C++ project · files": "مشروع C++ · الملفات",
+  "Objective-C project · files": "مشروع Objective-C · الملفات",
+  "Objective-C++ project · files": "مشروع Objective-C++ · الملفات",
   "C++ folder · files": "مجلد C++ · الملفات",
+  "Objective-C folder · files": "مجلد Objective-C · الملفات",
+  "Objective-C++ folder · files": "مجلد Objective-C++ · الملفات",
   "C project · files": "مشروع C · الملفات",
   "C folder · files": "مجلد C · الملفات",
   "C# project · namespaces": "مشروع C# · مساحات الأسماء",
@@ -417,6 +421,22 @@
     "few": "عدد ملفات C++: {n}",
     "many": "عدد ملفات C++: {n}",
     "other": "عدد ملفات C++: {n}"
+  },
+  "{n} Objective-C files": {
+    "zero": "عدد ملفات Objective-C: {n}",
+    "one": "عدد ملفات Objective-C: {n}",
+    "two": "عدد ملفات Objective-C: {n}",
+    "few": "عدد ملفات Objective-C: {n}",
+    "many": "عدد ملفات Objective-C: {n}",
+    "other": "عدد ملفات Objective-C: {n}"
+  },
+  "{n} Objective-C++ files": {
+    "zero": "عدد ملفات Objective-C++: {n}",
+    "one": "عدد ملفات Objective-C++: {n}",
+    "two": "عدد ملفات Objective-C++: {n}",
+    "few": "عدد ملفات Objective-C++: {n}",
+    "many": "عدد ملفات Objective-C++: {n}",
+    "other": "عدد ملفات Objective-C++: {n}"
   },
   "{n} C files": {
     "zero": "عدد ملفات C: {n}",
@@ -453,7 +473,7 @@
   },
   "Bash scripts": "برامج Bash النصية",
   "No package to read in this snapshot": "لا توجد حزمة للقراءة في هذه اللقطة",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.": "يقرأ عرض الوحدات Rust وJavaScript وTypeScript وPython وGo وJava وKotlin وC وC++ وC# وPowerShell وBash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell and Bash.": "يقرأ عرض الوحدات Rust وJavaScript وTypeScript وPython وGo وJava وKotlin وC وC++ وObjective-C وObjective-C++ وC# وPowerShell وBash.",
   "The package to map": "الحزمة المراد رسم خريطتها",
   "OUTSIDE": "من الخارج",
   "build ignore": "مستثنى من البناء",

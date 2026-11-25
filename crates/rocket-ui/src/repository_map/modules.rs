@@ -188,6 +188,8 @@ impl Words {
             (ModuleLanguage::Go, _) => trn!(n, "{n} Go file", "{n} Go files"),
             (ModuleLanguage::Java, Some(_)) => trn!(n, "{n} Kotlin file", "{n} Kotlin files"),
             (ModuleLanguage::Java, None) => trn!(n, "{n} Java file", "{n} Java files"),
+            (ModuleLanguage::C, Some(Dialect::ObjectiveC)) => trn!(n, "{n} Objective-C file", "{n} Objective-C files"),
+            (ModuleLanguage::C, Some(Dialect::ObjectiveCpp)) => trn!(n, "{n} Objective-C++ file", "{n} Objective-C++ files"),
             (ModuleLanguage::C, Some(_)) => trn!(n, "{n} C++ file", "{n} C++ files"),
             (ModuleLanguage::C, None) => trn!(n, "{n} C file", "{n} C files"),
             (ModuleLanguage::CSharp, _) => trn!(n, "{n} C# file", "{n} C# files"),
@@ -198,6 +200,11 @@ impl Words {
     /// The package's own name for itself: "TypeScript project · modules".
     pub fn package_kind(self, manifest: bool) -> &'static str {
         let second = self.dialect.is_some();
+        match self.dialect {
+            Some(Dialect::ObjectiveC) => return if manifest { tr("Objective-C project · files") } else { tr("Objective-C folder · files") },
+            Some(Dialect::ObjectiveCpp) => return if manifest { tr("Objective-C++ project · files") } else { tr("Objective-C++ folder · files") },
+            _ => {}
+        }
         match (self.language, second, manifest) {
             (ModuleLanguage::Rust, ..) => tr("Cargo package · modules"),
             (ModuleLanguage::JavaScript, true, true) => tr("TypeScript project · modules"),
@@ -268,6 +275,8 @@ pub(super) fn language_name(language: ModuleLanguage, dialect: Option<Dialect>) 
         (ModuleLanguage::Go, _) => "Go",
         (ModuleLanguage::Java, Some(_)) => "Kotlin",
         (ModuleLanguage::Java, None) => "Java",
+        (ModuleLanguage::C, Some(Dialect::ObjectiveC)) => "Objective-C",
+        (ModuleLanguage::C, Some(Dialect::ObjectiveCpp)) => "Objective-C++",
         (ModuleLanguage::C, Some(_)) => "C++",
         (ModuleLanguage::C, None) => "C",
         (ModuleLanguage::CSharp, _) => "C#",
@@ -858,7 +867,7 @@ pub(super) fn body(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, comp
         icon(card.painter(), Rect::from_center_size(card.cursor().center_top() + vec2(0., 11.), vec2(22., 22.)), Icon::Braces, FAINT());
         card.add_space(28.);
         card.label(RichText::new(tr("No package to read in this snapshot")).font(semibold(14.)).color(TEXT()));
-        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.")).color(MUTED()));
+        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell and Bash.")).color(MUTED()));
         card.add_space(6.);
         if button(&mut card, widgets, "map-modules-show-folders", crate::i18n::tr("Show folders"), !covered) {
             emit(intents, MapIntent::CodeView(false));

@@ -25,9 +25,19 @@ or use **Expand all / Collapse all**, and it becomes a box holding its folders a
 files. A folder's own files show one by one up to eight; more share one dashed card,
 which opens the same way.
 
+To trace a Rust native call, expand the crate in **Folders**. Select the Rust file
+and follow its arrow to the C-family source. The arrow lists matching linker names.
+For example, Rocket's `rocket_spell_check` connects `macos.rs` to `macos.m`.
+The map follows `extern "C"` declarations, literal `#[link_name]` aliases and uses
+that resolve to those declarations. It reads the committed Cargo build script and
+recognizes direct `cc::Build::new().file(…).compile(…)` chains and Rocket's Cocoa
+build helper with literal source paths. A C++ or Objective-C++ definition needs
+explicit C linkage. Dynamic build logic, explicitly linked external libraries,
+file-private functions and ambiguous definitions stay unresolved.
+
 Arrows show which files use which. The map reads every package of the snapshot the way
 Modules reads one (Rust crates with their tests, examples and programs, JavaScript and
-TypeScript projects, Python packages, Go modules, Java and Kotlin, C and C++, C#
+TypeScript projects, Python packages, Go modules, Java and Kotlin, C, C++, Objective-C, Objective-C++, C#
 projects, and PowerShell and Bash scripts) and connects packages through the names
 they import: a Cargo package's crate
 name, a package.json name, another Python package or Go module of the repository, a Java
@@ -76,7 +86,7 @@ appear.
 
 **Modules** shows the modules of one package and which module uses which: a Rust
 crate, a JavaScript or TypeScript project, a Python package, the packages of a Go module
-or of a Java or Kotlin project, the namespaces of a C# project, the files of a C or C++
+or of a Java or Kotlin project, the namespaces of a C# project, the files of a C-family
 project, or the PowerShell or Bash scripts in a top-level folder. The button beside
 **Packages · Folders · Modules** lists the snapshot's packages by language. Choose
 one there, or select **Show modules** in a Cargo
@@ -142,7 +152,11 @@ The other languages are read the same way, as text within the same limits:
   connected by imports (`static` and Kotlin's `as` too), by the names a file uses through a
   `*` import, and by names written out with their package. Test source sets (`src/test`,
   `src/androidTest` and the like), `module-info.java` and Kotlin scripts are left out.
-- **C and C++**, read together. A project is the top-most folder with a CMake, Meson,
+- **C, C++, Objective-C and Objective-C++**, read together. The reader recognizes
+  `.m` and `.mm` source files by extension. A literal `#import "Bridge.h"` or
+  `#include "Bridge.h"` connects to the committed header. An SDK import such as
+  `#import <AppKit/AppKit.h>` appears under **Outside** when the header is external.
+  A project is the top-most folder with a CMake, Meson,
   Make or similar build (the builds deeper down are parts of it); files no build holds make
   one project. Each file is a module and its folders group their files. `#include "…"` is
   looked for beside the file, then, as include folders would find it, by the end of a path

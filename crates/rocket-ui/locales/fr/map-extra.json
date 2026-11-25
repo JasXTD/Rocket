@@ -295,7 +295,11 @@
   "Java project · packages": "Projet Java · paquets",
   "Java folder · packages": "Dossier Java · paquets",
   "C++ project · files": "Projet C++ · fichiers",
+  "Objective-C project · files": "Projet Objective-C · fichiers",
+  "Objective-C++ project · files": "Projet Objective-C++ · fichiers",
   "C++ folder · files": "Dossier C++ · fichiers",
+  "Objective-C folder · files": "Dossier Objective-C · fichiers",
+  "Objective-C++ folder · files": "Dossier Objective-C++ · fichiers",
   "C project · files": "Projet C · fichiers",
   "C folder · files": "Dossier C · fichiers",
   "C# project · namespaces": "Projet C# · espaces de noms",
@@ -313,6 +317,14 @@
   "{n} C++ files": {
     "one": "{n} fichier C++",
     "other": "{n} fichiers C++"
+  },
+  "{n} Objective-C files": {
+    "one": "{n} fichier Objective-C",
+    "other": "{n} fichiers Objective-C"
+  },
+  "{n} Objective-C++ files": {
+    "one": "{n} fichier Objective-C++",
+    "other": "{n} fichiers Objective-C++"
   },
   "{n} C files": {
     "one": "{n} fichier C",
@@ -333,7 +345,7 @@
   },
   "Bash scripts": "Scripts Bash",
   "No package to read in this snapshot": "Aucun paquet à lire dans cet instantané",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.": "La vue Modules lit Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell et Bash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell and Bash.": "La vue Modules lit Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell et Bash.",
   "The package to map": "Le paquet à cartographier",
   "OUTSIDE": "EXTERNES",
   "build ignore": "exclu des builds",
