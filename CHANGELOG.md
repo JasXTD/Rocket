@@ -12,6 +12,9 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Code Map shows which committed PowerShell and Bash scripts load local helpers.
+  Select a script in Modules to see its dependencies, or open Folders to trace loads across directories.
+
 - Full stash now stops before it can erase edits hidden by index flags.
 - Conflict resolution recognizes custom Git marker widths and preserves Markdown heading underlines from the conflict sides.
 - Branch Review keeps the selected branch when a tag has the same name.

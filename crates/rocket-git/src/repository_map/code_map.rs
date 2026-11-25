@@ -82,7 +82,7 @@ pub fn file_kind(path: &[u8]) -> FileKind {
     }
     // Names like CHANGES or LICENSE-MIT are documents unless they are code: changes.rs
     // is code.
-    let is_code = OTHER_CODE.contains(&ext.as_str()) || packages::c_extension(ext.as_bytes());
+    let is_code = OTHER_CODE.contains(&ext.as_str()) || packages::c_extension(ext.as_bytes()) || packages::script_language(path).is_some();
     let doc_name = !is_code && DOC_NAMES.iter().any(|d| stem == *d || name == *d || name.starts_with(&format!("{d}-")) || name.starts_with(&format!("{d}_")));
     if DOCS.contains(&ext.as_str()) || doc_name {
         return FileKind::Docs;
@@ -154,7 +154,7 @@ pub struct CodeLinks {
     /// Code files read.
     pub files: usize,
     pub limited: bool,
-    /// A source read or Rust import expansion reached its limit inside a selected package.
+    /// Reading sources or following imports reached a limit inside a selected package.
     pub sources_limited: bool,
     /// Absent without a CODEOWNERS file, or when this read was for one folder.
     pub owners: Option<OwnerRules>,
@@ -391,7 +391,7 @@ impl Repository {
                     }
                 }
                 // Java's packages and C#'s namespaces are named by their files, once read.
-                ModuleLanguage::Java | ModuleLanguage::C | ModuleLanguage::CSharp => {}
+                ModuleLanguage::Java | ModuleLanguage::C | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash => {}
             }
         }
         // Longest module paths first, so a nested module wins over its parent.
@@ -530,7 +530,7 @@ impl Repository {
                         go_folders: &go_folders,
                         top_go: &top_go,
                     };
-                    code_other(&others[i], &small, &names, &blobs, &texts, &mut b, cancel)?;
+                    out.sources_limited |= code_other(&others[i], &small, &names, &blobs, &texts, &mut b, cancel)?;
                 }
             }
             out.packages.push(reference);
@@ -558,8 +558,8 @@ impl Repository {
             let input = part.iter().flat_map(|(_, id, _)| id.as_str().bytes().chain(Some(b'\n'))).collect();
             let read = self.runner.step("map-code-links", step, || self.map_read(&args(&["cat-file", "--batch", "--buffer"]), input, cancel))?;
             for ((path, _, _), blob) in part.iter().zip(parse_blobs(&read, part, cancel)?) {
-                if let Ok(text) = std::str::from_utf8(blob) {
-                    out.insert(path.clone(), text.to_owned());
+                if let Some(text) = source_text(path, blob) {
+                    out.insert(path.clone(), text);
                 }
             }
             start = end;
@@ -748,7 +748,7 @@ fn rust_files(folder: &[u8], blobs: &BTreeMap<&[u8], (ObjectId, usize)>) -> BTre
     out
 }
 
-/// One JavaScript, TypeScript, Python or Go package, read as Modules reads it.
+/// Connect a non-Cargo group as Modules reads it. Return whether its source analysis was bounded.
 fn code_other(
     f: &packages::Found,
     small: &BTreeMap<Vec<u8>, String>,
@@ -757,7 +757,7 @@ fn code_other(
     texts: &BTreeMap<Vec<u8>, String>,
     b: &mut Builder,
     cancel: &CancellationToken,
-) -> Result<()> {
+) -> Result<bool> {
     let own: BTreeMap<Vec<u8>, String> = f.files.iter().filter_map(|p| texts.get(p).map(|t| (p.clone(), t.clone()))).collect();
     let module = names.go.iter().find(|(_, folder)| *folder == f.folder).map(|(m, _)| m.clone()).unwrap_or_default();
     let built = match f.language {
@@ -770,6 +770,7 @@ fn code_other(
         ModuleLanguage::Java => units::java(&own, &f.files, cancel)?,
         ModuleLanguage::C => units::c(&f.folder, &own, &f.files, names.known, names.headers, cancel)?,
         ModuleLanguage::CSharp => units::csharp(&own, cancel)?,
+        ModuleLanguage::PowerShell | ModuleLanguage::Bash => units::scripts(f.language, &f.folder, &own, names.known, cancel)?,
         ModuleLanguage::Go | ModuleLanguage::Rust => units::go(&f.folder, &module, &own, &f.files, cancel)?,
     };
     // A unit is a file, or a folder for a Go or Java package and a C# namespace. The
@@ -798,7 +799,7 @@ fn code_other(
         let from = ends(&built.units[*u].path);
         for name in outside {
             // A relative import or an include into another project names the file itself.
-            if matches!(f.language, ModuleLanguage::JavaScript | ModuleLanguage::C) && names.known.contains(name.as_bytes()) {
+            if matches!(f.language, ModuleLanguage::JavaScript | ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash) && names.known.contains(name.as_bytes()) {
                 for (a, a_folder) in &from {
                     b.link(a, *a_folder, name.as_bytes(), false, [name.clone()]);
                 }
@@ -811,7 +812,7 @@ fn code_other(
                 ModuleLanguage::Python => names.python.get(name.split('.').next().unwrap_or_default()).cloned(),
                 ModuleLanguage::Java => names.java.get(name).cloned(),
                 ModuleLanguage::CSharp => names.csharp.get(name).cloned(),
-                ModuleLanguage::C => None,
+                ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash => None,
                 ModuleLanguage::Go | ModuleLanguage::Rust => names.go.iter().find(|(m, _)| name == m || name.starts_with(&format!("{m}/"))).map(|(m, folder)| {
                     let rest = name[m.len()..].trim_start_matches('/');
                     let package = if rest.is_empty() { folder.clone() } else { packages::join(folder, rest.as_bytes()) };
@@ -836,7 +837,7 @@ fn code_other(
             }
         }
     }
-    Ok(())
+    Ok(built.limited)
 }
 
 struct Names<'a> {

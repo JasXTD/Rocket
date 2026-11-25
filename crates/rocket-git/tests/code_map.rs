@@ -20,6 +20,70 @@ fn pairs(links: &CodeLinks) -> Vec<String> {
 }
 
 #[test]
+fn script_loads_link_only_committed_helpers_in_both_maps() {
+    isolated("ROCKET_CODE_MAP_TEST", "script_loads_link_only_committed_helpers_in_both_maps", || {
+        let f = Fixture::new();
+        let ps = ". (Join-Path $PSScriptRoot 'lib/補 助.ps1')\r\nImport-Module \"$PSScriptRoot/../shared/module.psm1\"\r\n";
+        let utf16: Vec<_> = [0xff, 0xfe].into_iter().chain(ps.encode_utf16().flat_map(u16::to_le_bytes)).collect();
+        f.write("tools/build.ps1", utf16);
+        f.write("tools/lib/補 助.ps1", "# committed helper\n");
+        f.write("shared/module.psm1", "# committed module\n");
+        f.write("tools/build.sh", "root=$(cd \"$(dirname \"$0\")/..\" && pwd -P)\nsource \"$root/shared/helper.bash\"\n. './lib/local.sh'\n");
+        f.write("tools/lib/local.sh", "# committed script\n");
+        f.write("shared/helper.bash", "# committed shell helper\n");
+        f.commit("script loads");
+        let tip = head(&f);
+        f.write("tools/build.ps1", ". \"$PSScriptRoot/untracked.ps1\"\n");
+        f.write("tools/untracked.ps1", "# local only\n");
+        let repo = f.repo();
+        let all = repo.code_links(&tip, None, &token()).unwrap();
+        let paths = pairs(&all);
+        assert_eq!(paths, [
+            "tools/build.ps1 -> shared/module.psm1", "tools/build.ps1 -> tools/lib/補 助.ps1",
+            "tools/build.sh -> shared/helper.bash", "tools/build.sh -> tools/lib/local.sh",
+        ]);
+        let subset = repo.code_links(&tip, Some(&[b"tools".to_vec()]), &token()).unwrap();
+        assert_eq!(paths, pairs(&subset));
+        assert_eq!(subset.packages.len(), 2);
+        for package in subset.packages {
+            let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, package: Some(package), ..Default::default() }, &token()).unwrap();
+            let edges: Vec<_> = map.links.iter().filter(|e| e.kind == MapLinkKind::DependsOn).collect();
+            assert_eq!(edges.len(), 1);
+            let e = edges[0];
+            let ps = map.nodes[e.from].path.as_deref() == Some(b"tools/build.ps1");
+            let helper: &[u8] = if ps { "tools/lib/補 助.ps1".as_bytes() } else { b"tools/lib/local.sh" };
+            assert_eq!(map.nodes[e.to].path.as_deref(), Some(helper));
+            let outside = &map.modules.as_ref().unwrap().outside[&e.from];
+            assert_eq!(outside, &[if ps { b"shared/module.psm1".to_vec() } else { b"shared/helper.bash".to_vec() }]);
+        }
+        let cancelled = token();
+        cancelled.cancel();
+        assert!(matches!(repo.code_links(&tip, None, &cancelled), Err(Error::Cancelled)));
+    });
+}
+
+#[test]
+fn script_load_budget_preserves_known_edges_and_marks_partial_reads() {
+    isolated("ROCKET_CODE_MAP_TEST", "script_load_budget_preserves_known_edges_and_marks_partial_reads", || {
+        let f = Fixture::new();
+        f.write("ci/main.sh", "source ./helper.sh\n".repeat(13_000));
+        f.write("ci/helper.sh", "# helper\n");
+        f.commit("repeated loads");
+        let repo = f.repo();
+        let tip = head(&f);
+        let mut all = repo.code_links(&tip, None, &token()).unwrap();
+        let partial = repo.code_links(&tip, Some(&[b"ci".to_vec()]), &token()).unwrap();
+        assert!(partial.sources_limited);
+        all.merge(partial);
+        assert!(all.limited && all.sources_limited);
+        assert_eq!(pairs(&all), ["ci/main.sh -> ci/helper.sh"]);
+        let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, ..Default::default() }, &token()).unwrap();
+        assert!(map.limited);
+        assert_eq!(map.links.iter().filter(|e| e.kind == MapLinkKind::DependsOn).count(), 1);
+    });
+}
+
+#[test]
 fn empty_packages_are_bounded_and_can_be_read_later() {
     isolated("ROCKET_CODE_MAP_TEST", "empty_packages_are_bounded_and_can_be_read_later", || {
         let f = Fixture::new();

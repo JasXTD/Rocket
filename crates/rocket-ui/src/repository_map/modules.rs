@@ -40,7 +40,7 @@ impl Words {
         match self.language {
             ModuleLanguage::Go | ModuleLanguage::Java => Noun::Package,
             ModuleLanguage::CSharp => Noun::Namespace,
-            ModuleLanguage::C => Noun::File,
+            ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash => Noun::File,
             ModuleLanguage::Rust | ModuleLanguage::JavaScript | ModuleLanguage::Python => Noun::Module,
         }
     }
@@ -191,6 +191,8 @@ impl Words {
             (ModuleLanguage::C, Some(_)) => trn!(n, "{n} C++ file", "{n} C++ files"),
             (ModuleLanguage::C, None) => trn!(n, "{n} C file", "{n} C files"),
             (ModuleLanguage::CSharp, _) => trn!(n, "{n} C# file", "{n} C# files"),
+            (ModuleLanguage::PowerShell, _) => trn!(n, "{n} PowerShell file", "{n} PowerShell files"),
+            (ModuleLanguage::Bash, _) => trn!(n, "{n} Bash file", "{n} Bash files"),
         }
     }
     /// The package's own name for itself: "TypeScript project · modules".
@@ -215,6 +217,8 @@ impl Words {
             (ModuleLanguage::C, false, false) => tr("C folder · files"),
             (ModuleLanguage::CSharp, _, true) => tr("C# project · namespaces"),
             (ModuleLanguage::CSharp, _, false) => tr("C# folder · namespaces"),
+            (ModuleLanguage::PowerShell, ..) => tr("PowerShell scripts"),
+            (ModuleLanguage::Bash, ..) => tr("Bash scripts"),
         }
     }
     /// The keyword a declaration is written with. A Java project mostly in Kotlin shows
@@ -267,6 +271,8 @@ pub(super) fn language_name(language: ModuleLanguage, dialect: Option<Dialect>) 
         (ModuleLanguage::C, Some(_)) => "C++",
         (ModuleLanguage::C, None) => "C",
         (ModuleLanguage::CSharp, _) => "C#",
+        (ModuleLanguage::PowerShell, _) => "PowerShell",
+        (ModuleLanguage::Bash, _) => "Bash",
     }
 }
 /// A package's name; one at the top of the repository may have none.
@@ -530,7 +536,7 @@ impl Units {
 pub(super) fn name(data: &RepositoryMap, i: usize) -> String {
     let n = &data.nodes[i];
     // JavaScript and C files by their names, Java packages and C# namespaces by theirs below the part all share.
-    let by_label = data.modules.as_ref().is_some_and(|m| matches!(m.language, ModuleLanguage::JavaScript | ModuleLanguage::C | ModuleLanguage::Java | ModuleLanguage::CSharp));
+    let by_label = data.modules.as_ref().is_some_and(|m| matches!(m.language, ModuleLanguage::JavaScript | ModuleLanguage::C | ModuleLanguage::Java | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash));
     match n.key.strip_prefix(b"module:") {
         Some(path) if !path.is_empty() && !by_label => label(path),
         _ => label(&n.label),
@@ -852,7 +858,7 @@ pub(super) fn body(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, comp
         icon(card.painter(), Rect::from_center_size(card.cursor().center_top() + vec2(0., 11.), vec2(22., 22.)), Icon::Braces, FAINT());
         card.add_space(28.);
         card.label(RichText::new(tr("No package to read in this snapshot")).font(semibold(14.)).color(TEXT()));
-        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.")).color(MUTED()));
+        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.")).color(MUTED()));
         card.add_space(6.);
         if button(&mut card, widgets, "map-modules-show-folders", crate::i18n::tr("Show folders"), !covered) {
             emit(intents, MapIntent::CodeView(false));

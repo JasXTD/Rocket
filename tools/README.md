@@ -172,6 +172,7 @@ Mermaid review/new-file safety, external changes, Unicode and compact windows.
 The design preview is `tools/mockups/map-exploration/preview.html`.
 
 After `Build-Local.ps1 -Offline`, run `node tools/tests/test-mcp-repository-map.cjs`.
+Use `--scripts-only` for just the PowerShell and Bash helper-loading cases.
 It tests the native Code, Git history and People pages through an isolated
 localhost MCP profile using synthetic local repositories. It covers Unicode,
 Cargo path links, merge parents, canonical authors, compact detail drawers,

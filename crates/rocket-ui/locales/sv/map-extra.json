@@ -322,8 +322,18 @@
     "one": "{n} C#-fil",
     "other": "{n} C#-filer"
   },
+  "{n} PowerShell files": {
+    "one": "{n} PowerShell-fil",
+    "other": "{n} PowerShell-filer"
+  },
+  "PowerShell scripts": "PowerShell-skript",
+  "{n} Bash files": {
+    "one": "{n} Bash-fil",
+    "other": "{n} Bash-filer"
+  },
+  "Bash scripts": "Bash-skript",
   "No package to read in this snapshot": "Inget paket att läsa i den här ögonblicksbilden",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.": "Vyn Moduler läser Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ och C#.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.": "Vyn Moduler läser Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell och Bash.",
   "The package to map": "Paketet att kartlägga",
   "OUTSIDE": "UTANFÖR",
   "build ignore": "utesluten ur byggen",

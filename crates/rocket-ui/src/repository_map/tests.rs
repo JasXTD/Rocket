@@ -1522,6 +1522,14 @@ fn modules_java_packages_stand_alone_and_each_language_names_its_units() {
         let c = modules::Words { language: ModuleLanguage::C, dialect: None };
         assert_eq!((c.find(), c.legend(4, 1)), ("Find a file", "Files 4 · links 1 · arrows point to what is used".to_owned()));
         assert_eq!((c.files(3), c.package_kind(false)), ("3 C files".to_owned(), "C folder · files"));
+        for (language, name) in [(ModuleLanguage::PowerShell, "PowerShell"), (ModuleLanguage::Bash, "Bash")] {
+            let scripts = modules::Words { language, dialect: None };
+            assert_eq!(scripts.find(), "Find a file");
+            assert_eq!(scripts.files(1), format!("1 {name} file"));
+            assert_eq!(scripts.files(2), format!("2 {name} files"));
+            assert_eq!(scripts.package_kind(false), format!("{name} scripts"));
+            assert_eq!(modules::language_name(language, None), name);
+        }
         let keywords: Vec<&str> = [OutlineKind::Function, OutlineKind::Macro, OutlineKind::Type, OutlineKind::Struct, OutlineKind::Var].iter().map(|k| c.keyword(*k)).collect();
         assert_eq!(keywords, ["function", "#define", "typedef", "struct", "extern"]);
         let cpp = modules::Words { language: ModuleLanguage::C, dialect: Some(Dialect::Cpp) };

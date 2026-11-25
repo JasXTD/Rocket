@@ -16,6 +16,7 @@ mod owners;
 mod packages;
 mod python;
 mod rust;
+mod scripts;
 mod units;
 pub use code_map::{
     CODE_HISTORY_COMMITS, CODE_MAP_FILES, CODE_MAP_PACKAGES, ChangesOutcome, CodeChanges, CodeEnd, CodeHistory, CodeLink, CodeLinks, FileKind, HistoryCommit, OwnerRules, file_kind,
@@ -33,6 +34,24 @@ const MAP_PATHS: usize = 100_000;
 const EVIDENCE: usize = 24;
 const LABEL_BYTES: usize = 4096;
 
+/// Windows PowerShell also writes scripts as BOM-marked UTF-16. Other source
+/// readers keep their original UTF-8 contract. Git read budgets use the blob size.
+fn source_text(path: &[u8], bytes: &[u8]) -> Option<String> {
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return Some(text.to_owned());
+    }
+    if packages::script_language(path) != Some(ModuleLanguage::PowerShell) { return None; }
+    let (little, body) = match bytes {
+        [0xff, 0xfe, rest @ ..] => (true, rest),
+        [0xfe, 0xff, rest @ ..] => (false, rest),
+        _ => return None,
+    };
+    let words = body.chunks_exact(2);
+    if !words.remainder().is_empty() { return None; }
+    char::decode_utf16(words.map(|p| if little { u16::from_le_bytes([p[0], p[1]]) } else { u16::from_be_bytes([p[0], p[1]]) }))
+        .collect::<std::result::Result<String, _>>().ok()
+}
+
 #[derive(Default)]
 struct AreaChanges {
     commits: usize,
@@ -46,7 +65,7 @@ pub enum MapKind {
     History,
     People,
     /// One package's modules and which uses which: Rust, JavaScript or TypeScript,
-    /// Python, Go, Java or Kotlin, C or C++, or C#.
+    /// Python, Go, Java or Kotlin, C or C++, C#, PowerShell or Bash.
     Modules,
 }
 impl MapKind {
@@ -107,13 +126,15 @@ pub enum ModuleLanguage {
     C,
     /// A unit is a namespace.
     CSharp,
+    /// A unit is a script or helper file.
+    PowerShell,
+    Bash,
 }
 impl ModuleLanguage {
-    /// Go's and Java's packages and C#'s namespaces stand alone: one inside another (by
-    /// folder or by name) is another, so nothing is counted as inside another. The other
-    /// languages nest like folders.
+    /// These units are independent. Their folders organize the list, while arrows
+    /// point to individual packages, namespaces or script files.
     pub fn standalone(self) -> bool {
-        matches!(self, Self::Go | Self::Java | Self::CSharp)
+        matches!(self, Self::Go | Self::Java | Self::CSharp | Self::PowerShell | Self::Bash)
     }
 }
 /// The second language a package of one is written in, which names the package.

@@ -434,8 +434,26 @@
     "many": "عدد ملفات C#: {n}",
     "other": "عدد ملفات C#: {n}"
   },
+  "{n} PowerShell files": {
+    "zero": "عدد ملفات PowerShell: {n}",
+    "one": "عدد ملفات PowerShell: {n}",
+    "two": "عدد ملفات PowerShell: {n}",
+    "few": "عدد ملفات PowerShell: {n}",
+    "many": "عدد ملفات PowerShell: {n}",
+    "other": "عدد ملفات PowerShell: {n}"
+  },
+  "PowerShell scripts": "برامج PowerShell النصية",
+  "{n} Bash files": {
+    "zero": "عدد ملفات Bash: {n}",
+    "one": "عدد ملفات Bash: {n}",
+    "two": "عدد ملفات Bash: {n}",
+    "few": "عدد ملفات Bash: {n}",
+    "many": "عدد ملفات Bash: {n}",
+    "other": "عدد ملفات Bash: {n}"
+  },
+  "Bash scripts": "برامج Bash النصية",
   "No package to read in this snapshot": "لا توجد حزمة للقراءة في هذه اللقطة",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.": "يقرأ عرض الوحدات Rust وJavaScript وTypeScript وPython وGo وJava وKotlin وC وC++ وC#.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.": "يقرأ عرض الوحدات Rust وJavaScript وTypeScript وPython وGo وJava وKotlin وC وC++ وC# وPowerShell وBash.",
   "The package to map": "الحزمة المراد رسم خريطتها",
   "OUTSIDE": "من الخارج",
   "build ignore": "مستثنى من البناء",

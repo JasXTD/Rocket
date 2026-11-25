@@ -4,10 +4,11 @@ const crypto=require('node:crypto'),net=require('node:net'),assert=require('node
 const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');
 const root=path.resolve('work/mcp-fixtures/repository-map-'+crypto.randomUUID().replaceAll('-',''));
 const profile=path.join(root,'http-profile'),branch='rocket-ui-test/repository-map';
-const evidence=path.resolve('tools/maintenance/repository-map-redesign-20261105');
+const scriptsOnly=process.argv.includes('--scripts-only');
+const evidence=path.resolve('tools/maintenance',scriptsOnly?'script-code-map':'repository-map-redesign-20261105');
 const version=fs.readFileSync('Cargo.toml','utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([^"]+)"/)[1];
 const edgesOnly=process.argv.includes('--edges-only'),privateIds=[];
-const report={passed:false,version,root,scope:edgesOnly?'edges-only':'full-map',cases:[]};
+const report={passed:false,version,root,scope:scriptsOnly?'scripts-only':edgesOnly?'edges-only':'full-map',cases:[]};
 fs.mkdirSync(root,{recursive:true});fs.mkdirSync(evidence,{recursive:true});
 fs.writeFileSync(path.join(root,'rocket-private-state'),'synthetic-content-only-v1\n');
 fs.mkdirSync(path.join(root,'empty-template'));fs.writeFileSync(path.join(root,'empty.config'),'');
@@ -48,6 +49,77 @@ async function closeWindow(){await client.tool('rocket_close');await until(s=>['
 function snapshot(f){const files={};function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){if(e.name==='.git')continue;const p=path.join(dir,e.name);if(e.isDirectory())walk(p);else files[path.relative(f.repo,p)]=hash(p);}}walk(f.repo);return {head:f.git(['rev-parse','HEAD']),index:hash(path.join(f.repo,'.git/index')),config:hash(path.join(f.repo,'.git/config')),files};}
 function checkBounds(){for(const c of state.controls.filter(c=>c.id.startsWith('map-')))assert(c.rect[0]>=0&&c.rect[1]>=0&&c.rect[2]<=state.viewport[0]+1&&c.rect[3]<=state.viewport[1]+1,'Offscreen '+JSON.stringify(c));}
 const FILE='应用/src/結果 🚀 é.rs';
+async function scriptLoads(){
+ const f=fixture('script helpers 資料');
+ f.write('tools/build.ps1',[
+  ". (Join-Path $PSScriptRoot 'lib/補 助.ps1')",
+  'Import-Module -Name "$PSScriptRoot/../shared/flags.psm1"',
+  '& "$PSScriptRoot/run.ps1"',
+  "$example = @'",". './decoy.ps1'","'@",
+ ].join('\n'));
+ f.write('tools/lib/補 助.ps1','Set-Content "$PSScriptRoot/map-executed" unexpected\n');
+ f.write('tools/run.ps1','# helper\n'); f.write('tools/decoy.ps1','# quoted example\n');
+ f.write('shared/flags.psm1','# static module\n');
+ f.write('tools/build.sh',[
+  'root=$(cd "$(dirname "$0")/.." && pwd -P)','source "$root/shared/flags.bash"',
+  ". './lib/本 地.sh'","cat <<'EXAMPLE'",'source ./decoy.sh','EXAMPLE',
+  'source "$runtime/decoy.sh"',
+ ].join('\n'));
+ f.write('tools/lib/本 地.sh','echo unexpected > map-executed\n');
+ f.write('tools/decoy.sh','# quoted example\n'); f.write('shared/flags.bash','# helper\n');
+ const tip=f.commit('helper map fixture');
+ f.write('tools/build.ps1',". './untracked.ps1'\n"); f.write('tools/untracked.ps1','# keep me\n');
+ const before=snapshot(f);
+ await open(f);
+ await until(()=>map().data?.tip===tip && map().code_map?.links && !map().code_map.running,'Folder links');
+ assert.equal(map().code_map.links.links,5);
+ const shared=map().data.nodes.find(n=>n.path==='shared');
+ const tools=map().data.nodes.find(n=>n.path==='tools');
+ assert(map().code_map.picture.arrows.some(a=>a.from===tools.index && a.to===shared.index && a.files===2),'both callers load helpers from shared');
+ passed('Folders draws five committed loads, including the two callers that use shared');
+ await click('map-mode-modules');
+ await until(()=>map().data?.kind==='Modules' && !map().running,'Module picker');
+ for(const [language,caller,helpers,outside] of [
+  ['PowerShell','tools/build.ps1',['tools/lib/補 助.ps1','tools/run.ps1'],'shared/flags.psm1'],
+  ['Bash','tools/build.sh',['tools/lib/本 地.sh'],'shared/flags.bash'],
+ ]){
+  const index=map().data.module_packages.findIndex(p=>p.language===language && p.folder==='tools');
+  assert(index>=0,language+' group missing');
+  if(map().package!=='tools'||map().package_language!==language){
+   await click('map-module-package'); await click('map-module-package-'+index);
+  }
+  await until(()=>!map().running && map().data?.modules?.language===language && map().package==='tools',language+' scripts');
+  const data=map().data, from=data.nodes.find(n=>n.path===caller);
+  assert(from,caller); assert(!data.nodes.some(n=>n.path==='tools/untracked.ps1'));
+  assert.deepEqual(data.links.filter(l=>l.kind==='DependsOn').map(l=>{
+   assert.equal(l.from,from.index); return data.nodes[l.to].path;
+  }).sort(),helpers);
+  assert.deepEqual(data.modules.outside.find(o=>o.node===from.index)?.names,[outside]);
+  await click('map-module-'+from.index); assert.equal(map().selected,from.index);
+  for(const helper of helpers) assert(map().visible.includes(data.nodes.find(n=>n.path===helper).index));
+  const helper=data.nodes.find(n=>n.path===helpers[0]);
+  await click('map-node-'+helper.index); assert.equal(map().selected,helper.index);
+  assert(map().visible.includes(from.index) && map().captions.some(c=>c.what==='UsedBy' && c.count===1));
+  passed(language+' picker, directed file links, cross-folder helper and navigation from caller to helper and back');
+ }
+ assert.deepEqual(snapshot(f),before);
+ const g=fixture('ambiguous shell');
+ g.write('start/main.sh','source ./lib.sh\nsource global.sh\nsource "$(missing)/choice.sh"\n. ./link.sh\n. "${BASH_SOURCE[0]%/*}/../shared/environment"\n');
+ g.write('lib.sh','# root candidate\n'); g.write('start/lib.sh','# sibling candidate\n');
+ g.write('global.sh','# PATH candidate\n');
+ g.write('shared/environment','# explicitly sourced extensionless helper\n');
+ g.commit('ambiguous paths');
+ const linkBlob=g.git(['hash-object','-w','--stdin'],'../global.sh');
+ g.git(['update-index','--add','--cacheinfo','120000',linkBlob,'start/link.sh']);
+ g.git(['commit','-m','symlink in snapshot']);
+ const second=g.git(['rev-parse','HEAD']);
+ await open(g);
+ await until(()=>map().data?.tip===second && map().code_map?.links && !map().code_map.running,'Second repository');
+ assert.equal(map().code_map.links.links,1);
+ const folderId=name=>map().data.nodes.find(n=>n.path===name).index;
+ assert(map().code_map.picture.arrows.some(a=>a.from===folderId('start') && a.to===folderId('shared')));
+ passed('A second checkout links an explicit extensionless helper and skips ambiguous, PATH, dynamic and symlink loads. Local edits and helper contents were preserved');
+}
 async function run(){try{
  const exe=path.resolve('target/release/rocket-mcp.exe');report.executable_sha256=hash(exe);cp.execFileSync(exe,['--init-http',profile,root],{env,windowsHide:true});
  const listener=net.createServer();await new Promise(r=>listener.listen(0,'127.0.0.1',r));const port=listener.address().port;await new Promise(r=>listener.close(r));
@@ -55,6 +127,7 @@ async function run(){try{
  const log=fs.openSync(path.join(root,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env,windowsHide:true,stdio:['ignore','ignore',log]});fs.closeSync(log);client=new RocketHttpClient(profile);
  for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break;}catch(e){if(i===100)throw e;await delay(100);}}
  assert.equal((await client.initialize()).serverInfo.version,version);
+ if(scriptsOnly){await scriptLoads();return;}
  if(!edgesOnly){
  const f=fixture('PRIVATE_MAP_検索 🚀');
  f.write('Cargo.toml',"[workspace]\nmembers=['应用','core']\n");f.write('应用/Cargo.toml',"[package]\nname='界面'\n[dependencies]\ncore={path='../core'}\n");f.write('core/Cargo.toml',"[package]\nname='engine'\n");
@@ -222,10 +295,28 @@ async function run(){try{
  passed('Paired request/step logs with named map operations, error/cancellation outcomes, zero dropped events and no private payloads');report.passed=true;
 }catch(error){report.failure=error.stack;if(client)try{await capture('failure');}catch{}throw error;}
 finally{
- fs.writeFileSync(path.join(root,'last-state.json'),JSON.stringify(state??null,null,2));fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(evidence,'mcp-last-result.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
+ fs.writeFileSync(path.join(root,'last-state.json'),JSON.stringify(state??null,null,2));fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(evidence,'mcp-last-result.json'),JSON.stringify(report,null,2));if(!scriptsOnly)console.log(JSON.stringify(report,null,2));
  if(service&&service.exitCode===null){try{await closeWindow();await client.raw('POST','/shutdown');}catch{}for(let n=0;n<40&&service.exitCode===null;n++)await delay(100);if(service.exitCode===null){report.forced_service_stop=true;service.kill();}}if(client)await client.finish();
  const token=path.join(profile,'access-token');if(fs.existsSync(token))fs.unlinkSync(token);
  report.cleanup={service_exit:service?.exitCode,token_removed:!fs.existsSync(token)};
  fs.writeFileSync(path.join(root,'result.json'),JSON.stringify(report,null,2));fs.writeFileSync(path.join(evidence,'mcp-last-result.json'),JSON.stringify(report,null,2));
+ if(scriptsOnly && !report.failure){
+  try{
+   assert.equal(report.cleanup.service_exit,0,'isolated MCP service did not exit cleanly');
+   assert(report.cleanup.token_removed && !report.forced_service_stop);
+   const base=fs.realpathSync(path.resolve('work/mcp-fixtures')), owned=fs.realpathSync(root);
+   assert.equal(path.dirname(owned),base);
+   assert.match(path.basename(owned),/^repository-map-[0-9a-f]{32}$/);
+   assert.equal(fs.readFileSync(path.join(owned,'rocket-private-state'),'utf8'),'synthetic-content-only-v1\n');
+   fs.rmSync(owned,{recursive:true,force:false,maxRetries:3});
+   report.cleanup.fixtures_removed=!fs.existsSync(owned);
+   assert(report.cleanup.fixtures_removed);
+   report.passed=true;
+  }catch(error){report.failure=error.stack;throw error;}
+  finally{
+   fs.writeFileSync(path.join(evidence,'mcp-last-result.json'),JSON.stringify(report,null,2));
+   console.log(JSON.stringify(report,null,2));
+  }
+ }
 }}
 run().catch(e=>{console.error(e);process.exitCode=1});

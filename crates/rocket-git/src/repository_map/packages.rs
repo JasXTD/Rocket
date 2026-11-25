@@ -145,6 +145,17 @@ pub(super) fn csharp_file(path: &[u8]) -> bool {
     path.ends_with(b".cs") && file_name(path).len() > 3
 }
 
+pub(super) fn script_language(path: &[u8]) -> Option<ModuleLanguage> {
+    let ext = extension(path);
+    if [b"ps1".as_slice(), b"psm1", b"psd1"].iter().any(|e| ext.eq_ignore_ascii_case(e)) {
+        Some(ModuleLanguage::PowerShell)
+    } else if matches!(ext, b"sh" | b"bash") || matches!(file_name(path), b".bashrc" | b".bash_profile" | b".bash_login" | b".bash_logout" | b".bash_aliases") {
+        Some(ModuleLanguage::Bash)
+    } else {
+        None
+    }
+}
+
 /// Folders a language's own tools pass over: hidden ones and installed packages, for Go
 /// `testdata`, `vendor` and names starting with `_`, and for C# the build's `bin` and `obj`.
 fn skipped(path: &[u8], language: ModuleLanguage) -> bool {
@@ -174,7 +185,7 @@ fn nearest<'a>(path: &[u8], folders: &HashSet<&'a [u8]>) -> Option<&'a [u8]> {
     None
 }
 /// A file's top-level folder; empty for a file at the top.
-fn top_folder(path: &[u8]) -> &[u8] {
+pub(super) fn top_folder(path: &[u8]) -> &[u8] {
     match path.iter().position(|b| *b == b'/') {
         Some(at) => &path[..at],
         None => b"",
@@ -203,7 +214,26 @@ pub(super) fn find_up_to(paths: &[&[u8]], limit: usize) -> (Vec<Found>, bool) {
     add(java(paths), &mut out);
     add(c(paths), &mut out);
     add(csharp(paths), &mut out);
+    for (language, folders) in script_folders(paths) {
+        add(folders.into_iter().map(|(folder, mut files)| {
+            files.sort();
+            Found { folder, language, files, manifest: None, dialect: None }
+        }).collect(), &mut out);
+    }
     (out, limited)
+}
+
+/// Scripts need no manifest. Keep CI helpers in committed dot-folders such as .github.
+fn script_folders(paths: &[&[u8]]) -> BTreeMap<ModuleLanguage, BTreeMap<Vec<u8>, Vec<Vec<u8>>>> {
+    let mut groups: BTreeMap<_, BTreeMap<_, Vec<_>>> = BTreeMap::new();
+    for &path in paths {
+        if let Some(language) = script_language(path) {
+            if !path.split(|&b| b == b'/').any(|part| part == b"node_modules") {
+                groups.entry(language).or_default().entry(top_folder(path).to_vec()).or_default().push(path.to_vec());
+            }
+        }
+    }
+    groups
 }
 
 /// Each package.json's folder is a project; files no project holds make one project

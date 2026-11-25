@@ -567,6 +567,8 @@ impl Repository {
                     },
                 ),
                 ModuleLanguage::CSharp => (b"package-csharp:", named(), if built { b"C# project" } else { b"C# folder" }),
+                ModuleLanguage::PowerShell => (b"package-powershell:", own, b"PowerShell scripts"),
+                ModuleLanguage::Bash => (b"package-bash:", own, b"Bash scripts"),
                 ModuleLanguage::Go | ModuleLanguage::Rust => (b"package-go:", text.and_then(|t| packages::go_module(t)).map(String::into_bytes).unwrap_or(own), b"Go module"),
             };
             let mut n = node(MapNodeKind::Crate, [prefix, f.folder.as_slice()].concat(), name.clone(), detail.to_vec());
@@ -806,11 +808,11 @@ impl Repository {
             })?;
             for ((path, _, _), blob) in batch.iter().zip(parse_blobs(&bytes, &batch, cancel)?) {
                 cancel.check()?;
-                match std::str::from_utf8(blob) {
-                    Ok(text) => {
-                        texts.insert(path.clone(), text.to_owned());
+                match source_text(path, blob) {
+                    Some(text) => {
+                        texts.insert(path.clone(), text);
                     }
-                    Err(_) => details.unlinked.push((path.clone(), UnlinkedReason::NotUtf8)),
+                    None => details.unlinked.push((path.clone(), UnlinkedReason::NotUtf8)),
                 }
             }
         }
@@ -831,6 +833,10 @@ impl Repository {
                 units::c(&found.folder, &texts, &found.files, &known, &headers, cancel)
             }
             ModuleLanguage::CSharp => units::csharp(&texts, cancel),
+            ModuleLanguage::PowerShell | ModuleLanguage::Bash => {
+                let known = blobs.keys().copied().collect();
+                units::scripts(found.language, &found.folder, &texts, &known, cancel)
+            }
             ModuleLanguage::Go | ModuleLanguage::Rust => units::go(&found.folder, module.as_deref().unwrap_or_default(), &texts, &found.files, cancel),
         })?;
         map.notes.push(
@@ -840,6 +846,8 @@ impl Repository {
                 ModuleLanguage::Java => "Read from the committed Java and Kotlin files of one project. Each package stands alone; connections come from imports, the names a file uses through a * import, and names written out with their package. Test source sets (src/test and the like) are left out. Nothing is compiled, so names reached through inheritance are not followed.",
                 ModuleLanguage::C => "Read from the committed C and C++ files of one project. Connections come from #include lines, found beside the including file, else by the end of a path in the project or the snapshot; the names on a connection are those the included file declares and the other uses. The preprocessor is not run: macros are not expanded, and only the first branch of an #if is read for declarations.",
                 ModuleLanguage::CSharp => "Read from the committed C# files of one project. Each namespace stands alone; connections come from using lines, the type names a file uses from its namespace's parents and the namespaces it uses, and names written out in full. Nothing is compiled, so extension methods are not told apart from other methods.",
+                ModuleLanguage::PowerShell => "Arrows show which committed scripts dot-source a helper, invoke it with &, or import a module by path. Runtime expressions and ambiguous working-directory paths are skipped.",
+                ModuleLanguage::Bash => "Arrows show which committed scripts load a helper with source or dot. Runtime expressions, PATH lookups and ambiguous working-directory paths are skipped.",
                 ModuleLanguage::Go | ModuleLanguage::Rust => "Read from the committed Go files of one module. Each package stands alone; connections come from imports and the names used through them. Test files and files marked //go:build ignore are left out; other build constraints are not evaluated.",
             }
             .into(),

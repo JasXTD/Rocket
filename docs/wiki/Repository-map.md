@@ -27,11 +27,13 @@ which opens the same way.
 
 Arrows show which files use which. The map reads every package of the snapshot the way
 Modules reads one (Rust crates with their tests, examples and programs, JavaScript and
-TypeScript projects, Python packages, Go modules, Java and Kotlin, C and C++, and C#
-projects) and connects packages through the names they import: a Cargo package's crate
+TypeScript projects, Python packages, Go modules, Java and Kotlin, C and C++, C#
+projects, and PowerShell and Bash scripts) and connects packages through the names
+they import: a Cargo package's crate
 name, a package.json name, another Python package or Go module of the repository, a Java
 package or C# namespace another project declares (or whose folders it is laid out in),
-or a C or C++ file of another project. An arrow between two cards gathers every link
+or a C or C++ file of another project. Script loads can connect individual files across
+folders. An arrow between two cards gathers every link
 between the files inside them, and its number counts the files on the using side. What
 uses sits above what it uses; when two use each other, the arrow pointing up is dashed.
 Cards that connect to nothing at their level sit under **Not connected**. One read takes
@@ -74,9 +76,10 @@ appear.
 
 **Modules** shows the modules of one package and which module uses which: a Rust
 crate, a JavaScript or TypeScript project, a Python package, the packages of a Go module
-or of a Java or Kotlin project, the namespaces of a C# project, or the files of a C or C++
-project. Choose the package on the button beside **Packages · Folders · Modules**, which
-lists the snapshot's packages grouped by language, or **Show modules** in a Cargo
+or of a Java or Kotlin project, the namespaces of a C# project, the files of a C or C++
+project, or the PowerShell or Bash scripts in a top-level folder. The button beside
+**Packages · Folders · Modules** lists the snapshot's packages by language. Choose
+one there, or select **Show modules** in a Cargo
 package's Details. Without a choice it reads the largest package of the language with
 the most files. A repository without Cargo packages shows **Folders · Modules**.
 
@@ -94,7 +97,8 @@ layers, what a module uses below it, with modules that have no connection apart.
 Details give the folder, Rust files, modules and connections, the most used modules,
 and the files no module of the library is read from: `src/main.rs` beside a library
 and files in `src/bin` (their own program), files no `mod` names, files over 1 MiB,
-files past the read limits and files that are not UTF-8. A module's Details give its file and size, what it uses and
+files past the read limits and files the reader cannot decode. Source is read as UTF-8.
+PowerShell also accepts UTF-16 files with a byte-order mark. A module's Details give its file and size, what it uses and
 what uses it, and **In this file**: what the file declares at its top level, public
 items first, each type with its functions counted. In a narrow window the list folds
 into a button above the picture.
@@ -152,6 +156,27 @@ The other languages are read the same way, as text within the same limits:
   names a file uses, looked for as C# does (its own namespace, its parents, then the
   namespaces its `using` lines and the project's `global using` lines open), and by names
   written out in full. A partial class is one, its methods added up.
+- **PowerShell.** Choose a PowerShell group to see which `.ps1` and `.psm1` files
+  dot-source a helper, invoke a script with `&`, or use `Import-Module` or `using module`
+  with a path. Selecting a script shows the actual helper files, including helpers in
+  nested folders. For example, `. (Join-Path $PSScriptRoot 'lib/Build.ps1')` links to that
+  helper beside the calling script. A `.psd1` manifest can be a target. Rocket reads
+  it as data and leaves module names looked up on `PSModulePath` unresolved.
+- **Bash and shell.** Choose a Bash group for `.sh`, `.bash` and common Bash startup
+  files. Arrows follow `source` and `.`, including quoted paths and helpers located
+  with `BASH_SOURCE[0]` or `dirname "$0"`. Rocket recognizes a directory variable
+  assigned directly from these forms, including `cd … && pwd`. An unrelated command
+  ends that inference. A bare filename searched on `PATH` has no arrow. **Folders**
+  can show an explicitly sourced extensionless helper. Detecting an extensionless
+  entry script from its shebang alone is outside this reader's scope.
+
+For either language, an explicit working-directory-relative path gets an arrow when
+exactly one committed file matches at the repository root or beside the caller.
+After a recognized directory change only script-anchored loads are followed. Dynamic
+expressions and ambiguous paths are skipped. **Outside** lists known helpers beyond
+the selected group. Open **Folders** to follow those connections across the repository.
+A group with more than 12,000 literal loads is marked partial. Analysis uses
+committed Git objects and never runs a script.
 
 Imports from outside the package (other crates, Node built-ins and npm packages,
 Python's and PyPI's modules, other Go modules, Java packages, C and C++ libraries and

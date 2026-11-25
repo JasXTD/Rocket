@@ -322,8 +322,18 @@
     "one": "{n} fichier C#",
     "other": "{n} fichiers C#"
   },
+  "{n} PowerShell files": {
+    "one": "{n} fichier PowerShell",
+    "other": "{n} fichiers PowerShell"
+  },
+  "PowerShell scripts": "Scripts PowerShell",
+  "{n} Bash files": {
+    "one": "{n} fichier Bash",
+    "other": "{n} fichiers Bash"
+  },
+  "Bash scripts": "Scripts Bash",
   "No package to read in this snapshot": "Aucun paquet à lire dans cet instantané",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.": "La vue Modules lit Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ et C#.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.": "La vue Modules lit Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell et Bash.",
   "The package to map": "Le paquet à cartographier",
   "OUTSIDE": "EXTERNES",
   "build ignore": "exclu des builds",

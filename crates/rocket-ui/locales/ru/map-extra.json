@@ -377,8 +377,22 @@
     "many": "{n} файлов C#",
     "other": "{n} файла C#"
   },
+  "{n} PowerShell files": {
+    "one": "{n} файл PowerShell",
+    "few": "{n} файла PowerShell",
+    "many": "{n} файлов PowerShell",
+    "other": "{n} файла PowerShell"
+  },
+  "PowerShell scripts": "Скрипты PowerShell",
+  "{n} Bash files": {
+    "one": "{n} файл Bash",
+    "few": "{n} файла Bash",
+    "many": "{n} файлов Bash",
+    "other": "{n} файла Bash"
+  },
+  "Bash scripts": "Скрипты Bash",
   "No package to read in this snapshot": "В этом снимке нет пакетов для чтения",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ and C#.": "Вид «Модули» читает Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++ и C#.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell and Bash.": "Вид «Модули» читает Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, C#, PowerShell и Bash.",
   "The package to map": "Пакет для карты",
   "OUTSIDE": "ВНЕШНИЕ",
   "build ignore": "исключён из сборки",

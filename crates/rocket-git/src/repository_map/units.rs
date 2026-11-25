@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 
 /// Names kept per connection.
 const NAMES: usize = 64;
+const OUTSIDE_NAMES: usize = 256;
 
 #[derive(Clone, Debug)]
 pub(super) struct Unit {
@@ -20,7 +21,7 @@ pub(super) struct Unit {
     /// Its own file, or the folder it stands for.
     pub path: Vec<u8>,
     pub parent: Option<usize>,
-    /// A Go folder that holds packages and is none itself: listed, never drawn.
+    /// A grouping folder: listed, never drawn as a dependency.
     pub folder: bool,
     pub files: usize,
     pub lines: usize,
@@ -35,6 +36,7 @@ pub(super) struct Built {
     pub unlinked: Vec<(Vec<u8>, UnlinkedReason)>,
     pub followed: usize,
     pub unknown: usize,
+    pub limited: bool,
 }
 impl Built {
     fn add(&mut self, unit: Unit) -> usize {
@@ -54,7 +56,7 @@ impl Built {
     }
     fn outside(&mut self, unit: usize, name: String) {
         let set = self.outside.entry(unit).or_default();
-        if set.len() < 256 {
+        if set.len() < OUTSIDE_NAMES {
             set.insert(name);
         }
     }
@@ -76,22 +78,32 @@ impl Folders {
         if folder == base || !inside(folder, base) {
             return top;
         }
-        if let Some(&at) = self.at.get(folder) {
-            return Some(at);
+        let mut missing = Vec::new();
+        let mut ancestor = folder;
+        let mut up = top;
+        while ancestor != base {
+            if let Some(&at) = self.at.get(ancestor) {
+                up = Some(at);
+                break;
+            }
+            missing.push(ancestor);
+            ancestor = parent(ancestor);
         }
-        let up = self.unit(built, base, parent(folder), top, key);
-        let at = built.add(Unit {
-            key: key(within(folder, base)),
-            label: file_name(folder).to_vec(),
-            detail: b"Folder",
-            path: folder.to_vec(),
-            parent: up,
-            folder: false,
-            files: 0,
-            lines: 0,
-        });
-        self.at.insert(folder.to_vec(), at);
-        Some(at)
+        for dir in missing.into_iter().rev() {
+            let at = built.add(Unit {
+                key: key(within(dir, base)),
+                label: file_name(dir).to_vec(),
+                detail: b"Folder",
+                path: dir.to_vec(),
+                parent: up,
+                folder: false,
+                files: 0,
+                lines: 0,
+            });
+            self.at.insert(dir.to_vec(), at);
+            up = Some(at);
+        }
+        up
     }
 }
 
@@ -122,20 +134,20 @@ enum Target {
     Data,
 }
 
-/// A JavaScript project: one unit per file and per folder; imports by relative path,
-/// tsconfig paths, else from outside.
-pub(super) fn javascript(folder: &[u8], texts: &BTreeMap<Vec<u8>, String>, known: &HashSet<&[u8]>, aliases: &Aliases, cancel: &CancellationToken) -> Result<Built> {
+/// One unit per source file and containing folder. Repeated names show their paths.
+fn file_units<'a>(folder: &[u8], texts: &'a BTreeMap<Vec<u8>, String>, detail: impl Fn(&[u8]) -> &'static [u8], cancel: &CancellationToken) -> Result<(Built, HashMap<&'a [u8], usize>)> {
     let mut built = Built::default();
     let mut folders = Folders { at: HashMap::new() };
     let mut file_unit: HashMap<&[u8], usize> = HashMap::new();
     let key = |rel: &[u8]| text(rel);
     let base = shared_base(folder, texts.keys());
     for (path, source) in texts {
+        cancel.check()?;
         let up = folders.unit(&mut built, &base, parent(path), None, &key);
         let at = built.add(Unit {
             key: text(within(path, &base)),
             label: file_name(path).to_vec(),
-            detail: if packages::typescript_file(path) { b"TypeScript module" } else { b"JavaScript module" },
+            detail: detail(path),
             path: path.clone(),
             parent: up,
             folder: false,
@@ -144,7 +156,6 @@ pub(super) fn javascript(folder: &[u8], texts: &BTreeMap<Vec<u8>, String>, known
         });
         file_unit.insert(path.as_slice(), at);
     }
-    // A name two of the project's files or folders share (index.js) shows its path.
     let mut seen: HashMap<Vec<u8>, usize> = HashMap::new();
     for u in &built.units {
         *seen.entry(u.label.clone()).or_default() += 1;
@@ -154,6 +165,13 @@ pub(super) fn javascript(folder: &[u8], texts: &BTreeMap<Vec<u8>, String>, known
             u.label = u.key.clone().into_bytes();
         }
     }
+    Ok((built, file_unit))
+}
+
+/// A JavaScript project: one unit per file and per folder; imports by relative path,
+/// tsconfig paths, else from outside.
+pub(super) fn javascript(folder: &[u8], texts: &BTreeMap<Vec<u8>, String>, known: &HashSet<&[u8]>, aliases: &Aliases, cancel: &CancellationToken) -> Result<Built> {
+    let (mut built, file_unit) = file_units(folder, texts, |p| if packages::typescript_file(p) { b"TypeScript module" } else { b"JavaScript module" }, cancel)?;
     for (path, source) in texts {
         cancel.check()?;
         let facts = javascript::read(source);
@@ -238,6 +256,57 @@ fn javascript_target(spec: &str, from: &[u8], project: &[u8], units: &HashMap<&[
         return found;
     }
     Target::Outside(package_name(spec))
+}
+
+/// Scripts share the immutable file index across groups. For cwd-relative operands,
+/// use a unique committed match at the repository root or beside the calling script.
+/// Never pick one if both exist, and never search the user's PATH or filesystem.
+pub(super) fn scripts(language: ModuleLanguage, folder: &[u8], texts: &BTreeMap<Vec<u8>, String>, known: &HashSet<&[u8]>, cancel: &CancellationToken) -> Result<Built> {
+    let ps = language == ModuleLanguage::PowerShell;
+    let (mut built, files) = file_units(folder, texts, |_| if ps { b"PowerShell script" } else { b"Bash script" }, cancel)?;
+    for unit in &mut built.units {
+        unit.folder = unit.files == 0;
+    }
+    for (path, source) in texts {
+        cancel.check()?;
+        if ps && path.rsplit(|&b| b == b'.').next().is_some_and(|e| e.eq_ignore_ascii_case(b"psd1")) {
+            continue; // Module manifests contain data.
+        }
+        let from = files[path.as_slice()];
+        scripts::read(language, source, cancel, |load| {
+            if built.followed >= MAP_LINKS {
+                built.limited = true;
+                return;
+            }
+            built.followed += 1;
+            let lookup = |base: &[u8]| cargo::relative(base, load.path.as_bytes()).filter(|p| known.contains(p.as_slice()));
+            let beside = lookup(parent(path));
+            let root = if load.beside_script || parent(path).is_empty() { None } else { lookup(b"") };
+            let target = match (beside, root) {
+                (Some(a), Some(b)) if a != b => None,
+                (Some(a), _) | (None, Some(a)) => Some(a),
+                (None, None) => None,
+            };
+            let Some(target) = target else { built.unknown += 1; return; };
+            let target_language = packages::script_language(&target);
+            if ps && target_language != Some(language) { return; }
+            if let Some(&to) = files.get(target.as_slice()) {
+                built.uses(from, to, [load.command.to_owned()]);
+            } else if target_language == Some(language) && packages::top_folder(&target) == folder {
+                built.unknown += 1; // Same group, outside this read's source limits.
+            } else {
+                let Ok(name) = std::str::from_utf8(&target) else { built.unknown += 1; return; };
+                let set = built.outside.entry(from).or_default();
+                if set.len() < OUTSIDE_NAMES {
+                    set.insert(name.to_owned());
+                } else if !set.contains(name) {
+                    built.limited = true;
+                }
+            }
+        })?;
+        if built.limited && built.followed >= MAP_LINKS { break; }
+    }
+    Ok(built)
 }
 
 // ---- Python -------------------------------------------------------------------------
@@ -857,44 +926,17 @@ fn library(spec: &str) -> String {
 /// holds another project, whose files are not its own.
 pub(super) fn c(folder: &[u8], texts: &BTreeMap<Vec<u8>, String>, files_of_project: &[Vec<u8>], known: &HashSet<&[u8]>, headers: &Headers, cancel: &CancellationToken) -> Result<Built> {
     let own: HashSet<&[u8]> = files_of_project.iter().map(Vec::as_slice).chain(texts.keys().map(Vec::as_slice)).collect();
-    let mut built = Built::default();
-    let mut folders = Folders { at: HashMap::new() };
-    let mut file_unit: HashMap<&[u8], usize> = HashMap::new();
-    let key = |rel: &[u8]| text(rel);
-    let base = shared_base(folder, texts.keys());
     // A `.h` in a project with C++ files is C++'s.
     let cpp = texts.keys().any(|p| packages::cpp_file(p));
-    for (path, source) in texts {
-        let up = folders.unit(&mut built, &base, parent(path), None, &key);
+    let (mut built, file_unit) = file_units(folder, texts, |path| {
         let is_cpp = packages::cpp_file(path) || cpp && !path.ends_with(b".c");
-        let detail: &'static [u8] = match (is_cpp, cfamily::header(path)) {
+        match (is_cpp, cfamily::header(path)) {
             (true, true) => b"C++ header",
             (true, false) => b"C++ source",
             (false, true) => b"C header",
             (false, false) => b"C source",
-        };
-        let at = built.add(Unit {
-            key: text(within(path, &base)),
-            label: file_name(path).to_vec(),
-            detail,
-            path: path.clone(),
-            parent: up,
-            folder: false,
-            files: 1,
-            lines: lines(source),
-        });
-        file_unit.insert(path.as_slice(), at);
-    }
-    // A name two of the project's files or folders share (util.h) shows its path.
-    let mut seen: HashMap<Vec<u8>, usize> = HashMap::new();
-    for u in &built.units {
-        *seen.entry(u.label.clone()).or_default() += 1;
-    }
-    for u in &mut built.units {
-        if seen.get(&u.label).copied().unwrap_or(0) > 1 {
-            u.label = u.key.clone().into_bytes();
         }
-    }
+    }, cancel)?;
     let mut facts: Vec<(&Vec<u8>, cfamily::Facts)> = Vec::new();
     for (path, source) in texts {
         cancel.check()?;
@@ -1093,6 +1135,7 @@ pub(super) fn csharp(texts: &BTreeMap<Vec<u8>, String>, cancel: &CancellationTok
 /// Puts a package's units on the map as nodes after the package nodes, with their
 /// connections, outline and outside imports.
 pub(super) fn push(map: &mut RepositoryMap, details: &mut ModuleMap, built: Built) {
+    map.limited |= built.limited;
     let base = map.nodes.len();
     let mut shown = 0;
     for u in &built.units {
