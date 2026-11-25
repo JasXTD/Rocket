@@ -63,7 +63,7 @@ pub fn execute(
                 Err(problem) => return Ok(Outcome::failure(problem)),
             };
             let review = json!({"path":out::bytes(p.path().as_bytes()),"sha256":expected,"stage":stage,
-                "remaining_conflicts":conflict_blocks(&text).blocks.len(),"result":out::bytes(text.as_bytes())});
+                "remaining_conflicts":p.markers().blocks(&text).blocks.len(),"result":out::bytes(text.as_bytes())});
             if *preview {
                 return Ok(review_only(review));
             }
@@ -111,7 +111,7 @@ pub fn execute(
 /// block becomes its ours lines, its theirs lines, or ours then theirs.
 fn resolved(p: &ConflictPreview, choice: &Choice) -> Result<std::result::Result<String, Problem>> {
     let working = p.working();
-    let blocks = conflict_blocks(working);
+    let blocks = p.markers().blocks(working);
     let mut chosen = match choice {
         Choice::Result(file) => {
             let bytes = std::fs::read(file).map_err(|source| Error::Io { action: "read the conflict result file", source })?;
@@ -164,7 +164,7 @@ fn show(whole: &WholeConflictPreview, text: Option<&ConflictPreview>) -> Result<
         None => Value::Null,
         Some(p) => {
             let working = p.working();
-            let blocks = conflict_blocks(working);
+            let blocks = p.markers().blocks(working);
             json!({"sha256":sha256_bytes(p.original())?,"crlf":p.crlf(),"bom":p.bom(),"malformed":blocks.malformed,
                 "working":out::bytes(working.as_bytes()),
                 "conflicts":blocks.blocks.iter().enumerate().map(|(i,b)|json!({"number":i+1,

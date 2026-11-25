@@ -10,6 +10,15 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased
+
+- Full stash now stops before it can erase edits hidden by index flags.
+- Conflict resolution recognizes custom Git marker widths and preserves Markdown heading underlines from the conflict sides.
+- Branch Review keeps the selected branch when a tag has the same name.
+- Line staging respects legacy CRLF attributes and works with blank context lines when Git hides their leading spaces.
+- Moving a linked worktree preserves relative Git links at the new location.
+- Discard restores executable-bit-only changes on Linux and macOS. Windows reports when the requested mode cannot be represented.
+
 ## 0.92.6 — Git security, Code Map and Windows updates
 
 See the [release notes](docs/releases/0.92.6.md) for downloads, Git requirements and update behavior on each platform.

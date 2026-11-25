@@ -435,11 +435,15 @@ fn defaults(branches: &[Branch]) -> (String, String) {
             .iter()
             .any(|b| b.kind == BranchKind::Local && b.reference == format!("refs/heads/{name}").as_bytes())
     };
-    let base = ["main", "master"].into_iter().find(|n| local(n)).unwrap_or_default().to_owned();
+    let base = ["main", "master"]
+        .into_iter()
+        .find(|n| local(n))
+        .map(|name| format!("refs/heads/{name}"))
+        .unwrap_or_default();
     let current = branches
         .iter()
         .find(|b| b.is_head && b.kind == BranchKind::Local)
-        .map(|b| short_ref(&b.reference));
+        .and_then(|b| std::str::from_utf8(&b.reference).ok()).map(str::to_owned);
     (base.clone(), current.filter(|c| *c != base).unwrap_or_default())
 }
 
@@ -448,13 +452,13 @@ fn branch_names(branches: &[Branch]) -> Vec<String> {
     let mut names: Vec<String> = branches
         .iter()
         .filter(|b| b.kind == BranchKind::Local)
-        .map(|b| short_ref(&b.reference))
+        .filter_map(|b| std::str::from_utf8(&b.reference).ok().map(str::to_owned))
         .collect();
     names.extend(
         branches
             .iter()
             .filter(|b| b.kind == BranchKind::Remote && b.symbolic_target.is_none())
-            .map(|b| short_ref(&b.reference)),
+            .filter_map(|b| std::str::from_utf8(&b.reference).ok().map(str::to_owned)),
     );
     names
 }
@@ -778,10 +782,10 @@ fn bar(ui: &mut Ui, s: &mut State, intents: &mut Vec<Intent>, widgets: &mut Hash
                     };
                     let (base_bad, target_bad) = (bad(Input::Base, &s.base), bad(Input::Target, &s.target));
                     let mut enter = false;
-                    let field = RefField { key: "review-base", label: "BASE", hint: "Branch, tag or commit", invalid: base_bad };
+                    let field = RefField { key: "review-base", label: "BASE", hint: "Branch, tag or commit", invalid: base_bad, short_labels: true };
                     let mut picked = ref_field(ui, widgets, field, &mut s.base, &s.branch_choices, width, &mut enter);
                     let swap = swap_button(ui, widgets, "review-swap", true);
-                    let field = RefField { key: "review-target", label: "TARGET", hint: "Choose a branch", invalid: target_bad };
+                    let field = RefField { key: "review-target", label: "TARGET", hint: "Choose a branch", invalid: target_bad, short_labels: true };
                     picked |= ref_field(ui, widgets, field, &mut s.target, &s.branch_choices, width, &mut enter);
                     let filled = !s.base.trim().is_empty() && !s.target.trim().is_empty();
                     let r = ui
@@ -949,7 +953,7 @@ fn choose(ui: &mut Ui, s: &mut State, intents: &mut Vec<Intent>, widgets: &mut H
         // A combo box lays itself out in a row; its own cell keeps it under the message.
         ui.allocate_ui_with_layout(vec2(150.0, 26.0), Layout::left_to_right(Align::Center), |ui| {
             ui.spacing_mut().combo_width = 150.0;
-            if let Some(name) = crate::branch_picker::pick(ui, widgets, "review-choose", "Choose branch", &choices, true) {
+            if let Some(name) = crate::branch_picker::pick_ref(ui, widgets, "review-choose", "Choose branch", &choices) {
                 if s.target.trim().is_empty() {
                     s.target = name;
                 } else {
@@ -1841,6 +1845,43 @@ mod tests {
     }
 
     #[test]
+    fn picked_and_default_branches_review_the_branch_when_a_tag_shares_its_name() {
+        let f = crate::test_common::Fixture::new();
+        f.write("base", "base\n");
+        f.commit("base");
+        f.run(&["switch", "-c", "release"]);
+        f.write("release.txt", "release\n");
+        f.commit("release");
+        f.run(&["tag", "topic"]);
+        f.run(&["tag", "main"]);
+        f.run(&["switch", "-c", "topic", "refs/heads/main"]);
+        f.write("feature.txt", "feature\n");
+        f.commit("feature");
+
+        let repo = f.repo();
+        let cancel = CancellationToken::new();
+        let branches = repo.branches(&cancel).unwrap();
+        let (base, current) = defaults(&branches);
+        let choices = branch_names(&branches);
+        let picked = choices
+            .iter()
+            .find(|s| s.rsplit('/').next() == Some("topic"))
+            .unwrap();
+        for target in [picked, &current] {
+            let review = repo.prepare_branch_review(&base, target, &cancel).unwrap();
+            assert_eq!(
+                review.target,
+                repo.resolve_commit("refs/heads/topic", &cancel).unwrap()
+            );
+            assert_eq!(
+                review.base,
+                repo.resolve_commit("refs/heads/main", &cancel).unwrap()
+            );
+            assert_eq!(review.files[0].path.as_bytes(), b"feature.txt");
+        }
+    }
+
+    #[test]
     fn the_page_opens_on_the_current_branch_against_main_and_asks_on_main_itself() {
         let branch = |name: &str, head: bool, kind: BranchKind| Branch {
             reference: name.as_bytes().to_vec(),
@@ -1861,12 +1902,12 @@ mod tests {
                 branch("refs/remotes/origin/HEAD", false, BranchKind::Remote),
             ]
         };
-        assert_eq!(defaults(&on("retry-login")), ("main".into(), "retry-login".into()));
-        assert_eq!(defaults(&on("main")), ("main".into(), String::new()), "never main against itself");
-        assert_eq!(defaults(&on("")), ("main".into(), String::new()), "a detached HEAD asks too");
-        assert_eq!(branch_names(&on("main")), ["main", "retry-login", "origin/main"]);
+        assert_eq!(defaults(&on("retry-login")), ("refs/heads/main".into(), "refs/heads/retry-login".into()));
+        assert_eq!(defaults(&on("main")), ("refs/heads/main".into(), String::new()), "never main against itself");
+        assert_eq!(defaults(&on("")), ("refs/heads/main".into(), String::new()), "a detached HEAD asks too");
+        assert_eq!(branch_names(&on("main")), ["refs/heads/main", "refs/heads/retry-login", "refs/remotes/origin/main"]);
         let master = [branch("refs/heads/master", false, BranchKind::Local), branch("refs/heads/fix", true, BranchKind::Local)];
-        assert_eq!(defaults(&master), ("master".into(), "fix".into()));
+        assert_eq!(defaults(&master), ("refs/heads/master".into(), "refs/heads/fix".into()));
     }
 
     #[test]

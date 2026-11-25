@@ -86,9 +86,7 @@ impl Repository {
                 .path();
             local_files::directory(&admin)?;
             let bytes = local_files::read_config(&admin.join("gitdir"))?;
-            if let Some(backlink) = absolute_link(&bytes, "")
-                && equivalent_path(&backlink, &e.path.join(".git"))
-            {
+            if link_matches(&admin, &bytes, "", &e.path.join(".git")) {
                 if found.is_some() {
                     return refused(WorktreeFailure::StalePreview);
                 }
@@ -113,8 +111,9 @@ impl Repository {
                 if e.path.components().next() != path.components().next() {
                     return Err(Error::Unsupported("Moving a worktree between drives is not supported. Choose a new folder on the same drive.".into()));
                 }
-                PreparedLink::capture(&admin, &e.path)?;
-                (path, Some(local_files::read_config(&e.path.join(".git"))?))
+                let link = PreparedLink::capture(&admin, &e.path)?;
+                link.check_move(&e.path, &path)?;
+                (path, Some(link.gitfile))
             }
             WorktreeMaintenance::Repair => {
                 if !path_missing(&e.path) {
@@ -135,11 +134,7 @@ impl Repository {
                     return refused(WorktreeFailure::InvalidDestination);
                 }
                 let gitfile = local_files::read_config(&path.join(".git"))?;
-                if absolute_link(&gitfile, "gitdir: ")
-                    .and_then(|p| p.canonicalize().ok())
-                    .as_ref()
-                    != Some(&admin)
-                {
+                if !link_resolves_to(&path, &gitfile, "gitdir: ", &admin) {
                     return refused(WorktreeFailure::StalePreview);
                 }
                 let mut moved = e.clone();
@@ -242,16 +237,21 @@ impl Repository {
                     write!(note, "ROCKET-WORKTREE-RECOVERY-1\nOperation: {}\nOriginal registration: {}\nOriginal worktree: {}\nReviewed destination: {}\nCommit: {}\n\nMetadata only; working files are not backed up here. This record describes the reviewed operation, not proof it completed. Inspect the current worktree list and paths before any manual recovery. Never overwrite an existing registration.\n",
                         p.label(), plan.admin.display(), entry.path.display(), p.path.display(), p.target)
                         .and_then(|_| note.sync_all()).map_err(|e| Error::io("save worktree recovery note", e))?;
-                    if plan.kind != WorktreeMaintenance::Prune {
-                        let original = local_files::read_config(&plan.admin.join("gitdir"))?;
-                        let mut file = fs::OpenOptions::new()
-                            .write(true)
-                            .create_new(true)
-                            .open(workspace.join("gitdir.before"))
-                            .map_err(|e| Error::io("create worktree metadata backup", e))?;
-                        file.write_all(&original)
-                            .and_then(|_| file.sync_all())
-                            .map_err(|e| Error::io("save worktree metadata backup", e))?;
+                    if let Some(gitfile) = &plan.gitfile {
+                        let mut originals = vec![("gitdir.before", backlink)];
+                        if link_path(gitfile, "gitdir: ").is_some_and(Path::is_relative) {
+                            originals.push(("gitfile.before", gitfile));
+                        }
+                        for (name, original) in originals {
+                            let mut file = fs::OpenOptions::new()
+                                .write(true)
+                                .create_new(true)
+                                .open(workspace.join(name))
+                                .map_err(|e| Error::io("create worktree metadata backup", e))?;
+                            file.write_all(original)
+                                .and_then(|_| file.sync_all())
+                                .map_err(|e| Error::io("save worktree metadata backup", e))?;
+                        }
                     }
                     Ok(())
                 })?;
@@ -278,6 +278,7 @@ impl Repository {
                                 return refused(WorktreeFailure::StalePreview);
                             }
                             // Windows rename is same-volume and non-replacing. No copy/delete fallback.
+                            link.check_move(&entry.path, &p.path)?;
                             local_files::move_path(&entry.path, &p.path, false)?;
                             changed = true;
                             link.publish(&p.path)?;
@@ -370,16 +371,6 @@ impl Repository {
         report.metadata_backup = backup;
         Ok(report)
     }
-}
-
-fn absolute_link(bytes: &[u8], prefix: &str) -> Option<PathBuf> {
-    let path = PathBuf::from(
-        std::str::from_utf8(bytes)
-            .ok()?
-            .trim_end_matches(['\r', '\n'])
-            .strip_prefix(prefix)?,
-    );
-    path.is_absolute().then_some(path)
 }
 
 /// Exact bounded snapshots avoid metadata-only fingerprints missing quick external edits.

@@ -72,6 +72,54 @@ fn admin(f: &Fixture, e: &WorktreeEntry) -> PathBuf {
 }
 
 #[test]
+fn moving_a_relative_worktree_relinks_both_paths_at_the_new_depth() {
+    let f = seed();
+    let from = f.root.join("relative");
+    f.run(&[
+        "worktree",
+        "add",
+        "--relative-paths",
+        "-b",
+        "topic",
+        from.to_str().unwrap(),
+        "HEAD",
+    ]);
+    let repo = f.repo();
+    let entry = repo
+        .worktrees(&token())
+        .unwrap()
+        .into_iter()
+        .find(|e| !e.main)
+        .unwrap();
+    let registration = admin(&f, &entry);
+    let parent = destination(&f, "nested");
+    fs::create_dir(&parent).unwrap();
+    let to = parent.join("moved 文");
+    let plan = preview(&f, WorktreeMaintenance::Move, &entry, &to).unwrap();
+    let original = fs::read(from.join(".git")).unwrap();
+    let report = ok(&f, &plan);
+    assert_eq!(
+        fs::read(report.metadata_backup.unwrap().join("gitfile.before")).unwrap(),
+        original
+    );
+    let forward = fs::read_to_string(to.join(".git")).unwrap();
+    let forward = Path::new(forward.trim_end().strip_prefix("gitdir: ").unwrap());
+    let backward = fs::read_to_string(registration.join("gitdir")).unwrap();
+    let backward = Path::new(backward.trim_end());
+    assert!(forward.is_relative() && backward.is_relative());
+    assert_eq!(
+        to.join(forward).canonicalize().unwrap(),
+        registration.canonicalize().unwrap()
+    );
+    assert_eq!(
+        registration.join(backward).canonicalize().unwrap(),
+        to.join(".git").canonicalize().unwrap()
+    );
+    assert!(!from.exists());
+    assert!(f.run_at(&to, &["status", "--porcelain"]).is_empty());
+}
+
+#[test]
 fn move_unicode_is_non_replacing_and_preserves_source_changes() {
     isolated(
         "ROCKET_MAINTENANCE_CASE",

@@ -23,6 +23,37 @@ fn lines(bytes: Vec<u8>) -> Vec<String> {
 }
 
 #[test]
+fn full_stash_preserves_hidden_edits_and_allows_an_unrelated_selected_stash() {
+    let f = Fixture::new();
+    f.write("settings", "defaults\n");
+    f.write("notes", "old\n");
+    f.commit("base");
+    f.run(&["update-index", "--assume-unchanged", "settings"]);
+    f.write("settings", "local only\n");
+    f.write("notes", "new\n");
+    let repo = f.repo();
+    let result = repo.push_stash(None, false, &token());
+    assert_eq!(
+        std::fs::read(f.repository.join("settings")).unwrap(),
+        b"local only\n"
+    );
+    assert!(matches!(result, Err(Error::InvalidInput(_))));
+    assert!(repo.stashes(&token()).unwrap().is_empty());
+    assert_eq!(std::fs::read(f.repository.join("notes")).unwrap(), b"new\n");
+
+    repo.push_stash_paths(None, false, &[path("notes")], &token())
+        .unwrap()
+        .write
+        .result
+        .unwrap();
+    assert_eq!(f.run(&["show", "stash@{0}:notes"]), b"new\n");
+    assert_eq!(
+        std::fs::read(f.repository.join("settings")).unwrap(),
+        b"local only\n"
+    );
+}
+
+#[test]
 fn partial_stash_saves_exactly_the_selected_files() {
     let f = Fixture::new();
     for (name, body) in [

@@ -114,10 +114,10 @@ pub struct FileEditPreview {
     source: FileEditSource,
     context: Context,
     before: Option<Vec<u8>>,
+    before_executable: Option<bool>,
     after: Option<Vec<u8>>,
-    /// The source entry's Git mode when it decides the executable bit (Linux): the
-    /// index or commit version being restored. None keeps the file's own bits.
-    #[cfg_attr(not(any(target_os = "linux", target_os = "macos")), expect(dead_code, reason = "Unix files have an executable bit"))]
+    /// The executable bit to restore from the index, commit or displaced file.
+    /// None keeps the working file's permissions.
     executable: Option<bool>,
     commit: Option<ObjectId>,
     conversion: &'static str,
@@ -130,6 +130,19 @@ impl fmt::Debug for FileEditPreview {
     }
 }
 impl FileEditPreview {
+    fn matches_before(&self, (bytes, mode): &disk::FileState) -> bool {
+        *bytes == self.before && *mode == self.before_executable
+    }
+    fn matches_result(&self, state: &disk::FileState, applied: bool) -> bool {
+        if !applied {
+            return self.matches_before(state);
+        }
+        let (bytes, mode) = state;
+        *bytes == self.after
+            && mode
+                .zip(self.executable.or(self.before_executable))
+                .is_none_or(|(actual, expected)| actual == expected)
+    }
     pub fn path(&self) -> &RepoPath {
         &self.path
     }
@@ -200,16 +213,9 @@ impl Repository {
         path: &RepoPath,
         cancel: &CancellationToken,
     ) -> Result<(Vec<u8>, Vec<u8>)> {
-        let mut a = args(&[
-            "check-attr",
-            "-z",
-            "text",
-            "eol",
-            "filter",
-            "working-tree-encoding",
-            "ident",
-            "--",
-        ]);
+        let mut a = args(&["check-attr", "-z"]);
+        a.extend(args(&CONVERSION_ATTRIBUTES));
+        a.push("--".into());
         a.push(path.argument()?);
         let attrs = self.file_read(&a, cancel)?;
         let out = self.runner.run(
@@ -218,7 +224,7 @@ impl Repository {
                 "config",
                 "--null",
                 "--get-regexp",
-                "^core\\.(autocrlf|eol)$",
+                "^core\\.(autocrlf|eol|filemode)$",
             ]),
             Vec::new(),
             cancel,
@@ -239,7 +245,7 @@ impl Repository {
         self.runner.step("file-preview", "review-file", || {
             cancel.check()?;
             let context = self.file_context(path, cancel)?;
-            let before = disk::read_working(self, path, cancel)?;
+            let working = disk::read_working(self, path, cancel)?;
             let mut commit = None;
             let mut executable = None;
             let mut conversion = "Exact recovery bytes";
@@ -251,7 +257,9 @@ impl Repository {
                     if backup.repository != self.info().git_dir || backup.path != *path {
                         return fail(FileEditFailure::WrongRepository);
                     }
-                    disk::backup_contents(self, backup, cancel)?
+                    let (bytes, mode) = disk::backup_contents(self, backup, cancel)?;
+                    executable = mode;
+                    bytes
                 }
                 FileEditSource::Index | FileEditSource::Commit(_) => {
                     let object = if let FileEditSource::Commit(revision) = &source {
@@ -314,25 +322,48 @@ impl Repository {
                 }
             };
             cancel.check()?;
-            if before == after {
-                return fail(FileEditFailure::NoChange);
-            }
-            if self.file_context(path, cancel)? != context
-                || disk::read_working(self, path, cancel)? != before
+            #[cfg(windows)]
+            if let Some(wanted) = executable
+                && working.0.is_some()
+                && self.file_read(
+                    &args(&["config", "--bool", "--default=true", "--get", "core.filemode"]),
+                    cancel,
+                )?.trim_ascii() == b"true"
             {
-                return fail(FileEditFailure::Stale);
+                // A Windows checkout cannot chmod a regular file. When Git is configured
+                // to track mode anyway, ask it which mode it observes for this path.
+                let mut args = args(&["diff-files", "--raw", "-z", "--"]);
+                args.push(path.argument()?);
+                let diff = self.file_read(&args, cancel)?;
+                let working_mode = if diff.is_empty() {
+                    parse_object(&context.index, path, false)?.map(|(_, mode)| mode)
+                } else {
+                    match diff.split(|b| *b == b' ').nth(1) {
+                        Some(b"100755") => Some(true),
+                        Some(b"100644") => Some(false),
+                        _ => return fail(FileEditFailure::Unsupported),
+                    }
+                };
+                if working_mode.is_some_and(|actual| actual != wanted) {
+                    return Err(Error::Unsupported("Windows cannot change the executable bit of this file. Restore its mode from a Unix working tree.".into()));
+                }
             }
-            Ok(FileEditPreview {
+            conversion = describe_change(&working, after.as_deref(), executable, conversion)?;
+            let (before, before_executable) = working;
+            let preview = FileEditPreview {
                 repository: self.info().git_dir.clone(),
                 path: path.clone(),
                 source,
                 context,
                 before,
+                before_executable,
                 after,
                 executable,
                 commit,
                 conversion,
-            })
+            };
+            self.recheck_file_edit(&preview, cancel)?;
+            Ok(preview)
         })
     }
     pub(crate) fn recheck_file_edit(
@@ -344,7 +375,7 @@ impl Repository {
             return fail(FileEditFailure::WrongRepository);
         }
         if self.file_context(&p.path, cancel)? != p.context
-            || disk::read_working(self, &p.path, cancel)? != p.before
+            || !p.matches_before(&disk::read_working(self, &p.path, cancel)?)
         {
             return fail(FileEditFailure::Stale);
         }
@@ -360,7 +391,7 @@ impl Repository {
         let context = self.file_context(path, cancel)?;
         parse_object(&context.index, path, false)?;
         working_bytes(Vec::new(), &context)?; // Refuse filters, encodings and ident before sandboxing.
-        let before = disk::read_working(self, path, cancel)?;
+        let (before, before_executable) = disk::read_working(self, path, cancel)?;
         Ok(FileEditPreview {
             repository: self.info().git_dir.clone(),
             path: path.clone(),
@@ -368,6 +399,7 @@ impl Repository {
             context,
             after: before.clone(),
             before,
+            before_executable,
             executable: None,
             commit: None,
             conversion: "Reviewed patch result; staging unchanged",
@@ -444,12 +476,7 @@ impl Repository {
         if context.head != p.context.head
             || context.index != p.context.index
             || context.flags != p.context.flags
-            || disk::read_working(self, &p.path, cancel)?
-                != if applied {
-                    p.after.clone()
-                } else {
-                    p.before.clone()
-                }
+            || !p.matches_result(&disk::read_working(self, &p.path, cancel)?, applied)
         {
             return fail(FileEditFailure::Verification);
         }
@@ -469,7 +496,6 @@ impl Repository {
         let result = disk::publish(self, p, cancel, &mut applied, &mut recovery_directory);
         let fresh = CancellationToken::new();
         let verification = self.runner.step(p.source.label(), "verify-file", || {
-            let expected = if applied { &p.after } else { &p.before };
             let current = self.file_context(&p.path, &fresh)?;
             // Restoring .gitattributes can intentionally change conversion settings.
             // They were checked before publication; afterwards verify the pinned
@@ -481,7 +507,8 @@ impl Repository {
             } else {
                 current == p.context
             };
-            if disk::read_working(self, &p.path, &fresh)? != *expected || !context_matches {
+            let state = disk::read_working(self, &p.path, &fresh)?;
+            if !context_matches || !p.matches_result(&state, applied) {
                 return fail(FileEditFailure::Verification);
             }
             Ok(())
@@ -534,9 +561,103 @@ fn parse_object(bytes: &[u8], path: &RepoPath, tree: bool) -> Result<Option<(Obj
         fields[0] == b"100755",
     )))
 }
+fn describe_change(
+    working: &disk::FileState,
+    after: Option<&[u8]>,
+    executable: Option<bool>,
+    conversion: &'static str,
+) -> Result<&'static str> {
+    if working.0.as_deref() != after {
+        return Ok(conversion);
+    }
+    match (working.1, executable) {
+        (Some(false), Some(true)) => Ok("Restore executable permission"),
+        (Some(true), Some(false)) => Ok("Remove executable permission"),
+        _ => fail(FileEditFailure::NoChange),
+    }
+}
+
 fn working_bytes(bytes: Vec<u8>, context: &Context) -> Result<(Vec<u8>, &'static str)> {
     checkout_bytes(bytes, &context.attrs, &context.config)
 }
+const CONVERSION_ATTRIBUTES: [&str; 6] = [
+    "text",
+    "crlf",
+    "eol",
+    "filter",
+    "working-tree-encoding",
+    "ident",
+];
+
+pub(crate) fn conversion_attributes<'a>(attrs: &'a [u8]) -> Result<impl Fn(&[u8]) -> &'a [u8]> {
+    let fields = attrs.strip_suffix(&[0]).unwrap_or(attrs);
+    let records: Vec<_> = fields.split(|b| *b == 0).collect();
+    if records.len() != CONVERSION_ATTRIBUTES.len() * 3 {
+        return Err(Error::parse("file-preview", "invalid attributes"));
+    }
+    Ok(move |name: &[u8]| {
+        records
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .find(|a| a[1] == name)
+            .map_or(b"unspecified".as_slice(), |a| a[2])
+    })
+}
+
+pub(crate) struct LineEndings {
+    pub normalize: bool,
+    auto_detect: bool,
+    checkout_crlf: bool,
+}
+
+pub(crate) fn line_endings(attrs: &[u8], config: &[u8]) -> Result<LineEndings> {
+    let attr = conversion_attributes(attrs)?;
+    for name in [b"filter".as_slice(), b"working-tree-encoding", b"ident"] {
+        if !matches!(attr(name), b"unspecified" | b"unset") {
+            return fail(FileEditFailure::Unsupported);
+        }
+    }
+    // Git consults the legacy crlf attribute only when text is unspecified.
+    let text = match attr(b"text") {
+        b"unspecified" => attr(b"crlf"),
+        text => text,
+    };
+    let eol = attr(b"eol");
+    let auto_value = config_value(config, b"core.autocrlf").to_ascii_lowercase();
+    let auto = match auto_value.as_slice() {
+        b"yes" | b"on" | b"1" => b"true".as_slice(),
+        b"no" | b"off" | b"0" => b"false",
+        other => other,
+    };
+    let core_eol = config_value(config, b"core.eol").to_ascii_lowercase();
+    if !matches!(auto, b"" | b"true" | b"false" | b"input")
+        || !matches!(core_eol.as_slice(), b"" | b"lf" | b"crlf" | b"native")
+    {
+        return fail(FileEditFailure::Unsupported);
+    }
+    if !matches!(text, b"unspecified" | b"unset" | b"set" | b"auto" | b"input")
+        || !matches!(eol, b"unspecified" | b"unset" | b"lf" | b"crlf")
+    {
+        return fail(FileEditFailure::Unsupported);
+    }
+    let enabled = text != b"unset"
+        && (matches!(text, b"set" | b"auto" | b"input")
+            || matches!(eol, b"lf" | b"crlf")
+            || matches!(auto, b"true" | b"input"));
+    let crlf = eol == b"crlf"
+        || (eol != b"lf"
+            && text != b"input"
+            && (auto == b"true"
+                || (auto != b"input"
+                    && (core_eol == b"crlf" || (core_eol != b"lf" && cfg!(windows))))));
+    Ok(LineEndings {
+        normalize: enabled,
+        auto_detect: matches!(text, b"auto" | b"unspecified"),
+        checkout_crlf: crlf,
+    })
+}
+
 /// Git blob bytes as a checkout would write them, from `conversion_settings`.
 /// Filters, working-tree encodings and ident expansion are refused, never run.
 pub(crate) fn checkout_bytes(
@@ -544,65 +665,11 @@ pub(crate) fn checkout_bytes(
     attrs: &[u8],
     config: &[u8],
 ) -> Result<(Vec<u8>, &'static str)> {
-    let records: Vec<_> = attrs.split(|b| *b == 0).filter(|s| !s.is_empty()).collect();
-    if records.len() != 15 {
-        return Err(Error::parse("file-preview", "invalid attributes"));
-    }
-    let attr = |name: &[u8]| -> &[u8] {
-        records
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .find(|a| a[1] == name)
-            .map_or(b"unspecified", |a| a[2])
-    };
-    for name in [b"filter".as_slice(), b"working-tree-encoding", b"ident"] {
-        if !matches!(attr(name), b"unspecified" | b"unset") {
-            return fail(FileEditFailure::Unsupported);
-        }
-    }
-    let config = |key: &[u8]| -> &[u8] {
-        config
-            .split(|b| *b == 0)
-            .filter_map(|r| r.split_once_byte(b'\n'))
-            .filter(|(k, _)| *k == key)
-            .map(|(_, v)| v)
-            .next_back()
-            .unwrap_or(b"")
-    };
-    let text = attr(b"text");
-    let eol = attr(b"eol");
-    let auto_value = config(b"core.autocrlf").to_ascii_lowercase();
-    let auto = match auto_value.as_slice() {
-        b"yes" | b"on" | b"1" => b"true".as_slice(),
-        b"no" | b"off" | b"0" => b"false",
-        other => other,
-    };
-    let core_eol = config(b"core.eol").to_ascii_lowercase();
-    if !matches!(auto, b"" | b"true" | b"false" | b"input")
-        || !matches!(core_eol.as_slice(), b"" | b"lf" | b"crlf" | b"native")
-    {
-        return fail(FileEditFailure::Unsupported);
-    }
-    if !matches!(text, b"unspecified" | b"unset" | b"set" | b"auto")
-        || !matches!(eol, b"unspecified" | b"unset" | b"lf" | b"crlf")
-    {
-        return fail(FileEditFailure::Unsupported);
-    }
-    let enabled = text != b"unset"
-        && (text == b"set"
-            || text == b"auto"
-            || matches!(eol, b"lf" | b"crlf")
-            || matches!(auto, b"true" | b"input"));
-    let crlf = eol == b"crlf"
-        || (eol != b"lf"
-            && (auto == b"true"
-                || (auto != b"input"
-                    && (core_eol == b"crlf" || (core_eol != b"lf" && cfg!(windows))))));
-    if !enabled || !crlf {
+    let rules = line_endings(attrs, config)?;
+    if !rules.normalize || !rules.checkout_crlf {
         return Ok((bytes, "Git blob bytes (no working-tree filter)"));
     }
-    if (text == b"auto" || text == b"unspecified") && (bytes.contains(&0) || bytes.contains(&b'\r'))
+    if rules.auto_detect && (bytes.contains(&0) || bytes.contains(&b'\r'))
     {
         return Ok((bytes, "Binary/existing CR bytes preserved"));
     }
@@ -620,6 +687,15 @@ pub(crate) fn checkout_bytes(
         }
     }
     Ok((result, "LF converted to CRLF for this working folder"))
+}
+fn config_value<'a>(config: &'a [u8], key: &[u8]) -> &'a [u8] {
+    config
+        .split(|b| *b == 0)
+        .filter_map(|r| r.split_once_byte(b'\n'))
+        .filter(|(name, _)| *name == key)
+        .map(|(_, value)| value)
+        .next_back()
+        .unwrap_or(b"")
 }
 trait SplitByte {
     fn split_once_byte(&self, b: u8) -> Option<(&[u8], &[u8])>;

@@ -123,6 +123,19 @@ impl Repository {
                 "resolve conflicts and handle changed submodules before saving a stash".into(),
             ));
         }
+        if paths.is_empty() {
+            // A full stash resets the worktree, including edits hidden from status.
+            let flags = self.read_diff(
+                "check stash index flags",
+                &args(&["ls-files", "-v", "-z"]),
+                cancel,
+            )?;
+            if crate::saved_work::hidden_index_entries(&flags) {
+                return Err(Error::InvalidInput(
+                    "A full stash could overwrite files marked assume-unchanged or skip-worktree. Review their index flags or stash selected files.".into(),
+                ));
+            }
+        }
         self.check_stash_replacements(&status, cancel)?;
         let mut pathspecs = Vec::new();
         for path in paths {

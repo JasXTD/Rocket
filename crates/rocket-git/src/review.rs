@@ -204,7 +204,7 @@ impl Repository {
         Err(Error::InvalidInput("This side is absent (for example, an add/delete conflict), or the conflict has already been resolved.".into()))
     }
 
-    /// Mark an edited working file resolved, refusing leftover standard conflict
+    /// Mark an edited working file resolved, refusing leftover Git conflict
     /// marker blocks. No file content is replaced and no merge is committed.
     pub fn mark_resolved(
         &self,
@@ -231,15 +231,17 @@ impl Repository {
             ));
         }
         // Allow marker-like ordinary text; reject complete ordered marker blocks.
-        let mut marker = 0;
-        for line in preview.bytes.split(|b| *b == b'\n') {
-            if line.starts_with(b"<<<<<<< ") {
-                marker = 1;
-            } else if marker == 1 && (line == b"=======" || line == b"=======\r") {
-                marker = 2;
-            } else if marker == 2 && line.starts_with(b">>>>>>> ") {
-                return Err(Error::InvalidInput("Conflict markers remain in this file. Edit the working file, review it, then mark it resolved.".into()));
-            }
+        let markers = ConflictMarkers::from_sides(self.conflict_marker_width(path, cancel)?, []);
+        let bytes = preview
+            .bytes
+            .strip_prefix(b"\xef\xbb\xbf")
+            .unwrap_or(&preview.bytes);
+        if !markers
+            .blocks(&String::from_utf8_lossy(bytes))
+            .blocks
+            .is_empty()
+        {
+            return Err(Error::InvalidInput("Conflict markers remain in this file. Edit the working file, review it, then mark it resolved.".into()));
         }
         let mut input = path.as_bytes().to_vec();
         input.push(0);

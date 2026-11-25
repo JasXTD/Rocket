@@ -7,7 +7,7 @@ mod file;
 mod markers;
 mod side;
 mod index;
-pub use markers::{ConflictBlock, ConflictBlocks, conflict_blocks};
+pub use markers::{ConflictBlock, ConflictBlocks, ConflictMarkers, conflict_blocks};
 pub use side::{
     CONFLICT_FILE_LIMIT, ConflictKeep, ConflictVersion, WholeConflictPreview, WholeConflictReport,
     WholeFileChange, ConflictKind,
@@ -79,6 +79,7 @@ impl ConflictFailure {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Context {
+    marker_width: usize,
     head: Head,
     stages: Vec<u8>,
     state: OperationState,
@@ -91,6 +92,7 @@ pub struct ConflictPreview {
     original: Vec<u8>,
     working: String,
     sides: [Option<String>; 3],
+    markers: ConflictMarkers,
     crlf: bool,
     bom: bool,
 }
@@ -102,6 +104,9 @@ impl fmt::Debug for ConflictPreview {
     }
 }
 impl ConflictPreview {
+    pub fn markers(&self) -> &ConflictMarkers {
+        &self.markers
+    }
     pub fn path(&self) -> &RepoPath {
         &self.path
     }
@@ -199,6 +204,30 @@ impl Repository {
         }
         cancel.check()
     }
+    pub(crate) fn conflict_marker_width(
+        &self,
+        path: &RepoPath,
+        cancel: &CancellationToken,
+    ) -> Result<usize> {
+        let mut args = args(&["check-attr", "-z", "conflict-marker-size", "--"]);
+        args.push(path.argument()?);
+        let bytes = self.read_diff("read conflict marker size", &args, cancel)?;
+        let mut fields = bytes.split(|b| *b == 0);
+        if fields.next() != Some(path.as_bytes()) || fields.next() != Some(b"conflict-marker-size")
+        {
+            return Err(Error::parse(
+                "conflict markers",
+                "unexpected attribute record",
+            ));
+        }
+        Ok(fields
+            .next()
+            .and_then(|v| std::str::from_utf8(v).ok())
+            .and_then(|s| s.parse::<usize>().ok())
+            .filter(|w| *w > 0)
+            .unwrap_or(7))
+    }
+
     fn conflict_context(&self, path: &RepoPath, cancel: &CancellationToken) -> Result<Context> {
         let mut arguments = args(&["ls-files", "--unmerged", "-z", "--"]);
         arguments.push(path.argument()?);
@@ -211,6 +240,7 @@ impl Repository {
         }
         let head = self.head(cancel)?;
         Ok(Context {
+            marker_width: self.conflict_marker_width(path, cancel)?,
             head,
             stages,
             state: self.operation_state(cancel)?,
@@ -272,6 +302,10 @@ impl Repository {
             if self.conflict_context(path, cancel)? != context {
                 return Err(Error::Conflict(ConflictFailure::ContextChanged));
             }
+            let markers = ConflictMarkers::from_sides(
+                context.marker_width,
+                sides.iter().filter_map(Option::as_deref),
+            );
             Ok(ConflictPreview {
                 git_dir: self.info().git_dir.clone(),
                 path: path.clone(),
@@ -279,6 +313,7 @@ impl Repository {
                 original,
                 working,
                 sides,
+                markers,
                 crlf,
                 bom,
             })
@@ -297,7 +332,7 @@ impl Repository {
         }
         let _permit = self.acquire_write(cancel)?;
         let bytes = preview.encoded(text)?;
-        if stage && !conflict_blocks(text).is_resolved() {
+        if stage && !preview.markers.blocks(text).is_resolved() {
             return Err(Error::Conflict(ConflictFailure::MarkersRemain));
         }
         let mut saved = false;

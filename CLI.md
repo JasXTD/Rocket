@@ -236,6 +236,7 @@ unchanged, different or unknown), `observed` and `verification`.
 
 **Stash selection.** `stash save [--message M] [--include-untracked] -- PATH...` saves
 only those files; other changes stay, and every staged change must be among them.
+A full stash refuses index entries marked `assume-unchanged` or `skip-worktree` because Git's cleanup can overwrite hidden edits.
 `stash show FULL_ID [--part tracked|index|untracked]` lists its files with `patch`,
 `patch_sha256`, numbered `hunks` and their `line_ids`. `stash apply FULL_ID --
 PATH...` applies those whole files, and `--hunks N,...` or `--lines ID,...` with

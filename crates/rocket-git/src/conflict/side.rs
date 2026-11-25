@@ -229,18 +229,7 @@ fn stage_entries(stages: &[u8], path: &RepoPath) -> Result<Vec<(u8, bool, bool, 
 }
 
 pub(super) fn lfs_attributes(attrs: &[u8]) -> Result<bool> {
-    let records: Vec<_> = attrs.split(|b| *b == 0).filter(|s| !s.is_empty()).collect();
-    if records.len() != 15 {
-        return Err(Error::parse("conflict attributes", "invalid attributes"));
-    }
-    let attr = |name: &[u8]| {
-        records
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .find(|r| r[1] == name)
-            .map_or(b"unspecified".as_slice(), |r| r[2])
-    };
+    let attr = crate::file_actions::conversion_attributes(attrs)?;
     let lfs = attr(b"filter") == b"lfs";
     if lfs
         && (!matches!(attr(b"working-tree-encoding"), b"unspecified" | b"unset")

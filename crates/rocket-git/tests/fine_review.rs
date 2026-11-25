@@ -21,6 +21,28 @@ fn apply(r: &Repository, p: &ChangeReview, lines: &[usize]) {
 }
 
 #[test]
+fn legacy_crlf_partial_staging_matches_git_add_and_modern_text_takes_precedence() {
+    let f = Fixture::new();
+    f.run(&["config", "core.autocrlf", "true"]);
+    f.write(
+        ".gitattributes",
+        "*.raw -crlf\n*.input crlf=input\n*.modern -crlf text\n",
+    );
+    f.commit("attributes");
+    let repo = f.repo();
+    for name in ["new.raw", "new.input", "new.modern"] {
+        f.write(name, b"first\r\nsecond\r\n");
+        let review = repo.review_untracked(&p(name), &c()).unwrap();
+        assert_eq!(review.selection_unavailable(), None);
+        apply(&repo, &review, &review.changed_lines());
+        let partial = f.run(&["show", &format!(":{name}")]);
+        f.run(&["rm", "--cached", "-f", "--", name]);
+        f.run(&["add", "--", name]);
+        assert_eq!(partial, f.run(&["show", &format!(":{name}")]), "{name}");
+    }
+}
+
+#[test]
 fn new_file_lines_round_trip_and_never_touch_working_files() {
     isolated(
         "ROCKET_FINE_CASE",

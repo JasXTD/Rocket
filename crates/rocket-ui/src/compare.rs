@@ -578,7 +578,7 @@ fn fields(
         ui.spacing_mut().item_spacing.x = 8.0;
         let action = 84.0;
         let field = ((ui.available_width() - action - 30.0 - 3.0 * 8.0) / 2.0).max(110.0);
-        let base = RefField { key: "compare-base", label: crate::i18n::tr("BASE"), hint: crate::i18n::tr("Branch, tag or commit"), invalid: false };
+        let base = RefField { key: "compare-base", label: crate::i18n::tr("BASE"), hint: crate::i18n::tr("Branch, tag or commit"), invalid: false, short_labels: false };
         ref_field(ui, widgets, base, &mut s.base, &s.branch_choices, field, &mut enter);
         match local {
             Some(staged) => {
@@ -590,7 +590,7 @@ fn fields(
                 if swap_button(ui, widgets, "compare-swap", !s.cancelling) {
                     emit(intents, CompareIntent::Swap);
                 }
-                let target = RefField { key: "compare-target", label: crate::i18n::tr("TARGET"), hint: crate::i18n::tr("Branch, tag or commit"), invalid: false };
+                let target = RefField { key: "compare-target", label: crate::i18n::tr("TARGET"), hint: crate::i18n::tr("Branch, tag or commit"), invalid: false, short_labels: false };
                 ref_field(ui, widgets, target, &mut s.target, &s.branch_choices, field, &mut enter);
             }
         }
@@ -622,6 +622,7 @@ pub(crate) struct RefField<'a> {
     pub label: &'a str,
     pub hint: &'a str,
     pub invalid: bool,
+    pub short_labels: bool,
 }
 
 /// Base or Target as one field: its label, the name and a bare ▾ for the branch list.
@@ -635,7 +636,13 @@ pub(crate) fn ref_field(
     width: f32,
     enter: &mut bool,
 ) -> bool {
-    let RefField { key, label, hint, invalid } = field;
+    let RefField {
+        key,
+        label,
+        hint,
+        invalid,
+        short_labels,
+    } = field;
     let (rect, _) = ui.allocate_exact_size(vec2(width, 30.0), Sense::hover());
     ui.painter().rect_filled(rect, 7.0, BG());
     let inside = Rect::from_min_max(rect.min + vec2(10.0, 0.0), rect.max - vec2(3.0, 0.0));
@@ -661,7 +668,13 @@ pub(crate) fn ref_field(
             state.bg_stroke = Stroke::NONE;
         }
         ui.spacing_mut().combo_width = picker;
-        if let Some(chosen) = crate::branch_picker::pick(ui, widgets, &format!("{key}-pick"), "", choices, true) {
+        let key = format!("{key}-pick");
+        let chosen = if short_labels {
+            crate::branch_picker::pick_ref(ui, widgets, &key, "", choices)
+        } else {
+            crate::branch_picker::pick(ui, widgets, &key, "", choices, true)
+        };
+        if let Some(chosen) = chosen {
             *value = chosen;
             picked = true;
         }

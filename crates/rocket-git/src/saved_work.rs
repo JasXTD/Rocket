@@ -73,6 +73,12 @@ pub struct SavedWorkReport {
 fn invalid(s: &str) -> Error {
     Error::InvalidInput(s.into())
 }
+pub(crate) fn hidden_index_entries(listing: &[u8]) -> bool {
+    listing
+        .split(|b| *b == 0)
+        .filter_map(|r| r.first())
+        .any(|b| b.is_ascii_lowercase() || *b == b'S')
+}
 impl Repository {
     fn saved_read(&self, command: &[&str], c: &CancellationToken) -> Result<Vec<u8>> {
         self.runner
@@ -98,11 +104,7 @@ impl Repository {
             ));
         }
         let index = self.saved_read(&["ls-files", "--stage", "-v", "-z"], c)?;
-        if index
-            .split(|b| *b == 0)
-            .filter_map(|r| r.first())
-            .any(|b| b.is_ascii_lowercase() || *b == b'S')
-        {
+        if hidden_index_entries(&index) {
             return Err(invalid(
                 "saved_work_index: hidden index entries must be handled first.",
             ));

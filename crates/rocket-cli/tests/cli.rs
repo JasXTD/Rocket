@@ -1322,7 +1322,8 @@ fn line_selection_stages_reviewed_lines_and_refuses_a_changed_patch() {
 fn conflict_commands_pin_the_file_choose_blocks_and_keep_whole_versions() {
     let f = Fixture::new();
     f.seed();
-    let files = [("text.rs", "top\n{1}\nc\nd\ne\nf\n{2}\nbottom\n"), ("whole.txt", "{1} whole\n"), ("manual.txt", "{1} manual\n")];
+    fs::write(f.repo.join(".gitattributes"), "text.rs conflict-marker-size=4\n").unwrap();
+    let files = [("text.rs", "Chapter\n==========\ntop\n{1}\nc\nd\ne\nf\n{2}\nbottom\n"), ("whole.txt", "{1} whole\n"), ("manual.txt", "{1} manual\n")];
     let commit = |label: &str, message: &str| {
         for (name, text) in files {
             fs::write(f.repo.join(name), text.replace("{1}", &format!("{label}1")).replace("{2}", &format!("{label}2"))).unwrap();
@@ -1340,6 +1341,7 @@ fn conflict_commands_pin_the_file_choose_blocks_and_keep_whole_versions() {
 
     let shown = f.cli(&["conflict", "show", "text.rs"], 0);
     let text = &shown["data"]["text"];
+    assert_eq!(text["malformed"], false);
     assert_eq!(text["conflicts"].as_array().unwrap().len(), 2);
     assert_eq!(text["conflicts"][0]["ours"]["text"], "ours1\n");
     assert_eq!(text["conflicts"][1]["theirs"]["text"], "theirs2\n");
@@ -1351,7 +1353,7 @@ fn conflict_commands_pin_the_file_choose_blocks_and_keep_whole_versions() {
     let partial = f.cli(&["conflict", "resolve", "text.rs", "--expect-sha256", &sha, "--choose", "1=ours", "--stage"], 1);
     assert_eq!(partial["error"]["code"], "conflict_markers_remain");
     let preview = f.cli(&["conflict", "resolve", "text.rs", "--expect-sha256", &sha, "--choose", "2=theirs,1=both", "--preview"], 0);
-    let resolved = "top\nours1\ntheirs1\nc\nd\ne\nf\ntheirs2\nbottom\n";
+    let resolved = "Chapter\n==========\ntop\nours1\ntheirs1\nc\nd\ne\nf\ntheirs2\nbottom\n";
     assert_eq!(preview["data"]["preview"]["result"]["text"], resolved);
     assert_eq!(preview["data"]["preview"]["remaining_conflicts"], 0);
     assert_eq!(fs::read(f.repo.join("text.rs")).unwrap(), before);

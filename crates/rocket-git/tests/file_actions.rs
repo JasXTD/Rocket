@@ -264,6 +264,69 @@ fn checkout_line_endings_match_git_without_running_filters() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn discard_mode_only_change_reports_an_unrepresentable_windows_mode() {
+    isolated(
+        "ROCKET_FILE_CASE",
+        "discard_mode_only_change_reports_an_unrepresentable_windows_mode",
+        || {
+            let f = Fixture::new();
+            f.write("run.sh", "unchanged\n");
+            f.commit("base");
+            f.run(&["update-index", "--chmod=+x", "run.sh"]);
+            let repo = f.repo();
+            let path = RepoPath::new("run.sh").unwrap();
+            for settings in [
+                ["config", "core.filemode", "true"],
+                ["config", "--unset", "core.filemode"],
+            ] {
+                f.run(&settings);
+                let before = f.run(&["diff", "--summary"]);
+                assert!(String::from_utf8_lossy(&before).contains("100755 => 100644"));
+                let error = repo.preview_file_edit(&path, FileEditSource::Index, &token()).unwrap_err();
+                assert!(matches!(error, Error::Unsupported(_)), "{error:?}");
+                assert_eq!(f.run(&["diff", "--summary"]), before);
+            }
+        },
+    );
+}
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[test]
+fn discard_mode_only_change_rechecks_permissions_and_can_restore_its_backup() {
+    use std::os::unix::fs::PermissionsExt;
+    let f = Fixture::new();
+    let file = f.repository.join("run.sh");
+    let path = RepoPath::new("run.sh").unwrap();
+    let chmod = |mode| fs::set_permissions(&file, fs::Permissions::from_mode(mode)).unwrap();
+    let mode = || fs::metadata(&file).unwrap().permissions().mode() & 0o777;
+    f.write("run.sh", "unchanged\n");
+    chmod(0o755);
+    f.commit("executable");
+    let repo = f.repo();
+    chmod(0o644);
+    let preview = repo
+        .preview_file_edit(&path, FileEditSource::Index, &token())
+        .unwrap();
+    chmod(0o755);
+    assert!(matches!(
+        repo.apply_file_edit(&preview, &token()),
+        Err(Error::FileEdit(FileEditFailure::Stale))
+    ));
+    chmod(0o644);
+    apply(&repo, &preview);
+    assert_eq!(mode(), 0o755);
+    assert!(f.run(&["status", "--porcelain"]).is_empty());
+    let backup = repo.file_backups(&token()).unwrap().remove(0);
+    let undo = repo
+        .preview_file_edit(&path, FileEditSource::Backup(backup), &token())
+        .unwrap();
+    apply(&repo, &undo);
+    assert_eq!(mode(), 0o644);
+    assert_eq!(fs::read(&file).unwrap(), b"unchanged\n");
+}
+
 /// Linux: a restored file gets the executable bit its index entry records, as a Git
 /// checkout would, and keeps its other permission bits; no mode change is left.
 #[cfg(any(target_os = "linux", target_os = "macos"))]

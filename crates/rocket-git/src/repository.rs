@@ -889,6 +889,13 @@ impl Repository {
             bound.push("--work-tree".into());
             bound.push(git_path(worktree));
         }
+        // Keep empty context lines valid unified-diff input during both review and revalidation.
+        if arguments
+            .first()
+            .is_some_and(|cmd| cmd == "diff" || cmd == "show")
+        {
+            bound.extend(args(&["-c", "diff.suppressBlankEmpty=false"]));
+        }
         bound.extend_from_slice(arguments);
         self.read(operation, &bound, input, cancel)
     }

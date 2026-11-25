@@ -27,6 +27,33 @@ pub(crate) fn pick(
     choices: &[String],
     enabled: bool,
 ) -> Option<String> {
+    pick_labeled(ui, widgets, key, placeholder, choices, enabled, |name| name)
+}
+
+/// Ref fields keep the full Git ref as the value even when the menu uses a short label.
+pub(crate) fn pick_ref(
+    ui: &mut Ui,
+    widgets: &mut HashMap<String, UiControl>,
+    key: &str,
+    placeholder: &str,
+    choices: &[String],
+) -> Option<String> {
+    pick_labeled(ui, widgets, key, placeholder, choices, true, |name| {
+        name.strip_prefix("refs/heads/")
+            .or_else(|| name.strip_prefix("refs/remotes/"))
+            .unwrap_or(name)
+    })
+}
+
+fn pick_labeled(
+    ui: &mut Ui,
+    widgets: &mut HashMap<String, UiControl>,
+    key: &str,
+    placeholder: &str,
+    choices: &[String],
+    enabled: bool,
+    label: fn(&str) -> &str,
+) -> Option<String> {
     let id = ui.make_persistent_id(key);
     let filter_id = id.with("filter");
     let dialog_layer = ui.layer_id();
@@ -57,7 +84,13 @@ pub(crate) fn pick(
                         .max_height(320.0)
                         .show(ui, |ui| {
                             for (i, choice) in rows.iter().take(SHOWN).enumerate() {
-                                let r = ui.selectable_label(false, choice.as_str());
+                                let display = label(choice);
+                                let r = ui.selectable_label(false, display);
+                                let r = if display == choice.as_str() {
+                                    r
+                                } else {
+                                    r.on_hover_text(choice.as_str())
+                                };
                                 pages::control(widgets, format!("{key}-{i}"), &r, ui.clip_rect());
                                 if r.clicked() {
                                     chosen = Some((*choice).clone());

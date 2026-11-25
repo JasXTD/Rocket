@@ -37,6 +37,7 @@ impl Repository {
         }
         let preview = self.preview_untracked(path, cancel)?;
         let (attrs, config) = self.conversion_settings(path, cancel)?;
+        let rules = crate::file_actions::line_endings(&attrs, &config);
         let reason = if preview.truncated {
             Some("This new file is too large for partial staging. Stage the whole file.")
         } else if preview.binary
@@ -47,7 +48,7 @@ impl Repository {
                 .any(|b| *b < 32 && !matches!(b, b'\t' | b'\r' | b'\n'))
         {
             Some("Partial staging of new files requires plain UTF-8 text. Stage the whole file.")
-        } else if crate::file_actions::checkout_bytes(vec![], &attrs, &config).is_err() {
+        } else if rules.is_err() {
             Some(
                 "Partial staging cannot safely run this file's filter, encoding or ident conversion. Stage the whole file.",
             )
@@ -56,29 +57,7 @@ impl Repository {
         };
         let raw = preview.bytes;
         let mut bytes = raw.clone();
-        let fields: Vec<_> = attrs.split(|b| *b == 0).collect();
-        let attr = |name: &[u8]| {
-            fields
-                .as_chunks::<3>().0.iter()
-                .find(|v| v[1] == name)
-                .map(|v| v[2])
-                .unwrap_or(b"unspecified")
-        };
-        let auto = config
-            .split(|b| *b == 0)
-            .filter_map(|r| {
-                r.iter()
-                    .position(|b| *b == b'\n')
-                    .map(|i| (&r[..i], &r[i + 1..]))
-            })
-            .filter(|(k, _)| *k == b"core.autocrlf")
-            .map(|(_, v)| v.to_ascii_lowercase())
-            .next_back()
-            .unwrap_or_default();
-        let normalize = attr(b"text") != b"unset"
-            && (matches!(attr(b"text"), b"set" | b"auto")
-                || matches!(attr(b"eol"), b"lf" | b"crlf")
-                || matches!(auto.as_slice(), b"true" | b"yes" | b"on" | b"1" | b"input"));
+        let normalize = rules.is_ok_and(|rules| rules.normalize);
         // Git's automatic text detection preserves files containing bare CRs.
         // Refuse that ambiguous new-file case rather than inventing blob bytes.
         let reason = reason.or_else(|| {

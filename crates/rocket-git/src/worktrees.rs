@@ -595,6 +595,9 @@ impl Repository {
                 self.worktree_destination(&p.path, cancel)?;
                 local_files::directory(&workspace)?;
                 local_files::directory(&checkout)?;
+                link.as_ref()
+                    .expect("verified checkout link")
+                    .check_move(&checkout, &p.path)?;
                 local_files::move_path(&checkout, &p.path, false)?;
                 published = true;
                 Ok(())
@@ -837,9 +840,7 @@ impl Repository {
     }
 }
 
-/// Only the newly created checkout's documented absolute backlink needs to move.
-/// `git worktree repair <path>` also repairs unrelated registered worktrees; do
-/// not invoke it as part of creation. See gitrepository-layout, worktrees/id/gitdir.
+/// Check only this checkout's two links. Git's general repair also visits other registrations.
 struct PreparedLink {
     admin: PathBuf,
     gitfile: Vec<u8>,
@@ -851,19 +852,8 @@ impl PreparedLink {
         let guard = init::guard_directories(admin)?;
         let gitfile = local_files::read_config(&checkout.join(".git"))?;
         let backlink = local_files::read_config(&admin.join("gitdir"))?;
-        let forward = std::str::from_utf8(&gitfile)
-            .ok()
-            .and_then(|s| s.trim_end_matches(['\r', '\n']).strip_prefix("gitdir: "))
-            .map(Path::new)
-            .filter(|p| p.is_absolute());
-        let backward = std::str::from_utf8(&backlink)
-            .ok()
-            .map(|s| Path::new(s.trim_end_matches(['\r', '\n'])))
-            .filter(|p| p.is_absolute());
-        if forward.and_then(|p| p.canonicalize().ok()).as_deref() != Some(admin)
-            || backward.and_then(|p| p.canonicalize().ok())
-                != checkout.join(".git").canonicalize().ok()
-            || backward.is_none()
+        if !link_resolves_to(checkout, &gitfile, "gitdir: ", admin)
+            || !link_resolves_to(admin, &backlink, "", &checkout.join(".git"))
         {
             return refused(WorktreeFailure::VerificationFailed);
         }
@@ -874,38 +864,124 @@ impl PreparedLink {
             _guard: guard,
         })
     }
+    fn forward_update(&self, destination: &Path) -> Result<Option<Vec<u8>>> {
+        if !link_path(&self.gitfile, "gitdir: ").is_some_and(Path::is_relative) {
+            return Ok(None);
+        }
+        let value = link_value(&self.gitfile, "gitdir: ", destination, &self.admin)?;
+        Ok((value != self.gitfile).then_some(value))
+    }
+
+    fn check_move(&self, checkout: &Path, destination: &Path) -> Result<()> {
+        if !path_missing(&self.admin.join("gitdir.lock"))
+            || (self.forward_update(destination)?.is_some()
+                && !path_missing(&checkout.join(".git.lock")))
+        {
+            return refused(WorktreeFailure::Locked);
+        }
+        Ok(())
+    }
+
     fn publish(&self, destination: &Path) -> Result<()> {
+        let _checkout = init::guard_directories(destination)?;
         let backlink = self.admin.join("gitdir");
         let lock = self.admin.join("gitdir.lock");
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&lock)
-            .map_err(|e| Error::io("lock new worktree backlink", e))?;
         let gitfile = destination.join(".git");
-        // Git's backlink reader strips the final '/.git' component using slash
-        // spelling even on Windows. Match the format written by Git itself.
-        let value = format!(
-            "{}\n",
-            git_path(&gitfile)
-                .to_str()
-                .ok_or(Error::Worktree(WorktreeFailure::InvalidDestination))?
-                .replace('\\', "/")
-        );
-        file.write_all(value.as_bytes())
-            .and_then(|_| file.sync_all())
-            .map_err(|e| Error::io("write new worktree backlink", e))?;
-        drop(file);
+        let forward_lock = destination.join(".git.lock");
+        let value = link_value(&self.backlink, "", &self.admin, &gitfile)?;
+        let forward = self.forward_update(destination)?;
+        let prepare = |path: &Path, bytes: &[u8]| -> Result<()> {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(path)
+                .map_err(|e| Error::io("lock worktree link", e))?;
+            file.write_all(bytes)
+                .and_then(|_| file.sync_all())
+                .map_err(|e| Error::io("write worktree link", e))
+        };
+        prepare(&lock, &value)?;
+        if let Some(bytes) = &forward {
+            prepare(&forward_lock, bytes)?;
+        }
         if local_files::read_config(&backlink)? != self.backlink
             || local_files::read_config(&gitfile)? != self.gitfile
-            || local_files::read_config(&lock)? != value.as_bytes()
+            || local_files::read_config(&lock)? != value
         {
             return refused(WorktreeFailure::StalePreview);
         }
         // The destination is already published. Do not interrupt this minimal
         // atomic relink. On failure retain the lock/data for explicit inspection.
+        if let Some(bytes) = forward {
+            if local_files::read_config(&forward_lock)? != bytes {
+                return refused(WorktreeFailure::StalePreview);
+            }
+            local_files::move_path(&forward_lock, &gitfile, true)?;
+        }
         local_files::move_path(&lock, &backlink, true)
     }
+}
+
+fn link_path<'a>(bytes: &'a [u8], prefix: &str) -> Option<&'a Path> {
+    let text = std::str::from_utf8(bytes)
+        .ok()?
+        .trim_end_matches(['\r', '\n'])
+        .strip_prefix(prefix)?;
+    let path = Path::new(text);
+    (!text.is_empty()
+        && !text.contains('\0')
+        && (path.is_absolute()
+            || path.components().all(|c| {
+                !matches!(
+                    c,
+                    std::path::Component::Prefix(_) | std::path::Component::RootDir
+                )
+            })))
+    .then_some(path)
+}
+
+fn relative_link(from: &Path, to: &Path) -> Option<PathBuf> {
+    let from = PathBuf::from(git_path(from));
+    let to = PathBuf::from(git_path(to));
+    from.ancestors().enumerate().find_map(|(levels, ancestor)| {
+        let tail = to.strip_prefix(ancestor).ok()?;
+        let mut path: PathBuf = std::iter::repeat_n("..", levels).collect();
+        path.push(tail);
+        Some(path)
+    })
+}
+
+fn link_matches(parent: &Path, bytes: &[u8], prefix: &str, target: &Path) -> bool {
+    let Some(link) = link_path(bytes, prefix) else {
+        return false;
+    };
+    // Compare with the expected registration without following unrelated worktrees'
+    // backlinks. This comparison also works when Repair or Prune reviews a missing path.
+    if link.is_absolute() {
+        equivalent_path(link, target)
+    } else {
+        relative_link(parent, target).is_some_and(|expected| equivalent_path(&expected, link))
+    }
+}
+
+fn link_resolves_to(parent: &Path, bytes: &[u8], prefix: &str, target: &Path) -> bool {
+    let actual = link_path(bytes, prefix).and_then(|link| parent.join(link).canonicalize().ok());
+    actual.zip(target.canonicalize().ok()).is_some_and(|(a, b)| equivalent_path(&a, &b))
+}
+
+fn link_value(original: &[u8], prefix: &str, from: &Path, to: &Path) -> Result<Vec<u8>> {
+    let link = link_path(original, prefix).ok_or(Error::Worktree(WorktreeFailure::StalePreview))?;
+    let target = if link.is_relative() {
+        relative_link(from, to).ok_or(Error::Worktree(WorktreeFailure::InvalidDestination))?
+    } else {
+        PathBuf::from(git_path(to))
+    };
+    let path = target
+        .to_str()
+        .ok_or(Error::Worktree(WorktreeFailure::InvalidDestination))?;
+    #[cfg(windows)]
+    let path = path.replace('\\', "/");
+    Ok(format!("{prefix}{path}\n").into_bytes())
 }
 
 fn path_missing(path: &Path) -> bool {

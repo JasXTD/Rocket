@@ -15,6 +15,53 @@ use std::{
 const FOLDER: &str = "rocket-file-backups";
 #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 static NEXT: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(all(test, any(target_os = "linux", target_os = "macos")))]
+#[test]
+fn identical_bytes_can_restore_either_executable_mode_and_keep_the_original() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
+        "rocket-file-mode-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    fs::create_dir(&root).unwrap();
+    let path = root.join("script");
+    fs::write(&path, b"unchanged\n").unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+    let cancel = CancellationToken::new();
+    for executable in [true, false] {
+        let before = read(&root, &path, &cancel).unwrap();
+        let bytes = before.0.as_deref().unwrap();
+        assert_eq!(before.1, Some(!executable));
+        assert!(matches!(
+            describe_change(&before, Some(bytes), before.1, "bytes"),
+            Err(Error::FileEdit(FileEditFailure::NoChange))
+        ));
+        describe_change(&before, Some(bytes), Some(executable), "bytes").unwrap();
+        let replacement = root.join("replacement");
+        let backup = root.join("original");
+        fs::write(&replacement, bytes).unwrap();
+        local_files::set_published_mode(
+            &replacement,
+            Some(&File::open(&path).unwrap()),
+            Some(executable),
+        )
+        .unwrap();
+        local_files::replace_file(&path, &replacement, &backup).unwrap();
+        assert_eq!(
+            read(&root, &path, &cancel).unwrap(),
+            (Some(bytes.to_vec()), Some(executable))
+        );
+        assert_eq!(read(&root, &backup, &cancel).unwrap(), before);
+        fs::remove_file(backup).unwrap();
+    }
+    fs::remove_file(path).unwrap();
+    fs::remove_dir(root).unwrap();
+}
 pub(super) fn validate_path(path: &RepoPath) -> Result<()> {
     for part in path.as_bytes().split(|b| *b == b'/') {
         if part.eq_ignore_ascii_case(b".git") || part.ends_with(b".") || part.ends_with(b" ") {
@@ -67,10 +114,26 @@ fn open(root: &Path, path: &Path) -> Result<Option<File>> {
     crate::review::verify_preview_handle(&file, root, path)?;
     Ok(Some(file))
 }
-fn read(root: &Path, path: &Path, cancel: &CancellationToken) -> Result<Option<Vec<u8>>> {
+pub(super) type FileState = (Option<Vec<u8>>, Option<bool>);
+
+fn read(root: &Path, path: &Path, cancel: &CancellationToken) -> Result<FileState> {
     let Some(mut file) = open(root, path)? else {
-        return Ok(None);
+        return Ok((None, None));
     };
+    #[cfg(unix)]
+    let executable = {
+        use std::os::unix::fs::PermissionsExt;
+        Some(
+            file.metadata()
+                .map_err(|e| Error::io("inspect executable permission", e))?
+                .permissions()
+                .mode()
+                & 0o100
+                != 0,
+        )
+    };
+    #[cfg(not(unix))]
+    let executable = None;
     let mut out = Vec::new();
     let mut buffer = [0; 65536];
     loop {
@@ -86,7 +149,7 @@ fn read(root: &Path, path: &Path, cancel: &CancellationToken) -> Result<Option<V
             return fail(FileEditFailure::Unsupported);
         }
     }
-    Ok(Some(out))
+    Ok((Some(out), executable))
 }
 fn target(repo: &Repository, path: &RepoPath) -> Result<PathBuf> {
     validate_path(path)?;
@@ -121,7 +184,7 @@ pub(super) fn read_working(
     repo: &Repository,
     path: &RepoPath,
     cancel: &CancellationToken,
-) -> Result<Option<Vec<u8>>> {
+) -> Result<FileState> {
     let full = target(repo, path)?;
     let root = repo.info().worktree.as_ref().unwrap();
     let _guard = local_files::pin_directories(root, full.parent().unwrap())?;
@@ -152,6 +215,7 @@ fn metadata(repo: &Repository, id: &str, cancel: &CancellationToken) -> Result<F
     let dir = backup_path(repo, id)?;
     let _guard = local_files::pin_directories(&repo.info().git_dir, &dir)?;
     let data = read(&repo.info().git_dir, &dir.join("record"), cancel)?
+        .0
         .ok_or_else(|| Error::parse("file-backups", "missing recovery record"))?;
     let rest = data
         .strip_prefix(b"ROCKET-FILE-BACKUP-1\n")
@@ -211,21 +275,30 @@ pub(super) fn backup_contents(
     repo: &Repository,
     b: &FileBackup,
     cancel: &CancellationToken,
-) -> Result<Option<Vec<u8>>> {
+) -> Result<FileState> {
     let current = metadata(repo, &b.id, cancel)?;
     if current.path != b.path || current.present != b.present {
         return fail(FileEditFailure::Stale);
     }
     if !b.present {
-        return Ok(None);
+        return Ok((None, None));
     }
     let dir = backup_path(repo, &b.id)?;
     let _guard = local_files::pin_directories(&repo.info().git_dir, &dir)?;
     // Prefer the exact file displaced at publication, including a late external
     // rename. The observed copy remains available when preparation was cancelled.
     for name in ["replaced-original", "observed-original"] {
-        if let Some(bytes) = read(&repo.info().git_dir, &dir.join(name), cancel)? {
-            return Ok(Some(bytes));
+        let (bytes, mode) = read(&repo.info().git_dir, &dir.join(name), cancel)?;
+        if bytes.is_some() {
+            // The displaced inode retains its mode. Older observed byte copies carry no mode.
+            return Ok((
+                bytes,
+                if name == "replaced-original" {
+                    mode
+                } else {
+                    None
+                },
+            ));
         }
     }
     Err(Error::parse("file-backups", "recovery content is missing"))
@@ -327,7 +400,9 @@ pub(super) fn publish(
     // A successful replacement is never reported as cancelled. Verify with a
     // fresh token and preserve any actual displaced file if a rename raced us.
     let fresh = CancellationToken::new();
-    if p.before.is_some() && read(git, &directory.join("replaced-original"), &fresh)? != p.before {
+    if p.before.is_some()
+        && !p.matches_before(&read(git, &directory.join("replaced-original"), &fresh)?)
+    {
         return fail(FileEditFailure::Verification);
     }
     Ok(())

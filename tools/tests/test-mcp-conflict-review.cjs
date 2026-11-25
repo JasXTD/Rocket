@@ -73,8 +73,8 @@ async function run(){try{
  const calls=()=>fs.readdirSync(stubDir).filter(n=>/^request-\d+\.txt$/.test(n)).length,dead=pids=>pids.every(pid=>{try{process.kill(pid,0);return false}catch{return true}});
  await open(r);await program(codex,'codex');await program(claude,'claude');await click('view-review');await stable();
  // The fixture's own branch and no main: nothing is read until a base is chosen.
- assert.equal(review().base,'');assert.equal(review().target,branch);assert.equal(review().preview,null);assert.equal(review().preparing,false);assert.equal(calls(),0);assert(control('review-choose'),'Choose branch');assert.equal(control('review-send').enabled,false);await capture('06-review-choose');
- await click('review-choose');await click('review-choose-0');await readDone();assert.equal(review().base,'rocket-ui-test/base');assert.equal(review().preview.commits,1);
+ assert.equal(review().base,'');assert.equal(review().target,'refs/heads/'+branch);assert.equal(review().preview,null);assert.equal(review().preparing,false);assert.equal(calls(),0);assert(control('review-choose'),'Choose branch');assert.equal(control('review-send').enabled,false);await capture('06-review-choose');
+ await click('review-choose');await click('review-choose-0');await readDone();assert.equal(review().base,'refs/heads/rocket-ui-test/base');assert.equal(review().preview.commits,1);
  await type('review-target','rocket-ui-test/target');await readDone();assert.equal(review().target,'rocket-ui-test/target');assert.equal(review().error,null);assert.equal(review().changed_inputs,false);assert.equal(calls(),0);assert.equal(review().provider,'claude');
  assert.equal(review().preview.files,3);assert.equal(review().preview.binary_files,1);assert.deepEqual(review().preview.rows.map(x=>x.sent).sort(),['binary','diff','diff']);
  assert(review().payload.includes('new 文.rs'));for(const secret of ['PRIVATE_STAGED','PRIVATE_UNSTAGED','PRIVATE_UNTRACKED','PRIVATE_BASE_ONLY'])assert(!review().payload.includes(secret));

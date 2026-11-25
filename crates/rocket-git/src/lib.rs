@@ -207,7 +207,7 @@ pub use comparison::{ComparedFile, Comparison};
 pub use conflict::{
     CONFLICT_FILE_LIMIT, CONFLICT_TEXT_LIMIT, ConflictBlock, ConflictBlocks, ConflictFailure,
     ConflictKeep, ConflictKind, ConflictPreview, ConflictSaveReport, ConflictVersion, WholeConflictPreview,
-    WholeConflictReport, WholeFileChange, conflict_blocks,
+    WholeConflictReport, WholeFileChange, ConflictMarkers, conflict_blocks,
 };
 pub use custom_commands::{
     COMMAND_PLACEHOLDERS, CUSTOM_OUTPUT_LIMIT, CommandAction, CommandContext, CommandInput, CommandInputKind, CommandScope, CustomCommand, CustomCommandReport,

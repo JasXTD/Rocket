@@ -23,6 +23,98 @@ fn apply(repo: &Repository, review: &ChangeReview, lines: &[usize]) {
 }
 
 #[test]
+fn mark_resolved_keeps_custom_width_conflicts_unmerged() {
+    for width in [10, 4] {
+        let f = conflict_with_heading(width);
+        let repo = f.repo();
+        let stages = f.run(&["ls-files", "-u"]);
+        assert!(!stages.is_empty());
+        assert!(
+            repo.mark_resolved(&path(), &token()).is_err(),
+            "width {width}"
+        );
+        assert_eq!(f.run(&["ls-files", "-u"]), stages);
+        f.write("review.txt", "Chapter\n==========\n\nresolved\n");
+        repo.mark_resolved(&path(), &token())
+            .unwrap()
+            .result
+            .unwrap();
+        assert_eq!(
+            f.run(&["show", ":review.txt"]),
+            b"Chapter\n==========\n\nresolved\n"
+        );
+    }
+}
+
+fn conflict_with_heading(width: usize) -> Fixture {
+    let f = Fixture::new();
+    f.write(
+        ".gitattributes",
+        format!("review.txt conflict-marker-size={width}\n"),
+    );
+    let write = |text| f.write("review.txt", format!("Chapter\n==========\n\n{text}\n"));
+    write("base");
+    f.commit("base");
+    f.run(&["switch", "-c", "topic"]);
+    write("theirs");
+    f.commit("topic");
+    f.run(&["switch", "main"]);
+    write("ours");
+    f.commit("ours");
+    assert!(
+        !f.output(&f.repository, &["merge", "topic"])
+            .status
+            .success()
+    );
+    f
+}
+
+#[test]
+fn resolve_conflict_preserves_setext_heading_and_rejects_orphan_markers() {
+    for width in [7, 10] {
+        let f = conflict_with_heading(width);
+        let repo = f.repo();
+        let preview = repo.edit_conflict(&path(), &token()).unwrap();
+        let blocks = preview.markers().blocks(preview.working());
+        assert!(!blocks.malformed);
+        assert_eq!(blocks.blocks.len(), 1);
+        let expected = preview.side(2).unwrap();
+        let orphan = format!("{expected}{}\n", "=".repeat(width));
+        assert!(matches!(
+            repo.save_conflict(&preview, &orphan, true, &token()),
+            Err(Error::Conflict(ConflictFailure::MarkersRemain))
+        ));
+        let report = repo
+            .save_conflict(&preview, expected, true, &token())
+            .unwrap();
+        report.result.unwrap();
+        assert!(report.staged);
+        assert_eq!(f.run(&["show", ":review.txt"]), expected.as_bytes());
+    }
+}
+
+#[test]
+fn blank_context_display_preference_allows_staging_and_unstaging_lines() {
+    let f = Fixture::new();
+    f.write("review.txt", "top\n\nold\n\nend\n");
+    f.commit("base");
+    f.run(&["config", "diff.suppressBlankEmpty", "true"]);
+    f.write("review.txt", "top\n\nnew\n\nend\n");
+    let repo = f.repo();
+    for staged in [false, true] {
+        let review = repo.review_change(&path(), staged, &token()).unwrap();
+        assert_eq!(review.selection_unavailable(), None);
+        assert_eq!(review.changed_lines().len(), 2);
+        apply(&repo, &review, &review.changed_lines());
+        let expected = if staged { "old" } else { "new" };
+        assert_eq!(
+            f.run(&["show", ":review.txt"]),
+            format!("top\n\n{expected}\n\nend\n").as_bytes()
+        );
+    }
+}
+
+#[test]
 fn conflict_previews_are_exact_and_mark_resolved_rejects_leftover_markers() {
     let fixture = Fixture::new();
     fixture.write("review.txt", "base\n");

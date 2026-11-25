@@ -120,8 +120,8 @@ fn find_lines(side: &str, chunk: &str, near: usize) -> Option<Range<usize>> {
     best.map(|(_, line)| line..line + count)
 }
 /// The names Git wrote after the first conflict's markers, such as HEAD and the merged branch.
-fn marker_labels(text: &str) -> Option<(String, String)> {
-    let block = conflict_blocks(text).blocks.into_iter().next()?;
+fn marker_labels(text: &str, blocks: ConflictBlocks) -> Option<(String, String)> {
+    let block = blocks.blocks.into_iter().next()?;
     let mut lines = text[block.range].lines();
     let label = |line: &str| line.trim_start_matches(['<', '>']).trim().to_owned();
     Some((label(lines.next()?), label(lines.next_back()?)))
@@ -156,7 +156,7 @@ struct Loaded {
 impl State {
     pub(crate) fn import_external(&mut self, preview: Arc<ConflictPreview>, text: String) {
         self.forget_resolutions();
-        if let Some(labels) = marker_labels(&text) {
+        if let Some(labels) = marker_labels(&text, preview.markers().blocks(&text)) {
             self.labels = labels;
         }
         self.path = Some(preview.path().clone());
@@ -181,9 +181,14 @@ impl State {
             task.cancel();
         }
     }
+    fn draft_blocks(&self, text: &str) -> ConflictBlocks {
+        self.preview
+            .as_ref()
+            .map_or_else(|| conflict_blocks(text), |p| p.markers().blocks(text))
+    }
     fn changed(&mut self) {
         self.follow_edit();
-        self.blocks = conflict_blocks(&self.draft);
+        self.blocks = self.draft_blocks(&self.draft);
         self.maps = [2, 3].map(|stage| {
             crate::conflict_scroll::LineMap::new(
                 &self.draft,
@@ -226,7 +231,10 @@ impl State {
                 match *item {
                     Item::Open(i) => self.blocks.blocks.get(i).map(|b| lines(&self.draft, b)),
                     Item::Done(i) => self.resolved.get(i).and_then(|r| {
-                        conflict_blocks(&r.original).blocks.first().map(|b| lines(&r.original, b))
+                        self.draft_blocks(&r.original)
+                            .blocks
+                            .first()
+                            .map(|b| lines(&r.original, b))
                     }),
                 }
                 .unwrap_or_default()
@@ -521,7 +529,9 @@ impl Rocket {
                                 s.forget_resolutions();
                                 s.path = Some(preview.path().clone());
                                 s.draft = preview.working().into();
-                                s.labels = marker_labels(&s.draft).unwrap_or_default();
+                                s.labels =
+                                    marker_labels(&s.draft, preview.markers().blocks(&s.draft))
+                                        .unwrap_or_default();
                                 s.preview = Some(Arc::new(preview));
                                 s.error = None;
                                 s.part = 0;
@@ -2627,7 +2637,8 @@ after
         assert_eq!(find_lines("ax\n", "x\n", 0), None, "only whole lines count");
         assert_eq!(find_lines(side, "", 0), None, "a side that removed its lines");
         assert_eq!(find_lines(side, "y\n", 0), None);
-        let labels = marker_labels("<<<<<<< HEAD\na\n=======\nb\n>>>>>>> topic/x\n");
+        let text = "<<<<<<< HEAD\na\n=======\nb\n>>>>>>> topic/x\n";
+        let labels = marker_labels(text, conflict_blocks(text));
         assert_eq!(labels, Some(("HEAD".into(), "topic/x".into())));
     }
     /// Beside the side panes, each side's choice sits on that side's lines and Result keeps

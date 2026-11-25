@@ -1,6 +1,6 @@
 //! Local, user-protected mailbox for explicitly shared conflict snapshots.
 //! It grants no repository access; only the native editor can apply a proposal.
-use super::model::{CONTEXT_LIMIT, PROPOSAL_LIMIT, invalid, review};
+use super::model::{CONTEXT_LIMIT, PROPOSAL_LIMIT, invalid, review_payload};
 use rocket_git::{CancellationToken, Result, protect_hosting_secret};
 use serde_json::{Value, json};
 use std::{
@@ -217,12 +217,7 @@ pub fn get(profile: &Path, id: &str) -> Result<Value> {
 }
 pub fn propose(profile: &Path, id: &str, proposal: &str) -> Result<Value> {
     let (root, data) = request(profile, id)?;
-    review(
-        data.payload["draft"]
-            .as_str()
-            .ok_or_else(|| invalid("ai_exchange_data: Missing draft."))?,
-        proposal,
-    )?;
+    review_payload(&data.payload, proposal)?;
     let bytes = protected(proposal.as_bytes(), true)?;
     request(profile, id)?;
     publish(&root, &format!("{id}.reply"), &bytes)?;
@@ -327,7 +322,7 @@ pub fn wait(
                     .map_err(|_| invalid("ai_proposal_schema: Proposal must be UTF-8."));
                 plain.fill(0);
                 let text = text?;
-                review(data.payload["draft"].as_str().unwrap_or(""), &text)?;
+                review_payload(&data.payload, &text)?;
                 cancel.check()?;
                 return Ok(text);
             }

@@ -359,6 +359,7 @@ Push branches together publishes several branches in one atomic push: every sele
 - A stopped or conflicted workflow records its phase and stash ID under .git/rocket-saved-work. Finish or abort active integration, then inspect and explicitly apply the retained stash. Do not repeat the whole workflow blindly or apply a stash twice.
 
 - Saving a stash records your changes and then cleans them from the working tree. Ignored files are excluded.
+- A full stash stops if the index contains files marked assume-unchanged or skip-worktree. Review those files first, or select the visible changes you want to stash.
 - You can save only selected files. Staged files are always saved, because Git keeps the whole index in a stash, and unselected changes stay in the working tree. Git can stash a staged deletion, rename or conflict only together with every other change.
 - Applying keeps the stash, including when conflicts occur. Review Changes before retrying a failed apply.
 - Dropping a stash can make its changes unrecoverable. Working files stay unchanged. If the stash list changed since you selected the stash, the drop is rejected; refresh and select it again.
