@@ -1522,7 +1522,7 @@ fn modules_java_packages_stand_alone_and_each_language_names_its_units() {
         let c = modules::Words { language: ModuleLanguage::C, dialect: None };
         assert_eq!((c.find(), c.legend(4, 1)), ("Find a file", "Files 4 · links 1 · arrows point to what is used".to_owned()));
         assert_eq!((c.files(3), c.package_kind(false)), ("3 C files".to_owned(), "C folder · files"));
-        for (language, name) in [(ModuleLanguage::PowerShell, "PowerShell"), (ModuleLanguage::Bash, "Bash")] {
+        for (language, name) in [(ModuleLanguage::PowerShell, "PowerShell"), (ModuleLanguage::Bash, "Bash"), (ModuleLanguage::Lua, "Lua")] {
             let scripts = modules::Words { language, dialect: None };
             assert_eq!(scripts.find(), "Find a file");
             assert_eq!(scripts.files(1), format!("1 {name} file"));

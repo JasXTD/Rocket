@@ -258,15 +258,62 @@ fn javascript_target(spec: &str, from: &[u8], project: &[u8], units: &HashMap<&[
     Target::Outside(package_name(spec))
 }
 
+fn script_units<'a>(folder: &[u8], texts: &'a BTreeMap<Vec<u8>, String>, detail: impl Fn(&[u8]) -> &'static [u8], cancel: &CancellationToken) -> Result<(Built, HashMap<&'a [u8], usize>)> {
+    let (mut built, files) = file_units(folder, texts, detail, cancel)?;
+    for unit in &mut built.units { unit.folder = unit.files == 0; }
+    Ok((built, files))
+}
+
+pub(super) fn lua(group: &packages::Found, texts: &BTreeMap<Vec<u8>, String>, cancel: &CancellationToken) -> Result<Built> {
+    let (mut built, files) = script_units(&group.folder, texts, |p| if p.ends_with(b".lua") { b"Lua script" } else { b"JSON file" }, cancel)?;
+    if let Some(path) = &group.manifest {
+        let Some(manifest) = texts.get(path) else { return Ok(built); };
+        if lua::integration_manifest(manifest) {
+            let entry = join(&group.folder, b"main.lua");
+            if let Some(&to) = files.get(entry.as_slice()).filter(|_| texts[&entry].len() <= 64 * 1024) {
+                built.uses(files[path.as_slice()], to, ["main.lua".to_owned()]);
+                built.followed = 1;
+            }
+            // Rocket loads this entry directly; its sandbox has no Lua module loader.
+            return Ok(built);
+        }
+    }
+    let known: HashSet<_> = group.files.iter().map(Vec::as_slice).collect();
+    for (path, source) in texts.iter().filter(|(p, _)| p.ends_with(b".lua")) {
+        cancel.check()?;
+        let from = files[path.as_slice()];
+        lua::read(source, cancel, |name| {
+            if built.followed >= MAP_LINKS { built.limited = true; return false; }
+            built.followed += 1;
+            let stem = name.replace('.', "/");
+            let direct = join(&group.folder, format!("{stem}.lua").as_bytes());
+            let init = join(&group.folder, format!("{stem}/init.lua").as_bytes());
+            let mut candidates = [&direct, &init].into_iter().filter(|p| known.contains(p.as_slice()));
+            match (candidates.next(), candidates.next()) {
+                (Some(path), None) => match files.get(path.as_slice()) {
+                    Some(&to) => built.uses(from, to, [name.to_owned()]),
+                    None => built.unknown += 1,
+                },
+                (None, _) => {
+                    let outside = built.outside.entry(from).or_default();
+                    if outside.len() < OUTSIDE_NAMES { outside.insert(name.to_owned()); }
+                    else if !outside.contains(name) { built.limited = true; }
+                }
+                _ => built.unknown += 1,
+            }
+            true
+        })?;
+        if built.limited && built.followed >= MAP_LINKS { break; }
+    }
+    Ok(built)
+}
+
 /// Scripts share the immutable file index across groups. For cwd-relative operands,
 /// use a unique committed match at the repository root or beside the calling script.
 /// Never pick one if both exist, and never search the user's PATH or filesystem.
 pub(super) fn scripts(language: ModuleLanguage, folder: &[u8], texts: &BTreeMap<Vec<u8>, String>, known: &HashSet<&[u8]>, cancel: &CancellationToken) -> Result<Built> {
     let ps = language == ModuleLanguage::PowerShell;
-    let (mut built, files) = file_units(folder, texts, |_| if ps { b"PowerShell script" } else { b"Bash script" }, cancel)?;
-    for unit in &mut built.units {
-        unit.folder = unit.files == 0;
-    }
+    let (mut built, files) = script_units(folder, texts, |_| if ps { b"PowerShell script" } else { b"Bash script" }, cancel)?;
     for (path, source) in texts {
         cancel.check()?;
         if ps && path.rsplit(|&b| b == b'.').next().is_some_and(|e| e.eq_ignore_ascii_case(b"psd1")) {

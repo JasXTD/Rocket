@@ -472,8 +472,17 @@
     "other": "عدد ملفات Bash: {n}"
   },
   "Bash scripts": "برامج Bash النصية",
+  "{n} Lua files": {
+    "zero": "عدد ملفات Lua: {n}",
+    "one": "عدد ملفات Lua: {n}",
+    "two": "عدد ملفات Lua: {n}",
+    "few": "عدد ملفات Lua: {n}",
+    "many": "عدد ملفات Lua: {n}",
+    "other": "عدد ملفات Lua: {n}"
+  },
+  "Lua scripts": "برامج Lua النصية",
   "No package to read in this snapshot": "لا توجد حزمة للقراءة في هذه اللقطة",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell and Bash.": "يقرأ عرض الوحدات Rust وJavaScript وTypeScript وPython وGo وJava وKotlin وC وC++ وObjective-C وObjective-C++ وC# وPowerShell وBash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash.": "يقرأ عرض الوحدات Rust وJavaScript وTypeScript وPython وGo وJava وKotlin وC وC++ وObjective-C وObjective-C++ وC# وLua وPowerShell وBash.",
   "The package to map": "الحزمة المراد رسم خريطتها",
   "OUTSIDE": "من الخارج",
   "build ignore": "مستثنى من البناء",

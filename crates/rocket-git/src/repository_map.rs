@@ -10,6 +10,7 @@ mod csharp;
 mod golang;
 mod javascript;
 mod jvm;
+mod lua;
 mod mermaid;
 mod modules;
 mod owners;
@@ -37,6 +38,7 @@ const LABEL_BYTES: usize = 4096;
 /// Windows PowerShell also writes scripts as BOM-marked UTF-16. Other source
 /// readers keep their original UTF-8 contract. Git read budgets use the blob size.
 fn source_text(path: &[u8], bytes: &[u8]) -> Option<String> {
+    if path.ends_with(b".lua") && lua::binary(bytes) { return None; }
     if let Ok(text) = std::str::from_utf8(bytes) {
         return Some(text.to_owned());
     }
@@ -65,7 +67,7 @@ pub enum MapKind {
     History,
     People,
     /// One package's modules and which uses which: Rust, JavaScript or TypeScript,
-    /// Python, Go, Java or Kotlin, C or C++, C#, PowerShell or Bash.
+    /// Python, Go, Java or Kotlin, C or C++, C#, Lua, PowerShell or Bash.
     Modules,
 }
 impl MapKind {
@@ -129,12 +131,13 @@ pub enum ModuleLanguage {
     /// A unit is a script or helper file.
     PowerShell,
     Bash,
+    Lua,
 }
 impl ModuleLanguage {
     /// These units are independent. Their folders organize the list, while arrows
     /// point to individual packages, namespaces or script files.
     pub fn standalone(self) -> bool {
-        matches!(self, Self::Go | Self::Java | Self::CSharp | Self::PowerShell | Self::Bash)
+        matches!(self, Self::Go | Self::Java | Self::CSharp | Self::PowerShell | Self::Bash | Self::Lua)
     }
 }
 /// The second language a package of one is written in, which names the package.
@@ -335,6 +338,7 @@ pub enum UnlinkedReason {
     /// Not read: past the 2,000 files or 32 MiB one read takes.
     Limit,
     NotUtf8,
+    Binary,
     /// A Go file marked `//go:build ignore`: a program kept beside a package, never
     /// built with it.
     BuildIgnore,
@@ -650,6 +654,8 @@ impl Repository {
         let mut index: BTreeMap<Vec<u8>, usize> = BTreeMap::new();
         let mut manifests = Vec::new();
         let mut budget = 0usize;
+        let mut paths = Vec::new();
+        let mut lua_blobs = BTreeMap::new();
         for raw in output.split(|b| *b == 0).filter(|r| !r.is_empty()) {
             cancel.check()?;
             map.scanned += 1;
@@ -660,6 +666,13 @@ impl Repository {
                 .collect::<Vec<_>>();
             if fields.len() != 4 {
                 return Err(malformed());
+            }
+            if fields[0] != b"120000" && fields[1] == b"blob" {
+                paths.push(path);
+                if matches!(packages::file_name(path), b"integration.json" | b"main.lua") {
+                    let size = std::str::from_utf8(fields[3]).ok().and_then(|s| s.parse().ok()).ok_or_else(malformed)?;
+                    lua_blobs.insert(path, (parse::oid(fields[2], "map-code")?, size));
+                }
             }
             if map.nodes.len() >= MAP_NODES {
                 map.limited = true;
@@ -735,6 +748,19 @@ impl Repository {
                 manifests.push((path.to_vec(), parse::oid(fields[2], "map-code")?, size));
             }
         }
+        // Use the same immutable batch and overall budget as the Cargo manifests.
+        let cargo_count = manifests.len();
+        let lua_manifests = packages::lua_manifests(&lua_blobs);
+        for path in &lua_manifests {
+            let (id, size) = &lua_blobs[path.as_slice()];
+            if manifests.len() >= 64 || budget + size > 4 * 1024 * 1024 {
+                map.limited = true;
+                continue;
+            }
+            budget += size;
+            manifests.push((path.clone(), id.clone(), *size));
+        }
+        let mut small = BTreeMap::new();
         if !manifests.is_empty() {
             self.runner.step("map-code", "read-manifests", || {
                 let input = manifests
@@ -744,23 +770,18 @@ impl Repository {
                 let output =
                     self.map_read(&args(&["cat-file", "--batch", "--buffer"]), input, cancel)?;
                 let blobs = parse_blobs(&output, &manifests, cancel)?;
-                cargo::connect(map, &index, &manifests, &blobs, cancel)
+                for ((path, _, _), bytes) in manifests[cargo_count..].iter().zip(&blobs[cargo_count..]) {
+                    if let Ok(source) = std::str::from_utf8(bytes) { small.insert(path.clone(), source.to_owned()); }
+                }
+                cargo::connect(map, &index, &manifests[..cargo_count], &blobs[..cargo_count], cancel)
             })?;
         }
         // The packages of the other languages Modules can read, so Code offers it where
         // there is no Cargo package.
-        let paths: Vec<&[u8]> = output
-            .split(|b| *b == 0)
-            .filter_map(|raw| {
-                let (header, path) = raw.split_once_byte(b'\t')?;
-                let mut fields = header.split(|b| b.is_ascii_whitespace()).filter(|f| !f.is_empty());
-                let (mode, kind) = (fields.next()?, fields.next()?);
-                (mode != b"120000" && kind == b"blob").then_some(path)
-            })
-            .collect();
         cancel.check()?;
         // Past 128 packages of a language the list is cut; the folders shown are not.
-        let (found, _) = packages::find(&paths);
+        let (mut found, _) = packages::find(&paths);
+        found.extend(packages::lua(&paths, &lua_manifests, &small, packages::PACKAGES).0);
         map.module_packages = found
             .into_iter()
             .map(|f| ModulePackage {
@@ -768,12 +789,12 @@ impl Repository {
                 language: f.language,
                 dialect: f.dialect,
                 manifest: f.manifest.is_some(),
-                files: f.files.len(),
+                files: f.source_count(),
                 node: None,
                 folder: f.folder,
             })
             .collect();
-        map.notes.push("Committed snapshot only. Folder/file containment and local Cargo path declarations are separate connections. Other language imports, generated code and external packages are not analyzed.".into());
+        map.notes.push("Folders show the committed tree. Local Cargo path dependencies connect packages. File arrows show supported source references from this revision.".into());
         Ok(())
     }
     fn map_people(

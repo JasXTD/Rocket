@@ -92,8 +92,9 @@ to restart. See the [full release notes](docs/releases/0.92.6.md).
   who changed which folders. Export what the map shows as Mermaid.
 - **Modules** in Map → Code shows one package's modules and which uses which, for Rust,
   JavaScript and TypeScript, Python, Go, Java and Kotlin, C, C++, Objective-C,
-  Objective-C++, and C#. It also traces which PowerShell and Bash scripts load local
-  helpers. In **Folders**, follow a Rust foreign function to its native implementation.
+  Objective-C++, and C#. Follow local helpers in PowerShell, Bash and Lua. For a
+  Rocket integration, the map connects its manifest to `main.lua`. In **Folders**,
+  follow a Rust foreign function to its native implementation.
 - [**Insights**](docs/Insights.md) replaces Statistics: commit activity, a
   file treemap and pull request numbers from your hosting account, with weekly trends
   against the previous period, waiting review requests, time to first review, saved views
@@ -315,7 +316,7 @@ the rest.
 | Pull request metrics | ✅ opened/merged trends, merge time, time to first review | — | 💲 GitKraken Insights, in the browser | — |
 | **Understanding a repository** | | | | |
 | Activity statistics | ✅ timeline, contributors, weekday/hour, file treemap | ✅ statistics, activity treemap | — | — |
-| Code and repository map | ✅ packages, folders, branches and people; modules in Rust, JS/TS, Python, Go, Java/Kotlin, C/C++, Objective-C/Objective-C++, C#, PowerShell and Bash | — | Codemaps, early access only | — |
+| Code and repository map | ✅ packages, folders, branches and people; modules in Rust, JS/TS, Python, Go, Java/Kotlin, C/C++, Objective-C/Objective-C++, C#, Lua, PowerShell and Bash | — | Codemaps, early access only | — |
 | **Safety** | | | | |
 | Built-in secret check before commit and push | ✅ tokens, private keys, credentials, AI API keys | — | — | — |
 | Dependency advisories | ✅ offline OSV scan, optional check before push | — | — | — |
@@ -385,7 +386,7 @@ Official comparison sources:
   a real Astra response through localhost MCP using synthetic code; the separate
   Claude Code/Codex CLI provider paths still use stand-ins in acceptance tests.
 - **Map and Insights:** Modules reads Rust, JavaScript and TypeScript, Python, Go, Java
-  and Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell and Bash as text: it doesn't expand macros or `cfg`, run the C
+  and Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash as text: it doesn't expand macros or `cfg`, run the C
   preprocessor, evaluate other build constraints or
   follow import paths built at run time. Insights counts a loaded sample of up to 500
   pull requests; time to first review is measured on GitHub, GitHub Enterprise Server,

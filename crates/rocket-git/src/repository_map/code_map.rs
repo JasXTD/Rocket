@@ -331,7 +331,8 @@ impl Repository {
         // tsconfig or jsconfig, each up to 128 KiB, MANIFEST_BYTES together.
         let paths: Vec<&[u8]> = blobs.keys().copied().collect();
         // Keep the full catalog so later reads can select a deferred folder.
-        let (others, _) = packages::find_up_to(&paths, usize::MAX);
+        let (mut others, _) = packages::find_up_to(&paths, usize::MAX);
+        let lua_manifests = packages::lua_manifests(&blobs);
         let mut manifest_limited = false;
         let mut manifests = |wanted: &mut dyn Iterator<Item = Vec<u8>>| -> Vec<(Vec<u8>, ObjectId, usize)> {
             let mut total = 0;
@@ -359,7 +360,7 @@ impl Repository {
                 .filter(|m| matches!(packages::file_name(m), b"package.json" | b"go.mod"))
                 .chain(others.iter().filter(|f| f.language == ModuleLanguage::JavaScript).flat_map(|f| {
                     [packages::join(&f.folder, b"tsconfig.json"), packages::join(&f.folder, b"jsconfig.json")]
-                })),
+                })).chain(lua_manifests.iter().cloned()),
         );
         let mut crates = BTreeMap::new();
         let mut builds = BTreeMap::new();
@@ -376,6 +377,7 @@ impl Repository {
             }
         }
         let small = self.code_texts("read-manifests", &small_batch, cancel)?;
+        others.extend(packages::lua(&paths, &lua_manifests, &small, usize::MAX).0);
         // A crate as `use` lines name it.
         let crate_names: HashMap<String, Vec<u8>> = crates.iter().map(|(folder, name)| (name.clone(), folder.clone())).collect();
         // How other packages of this snapshot are named from outside them.
@@ -399,7 +401,7 @@ impl Repository {
                     }
                 }
                 // Java's packages and C#'s namespaces are named by their files, once read.
-                ModuleLanguage::Java | ModuleLanguage::C | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash => {}
+                ModuleLanguage::Java | ModuleLanguage::C | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua => {}
             }
         }
         // Longest module paths first, so a nested module wins over its parent.
@@ -859,6 +861,7 @@ fn code_other(
         ModuleLanguage::Java => units::java(&own, &f.files, cancel)?,
         ModuleLanguage::C => units::c(&f.folder, &own, &f.files, names.known, names.headers, cancel)?,
         ModuleLanguage::CSharp => units::csharp(&own, cancel)?,
+        ModuleLanguage::Lua => units::lua(f, &own, cancel)?,
         ModuleLanguage::PowerShell | ModuleLanguage::Bash => units::scripts(f.language, &f.folder, &own, names.known, cancel)?,
         ModuleLanguage::Go | ModuleLanguage::Rust => units::go(&f.folder, &module, &own, &f.files, cancel)?,
     };
@@ -901,7 +904,7 @@ fn code_other(
                 ModuleLanguage::Python => names.python.get(name.split('.').next().unwrap_or_default()).cloned(),
                 ModuleLanguage::Java => names.java.get(name).cloned(),
                 ModuleLanguage::CSharp => names.csharp.get(name).cloned(),
-                ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash => None,
+                ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua => None,
                 ModuleLanguage::Go | ModuleLanguage::Rust => names.go.iter().find(|(m, _)| name == m || name.starts_with(&format!("{m}/"))).map(|(m, folder)| {
                     let rest = name[m.len()..].trim_start_matches('/');
                     let package = if rest.is_empty() { folder.clone() } else { packages::join(folder, rest.as_bytes()) };

@@ -6,11 +6,12 @@ const root=path.resolve('work/mcp-fixtures/repository-map-'+crypto.randomUUID().
 const profile=path.join(root,'http-profile'),branch='rocket-ui-test/repository-map';
 const scriptsOnly=process.argv.includes('--scripts-only');
 const nativeOnly=process.argv.includes('--native-only');
-const focused=scriptsOnly||nativeOnly;
-const evidence=path.resolve('tools/maintenance',nativeOnly?'native-code-map':scriptsOnly?'script-code-map':'repository-map-redesign-20261105');
+const luaOnly=process.argv.includes('--lua-only');
+const focused=scriptsOnly||nativeOnly||luaOnly;
+const evidence=path.resolve('tools/maintenance',luaOnly?'lua-code-map':nativeOnly?'native-code-map':scriptsOnly?'script-code-map':'repository-map-redesign-20261105');
 const version=fs.readFileSync('Cargo.toml','utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([^"]+)"/)[1];
 const edgesOnly=process.argv.includes('--edges-only'),privateIds=[];
-const report={passed:false,version,root,scope:nativeOnly?'native-only':scriptsOnly?'scripts-only':edgesOnly?'edges-only':'full-map',cases:[]};
+const report={passed:false,version,root,scope:luaOnly?'lua-only':nativeOnly?'native-only':scriptsOnly?'scripts-only':edgesOnly?'edges-only':'full-map',cases:[]};
 fs.mkdirSync(root,{recursive:true});fs.mkdirSync(evidence,{recursive:true});
 fs.writeFileSync(path.join(root,'rocket-private-state'),'synthetic-content-only-v1\n');
 fs.mkdirSync(path.join(root,'empty-template'));fs.writeFileSync(path.join(root,'empty.config'),'');
@@ -122,21 +123,97 @@ async function scriptLoads(){
  assert(map().code_map.picture.arrows.some(a=>a.from===folderId('start') && a.to===folderId('shared')));
  passed('A second checkout links an explicit extensionless helper and skips ambiguous, PATH, dynamic and symlink loads. Local edits and helper contents were preserved');
 }
-async function nativeBridges(){
- async function folders(f,tip){
-  await open(f);
-  if(control('map-mode-folders')) await click('map-mode-folders');
-  await until(()=>map().data?.tip===tip && !map().alternate && map().code_map.links && !map().code_map.running,'committed native file links');
+async function folders(f,tip){
+ await open(f);
+ if(control('map-mode-folders')) await click('map-mode-folders');
+ await until(()=>map().data?.tip===tip && !map().alternate && map().code_map.links && !map().code_map.running,'committed file links');
+}
+async function expand(paths){
+ for(const p of paths){
+  const folder=node(p);
+  if(map().collapsed.includes(p)) await click('map-toggle-'+folder.index);
  }
- async function expand(paths){
-  for(const p of paths){
-   const folder=map().data.nodes.find(n=>n.path===p);
-   assert(folder,p);
-   if(map().collapsed.includes(p)) await click('map-toggle-'+folder.index);
+}
+function node(p){const n=map().data.nodes.find(n=>n.path===p);assert(n,p);return n;}
+function arrow(a,b){return map().code_map.picture.arrows.find(e=>e.from===node(a).index && e.to===node(b).index);}
+async function stopThenReload(f,light,heavy){
+ await open(f);await load(light);
+ if(control('map-mode-folders')) await click('map-mode-folders');
+ await until(()=>map().data?.tip===light && map().code_map.links && !map().code_map.running,'small map');
+ await openRevision();await type('map-revision',heavy);
+ await client.tool('rocket_click',{target:'map-load',expected_tab:state.active_tab});
+ await until(()=>map().code_map.reading_links && control('map-code-stop')?.enabled,'active code read');
+ await client.tool('rocket_click',{target:'map-code-stop',expected_tab:state.active_tab});
+ await until(()=>!state.input_pending && map().code_map.stopped && !map().code_map.running,'stopped code read');
+ await load(light);await until(()=>map().data?.tip===light && map().code_map.links && !map().code_map.running,'reload after Stop');
+}
+async function luaModules(){
+ const f=fixture('Lua modules 資料');
+ const repoRoot=path.resolve(__dirname,'../..');
+ for(const file of ['integration.json','main.lua']){
+  const source='crates/rocket-integrations/examples/jira/'+file;
+  f.write('jira/'+file,cp.execFileSync('git',['-C',repoRoot,'show','HEAD:'+source],{env,windowsHide:true}));
+ }
+ f.write('runner.lua',[
+  'local panel = require("ui.面板")', "local lib = require 'lib'", "require('ordinary.main')", "require('outside.tool')",
+  'object:require("decoy")', 'local example = [=[require("decoy")]=]', '-- require("decoy")',
+  'require("decoy" .. suffix)', 'require("ambiguous")', 'require("linked")',
+ ].join('\n'));
+ f.write('ui/面板.lua','local file = io.open("map-executed", "w"); file:close()\n');
+ for(const p of ['lib/init.lua','decoy.lua','ambiguous.lua','ambiguous/init.lua']) f.write(p,'return {}\n');
+ f.write('shadow.lua','local require = function(name) return name end\nrequire("decoy")\n');
+ f.write('ordinary/integration.json','{"kind":"project metadata"}\n');
+ f.write('ordinary/main.lua','return {}\n');
+ f.commit('Rocket Jira and ordinary Lua');
+ const link=f.git(['hash-object','-w','--stdin'],'decoy.lua');
+ f.git(['update-index','--add','--cacheinfo','120000',link,'linked.lua']);
+ f.git(['commit','-m','Link fixture without a filesystem symlink']);
+ const tip=f.git(['rev-parse','HEAD']);
+ f.write('runner.lua',"require('untracked')\n");f.write('untracked.lua','return 42\n');
+ const original=snapshot(f);
+ await folders(f,tip);await expand(['jira','ui','lib','ordinary']);
+ assert.equal(map().code_map.links.links,4);
+ assert.deepEqual(arrow('runner.lua','ui/面板.lua')?.names,['ui.面板']);
+ assert.deepEqual(arrow('runner.lua','lib/init.lua')?.names,['lib']);
+ assert.deepEqual(arrow('jira/integration.json','jira/main.lua')?.names,['main.lua']);
+ assert.deepEqual(arrow('runner.lua','ordinary/main.lua')?.names,['ordinary.main']);
+ passed('Folders connects the committed Jira manifest to main.lua and both ordinary module layouts, including a Unicode filename');
+ await click('map-mode-modules');await until(()=>!map().running && map().data?.kind==='Modules','Lua groups');
+ assert.deepEqual(map().data.module_packages.filter(p=>p.language==='Lua').map(p=>p.folder).sort(),['','jira']);
+ assert.equal(map().data.module_packages.find(p=>p.language==='Lua'&&p.folder==='jira').files,1);
+ for(const [folder,caller,targets] of [['','runner.lua',['lib/init.lua','ordinary/main.lua','ui/面板.lua']],['jira','jira/integration.json',['jira/main.lua']]]){
+  const i=map().data.module_packages.findIndex(p=>p.language==='Lua'&&p.folder===folder);
+  assert(i>=0,'Lua group '+folder);
+  if(map().package!==folder||map().package_language!=='Lua'){
+   await click('map-module-package');await click('map-module-package-'+i);
   }
+  await until(()=>!map().running && map().package===folder && map().data?.modules?.language==='Lua','Lua group '+folder);
+  const from=node(caller), data=map().data;
+  assert.deepEqual(data.links.filter(l=>l.kind==='DependsOn').map(l=>{
+   assert.equal(l.from,from.index);return data.nodes[l.to].path;
+  }).sort(),targets);
+  if(folder===''){
+   assert.deepEqual(data.modules.outside.find(o=>o.node===from.index)?.names,['linked','outside.tool']);
+   assert(!data.nodes.some(n=>n.path==='untracked.lua'));
+  }
+  await click('map-module-'+from.index);assert.equal(map().selected,from.index);
+  await click('map-node-'+node(targets[0]).index);assert.equal(map().selected,node(targets[0]).index);
  }
- const node=p=>{const n=map().data.nodes.find(n=>n.path===p); assert(n,p);return n;};
- const arrow=(a,b)=>map().code_map.picture.arrows.find(e=>e.from===node(a).index && e.to===node(b).index);
+ await resize(780,620);assert(control('map-module-switcher'));checkBounds();
+ assert.deepEqual(snapshot(f),original);assert(!fs.existsSync(path.join(f.repo,'map-executed')));
+ passed('Modules navigates between caller and target, keeps dynamic and ambiguous references out of the graph, preserves local edits and fits the compact window');
+ const h=fixture('Lua Stop and reload');
+ h.write('start.lua','return require("helper")');h.write('helper.lua','return 1');
+ const light=h.commit('Small Lua map');
+ const bulk='local x = require("helper")\n'.repeat(4500);
+ for(let i=0;i<36;i++) h.write('bulk/caller'+i+'.lua','-- '+i+'\n'+bulk);
+ const heavy=h.commit('Larger Lua map'), before=snapshot(h);
+ await stopThenReload(h,light,heavy);
+ assert.deepEqual(arrow('start.lua','helper.lua')?.names,['helper']);
+ assert.deepEqual(snapshot(h),before);
+ passed('Stop interrupts an active Lua map read, and reloading the older revision restores its original link and leaves the checkout intact');
+}
+async function nativeBridges(){
  const f=fixture('native imports 資料');
  f.write('Cargo.toml',"[package]\nname='preview'\n");
  f.write('build.rs','fn main() { cc::Build::new().file("native/介面.mm").compile("native"); }\n');
@@ -197,15 +274,7 @@ async function nativeBridges(){
  const bulkSource=Array.from({length:3000},(_,i)=>'int item_'+i+'(void) { return '+i+'; }').join('\n');
  for(let i=0;i<32;i++) h.write('bulk/bridge'+i+'.mm','// source '+i+'\n'+bulkSource);
  const heavy=h.commit('Larger native map');const unchanged=snapshot(h);
- await open(h);await load(light);
- if(control('map-mode-folders')) await click('map-mode-folders');
- await until(()=>map().data?.tip===light && map().code_map.links && !map().code_map.running,'small native map');
- await openRevision();await type('map-revision',heavy);
- await client.tool('rocket_click',{target:'map-load',expected_tab:state.active_tab});
- await until(()=>map().code_map.reading_links && control('map-code-stop')?.enabled,'active native code read');
- await client.tool('rocket_click',{target:'map-code-stop',expected_tab:state.active_tab});
- await until(()=>!state.input_pending && map().code_map.stopped && !map().code_map.running,'stopped native code read');
- await load(light);await until(()=>map().data?.tip===light && map().code_map.links && !map().code_map.running,'reload after Stop');
+ await stopThenReload(h,light,heavy);
  await expand(['src']);assert.deepEqual(arrow('src/lib.rs','native.m')?.names,['bridge']);
  assert.deepEqual(snapshot(h),unchanged);
  passed('Stop cancels an in-flight native map read; the earlier revision can be reloaded with its original bridge and unchanged working files');
@@ -219,6 +288,7 @@ async function run(){try{
  assert.equal((await client.initialize()).serverInfo.version,version);
  if(scriptsOnly){await scriptLoads();return;}
  if(nativeOnly){await nativeBridges();return;}
+ if(luaOnly){await luaModules();return;}
  if(!edgesOnly){
  const f=fixture('PRIVATE_MAP_検索 🚀');
  f.write('Cargo.toml',"[workspace]\nmembers=['应用','core']\n");f.write('应用/Cargo.toml',"[package]\nname='界面'\n[dependencies]\ncore={path='../core'}\n");f.write('core/Cargo.toml',"[package]\nname='engine'\n");

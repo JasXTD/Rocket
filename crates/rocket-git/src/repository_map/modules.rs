@@ -540,18 +540,23 @@ impl Repository {
         }
         // The other languages' packages, found by their paths.
         let blobs: BTreeMap<&[u8], (ObjectId, usize)> = entries.iter().map(|(path, _, id, size)| (*path, (id.clone(), *size))).collect();
-        let (others, limited) = packages::find(&blobs.keys().copied().collect::<Vec<_>>());
-        // A cut list of packages leaves the package read whole: a note, not a partial map.
-        if limited {
-            map.notes.push(format!("More than {} packages of one language: the first {} by folder are listed.", packages::PACKAGES, packages::PACKAGES));
-        }
+        let paths: Vec<_> = blobs.keys().copied().collect();
+        let (mut others, limited) = packages::find(&paths);
+        let lua_manifests = packages::lua_manifests(&blobs);
         // The manifests that name a package or say how it is imported.
         let wanted: Vec<Vec<u8>> = others
             .iter()
             .filter_map(|f| f.manifest.clone())
             .filter(|m| matches!(packages::file_name(m), b"package.json" | b"go.mod") || packages::names_project(m))
+            .chain(lua_manifests.iter().cloned())
             .collect();
         let small = if wanted.is_empty() { BTreeMap::new() } else { self.runner.step(op, "read-manifests", || self.map_small(&wanted, &blobs, cancel))? };
+        let (lua, lua_limited) = packages::lua(&paths, &lua_manifests, &small, packages::PACKAGES);
+        others.extend(lua);
+        // A cut list of packages leaves the package read whole: a note, not a partial map.
+        if limited || lua_limited {
+            map.notes.push(format!("More than {} packages of one language: the first {} by folder are listed.", packages::PACKAGES, packages::PACKAGES));
+        }
         for f in &others {
             let text = f.manifest.as_ref().and_then(|m| small.get(m));
             let own = packages::file_name(&f.folder).to_vec();
@@ -592,12 +597,14 @@ impl Repository {
                 ModuleLanguage::CSharp => (b"package-csharp:", named(), if built { b"C# project" } else { b"C# folder" }),
                 ModuleLanguage::PowerShell => (b"package-powershell:", own, b"PowerShell scripts"),
                 ModuleLanguage::Bash => (b"package-bash:", own, b"Bash scripts"),
+                ModuleLanguage::Lua => (b"package-lua:", own, b"Lua scripts"),
                 ModuleLanguage::Go | ModuleLanguage::Rust => (b"package-go:", text.and_then(|t| packages::go_module(t)).map(String::into_bytes).unwrap_or(own), b"Go module"),
             };
             let mut n = node(MapNodeKind::Crate, [prefix, f.folder.as_slice()].concat(), name.clone(), detail.to_vec());
             n.path = Some(f.folder.clone());
             n.files = entries.iter().filter(|(path, ..)| inside(path, &f.folder)).count();
-            n.count = f.files.len();
+            let source_count = f.source_count();
+            n.count = source_count;
             let at = map.nodes.len();
             map.nodes.push(n);
             map.module_packages.push(ModulePackage {
@@ -606,7 +613,7 @@ impl Repository {
                 language: f.language,
                 dialect: f.dialect,
                 manifest: f.manifest.is_some(),
-                files: f.files.len(),
+                files: source_count,
                 node: Some(at),
             });
         }
@@ -835,6 +842,7 @@ impl Repository {
                     Some(text) => {
                         texts.insert(path.clone(), text);
                     }
+                    None if path.ends_with(b".lua") && lua::binary(blob) => details.unlinked.push((path.clone(), UnlinkedReason::Binary)),
                     None => details.unlinked.push((path.clone(), UnlinkedReason::NotUtf8)),
                 }
             }
@@ -856,6 +864,7 @@ impl Repository {
                 units::c(&found.folder, &texts, &found.files, &known, &headers, cancel)
             }
             ModuleLanguage::CSharp => units::csharp(&texts, cancel),
+            ModuleLanguage::Lua => units::lua(found, &texts, cancel),
             ModuleLanguage::PowerShell | ModuleLanguage::Bash => {
                 let known = blobs.keys().copied().collect();
                 units::scripts(found.language, &found.folder, &texts, &known, cancel)
@@ -871,6 +880,7 @@ impl Repository {
                 ModuleLanguage::CSharp => "Read from the committed C# files of one project. Each namespace stands alone; connections come from using lines, the type names a file uses from its namespace's parents and the namespaces it uses, and names written out in full. Nothing is compiled, so extension methods are not told apart from other methods.",
                 ModuleLanguage::PowerShell => "Arrows show which committed scripts dot-source a helper, invoke it with &, or import a module by path. Runtime expressions and ambiguous working-directory paths are skipped.",
                 ModuleLanguage::Bash => "Arrows show which committed scripts load a helper with source or dot. Runtime expressions, PATH lookups and ambiguous working-directory paths are skipped.",
+                ModuleLanguage::Lua => "Rocket integration manifests point to main.lua. Ordinary Lua scripts link to unique committed modules named in literal require calls.",
                 ModuleLanguage::Go | ModuleLanguage::Rust => "Read from the committed Go files of one module. Each package stands alone; connections come from imports and the names used through them. Test files and files marked //go:build ignore are left out; other build constraints are not evaluated.",
             }
             .into(),

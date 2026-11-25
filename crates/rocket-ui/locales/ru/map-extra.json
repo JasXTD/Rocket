@@ -407,8 +407,15 @@
     "other": "{n} файла Bash"
   },
   "Bash scripts": "Скрипты Bash",
+  "{n} Lua files": {
+    "one": "{n} файл Lua",
+    "few": "{n} файла Lua",
+    "many": "{n} файлов Lua",
+    "other": "{n} файла Lua"
+  },
+  "Lua scripts": "Скрипты Lua",
   "No package to read in this snapshot": "В этом снимке нет пакетов для чтения",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell and Bash.": "Вид «Модули» читает Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, PowerShell и Bash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash.": "Вид «Модули» читает Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell и Bash.",
   "The package to map": "Пакет для карты",
   "OUTSIDE": "ВНЕШНИЕ",
   "build ignore": "исключён из сборки",

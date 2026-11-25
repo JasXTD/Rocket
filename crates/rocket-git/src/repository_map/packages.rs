@@ -24,8 +24,18 @@ pub(super) struct Found {
     pub manifest: Option<Vec<u8>>,
     /// TypeScript, Kotlin or C++ beside the language's own files.
     pub dialect: Option<Dialect>,
-    /// Its source files, sorted.
+    /// Its source files, sorted, including a Lua integration's manifest node.
     pub files: Vec<Vec<u8>>,
+}
+
+impl Found {
+    pub(super) fn source_count(&self) -> usize {
+        if self.language == ModuleLanguage::Lua && self.manifest.is_some() {
+            self.files.iter().filter(|p| p.ends_with(b".lua")).count()
+        } else {
+            self.files.len()
+        }
+    }
 }
 
 pub(super) fn file_name(path: &[u8]) -> &[u8] {
@@ -221,6 +231,35 @@ pub(super) fn find_up_to(paths: &[&[u8]], limit: usize) -> (Vec<Found>, bool) {
         }).collect(), &mut out);
     }
     (out, limited)
+}
+
+/// Candidates join the existing bounded manifest read, before assigning Lua files to groups.
+pub(super) fn lua_manifests(blobs: &BTreeMap<&[u8], (crate::ObjectId, usize)>) -> Vec<Vec<u8>> {
+    blobs.iter().filter(|(p, (_, size))| file_name(p) == b"integration.json"
+        && *size <= super::lua::MANIFEST_BYTES && !skipped(p, ModuleLanguage::Lua)
+        && blobs.contains_key(join(parent(p), b"main.lua").as_slice())).map(|(&p, _)| p.to_vec()).collect()
+}
+
+pub(super) fn lua(paths: &[&[u8]], manifests: &[Vec<u8>], small: &BTreeMap<Vec<u8>, String>, limit: usize) -> (Vec<Found>, bool) {
+    let language = ModuleLanguage::Lua;
+    // Unread candidates stay separate until the source read can identify their loader.
+    // A readable unrelated JSON file must never change ordinary Lua module resolution.
+    let roots: HashSet<_> = manifests.iter().filter(|p| small.get(*p).is_none_or(|s| super::lua::integration_manifest(s)))
+        .map(|p| parent(p)).collect();
+    let mut groups = BTreeMap::new();
+    for path in paths.iter().copied().filter(|p| p.ends_with(b".lua") && !skipped(p, language)) {
+        let root = nearest(path, &roots);
+        let folder = root.unwrap_or(b"");
+        let group = groups.entry(folder).or_insert_with(|| {
+            let manifest = root.map(|r| join(r, b"integration.json"));
+            Found { folder: folder.to_vec(), language, dialect: None, files: manifest.iter().cloned().collect(), manifest }
+        });
+        group.files.push(path.to_vec());
+    }
+    let limited = groups.len() > limit;
+    let mut groups: Vec<_> = groups.into_values().take(limit).collect();
+    for group in &mut groups { group.files.sort(); }
+    (groups, limited)
 }
 
 /// Scripts need no manifest. Keep CI helpers in committed dot-folders such as .github.

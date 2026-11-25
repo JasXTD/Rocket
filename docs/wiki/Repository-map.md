@@ -38,7 +38,7 @@ file-private functions and ambiguous definitions stay unresolved.
 Arrows show which files use which. The map reads every package of the snapshot the way
 Modules reads one (Rust crates with their tests, examples and programs, JavaScript and
 TypeScript projects, Python packages, Go modules, Java and Kotlin, C, C++, Objective-C, Objective-C++, C#
-projects, and PowerShell and Bash scripts) and connects packages through the names
+projects, and Lua, PowerShell and Bash scripts) and connects packages through the names
 they import: a Cargo package's crate
 name, a package.json name, another Python package or Go module of the repository, a Java
 package or C# namespace another project declares (or whose folders it is laid out in),
@@ -87,7 +87,7 @@ appear.
 **Modules** shows the modules of one package and which module uses which: a Rust
 crate, a JavaScript or TypeScript project, a Python package, the packages of a Go module
 or of a Java or Kotlin project, the namespaces of a C# project, the files of a C-family
-project, or the PowerShell or Bash scripts in a top-level folder. The button beside
+project, a Lua group, or the PowerShell or Bash scripts in a top-level folder. The button beside
 **Packages · Folders · Modules** lists the snapshot's packages by language. Choose
 one there, or select **Show modules** in a Cargo
 package's Details. Without a choice it reads the largest package of the language with
@@ -170,6 +170,15 @@ The other languages are read the same way, as text within the same limits:
   names a file uses, looked for as C# does (its own namespace, its parents, then the
   namespaces its `using` lines and the project's `global using` lines open), and by names
   written out in full. A partial class is one, its methods added up.
+- **Lua.** In **Folders** or **Modules**, follow `require("ui.panel")` or
+  `require 'ui.panel'` to `ui/panel.lua` or `ui/panel/init.lua`. Ordinary scripts
+  share the repository root. An arrow requires a single committed match. Computed
+  names, escaped strings, custom search paths and binary modules are outside this
+  lookup. Files that redefine `require` or `_ENV` are skipped conservatively.
+  A Rocket integration has its own group. The map recognizes API 1 manifests by
+  their identity fields and permissions, and links `integration.json` directly to
+  its sibling `main.lua`. The integration sandbox
+  disables `require`. Browsing the map never runs the module or integration.
 - **PowerShell.** Choose a PowerShell group to see which `.ps1` and `.psm1` files
   dot-source a helper, invoke a script with `&`, or use `Import-Module` or `using module`
   with a path. Selecting a script shows the actual helper files, including helpers in

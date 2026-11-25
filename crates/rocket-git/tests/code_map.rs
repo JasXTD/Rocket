@@ -20,6 +20,80 @@ fn pairs(links: &CodeLinks) -> Vec<String> {
 }
 
 #[test]
+fn lua_links_committed_modules_and_rocket_entries_in_both_maps() {
+    isolated("ROCKET_CODE_MAP_TEST", "lua_links_committed_modules_and_rocket_entries_in_both_maps", || {
+        let f = Fixture::new();
+        f.write("run.lua", r#"local ui = require("ui.面板")
+            local lib = require 'lib'
+            require("decoy" .. suffix)
+            -- require("decoy")
+            local text = [=[require("decoy")]=]
+            object:require("decoy")
+            require("ambiguous")
+            require("plugin.main")
+            require("other.main")"#);
+        for path in ["ui/面板.lua", "lib/init.lua", "decoy.lua", "ambiguous.lua", "ambiguous/init.lua"] {
+            f.write(path, "return {}\n");
+        }
+        f.write("plugin/integration.json", include_str!("../../rocket-integrations/examples/jira/integration.json"));
+        f.write("plugin/main.lua", r#"require("decoy")"#);
+        f.write("other/integration.json", r#"{"api":2}"#);
+        f.write("other/main.lua", "return require 'lib'");
+        f.commit("Lua module and integration fixtures");
+        let tip = head(&f);
+        f.write("run.lua", "require('untracked')\n");
+        f.write("untracked.lua", "return 2");
+        let repo = f.repo();
+        let catalog = repo.repository_map(&MapOptions { kind: MapKind::Code, ..Default::default() }, &token()).unwrap();
+        let groups: Vec<_> = catalog.module_packages.iter().filter(|p| p.language == ModuleLanguage::Lua)
+            .map(|p| (p.folder.as_slice(), p.files)).collect();
+        assert_eq!(groups, [(b"".as_slice(), 7), (b"plugin".as_slice(), 1)]);
+        let all = repo.code_links(&tip, None, &token()).unwrap();
+        let expected = ["other/main.lua -> lib/init.lua", "plugin/integration.json -> plugin/main.lua",
+            "run.lua -> lib/init.lua", "run.lua -> other/main.lua", "run.lua -> ui/面板.lua"];
+        assert_eq!(pairs(&all), expected);
+        let mut module_links = Vec::new();
+        for package in all.packages {
+            let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, package: Some(package), ..Default::default() }, &token()).unwrap();
+            assert_eq!(map.module_packages.iter().find(|p| p.folder.as_slice() == b"plugin").unwrap().files, 1);
+            for edge in map.links.iter().filter(|e| e.kind == MapLinkKind::DependsOn) {
+                let path = |i: usize| String::from_utf8_lossy(map.nodes[i].path.as_deref().unwrap());
+                module_links.push(format!("{} -> {}", path(edge.from), path(edge.to)));
+            }
+        }
+        module_links.sort();
+        assert_eq!(module_links, expected);
+        let stopped = token();
+        stopped.cancel();
+        assert!(matches!(repo.code_links(&tip, None, &stopped), Err(Error::Cancelled)));
+    });
+}
+
+#[test]
+fn lua_respects_binary_targets_entry_limits_and_partial_reads() {
+    isolated("ROCKET_CODE_MAP_TEST", "lua_respects_binary_targets_entry_limits_and_partial_reads", || {
+        let f = Fixture::new();
+        let manifest = include_str!("../../rocket-integrations/examples/repository/integration.json");
+        f.write("plugin/integration.json", manifest);
+        f.write("plugin/main.lua", " ".repeat(64 * 1024 + 1));
+        f.write("binary.lua", b"\x1bLua\0require('real')".as_slice());
+        f.write("indirect.lua", "require 'binary'");
+        f.write("real.lua", "return 1");
+        f.write("many.lua", "require('real')\n".repeat(12_001));
+        f.commit("Bounded Lua reads");
+        let tip = head(&f);
+        let repo = f.repo();
+        let all = repo.code_links(&tip, None, &token()).unwrap();
+        assert!(all.limited && all.sources_limited);
+        assert_eq!(pairs(&all), ["many.lua -> real.lua"]);
+        let package = all.packages.into_iter().find(|p| p.folder.is_empty() && p.language == ModuleLanguage::Lua).unwrap();
+        let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, package: Some(package), ..Default::default() }, &token()).unwrap();
+        assert!(map.limited);
+        assert!(map.modules.unwrap().unlinked.contains(&(b"binary.lua".to_vec(), UnlinkedReason::Binary)));
+    });
+}
+
+#[test]
 fn native_bridges_follow_the_selected_build_and_committed_symbols() {
     isolated("ROCKET_CODE_MAP_TEST", "native_bridges_follow_the_selected_build_and_committed_symbols", || {
         let f = Fixture::new();

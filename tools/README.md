@@ -174,6 +174,7 @@ The design preview is `tools/mockups/map-exploration/preview.html`.
 After `Build-Local.ps1 -Offline`, run `node tools/tests/test-mcp-repository-map.cjs`.
 Use `--scripts-only` for just the PowerShell and Bash helper-loading cases.
 Use `--native-only` for Objective-C header imports, Apple frameworks and Rust-to-native links, including Rocket’s spell-checker sources.
+Use `--lua-only` for Lua module lookup, Rocket integration entries and cancellation in temporary repositories.
 It tests the native Code, Git history and People pages through an isolated
 localhost MCP profile using synthetic local repositories. It covers Unicode,
 Cargo path links, merge parents, canonical authors, compact detail drawers,

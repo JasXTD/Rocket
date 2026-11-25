@@ -12,6 +12,8 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Code Map connects Rocket integration manifests to `main.lua` and follows literal Lua
+  `require` calls to local modules in both Folders and Modules.
 - Code Map follows Objective-C and Objective-C++ header imports and lists external Apple frameworks.
   Folders also connects Rust foreign-function declarations and uses to matching native definitions in a Cargo package's build.
 
