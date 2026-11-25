@@ -251,7 +251,7 @@
   "{n} Lua files": "{n} 个 Lua 文件",
   "Lua scripts": "Lua 脚本",
   "No package to read in this snapshot": "此快照中没有可读取的包",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash.": "“模块”视图读取 Rust、JavaScript、TypeScript、Python、Go、Java、Kotlin、C、C++、Objective-C、Objective-C++、C#、Lua、PowerShell 和 Bash。",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell and Bash.": "“模块”视图读取 Rust、JavaScript、TypeScript、Python、Go、Java、Kotlin、C、C++、Objective-C、Objective-C++、C#、Lua、GitHub Actions、PowerShell 和 Bash。",
   "The package to map": "要绘制的包",
   "OUTSIDE": "外部",
   "build ignore": "构建时忽略",

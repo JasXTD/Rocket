@@ -12,6 +12,8 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Code Map links GitHub Actions workflows to the scripts, local actions and reusable
+  workflows they reference in the selected commit. Select a helper to see which workflows use it.
 - Code Map connects Rocket integration manifests to `main.lua` and follows literal Lua
   `require` calls to local modules in both Folders and Modules.
 - Code Map follows Objective-C and Objective-C++ header imports and lists external Apple frameworks.

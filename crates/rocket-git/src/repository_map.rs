@@ -19,6 +19,7 @@ mod python;
 mod rust;
 mod scripts;
 mod units;
+mod workflows;
 pub use code_map::{
     CODE_HISTORY_COMMITS, CODE_MAP_FILES, CODE_MAP_PACKAGES, ChangesOutcome, CodeChanges, CodeEnd, CodeHistory, CodeLink, CodeLinks, FileKind, HistoryCommit, OwnerRules, file_kind,
 };
@@ -132,12 +133,13 @@ pub enum ModuleLanguage {
     PowerShell,
     Bash,
     Lua,
+    GitHubActions,
 }
 impl ModuleLanguage {
     /// These units are independent. Their folders organize the list, while arrows
     /// point to individual packages, namespaces or script files.
     pub fn standalone(self) -> bool {
-        matches!(self, Self::Go | Self::Java | Self::CSharp | Self::PowerShell | Self::Bash | Self::Lua)
+        matches!(self, Self::Go | Self::Java | Self::CSharp | Self::PowerShell | Self::Bash | Self::Lua | Self::GitHubActions)
     }
 }
 /// The second language a package of one is written in, which names the package.

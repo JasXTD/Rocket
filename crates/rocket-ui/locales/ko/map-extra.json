@@ -251,7 +251,7 @@
   "{n} Lua files": "Lua 파일 {n}개",
   "Lua scripts": "Lua 스크립트",
   "No package to read in this snapshot": "이 스냅샷에 읽을 패키지가 없습니다",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash.": "모듈 보기는 Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell, Bash를 읽습니다.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell and Bash.": "모듈 보기는 Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell, Bash를 읽습니다.",
   "The package to map": "맵으로 표시할 패키지",
   "OUTSIDE": "외부",
   "build ignore": "빌드에서 제외",

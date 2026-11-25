@@ -264,6 +264,33 @@ fn script_units<'a>(folder: &[u8], texts: &'a BTreeMap<Vec<u8>, String>, detail:
     Ok((built, files))
 }
 
+pub(super) fn workflows(texts: &BTreeMap<Vec<u8>, String>, known: &HashSet<&[u8]>, cancel: &CancellationToken) -> Result<Built> {
+    let (mut built, files) = script_units(workflows::FOLDER, texts, |_| b"GitHub Actions workflow", cancel)?;
+    let mut targets = HashMap::new();
+    for (&path, &id) in &files {
+        built.units[id].key = text(path);
+        targets.insert(path.to_vec(), id);
+    }
+    for (path, source) in texts {
+        let from = files[path.as_slice()];
+        let complete = workflows::read(source, known, cancel, |kind, path| {
+            if built.followed >= MAP_LINKS { built.limited = true; return; }
+            built.followed += 1;
+            let to = if let Some(&id) = targets.get(&path) { id } else {
+                if built.units.len() >= MAP_NODES { built.limited = true; return; }
+                let id = built.add(Unit { key: text(&path), label: path.clone(), detail: b"Referenced file",
+                    path: path.clone(), parent: None, folder: false, files: 1, lines: 0 });
+                targets.insert(path, id);
+                id
+            };
+            built.uses(from, to, [kind.to_owned()]);
+        })?;
+        built.limited |= !complete;
+        if built.limited && built.followed >= MAP_LINKS { break; }
+    }
+    Ok(built)
+}
+
 pub(super) fn lua(group: &packages::Found, texts: &BTreeMap<Vec<u8>, String>, cancel: &CancellationToken) -> Result<Built> {
     let (mut built, files) = script_units(&group.folder, texts, |p| if p.ends_with(b".lua") { b"Lua script" } else { b"JSON file" }, cancel)?;
     if let Some(path) = &group.manifest {

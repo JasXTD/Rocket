@@ -38,7 +38,7 @@ file-private functions and ambiguous definitions stay unresolved.
 Arrows show which files use which. The map reads every package of the snapshot the way
 Modules reads one (Rust crates with their tests, examples and programs, JavaScript and
 TypeScript projects, Python packages, Go modules, Java and Kotlin, C, C++, Objective-C, Objective-C++, C#
-projects, and Lua, PowerShell and Bash scripts) and connects packages through the names
+projects, Lua, PowerShell and Bash scripts, and GitHub Actions workflows) and connects packages through the names
 they import: a Cargo package's crate
 name, a package.json name, another Python package or Go module of the repository, a Java
 package or C# namespace another project declares (or whose folders it is laid out in),
@@ -87,7 +87,7 @@ appear.
 **Modules** shows the modules of one package and which module uses which: a Rust
 crate, a JavaScript or TypeScript project, a Python package, the packages of a Go module
 or of a Java or Kotlin project, the namespaces of a C# project, the files of a C-family
-project, a Lua group, or the PowerShell or Bash scripts in a top-level folder. The button beside
+project, a Lua group, the PowerShell or Bash scripts in a top-level folder, or GitHub Actions workflows. The button beside
 **Packages · Folders · Modules** lists the snapshot's packages by language. Choose
 one there, or select **Show modules** in a Cargo
 package's Details. Without a choice it reads the largest package of the language with
@@ -170,6 +170,17 @@ The other languages are read the same way, as text within the same limits:
   names a file uses, looked for as C# does (its own namespace, its parents, then the
   namespaces its `using` lines and the project's `global using` lines open), and by names
   written out in full. A partial class is one, its methods added up.
+- **GitHub Actions.** In **Folders**, open `.github/workflows`. In **Modules**,
+  choose **GitHub Actions** and select a workflow or helper to follow its arrows in either direction.
+  A `run` arrow points to a literal script called by a Bash or PowerShell step.
+  This includes scripts passed to Node or Python and respects step, job and workflow
+  working-directory settings. A `uses` arrow points to a local action's `action.yml`
+  or `action.yaml`, or to a reusable workflow in the same repository. Both `./` and
+  `$/` references are recognized. Workspace links under an explicitly redirected
+  checkout are skipped. The `$/` form still identifies files in the workflow's commit.
+  The map reads block-form jobs and steps from the selected commit. Remote actions,
+  computed paths, custom shell interpreters and commands following a directory change are outside
+  this lookup. [GitHub workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
 - **Lua.** In **Folders** or **Modules**, follow `require("ui.panel")` or
   `require 'ui.panel'` to `ui/panel.lua` or `ui/panel/init.lua`. Ordinary scripts
   share the repository root. An arrow requires a single committed match. Computed

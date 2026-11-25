@@ -94,7 +94,8 @@ to restart. See the [full release notes](docs/releases/0.92.6.md).
   JavaScript and TypeScript, Python, Go, Java and Kotlin, C, C++, Objective-C,
   Objective-C++, and C#. Follow local helpers in PowerShell, Bash and Lua. For a
   Rocket integration, the map connects its manifest to `main.lua`. In **Folders**,
-  follow a Rust foreign function to its native implementation.
+  follow a Rust foreign function to its native implementation. In either view,
+  select a GitHub Actions workflow to see its scripts, local actions and reusable workflows.
 - [**Insights**](docs/Insights.md) replaces Statistics: commit activity, a
   file treemap and pull request numbers from your hosting account, with weekly trends
   against the previous period, waiting review requests, time to first review, saved views
@@ -316,7 +317,7 @@ the rest.
 | Pull request metrics | ✅ opened/merged trends, merge time, time to first review | — | 💲 GitKraken Insights, in the browser | — |
 | **Understanding a repository** | | | | |
 | Activity statistics | ✅ timeline, contributors, weekday/hour, file treemap | ✅ statistics, activity treemap | — | — |
-| Code and repository map | ✅ packages, folders, branches and people; modules in Rust, JS/TS, Python, Go, Java/Kotlin, C/C++, Objective-C/Objective-C++, C#, Lua, PowerShell and Bash | — | Codemaps, early access only | — |
+| Code and repository map | ✅ packages, folders, branches and people; modules in Rust, JS/TS, Python, Go, Java/Kotlin, C/C++, Objective-C/Objective-C++, C#, Lua, PowerShell and Bash; GitHub Actions workflow dependencies | — | Codemaps, early access only | — |
 | **Safety** | | | | |
 | Built-in secret check before commit and push | ✅ tokens, private keys, credentials, AI API keys | — | — | — |
 | Dependency advisories | ✅ offline OSV scan, optional check before push | — | — | — |
@@ -386,9 +387,10 @@ Official comparison sources:
   a real Astra response through localhost MCP using synthetic code; the separate
   Claude Code/Codex CLI provider paths still use stand-ins in acceptance tests.
 - **Map and Insights:** Modules reads Rust, JavaScript and TypeScript, Python, Go, Java
-  and Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash as text: it doesn't expand macros or `cfg`, run the C
-  preprocessor, evaluate other build constraints or
-  follow import paths built at run time. Insights counts a loaded sample of up to 500
+  and Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash as text.
+  GitHub Actions links use literal paths in block-form workflows. Macros, `cfg`, C
+  preprocessing, other build constraints and imports computed at runtime are outside
+  the analysis. Insights counts a loaded sample of up to 500
   pull requests; time to first review is measured on GitHub, GitHub Enterprise Server,
   Gitea and Forgejo only, and missing data is named rather than estimated.
 - **Partial actions** (single lines, hunks) cover specific text cases; other files need a

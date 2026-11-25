@@ -7,11 +7,12 @@ const profile=path.join(root,'http-profile'),branch='rocket-ui-test/repository-m
 const scriptsOnly=process.argv.includes('--scripts-only');
 const nativeOnly=process.argv.includes('--native-only');
 const luaOnly=process.argv.includes('--lua-only');
-const focused=scriptsOnly||nativeOnly||luaOnly;
-const evidence=path.resolve('tools/maintenance',luaOnly?'lua-code-map':nativeOnly?'native-code-map':scriptsOnly?'script-code-map':'repository-map-redesign-20261105');
+const workflowsOnly=process.argv.includes('--workflows-only');
+const focused=scriptsOnly||nativeOnly||luaOnly||workflowsOnly;
+const evidence=path.resolve('tools/maintenance',workflowsOnly?'workflow-code-map':luaOnly?'lua-code-map':nativeOnly?'native-code-map':scriptsOnly?'script-code-map':'repository-map-redesign-20261105');
 const version=fs.readFileSync('Cargo.toml','utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([^"]+)"/)[1];
 const edgesOnly=process.argv.includes('--edges-only'),privateIds=[];
-const report={passed:false,version,root,scope:luaOnly?'lua-only':nativeOnly?'native-only':scriptsOnly?'scripts-only':edgesOnly?'edges-only':'full-map',cases:[]};
+const report={passed:false,version,root,scope:workflowsOnly?'workflows-only':luaOnly?'lua-only':nativeOnly?'native-only':scriptsOnly?'scripts-only':edgesOnly?'edges-only':'full-map',cases:[]};
 fs.mkdirSync(root,{recursive:true});fs.mkdirSync(evidence,{recursive:true});
 fs.writeFileSync(path.join(root,'rocket-private-state'),'synthetic-content-only-v1\n');
 fs.mkdirSync(path.join(root,'empty-template'));fs.writeFileSync(path.join(root,'empty.config'),'');
@@ -131,7 +132,10 @@ async function folders(f,tip){
 async function expand(paths){
  for(const p of paths){
   const folder=node(p);
-  if(map().collapsed.includes(p)) await click('map-toggle-'+folder.index);
+  if(!map().collapsed.includes(p)) continue;
+  const toggle='map-toggle-'+folder.index;
+  if(!control(toggle)) await click('map-fit');
+  await click(toggle);
  }
 }
 function node(p){const n=map().data.nodes.find(n=>n.path===p);assert(n,p);return n;}
@@ -213,6 +217,65 @@ async function luaModules(){
  assert.deepEqual(snapshot(h),before);
  passed('Stop interrupts an active Lua map read, and reloading the older revision restores its original link and leaves the checkout intact');
 }
+async function workflowLinks(){
+ const f=fixture('workflows 資料'), directory='.github/workflows', mac=directory+'/macos-arm64.yml';
+ const primary=directory+'/review.yml', shared=directory+'/shared.yaml';
+ const action='.github/actions/check/action.yaml', script='ci/二 words.ps1', build='tools/build-macos.sh', arch='tools/macos/architecture.sh';
+ f.write(mac,cp.execFileSync('git',['-C',path.resolve(__dirname,'../..'),'show','HEAD:'+mac],{env,windowsHide:true}));
+ f.write(primary,[
+  'jobs:', '  checks:', '    runs-on: windows-latest', '    steps:',
+  '      - run: |', "          & '.\\二 words.ps1'", '        working-directory: ci',
+  '      - uses: ./.github/actions/check', '      - uses: actions/checkout@v4',
+  '        with:', '          run: bash decoy.sh',
+  '      - run: bash decoy.sh', '        working-directory: ${{ matrix.directory }}',
+  '  reuse:', '    uses: $/.github/workflows/shared.yaml',
+ ].join('\n'));
+ f.write(shared,'on: workflow_call\njobs: {}\n');f.write(action,'name: Local check\nruns: {using: composite, steps: []}\n');
+ f.write(build,'echo unexpected > map-executed\n');f.write(arch,'# fixture\n');
+ f.write(script,"Set-Content map-executed unexpected\n");f.write('decoy.sh','# fixture\n');
+ f.commit('Local workflow targets');
+ const link=f.git(['hash-object','-w','--stdin'],'macos-arm64.yml');
+ f.git(['update-index','--add','--cacheinfo','120000',link,directory+'/linked.yml']);
+ f.git(['commit','-m','Tracked symlink fixture']);
+ const tip=f.git(['rev-parse','HEAD']);
+ f.write(primary,'jobs: {}\n');f.write('ci/untracked.ps1','# local work\n');
+ const before=snapshot(f);
+ await folders(f,tip);
+ assert.equal(map().code_map.links.links,5);
+ await expand(['.github',directory,'.github/actions','.github/actions/check','tools','tools/macos','ci']);
+ await click('map-fit');
+ for(const [caller,target,kind] of [[mac,build,'run'],[mac,arch,'run'],[primary,script,'run'],[primary,action,'uses'],[primary,shared,'uses']]){
+  assert.deepEqual(arrow(caller,target)?.names,[kind],caller+' -> '+target);
+ }
+ await capture('workflow-folders');fs.copyFileSync(path.join(root,'workflow-folders.png'),path.join(evidence,'folders.png'));
+ passed('Folders draws the macOS workflow build and architecture scripts, a Unicode PowerShell path, a local action and a reusable workflow from the selected commit');
+ await click('map-mode-modules');await until(()=>!map().running&&map().data?.kind==='Modules','workflow picker');
+ const i=map().data.module_packages.findIndex(p=>p.language==='GitHubActions'&&p.folder===directory);
+ assert(i>=0);assert.equal(map().data.module_packages[i].files,3);
+ if(map().package_language!=='GitHubActions'){await click('map-module-package');await click('map-module-package-'+i);}
+ await until(()=>!map().running&&map().data?.modules?.language==='GitHubActions','workflow modules');
+ const data=map().data, from=node(primary), helper=node(script);
+ const targets=data.links.filter(l=>l.from===from.index&&l.kind==='DependsOn').map(l=>data.nodes[l.to].path).sort();
+ assert.deepEqual(targets,[action,shared,script].sort());
+ assert(!data.nodes.some(n=>n.path==='decoy.sh'||n.path==='ci/untracked.ps1'));
+ await click('map-module-'+from.index);assert.equal(map().selected,from.index);
+ await click('map-node-'+helper.index);
+ assert.equal(map().selected,helper.index);assert(map().visible.includes(from.index)&&map().captions.some(c=>c.what==='UsedBy'&&c.count===1));
+ await resize(780,620);assert(control('map-module-switcher'));checkBounds();
+ await capture('workflow-compact');fs.copyFileSync(path.join(root,'workflow-compact.png'),path.join(evidence,'compact.png'));
+ assert.deepEqual(snapshot(f),before);assert(!fs.existsSync(path.join(f.repo,'map-executed')));
+ passed('Modules navigates in both directions, fits a compact window, and preserves the working tree, index and configuration');
+ const h=fixture('workflow Stop and reload');
+ const header='jobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n';
+ h.write(primary,header+'      - run: bash helper.sh\n');h.write('helper.sh','# fixture\n');
+ const light=h.commit('Small workflow map'), bulk='      - run: bash helper.sh\n'.repeat(4400);
+ for(let j=0;j<36;j++)h.write(directory+'/bulk'+j+'.yml','# '+j+'\n'+header+bulk);
+ const heavy=h.commit('Large workflow map'), original=snapshot(h);
+ await stopThenReload(h,light,heavy);assert.equal(map().code_map.links.links,1);
+ await expand(['.github',directory]);assert.deepEqual(arrow(primary,'helper.sh')?.names,['run']);
+ assert.deepEqual(snapshot(h),original);
+ passed('Stop cancels an active workflow map read and reloading an older revision restores its original link');
+}
 async function nativeBridges(){
  const f=fixture('native imports 資料');
  f.write('Cargo.toml',"[package]\nname='preview'\n");
@@ -289,6 +352,7 @@ async function run(){try{
  if(scriptsOnly){await scriptLoads();return;}
  if(nativeOnly){await nativeBridges();return;}
  if(luaOnly){await luaModules();return;}
+ if(workflowsOnly){await workflowLinks();return;}
  if(!edgesOnly){
  const f=fixture('PRIVATE_MAP_検索 🚀');
  f.write('Cargo.toml',"[workspace]\nmembers=['应用','core']\n");f.write('应用/Cargo.toml',"[package]\nname='界面'\n[dependencies]\ncore={path='../core'}\n");f.write('core/Cargo.toml',"[package]\nname='engine'\n");

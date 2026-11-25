@@ -1530,6 +1530,18 @@ fn modules_java_packages_stand_alone_and_each_language_names_its_units() {
             assert_eq!(scripts.package_kind(false), format!("{name} scripts"));
             assert_eq!(modules::language_name(language, None), name);
         }
+        let workflow = modules::Words { language: ModuleLanguage::GitHubActions, dialect: None };
+        assert_eq!(workflow.find(), "Find a file");
+        assert_eq!(workflow.files(2), "2 files");
+        assert_eq!(workflow.package_kind(false), "GitHub Actions");
+        assert_eq!(modules::language_name(workflow.language, None), "GitHub Actions");
+        let data = language_map(workflow.language, &[
+            ("ci.yml", "ci.yml", "GitHub Actions workflow", false, 1, 8, None),
+            ("tool.sh", "tool.sh", "Referenced file", false, 1, 0, None),
+        ], &[(0, 1, &["run"])]);
+        let units = modules::Units::new(&data);
+        assert_eq!(modules::size_text(&units, 1), "8 lines");
+        assert!(modules::size_text(&units, 2).is_empty());
         let keywords: Vec<&str> = [OutlineKind::Function, OutlineKind::Macro, OutlineKind::Type, OutlineKind::Struct, OutlineKind::Var].iter().map(|k| c.keyword(*k)).collect();
         assert_eq!(keywords, ["function", "#define", "typedef", "struct", "extern"]);
         let cpp = modules::Words { language: ModuleLanguage::C, dialect: Some(Dialect::Cpp) };

@@ -350,7 +350,7 @@
   },
   "Lua scripts": "Lua-Skripte",
   "No package to read in this snapshot": "Kein lesbares Paket in dieser Momentaufnahme",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash.": "Die Ansicht Module liest Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell und Bash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell and Bash.": "Die Ansicht Module liest Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell und Bash.",
   "The package to map": "Das darzustellende Paket",
   "OUTSIDE": "EXTERN",
   "build ignore": "vom Build ausgenommen",

@@ -40,7 +40,7 @@ impl Words {
         match self.language {
             ModuleLanguage::Go | ModuleLanguage::Java => Noun::Package,
             ModuleLanguage::CSharp => Noun::Namespace,
-            ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua => Noun::File,
+            ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions => Noun::File,
             ModuleLanguage::Rust | ModuleLanguage::JavaScript | ModuleLanguage::Python => Noun::Module,
         }
     }
@@ -196,6 +196,7 @@ impl Words {
             (ModuleLanguage::PowerShell, _) => trn!(n, "{n} PowerShell file", "{n} PowerShell files"),
             (ModuleLanguage::Bash, _) => trn!(n, "{n} Bash file", "{n} Bash files"),
             (ModuleLanguage::Lua, _) => trn!(n, "{n} Lua file", "{n} Lua files"),
+            (ModuleLanguage::GitHubActions, _) => trn!(n, "{n} file", "{n} files"),
         }
     }
     /// The package's own name for itself: "TypeScript project · modules".
@@ -228,6 +229,7 @@ impl Words {
             (ModuleLanguage::PowerShell, ..) => tr("PowerShell scripts"),
             (ModuleLanguage::Bash, ..) => tr("Bash scripts"),
             (ModuleLanguage::Lua, ..) => tr("Lua scripts"),
+            (ModuleLanguage::GitHubActions, ..) => "GitHub Actions",
         }
     }
     /// The keyword a declaration is written with. A Java project mostly in Kotlin shows
@@ -285,6 +287,7 @@ pub(super) fn language_name(language: ModuleLanguage, dialect: Option<Dialect>) 
         (ModuleLanguage::PowerShell, _) => "PowerShell",
         (ModuleLanguage::Bash, _) => "Bash",
         (ModuleLanguage::Lua, _) => "Lua",
+        (ModuleLanguage::GitHubActions, _) => "GitHub Actions",
     }
 }
 /// A package's name; one at the top of the repository may have none.
@@ -548,7 +551,7 @@ impl Units {
 pub(super) fn name(data: &RepositoryMap, i: usize) -> String {
     let n = &data.nodes[i];
     // JavaScript and C files by their names, Java packages and C# namespaces by theirs below the part all share.
-    let by_label = data.modules.as_ref().is_some_and(|m| matches!(m.language, ModuleLanguage::JavaScript | ModuleLanguage::C | ModuleLanguage::Java | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua));
+    let by_label = data.modules.as_ref().is_some_and(|m| matches!(m.language, ModuleLanguage::JavaScript | ModuleLanguage::C | ModuleLanguage::Java | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions));
     match n.key.strip_prefix(b"module:") {
         Some(path) if !path.is_empty() && !by_label => label(path),
         _ => label(&n.label),
@@ -557,6 +560,7 @@ pub(super) fn name(data: &RepositoryMap, i: usize) -> String {
 /// "2 files · 2,169 lines", or "1,251 lines" for one file.
 pub(super) fn size_text(units: &Units, i: usize) -> String {
     let (files, lines) = units.size(i);
+    if files == 1 && lines == 0 { return String::new(); } // Referenced file without a source read.
     let lines = trn!(lines, "{found} line", "{found} lines", found = pages::number_text(lines));
     if files > 1 {
         format!("{} · {lines}", trn!(files, "{n} file", "{n} files"))
@@ -870,7 +874,7 @@ pub(super) fn body(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, comp
         icon(card.painter(), Rect::from_center_size(card.cursor().center_top() + vec2(0., 11.), vec2(22., 22.)), Icon::Braces, FAINT());
         card.add_space(28.);
         card.label(RichText::new(tr("No package to read in this snapshot")).font(semibold(14.)).color(TEXT()));
-        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash.")).color(MUTED()));
+        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell and Bash.")).color(MUTED()));
         card.add_space(6.);
         if button(&mut card, widgets, "map-modules-show-folders", crate::i18n::tr("Show folders"), !covered) {
             emit(intents, MapIntent::CodeView(false));
@@ -1088,7 +1092,7 @@ fn switcher(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, units: &Units, b
 pub(super) fn package_picker(ui: &mut Ui, s: &MapPage, packages: &[(ModulePackage, bool)], intents: &mut Vec<Intent>, widgets: &mut HashMap<String, UiControl>) {
     let current = packages.iter().find(|(p, _)| s.package.as_ref() == Some(&p.reference()));
     let text = current.map_or_else(|| crate::i18n::tr("Package").to_owned(), |(p, _)| package_name(&p.name));
-    let language = current.map(|(p, _)| language_name(p.language, p.dialect)).unwrap_or_default();
+    let language = current.map(|(p, _)| language_name(p.language, p.dialect)).filter(|name| *name != text.as_str()).unwrap_or_default();
     let width = (text_width(ui, &text) + text_width(ui, language) + 64.).min(260.);
     room(ui, width);
     let control_id = ui.make_persistent_id(("map-control", "map-module-package"));
@@ -1225,7 +1229,8 @@ pub(super) fn module_details(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: 
     let (users, uses) = units.neighbors(data, i);
     let what = if is_folder { crate::i18n::tr("Folder") } else { crate::i18n::tr("File") };
     details::fact_mono(ui, what, &label(&file));
-    details::fact(ui, tr("Size"), &size_text(&units, i));
+    let size = size_text(&units, i);
+    if !size.is_empty() { details::fact(ui, tr("Size"), &size); }
     let count = |n: usize| if n == 0 { tr("None").to_owned() } else { words.count(n) };
     details::fact(ui, tr("Uses"), &count(uses.len()));
     details::fact(ui, tr("Used by"), &count(users.len()));

@@ -251,7 +251,7 @@
   "{n} Lua files": "{n} 個の Lua ファイル",
   "Lua scripts": "Lua スクリプト",
   "No package to read in this snapshot": "このスナップショットに読み込めるパッケージはありません",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash.": "モジュールは Rust、JavaScript、TypeScript、Python、Go、Java、Kotlin、C、C++、Objective-C、Objective-C++、C#、Lua、PowerShell、Bash を読み込みます。",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell and Bash.": "モジュールは Rust、JavaScript、TypeScript、Python、Go、Java、Kotlin、C、C++、Objective-C、Objective-C++、C#、Lua、GitHub Actions、PowerShell、Bash を読み込みます。",
   "The package to map": "マップするパッケージ",
   "OUTSIDE": "外部",
   "build ignore": "ビルド対象外",

@@ -224,6 +224,8 @@ pub(super) fn find_up_to(paths: &[&[u8]], limit: usize) -> (Vec<Found>, bool) {
     add(java(paths), &mut out);
     add(c(paths), &mut out);
     add(csharp(paths), &mut out);
+    let files = paths.iter().filter(|p| super::workflows::is_workflow(p)).map(|p| p.to_vec()).collect();
+    add(vec![Found { folder: super::workflows::FOLDER.to_vec(), language: ModuleLanguage::GitHubActions, manifest: None, dialect: None, files }], &mut out);
     for (language, folders) in script_folders(paths) {
         add(folders.into_iter().map(|(folder, mut files)| {
             files.sort();

@@ -266,34 +266,15 @@ pub(super) fn read(
     cancel: &CancellationToken,
     mut on_load: impl FnMut(Load),
 ) -> Result<()> {
-    cancel.check()?;
-    if source.as_bytes().contains(&0) {
-        return Ok(());
-    }
     let ps = language == ModuleLanguage::PowerShell;
-    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
-    let bytes = source.as_bytes();
     let mut binding = None;
     let mut cwd_changed = false;
-    let mut statement = |s: &'_ str| {
-        let mut s = s.trim();
-        if !ps {
-            while let ("then" | "else" | "do" | "if" | "!" | "{", rest) = word(s) {
-                s = rest;
-            }
-        }
+    statements(ps, source, cancel, |s| {
+        let s = command_position(s, ps);
         if s.is_empty() {
             return;
         }
-        let (verb, _) = word(s);
-        if (ps
-            && ["cd", "chdir", "sl", "Set-Location", "pushd", "popd", "Push-Location", "Pop-Location"]
-                .iter()
-                .any(|v| verb.eq_ignore_ascii_case(v)))
-            || (!ps && matches!(verb, "cd" | "pushd" | "popd"))
-        {
-            cwd_changed = true;
-        }
+        cwd_changed |= changes_directory(word(s).0, ps);
         if ps {
             if let Some(load) = powershell(s).filter(|l| l.beside_script || !cwd_changed) {
                 on_load(load);
@@ -306,7 +287,90 @@ pub(super) fn read(
             // Do not propagate a variable through arbitrary commands, branches or reassignment.
             binding = directory_binding(s).map(|(n, d)| (n.to_owned(), d.to_owned()));
         }
+    })
+}
+
+fn command_position(mut s: &str, ps: bool) -> &str {
+    s = s.trim();
+    if !ps {
+        while let ("then" | "else" | "do" | "if" | "!" | "{", rest) = word(s) {
+            s = rest;
+        }
+    }
+    s
+}
+
+fn changes_directory(verb: &str, ps: bool) -> bool {
+    if ps {
+        ["cd", "chdir", "sl", "Set-Location", "pushd", "popd", "Push-Location", "Pop-Location"]
+            .iter().any(|v| verb.eq_ignore_ascii_case(v))
+    } else {
+        matches!(verb, "cd" | "pushd" | "popd")
+    }
+}
+
+/// Each Actions step starts a fresh shell at its declared working directory.
+pub(super) fn workflow_commands(ps: bool, source: &str, cancel: &CancellationToken, mut found: impl FnMut(String)) -> Result<()> {
+    let mut moved = false;
+    statements(ps, source, cancel, |s| {
+        let s = command_position(s, ps);
+        moved |= changes_directory(word(s).0, ps);
+        if !moved && let Some(path) = workflow_operand(s, ps) {
+            found(path);
+        }
+    })
+}
+
+fn workflow_operand(statement: &str, ps: bool) -> Option<String> {
+    let (verb, mut args) = operand(statement)?;
+    let argument = |args| operand(continued_argument(args, ps));
+    let direct = |arg: &str| {
+        let value = unquote(arg).0;
+        let value = if ps { value.replace('\\', "/") } else { value.to_owned() };
+        (fixed(&value) && !value.contains('%')).then_some(value)
     };
+    if verb == "." || (!ps && verb == "source") || (ps && verb == "&") {
+        let path = direct(argument(args)?.0)?;
+        return path.contains('/').then_some(path);
+    }
+    let interpreter = if ps { verb.to_ascii_lowercase() } else { verb.to_owned() };
+    let flags: &[&str] = match interpreter.as_str() {
+        "bash" | "sh" => &["-e", "-u", "-x", "-eu", "-eux"],
+        "node" => &["--test"],
+        "python" | "python3" => &["-u", "-B", "-I"],
+        "pwsh" | "powershell" => &["-noprofile", "-noninteractive", "-file"],
+        _ => {
+            if ps && (verb.starts_with('"') || verb.starts_with('\'')) { return None; }
+            let path = direct(verb)?;
+            return path.contains('/').then_some(path);
+        }
+    };
+    loop {
+        let (arg, rest) = argument(args)?;
+        if arg == "--" { return direct(argument(rest)?.0); }
+        if !arg.starts_with('-') { return direct(arg); }
+        let allowed = if matches!(interpreter.as_str(), "pwsh" | "powershell") {
+            flags.iter().any(|flag| arg.eq_ignore_ascii_case(flag))
+        } else { flags.contains(&arg) };
+        if !allowed { return None; }
+        args = rest;
+    }
+}
+
+/// A continued line between arguments belongs to the same command.
+fn continued_argument(mut args: &str, ps: bool) -> &str {
+    let escape = if ps { '`' } else { '\\' };
+    while let Some(rest) = args.strip_prefix(escape).and_then(|s| s.strip_prefix("\r\n").or_else(|| s.strip_prefix('\n'))) {
+        args = rest.trim_start();
+    }
+    args
+}
+
+fn statements(ps: bool, source: &str, cancel: &CancellationToken, mut statement: impl FnMut(&str)) -> Result<()> {
+    cancel.check()?;
+    if source.as_bytes().contains(&0) { return Ok(()); }
+    let source = source.strip_prefix('\u{feff}').unwrap_or(source);
+    let bytes = source.as_bytes();
     let (mut start, mut at, mut depth, mut next_check) = (0, 0, 0usize, 0);
     let mut documents = Vec::new();
     while at < bytes.len() {

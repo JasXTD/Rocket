@@ -20,6 +20,73 @@ fn pairs(links: &CodeLinks) -> Vec<String> {
 }
 
 #[test]
+fn workflow_links_use_the_committed_step_directory_and_local_targets() {
+    isolated("ROCKET_CODE_MAP_TEST", "workflow_links_use_the_committed_step_directory_and_local_targets", || {
+        let f = Fixture::new();
+        let workflow = ".github/workflows/build.yml";
+        f.write(workflow, r#"
+name: Build
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: bash check.sh
+      - run: |
+          printf '%s\n' 'bash decoy.sh'
+          node --test "scripts/検査.cjs"
+        working-directory: .
+      - uses: ./.github/actions/check
+      - uses: actions/checkout@v4
+        with:
+          run: bash decoy.sh
+      - run: bash decoy.sh
+        working-directory: ${{ matrix.folder }}
+      - run: bash ../outside.sh
+        working-directory: .
+    defaults:
+      run:
+        working-directory: jobs
+  common:
+    uses: ./.github/workflows/shared.yaml
+  inherited:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./root-helper.sh
+defaults:
+  run:
+    working-directory: ci
+"#);
+        f.write(".github/workflows/shared.yaml", "on: workflow_call\njobs: {}\n");
+        f.write(".github/actions/check/action.yaml", "name: Local check\n");
+        for file in ["jobs/check.sh","ci/root-helper.sh","scripts/検査.cjs","decoy.sh","jobs/decoy.sh","outside.sh"] {
+            f.write(file, "# fixture\n");
+        }
+        f.write("notes.yml", "jobs:\n  fake:\n    steps:\n      - run: bash decoy.sh\n");
+        f.commit("Workflow references");
+        let tip = head(&f);
+        f.write(workflow, "jobs: {}\n");
+        f.write("new.sh", "# untracked\n");
+        let repo = f.repo();
+        let catalog = repo.repository_map(&MapOptions { kind: MapKind::Code, ..Default::default() }, &token()).unwrap();
+        assert!(catalog.module_packages.iter().any(|p| p.language == ModuleLanguage::GitHubActions && p.files == 2));
+        let all = repo.code_links(&tip, None, &token()).unwrap();
+        let expected: Vec<_> = [".github/actions/check/action.yaml",".github/workflows/shared.yaml","ci/root-helper.sh","jobs/check.sh","scripts/検査.cjs"]
+            .iter().map(|p| format!("{workflow} -> {p}")).collect();
+        assert_eq!(pairs(&all), expected);
+        let subset = repo.code_links(&tip, Some(&[b".github/workflows".to_vec()]), &token()).unwrap();
+        assert_eq!(pairs(&subset), expected);
+        let package = subset.packages.into_iter().find(|p| p.folder.as_slice() == b".github/workflows").unwrap();
+        let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, package: Some(package), ..Default::default() }, &token()).unwrap();
+        let mut links = map.links.iter().filter(|l| l.kind == MapLinkKind::DependsOn).map(|edge| {
+            let path = |i: usize| String::from_utf8_lossy(map.nodes[i].path.as_deref().unwrap());
+            format!("{} -> {}", path(edge.from), path(edge.to))
+        }).collect::<Vec<_>>();
+        links.sort();
+        assert_eq!(links, expected);
+    });
+}
+
+#[test]
 fn lua_links_committed_modules_and_rocket_entries_in_both_maps() {
     isolated("ROCKET_CODE_MAP_TEST", "lua_links_committed_modules_and_rocket_entries_in_both_maps", || {
         let f = Fixture::new();

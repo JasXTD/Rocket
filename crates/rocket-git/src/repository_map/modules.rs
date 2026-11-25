@@ -598,6 +598,7 @@ impl Repository {
                 ModuleLanguage::PowerShell => (b"package-powershell:", own, b"PowerShell scripts"),
                 ModuleLanguage::Bash => (b"package-bash:", own, b"Bash scripts"),
                 ModuleLanguage::Lua => (b"package-lua:", own, b"Lua scripts"),
+                ModuleLanguage::GitHubActions => (b"package-github-actions:", b"GitHub Actions".to_vec(), b"GitHub Actions workflows"),
                 ModuleLanguage::Go | ModuleLanguage::Rust => (b"package-go:", text.and_then(|t| packages::go_module(t)).map(String::into_bytes).unwrap_or(own), b"Go module"),
             };
             let mut n = node(MapNodeKind::Crate, [prefix, f.folder.as_slice()].concat(), name.clone(), detail.to_vec());
@@ -865,6 +866,7 @@ impl Repository {
             }
             ModuleLanguage::CSharp => units::csharp(&texts, cancel),
             ModuleLanguage::Lua => units::lua(found, &texts, cancel),
+            ModuleLanguage::GitHubActions => units::workflows(&texts, &blobs.keys().copied().collect(), cancel),
             ModuleLanguage::PowerShell | ModuleLanguage::Bash => {
                 let known = blobs.keys().copied().collect();
                 units::scripts(found.language, &found.folder, &texts, &known, cancel)
@@ -881,6 +883,7 @@ impl Repository {
                 ModuleLanguage::PowerShell => "Arrows show which committed scripts dot-source a helper, invoke it with &, or import a module by path. Runtime expressions and ambiguous working-directory paths are skipped.",
                 ModuleLanguage::Bash => "Arrows show which committed scripts load a helper with source or dot. Runtime expressions, PATH lookups and ambiguous working-directory paths are skipped.",
                 ModuleLanguage::Lua => "Rocket integration manifests point to main.lua. Ordinary Lua scripts link to unique committed modules named in literal require calls.",
+                ModuleLanguage::GitHubActions => "Workflow arrows point to committed scripts, local action manifests and reusable workflows. Script paths use the working directory for that step.",
                 ModuleLanguage::Go | ModuleLanguage::Rust => "Read from the committed Go files of one module. Each package stands alone; connections come from imports and the names used through them. Test files and files marked //go:build ignore are left out; other build constraints are not evaluated.",
             }
             .into(),
