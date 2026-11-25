@@ -107,7 +107,7 @@ fn builtin(prefix: &[Token], shadowed: bool) -> bool {
     }
 }
 
-pub(super) fn calls(tokens: &[Token], used: &mut usize, facts: &mut Facts) {
+pub(super) fn calls(tokens: &[Token], lines: &BTreeMap<usize, u32>, used: &mut usize, facts: &mut Facts) {
     use Token::{Ident, Punct, Str};
     let shadows =
         |name: &str| {
@@ -159,7 +159,7 @@ pub(super) fn calls(tokens: &[Token], used: &mut usize, facts: &mut Facts) {
                     }
                     *used += 1;
                     if !path.is_empty() && path.len() <= LABEL_BYTES {
-                        facts.embeds.push((kind, path.clone()));
+                        facts.embeds.push((kind, path.clone(), lines[&i]));
                     }
                 }
             }
@@ -220,11 +220,11 @@ impl Facts {
         source: &'a [u8],
         blobs: &'a BTreeMap<&[u8], (ObjectId, usize)>,
         cancel: &'a CancellationToken,
-    ) -> impl Iterator<Item = Result<(&'static str, Vec<u8>)>> + 'a {
-        self.embeds.iter().filter_map(move |(kind, path)| {
+    ) -> impl Iterator<Item = Result<(&'static str, Vec<u8>, u32)>> + 'a {
+        self.embeds.iter().filter_map(move |(kind, path, line)| {
             cancel
                 .check()
-                .map(|()| target(source, path, blobs).map(|p| (*kind, p)))
+                .map(|()| target(source, path, blobs).map(|p| (*kind, p, *line)))
                 .transpose()
         })
     }
@@ -247,9 +247,9 @@ mod tests {
         assert_eq!(
             read(source).embeds,
             [
-                ("include_str!", "readme 雪.md".into()),
-                ("include_bytes!", "pictures/#1 \"snow\".bin".into()),
-                ("include_str!", "a/example.md".into())
+                ("include_str!", "readme 雪.md".into(), 2),
+                ("include_bytes!", "pictures/#1 \"snow\".bin".into(), 3),
+                ("include_str!", "a/example.md".into(), 4)
             ]
         );
     }
@@ -272,7 +272,7 @@ mod tests {
                 ::std::include_str!("actual");
             }
         "###;
-        assert_eq!(read(source).embeds, [("include_str!", "actual".into())]);
+        assert_eq!(read(source).embeds, [("include_str!", "actual".into(), 14)]);
     }
 
     #[test]

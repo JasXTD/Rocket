@@ -16,6 +16,7 @@ mod modules;
 mod owners;
 mod packages;
 mod python;
+mod references;
 mod rust;
 mod scripts;
 mod units;
@@ -25,6 +26,7 @@ pub use code_map::{
     CODE_HISTORY_COMMITS, CODE_MAP_FILES, CODE_MAP_PACKAGES, ChangesOutcome, CodeChanges, CodeEnd, CodeHistory, CodeLink, CodeLinks, FileKind, HistoryCommit, OwnerRules, file_kind,
 };
 pub use mermaid::map_mermaid;
+pub use references::{AssetReference, AssetReferences};
 pub use owners::{CODEOWNERS_BYTES, CODEOWNERS_FILES, CodeOwners, Ownership};
 
 pub const MAP_COMMITS: usize = 500;
@@ -270,6 +272,7 @@ pub struct RepositoryMap {
 /// the modules whose names it uses, with those names as evidence.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ModuleMap {
+    pub references: AssetReferences,
     /// The package read, by node.
     pub package: usize,
     pub language: ModuleLanguage,

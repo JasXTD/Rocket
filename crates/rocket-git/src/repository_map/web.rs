@@ -82,13 +82,18 @@ fn page_base(path: &[u8], href: &str, root_site: bool) -> Option<Vec<u8>> {
     })
 }
 
+/// Byte position of a slice borrowed from this parser input.
+fn offset(input: &str, slice: &str) -> usize {
+    slice.as_ptr() as usize - input.as_ptr() as usize
+}
+
 pub(super) fn read(
     path: &[u8],
     source: &str,
     known: &HashSet<&[u8]>,
     remaining: &mut usize,
     cancel: &CancellationToken,
-    mut found: impl FnMut(&'static str, Vec<u8>),
+    mut found: impl FnMut(&'static str, Vec<u8>, u32),
 ) -> Result<bool> {
     cancel.check()?;
     let Some(format) = format(path) else { return Ok(true) };
@@ -100,7 +105,8 @@ pub(super) fn read(
         },
         Format::Css => packages::parent(path).to_vec(),
     };
-    let mut emit = |kind, url: &str| {
+    let newlines = std::cell::OnceCell::new();
+    let mut emit = |kind, url: &str, offset: usize| {
         if *remaining == 0 {
             return false;
         }
@@ -108,7 +114,8 @@ pub(super) fn read(
         if let Some((target, false)) = local_path(&base, url, root_site)
             && known.contains(target.as_slice())
         {
-            found(kind, target);
+            let breaks = newlines.get_or_init(|| source.match_indices('\n').map(|(i, _)| i).collect::<Vec<_>>());
+            found(kind, target, 1 + breaks.partition_point(|&i| i < offset) as u32);
         }
         true
     };
@@ -132,7 +139,7 @@ mod tests {
                 &known,
                 &mut 1000,
                 &CancellationToken::new(),
-                |kind, p| {
+                |kind, p, _| {
                     result.push(format!("{kind} {}", String::from_utf8(p).unwrap()));
                 }
             )
@@ -185,6 +192,23 @@ mod tests {
                 "srcset two.png"
             ]
         );
+    }
+
+    #[test]
+    fn physical_lines_survive_entities_multiline_attributes_and_raw_styles() {
+        let html = concat!(
+            "<img src='\r\n a.png' srcset='missing&#32;1x,&#10;\r\n", // lines 1 and 2
+            " a.png 2x'>\n",                                           // 3
+            "<div style='color:red&#59; background:url(&quot;a.png&quot;);\n", // 4
+            " mask:url(\n a.png)'></div>\n",                         // 5 and 6
+            "<style>p { background: url(\n a.png) }</style>"            // 7 and 8
+        );
+        let known = HashSet::from([b"a.png".as_slice()]);
+        let mut sites = Vec::new();
+        let mut budget = 10;
+        assert!(read(b"index.html", html, &known, &mut budget, &CancellationToken::new(),
+            |kind, _, line| sites.push((kind, line))).unwrap());
+        assert_eq!(sites, [("image", 2), ("srcset", 3), ("url()", 4), ("url()", 6), ("url()", 8)]);
     }
 
     #[test]
@@ -297,7 +321,7 @@ mod tests {
             let cancel = CancellationToken::new();
             let mut budget = 12000;
             assert!(matches!(
-                read(file, &source, &known, &mut budget, &cancel, |_, _| cancel.cancel()),
+                read(file, &source, &known, &mut budget, &cancel, |_, _, _| cancel.cancel()),
                 Err(crate::Error::Cancelled)
             ));
         }
@@ -311,11 +335,11 @@ mod tests {
                 &known,
                 &mut budget,
                 &t,
-                |_, _| unreachable!()
+                |_, _, _| unreachable!()
             )
             .unwrap()
         );
-        assert!(!read(b"a.css", "a{a:url(x);b:url(x)}", &known, &mut budget, &t, |_, _| n += 1).unwrap());
+        assert!(!read(b"a.css", "a{a:url(x);b:url(x)}", &known, &mut budget, &t, |_, _, _| n += 1).unwrap());
         assert_eq!((n, budget), (1, 0));
     }
 }

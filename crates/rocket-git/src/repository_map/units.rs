@@ -31,6 +31,7 @@ pub(super) struct Built {
     pub units: Vec<Unit>,
     pub root: Option<usize>,
     pub links: BTreeMap<(usize, usize), BTreeSet<String>>,
+    pub(super) sites: BTreeMap<(usize, usize), Vec<(u32, &'static str)>>,
     pub outline: BTreeMap<usize, Vec<OutlineItem>>,
     pub outside: BTreeMap<usize, BTreeSet<String>>,
     pub unlinked: Vec<(Vec<u8>, UnlinkedReason)>,
@@ -277,7 +278,7 @@ pub(super) fn file_dependencies(group: &packages::Found, texts: &BTreeMap<Vec<u8
     let mut remaining = MAP_LINKS;
     for (path, source) in texts {
         let from = files[path.as_slice()];
-        let mut link = |kind: &'static str, path: Vec<u8>| {
+        let mut link = |kind: &'static str, path: Vec<u8>, line: Option<u32>| {
             if built.followed >= MAP_LINKS { built.limited = true; return; }
             built.followed += 1;
             let to = if let Some(&id) = targets.get(&path) { id } else {
@@ -288,9 +289,12 @@ pub(super) fn file_dependencies(group: &packages::Found, texts: &BTreeMap<Vec<u8
                 id
             };
             built.uses(from, to, [kind.to_owned()]);
+            if from != to && let Some(line) = line {
+                built.sites.entry((from, to)).or_default().push((line, kind));
+            }
         };
-        let complete = if page_assets { web::read(path, source, known, &mut remaining, cancel, &mut link)? }
-            else { workflows::read(source, known, cancel, &mut link)? };
+        let complete = if page_assets { web::read(path, source, known, &mut remaining, cancel, |kind, path, line| link(kind, path, Some(line)))? }
+            else { workflows::read(source, known, cancel, |kind, path| link(kind, path, None))? };
         built.limited |= !complete;
         if built.limited && (built.followed >= MAP_LINKS || remaining == 0) { break; }
     }
@@ -1243,6 +1247,11 @@ pub(super) fn push(map: &mut RepositoryMap, details: &mut ModuleMap, built: Buil
             map.limited |= from < shown && to < shown;
             continue;
         }
+        if let Some(sites) = built.sites.get(&(from, to)) {
+            for &(line, kind) in sites {
+                details.references.add(&built.units[from].path, &built.units[to].path, line, kind);
+            }
+        }
         let mut e = link(base + from, base + to, MapLinkKind::DependsOn);
         e.weight = names.len();
         e.evidence = names.into_iter().map(String::into_bytes).collect();
@@ -1258,6 +1267,7 @@ pub(super) fn push(map: &mut RepositoryMap, details: &mut ModuleMap, built: Buil
             details.outside.insert(base + i, names.into_iter().map(String::into_bytes).collect());
         }
     }
+    map.limited |= details.references.limited;
     details.root = built.root.filter(|&r| r < shown).map(|r| base + r);
     details.unlinked.extend(built.unlinked);
     details.followed = built.followed;

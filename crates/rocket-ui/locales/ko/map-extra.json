@@ -1,4 +1,7 @@
 {
+  "Go to reference": "참조 위치로 이동",
+  "References": "참조 위치",
+  "This reference line is unavailable in the selected commit.": "선택한 커밋에서 이 참조 줄을 표시할 수 없습니다.",
   "Map read stopped. Previous results retained.": "맵 읽기를 중지했습니다. 이전 결과를 유지합니다.",
   "Stopping map read…": "맵 읽기 중지 중…",
   "Could not read the map's local Git objects. Check the revision and object availability, then refresh. Previous results retained.": "맵의 로컬 Git 객체를 읽을 수 없습니다. 리비전과 객체를 확인한 뒤 새로 고치세요. 이전 결과는 유지합니다.",

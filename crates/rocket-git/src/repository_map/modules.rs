@@ -757,12 +757,13 @@ impl Repository {
         }
         let shown = map.nodes.len() - base;
         let mut uses = found.uses;
+        let mut sites = BTreeMap::<_, Vec<_>>::new();
         uses.retain(|&(from, to), _| from < shown && to < shown);
         let mut by_file: HashMap<Vec<u8>, usize> = modules.iter().take(shown).enumerate().map(|(i, m)| (m.file.clone(), i)).collect();
         for (from, m) in modules.iter().take(shown).enumerate() {
             let Some(source) = facts.get(&m.file) else { continue };
             for embedded in source.embedded_files(&m.file, &blobs, cancel) {
-                let (kind, path) = embedded?;
+                let (kind, path, line) = embedded?;
                 let existing = by_file.get(&path).copied();
                 if existing == Some(from) { continue; }
                 if map.links.len() + uses.len() >= MAP_LINKS && !existing.is_some_and(|to| uses.contains_key(&(from, to))) {
@@ -779,6 +780,7 @@ impl Repository {
                     by_file.insert(path, to);
                     to
                 };
+                sites.entry((from, to)).or_default().push((line, kind));
                 uses.entry((from, to)).or_default().insert(kind.to_owned());
                 details.followed += 1;
             }
@@ -790,11 +792,16 @@ impl Repository {
         }
         for ((from, to), names) in uses {
             if map.links.len() >= MAP_LINKS { map.limited = true; break; }
+            if let Some(sites) = sites.remove(&(from, to)) {
+                let target = map.nodes[base + to].path.as_deref().unwrap();
+                for (line, kind) in sites { details.references.add(&modules[from].file, target, line, kind); }
+            }
             let mut e = link(base + from, base + to, MapLinkKind::DependsOn);
             e.weight = names.len();
             e.evidence = names.into_iter().take(NAMES).map(String::into_bytes).collect();
             map.links.push(e);
         }
+        map.limited |= details.references.limited;
         details.root = (shown > 0).then_some(base);
         details.followed += found.followed;
         details.unknown = found.unknown;

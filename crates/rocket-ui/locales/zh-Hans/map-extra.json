@@ -1,4 +1,7 @@
 {
+  "Go to reference": "转到引用位置",
+  "References": "引用位置",
+  "This reference line is unavailable in the selected commit.": "所选提交中无法显示此引用行。",
   "Map read stopped. Previous results retained.": "地图读取已停止。保留之前的结果。",
   "Stopping map read…": "正在停止地图读取…",
   "Could not read the map's local Git objects. Check the revision and object availability, then refresh. Previous results retained.": "无法读取地图的本地 Git 对象。请检查版本和对象是否可用，再刷新。保留之前的结果。",

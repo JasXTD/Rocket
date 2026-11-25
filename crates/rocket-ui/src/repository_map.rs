@@ -25,6 +25,8 @@ mod export;
 mod lists;
 mod modules;
 mod navigation;
+mod reference;
+pub use reference::ReferenceView;
 #[cfg(test)]
 mod tests;
 const DISPLAY_NODES: usize = 240;
@@ -47,6 +49,8 @@ pub enum MapIntent {
     /// History of commits touching this literal path, searched for the text.
     Path(Vec<u8>, String),
     InspectCommit(ObjectId),
+    References { commit: ObjectId, file: Vec<u8> },
+    SelectReference(usize),
     /// Code → Modules, for this package (None keeps the one shown).
     Modules(Option<PackageRef>),
     /// Code → Packages (true) or Folders (false), from Modules.
@@ -77,6 +81,7 @@ pub struct MapPage {
     pub neighbor_anchor: Option<Vec<u8>>,
     pub projected_links: Vec<MapLink>,
     pub export: Option<export::Export>,
+    pub reference: Option<ReferenceView>,
     /// Code: packages instead of folders. People: shared files instead of the grid.
     pub alternate: bool,
     /// History: branches and merges with runs of commits folded, instead of every commit.
@@ -146,6 +151,7 @@ impl Default for MapPage {
             neighbor_anchor: None,
             projected_links: Vec::new(),
             export: None,
+            reference: None,
             alternate: false,
             condensed: true,
             data: None,
@@ -302,9 +308,10 @@ impl MapPage {
         self.loading_more = false;
     }
     pub fn running(&self) -> bool {
-        self.task.is_some() || self.code.running()
+        self.task.is_some() || self.code.running() || self.reference.as_ref().is_some_and(ReferenceView::loading)
     }
     fn stop(&mut self) {
+        self.reference = None;
         if let Some(e) = &mut self.export {
             e.stop();
         }
@@ -328,6 +335,7 @@ impl MapPage {
             return;
         }
         self.task = None;
+        self.reference = None;
         self.error = None;
         self.notice = None;
         self.cancelling = false;
@@ -481,6 +489,19 @@ impl Rocket {
         let mut load = false;
         let mut more = false;
         match intent {
+            MapIntent::References { commit, file } => {
+                let page = tab.map.page_mut();
+                if let Some(sites) = page.reference_sites(&commit, &file) {
+                    let mut view = ReferenceView::new(commit, sites.iter().cloned().collect());
+                    if view.sites.len() == 1 { view.open(0, &self.context, backend.clone(), repo.clone()); }
+                    page.reference = Some(view);
+                }
+            }
+            MapIntent::SelectReference(index) => {
+                if let Some(view) = &mut tab.map.page_mut().reference {
+                    view.open(index, &self.context, backend.clone(), repo.clone());
+                }
+            }
             MapIntent::Open => load = tab.map.page().data.is_none() && !tab.map.page().running(),
             MapIntent::Load => load = true,
             MapIntent::More => {
@@ -646,6 +667,7 @@ impl Rocket {
                 if let Some(result) = p.task.as_mut().and_then(ReadTask::try_finish) {
                     p.finish(result);
                 }
+                if let Some(view) = &mut p.reference { view.poll(); }
                 p.code.poll();
                 if p.data.is_some() && p.loaded_refresh != tab.refresh_count {
                     p.stale = true;
@@ -828,6 +850,10 @@ pub(crate) fn view(
     widgets: &mut HashMap<String, UiControl>,
 ) {
     ui.set_clip_rect(ui.clip_rect().intersect(ui.available_rect_before_wrap()));
+    if let Some(reference) = &mut tab.map.page_mut().reference {
+        if reference.show(ui, intents, widgets) { tab.map.page_mut().reference = None; }
+        return;
+    }
     let compact = ui.available_width() < 850.;
     let low = ui.available_height() < 420.;
     let kind = tab.map.kind;

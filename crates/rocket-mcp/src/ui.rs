@@ -4059,7 +4059,13 @@ fn repository_map_state(state:&rocket_ui::repository_map::State)->Value {
             "unlinked":m.unlinked.iter().map(|(p,r)|json!({"path":rocket_ui::tree::path_label(p),"reason":format!("{r:?}")})).collect::<Vec<_>>(),
             "outline":m.outline.iter().map(|(i,o)|json!({"node":i,"items":o.len()})).collect::<Vec<_>>()}))
     }));
-    json!({"kind":format!("{:?}",state.kind),"code_shows_modules":state.modules,"running":p.running(),"cancelling":p.cancelling,
+    let reference = p.reference.as_ref().map(|r| {
+        let sites = r.sites.iter().take(128).map(|s| json!({"source":rocket_ui::tree::path_label(&s.source),
+            "target":rocket_ui::tree::path_label(&s.target),"kind":s.kind,"line":s.line})).collect::<Vec<_>>();
+        json!({"commit":r.commit.as_str(),"selected":r.selected,"sites":sites,"count":r.sites.len(),
+            "loading":r.loading(),"error":r.error,"text":r.focused_text().map(|s|s.chars().take(256).collect::<String>())})
+    });
+    let mut result = json!({"kind":format!("{:?}",state.kind),"code_shows_modules":state.modules,"running":p.running(),"cancelling":p.cancelling,
         "package":p.package.as_ref().map(|v|rocket_ui::tree::path_label(&v.folder)),"package_language":p.package.as_ref().map(|v|format!("{:?}",v.language)),"whole":p.whole,"by_name":p.by_name,"expanded":p.expanded.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),
         "captions":p.captions.iter().map(|c|json!({"what":format!("{:?}",c.what),"count":c.count})).collect::<Vec<_>>(),
         "revision":p.revision,"query":p.query,"all_branches":p.all_branches,"period":p.period.key(),"alternate":p.alternate,"condensed":p.condensed,"cell":p.cell,"line":p.line,
@@ -4068,7 +4074,9 @@ fn repository_map_state(state:&rocket_ui::repository_map::State)->Value {
         "export":p.export.as_ref().map(|e|json!({"dir":e.dir,"name":e.name,"nodes":e.nodes,"links":e.links,"bytes":e.text.len(),"running":e.running(),"stopping":e.stopping,"error":e.error,"notice":e.notice})),
         "error":p.error,"notice":p.notice,"stale":p.stale,"selected":p.selected,"show_details":p.show_details,"zoom":p.zoom,
         "visible":p.visible,"file_groups":p.file_groups.iter().map(|g|json!({"folder":g.folder,"files":g.files,"more":g.more.map(|m|format!("{m:?}"))})).collect::<Vec<_>>(),"display_offset":p.display_offset,"view_total":p.view_total,"data":data,
-        "code_map":code_map_state(p)})
+        "code_map":code_map_state(p)});
+    result["reference"] = json!(reference);
+    result
 }
 
 /// Code → Folders as a code map: its reads, colour and what is drawn. An item is a node

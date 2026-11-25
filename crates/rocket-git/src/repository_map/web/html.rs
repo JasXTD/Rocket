@@ -28,7 +28,7 @@ impl<'a> Tag<'a> {
             }
             let name = &rest[..end];
             rest = rest[end..].trim_start_matches(ws);
-            let mut value = "";
+            let mut value = &rest[..0];
             if let Some(tail) = rest.strip_prefix('=') {
                 rest = tail.trim_start_matches(ws);
                 if let Some(quote @ ('\'' | '"')) = rest.chars().next() {
@@ -184,10 +184,29 @@ impl<'a> Tags<'a> {
     }
 }
 
-fn character_refs(s: &str) -> Option<Cow<'_, str>> {
-    if !s.contains('&') {
-        return Some(Cow::Borrowed(s));
+#[derive(Default)]
+struct Attribute<'a> {
+    raw: &'a str,
+    value: Cow<'a, str>,
+    // End offsets of each decoded entity in the value and in the original HTML.
+    ends: Vec<(usize, usize)>,
+}
+impl std::ops::Deref for Attribute<'_> {
+    type Target = str;
+    fn deref(&self) -> &str { &self.value }
+}
+impl Attribute<'_> {
+    fn source_offset(&self, html: &str, offset: usize) -> usize {
+        let through = self.ends.partition_point(|&(decoded, _)| decoded <= offset);
+        let (decoded, raw) = through.checked_sub(1).map_or((0, 0), |i| self.ends[i]);
+        super::offset(html, self.raw) + raw + (offset - decoded)
     }
+}
+fn character_refs(s: &str) -> Option<Attribute<'_>> {
+    if !s.contains('&') {
+        return Some(Attribute { raw: s, value: Cow::Borrowed(s), ends: Vec::new() });
+    }
+    let mut ends = Vec::new();
     let mut out = String::with_capacity(s.len());
     let mut tail = s;
     while let Some((before, after)) = tail.split_once('&') {
@@ -223,13 +242,14 @@ fn character_refs(s: &str) -> Option<Cow<'_, str>> {
             };
             out.push(c);
             tail = &rest[1..];
+            ends.push((out.len(), s.len() - tail.len()));
         } else {
             out.push('&');
             tail = after;
         }
     }
     out.push_str(tail);
-    Some(Cow::Owned(out))
+    Some(Attribute { raw: s, value: Cow::Owned(out), ends })
 }
 
 /// Look for the first explicit base before emitting any edges. It can appear
@@ -282,7 +302,8 @@ fn descriptors(s: &str) -> bool {
 
 /// Commas can be part of the URL, in particular in data URLs. A comma following
 /// a descriptor or at the end of the URL token separates candidates.
-fn srcset(mut s: &str, cancel: &CancellationToken, emit: &mut impl FnMut(&'static str, &str) -> bool) -> Result<bool> {
+fn srcset(input: &str, cancel: &CancellationToken, emit: &mut impl FnMut(&'static str, &str, usize) -> bool) -> Result<bool> {
+    let mut s = input;
     loop {
         cancel.check()?;
         s = s.trim_start_matches(|c| ws(c) || c == ',');
@@ -293,7 +314,7 @@ fn srcset(mut s: &str, cancel: &CancellationToken, emit: &mut impl FnMut(&'stati
         let url = &s[..end];
         s = &s[end..];
         if url.ends_with(',') {
-            if !emit("srcset", url.trim_end_matches(',')) {
+            if !emit("srcset", url.trim_end_matches(','), super::offset(input, url)) {
                 return Ok(false);
             }
         } else {
@@ -313,7 +334,7 @@ fn srcset(mut s: &str, cancel: &CancellationToken, emit: &mut impl FnMut(&'stati
                     _ => None,
                 })
                 .unwrap_or(s.len());
-            if descriptors(&s[..end]) && !emit("srcset", url) {
+            if descriptors(&s[..end]) && !emit("srcset", url, super::offset(input, url)) {
                 return Ok(false);
             }
             s = &s[end..];
@@ -324,7 +345,7 @@ fn srcset(mut s: &str, cancel: &CancellationToken, emit: &mut impl FnMut(&'stati
 pub(super) fn read(
     s: &str,
     cancel: &CancellationToken,
-    emit: &mut impl FnMut(&'static str, &str) -> bool,
+    emit: &mut impl FnMut(&'static str, &str, usize) -> bool,
 ) -> Result<bool> {
     let mut tags = Tags::new(s);
     while let Some(tag) = tags.next(cancel)? {
@@ -368,21 +389,21 @@ pub(super) fn read(
             single = attr("src").map(|s| ("image", s));
         }
         if let Some((kind, url)) = single
-            && !emit(kind, &url)
+            && !emit(kind, &url, url.source_offset(s, url.len() - url.trim_start_matches(ws).len()))
         {
             return Ok(false);
         }
         if let Some(set) = candidates
-            && !srcset(&set, cancel, emit)?
+            && !srcset(&set, cancel, &mut |k, url, at| emit(k, url, set.source_offset(s, at)))?
         {
             return Ok(false);
         }
         if let Some(style) = attr("style")
-            && !css::read(&style, cancel, emit)?
+            && !css::read(&style, cancel, &mut |k, url, at| emit(k, url, style.source_offset(s, at)))?
         {
             return Ok(false);
         }
-        if tag.name.eq_ignore_ascii_case("style") && !css::read(tag.body, cancel, emit)? {
+        if tag.name.eq_ignore_ascii_case("style") && !css::read(tag.body, cancel, &mut |k, url, at| emit(k, url, super::offset(s, tag.body) + at))? {
             return Ok(false);
         }
     }

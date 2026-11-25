@@ -460,6 +460,14 @@ fn paths(ui: &mut Ui, out: &mut Out, title: &str, list: &[&Vec<u8>], total: usiz
 }
 
 fn node(ui: &mut Ui, s: &MapPage, data: &RepositoryMap, i: usize, out: &mut Out) {
+    let n = &data.nodes[i];
+    if matches!(n.kind, MapNodeKind::File | MapNodeKind::Module)
+        && let (Some(commit), Some(file)) = (&data.tip, &n.path)
+        && s.reference_sites(commit, file).is_some()
+        && button(ui, out.widgets, "map-go-to-reference", tr("Go to reference"), true)
+    {
+        out.emit(MapIntent::References { commit: commit.clone(), file: file.clone() });
+    }
     match data.nodes[i].kind {
         MapNodeKind::Crate if s.alternate => package(ui, s, data, i, out),
         MapNodeKind::Crate | MapNodeKind::Directory => folder(ui, s, data, i, out),

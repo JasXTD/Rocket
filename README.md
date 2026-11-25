@@ -98,7 +98,8 @@ to restart. See the [full release notes](docs/releases/0.92.6.md).
   select a GitHub Actions workflow to see its scripts, local actions and reusable workflows.
   In a Rust package, select an embedded file to see which modules include it.
   Select a stylesheet in **HTML / CSS** to see every mapped page that uses it, or
-  follow a page to its scripts, images and styles.
+  follow a page to its scripts, images and styles. **Go to reference** opens the source
+  line for a Rust embed or web asset at the commit shown on the map.
 - [**Insights**](docs/Insights.md) replaces Statistics: commit activity, a
   file treemap and pull request numbers from your hosting account, with weekly trends
   against the previous period, waiting review requests, time to first review, saved views

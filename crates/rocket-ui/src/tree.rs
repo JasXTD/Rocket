@@ -704,6 +704,7 @@ pub(crate) fn source_rows(
             if Some(i) == focus {
                 let at = ui.available_rect_before_wrap();
                 let band = Rect::from_min_size(at.min, vec2(at.width().max(ui.clip_rect().width()), 22.0));
+                pages::region(widgets, &format!("{scroll_id}-line-{}", content.first + i), band.intersect(ui.clip_rect()), false);
                 ui.painter().rect_filled(band, 0.0, BLUE().gamma_multiply(0.12));
                 ui.painter().rect_filled(Rect::from_min_size(band.min, vec2(3.0, 22.0)), 0.0, BLUE());
             }

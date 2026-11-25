@@ -1,4 +1,7 @@
 {
+  "Go to reference": "Gå till referensen",
+  "References": "Referenser",
+  "This reference line is unavailable in the selected commit.": "Referensens rad är inte tillgänglig i den valda incheckningen.",
   "Map read stopped. Previous results retained.": "Kartläsningen stoppad. Tidigare resultat behålls.",
   "Stopping map read…": "Stoppar kartläsningen…",
   "Could not read the map's local Git objects. Check the revision and object availability, then refresh. Previous results retained.": "Kunde inte läsa kartans lokala Git-objekt. Kontrollera revisionen och objekttillgängligheten och uppdatera. Tidigare resultat behålls.",

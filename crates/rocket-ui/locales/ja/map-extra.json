@@ -1,4 +1,7 @@
 {
+  "Go to reference": "参照箇所へ移動",
+  "References": "参照箇所",
+  "This reference line is unavailable in the selected commit.": "選択したコミットでは、この参照行を表示できません。",
   "Map read stopped. Previous results retained.": "マップの読み取りを停止しました。前の結果を保持します。",
   "Stopping map read…": "マップの読み取りを停止中…",
   "Could not read the map's local Git objects. Check the revision and object availability, then refresh. Previous results retained.": "マップのローカル Git オブジェクトを読み取れませんでした。リビジョンとオブジェクトの有無を確認し、更新してください。前の結果を保持します。",

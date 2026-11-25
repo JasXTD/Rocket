@@ -142,6 +142,7 @@ pub struct OwnerRules {
 /// What the code map read found.
 #[derive(Clone, Debug, Default)]
 pub struct CodeLinks {
+    pub references: AssetReferences,
     pub tip: Option<ObjectId>,
     pub ends: Vec<CodeEnd>,
     pub links: Vec<CodeLink>,
@@ -192,6 +193,7 @@ impl CodeLinks {
                 }
             }
         }
+        self.references.merge(other.references);
         self.lines.extend(other.lines);
         let completed: HashSet<_> = other.packages.iter().collect();
         self.unread.retain(|p| !completed.contains(p));
@@ -199,12 +201,13 @@ impl CodeLinks {
         self.packages.extend(other.packages.into_iter().filter(|p| known_packages.insert(p.clone())));
         self.files += other.files;
         self.sources_limited |= other.sources_limited;
-        self.limited = !self.unread.is_empty() || other.limited || self.sources_limited || self.owners_limited;
+        self.limited = !self.unread.is_empty() || other.limited || self.references.limited || self.sources_limited || self.owners_limited;
     }
 }
 
 #[derive(Default)]
 struct Builder {
+    references: AssetReferences,
     ends: Vec<CodeEnd>,
     at: HashMap<CodeEnd, usize>,
     links: BTreeMap<(usize, usize), BTreeSet<String>>,
@@ -220,14 +223,14 @@ impl Builder {
         self.at.insert(key, self.ends.len() - 1);
         self.ends.len() - 1
     }
-    fn link(&mut self, from: &[u8], from_folder: bool, to: &[u8], to_folder: bool, names: impl IntoIterator<Item = String>) {
+    fn link(&mut self, from: &[u8], from_folder: bool, to: &[u8], to_folder: bool, names: impl IntoIterator<Item = String>) -> bool {
         if from == to && from_folder == to_folder {
-            return;
+            return false;
         }
         let (a, b) = (self.end(from, from_folder), self.end(to, to_folder));
         if !self.links.contains_key(&(a, b)) && self.links.len() >= LINKS {
             self.limited = true;
-            return;
+            return false;
         }
         let set = self.links.entry((a, b)).or_default();
         for n in names {
@@ -236,6 +239,7 @@ impl Builder {
             }
             set.insert(n);
         }
+        true
     }
 }
 
@@ -548,6 +552,8 @@ impl Repository {
         }
         out.files = budget.files;
         out.limited = !out.unread.is_empty() || budget.limited || b.limited || manifest_limited || out.sources_limited || out.owners_limited;
+        out.limited |= b.references.limited;
+        out.references = b.references;
         out.ends = b.ends;
         out.links = b.links.into_iter().map(|((from, to), names)| CodeLink { from, to, names: names.into_iter().collect() }).collect();
         Ok(out)
@@ -745,8 +751,10 @@ impl Repository {
         sources.sort_unstable_by_key(|(path, _)| *path);
         for (path, source) in sources {
             for embedded in source.embedded_files(path, blobs, cancel) {
-                let (kind, target) = embedded?;
-                b.link(path, false, &target, false, [kind.to_owned()]);
+                let (kind, target, line) = embedded?;
+                if b.link(path, false, &target, false, [kind.to_owned()]) {
+                    b.references.add(path, &target, line, kind);
+                }
             }
         }
         Ok(())
@@ -893,7 +901,11 @@ fn code_other(
     for ((from, to), used) in &built.links {
         for (a, a_folder) in ends(&built.units[*from].path) {
             for (z, z_folder) in ends(&built.units[*to].path) {
-                b.link(&a, a_folder, &z, z_folder, used.iter().cloned());
+                if b.link(&a, a_folder, &z, z_folder, used.iter().cloned())
+                    && let Some(sites) = built.sites.get(&(*from, *to))
+                {
+                    for &(line, kind) in sites { b.references.add(&a, &z, line, kind); }
+                }
             }
         }
     }

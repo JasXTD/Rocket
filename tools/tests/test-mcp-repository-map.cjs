@@ -10,6 +10,7 @@ const focused=[
  {flag:'--lua-only',directory:'lua-code-map',run:luaModules},
  {flag:'--workflows-only',directory:'workflow-code-map',run:workflowLinks},
  {flag:'--web-only',directory:'web-code-map',run:webAssets},
+ {flag:'--references-only',directory:'code-map-references',run:assetReferences},
  {flag:'--rust-assets-only',directory:'rust-embedded-code-map',run:rustAssets},
 ].find(test=>process.argv.includes(test.flag));
 const evidence=path.resolve('tools/maintenance',focused?.directory??'repository-map-redesign-20261105');
@@ -53,6 +54,7 @@ async function open(f){if(state?.dialog)await click('dialog-cancel');await clien
 async function openRevision(){await stable();if(!control('map-revision'))await click('map-revision-pick');assert(control('map-revision')?.enabled,'Revision picker did not open');}
 async function load(revision){await openRevision();await type('map-revision',revision);await click('map-load');}
 async function closeWindow(){await client.tool('rocket_close');await until(s=>['closed','not_started'].includes(s.window)||s.dialog?.kind==='quit'&&!s.input_pending);if(state.dialog?.kind==='quit'){await client.tool('rocket_click',{target:'dialog-submit',expected_tab:state.active_tab});await until(s=>['closed','not_started'].includes(s.window));}}
+function diagnosticRecords(){return fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).flatMap(n=>fs.readdirSync(path.join(root,n)).filter(f=>/^rocket(?:\.\d+)?\.jsonl$/.test(f)).flatMap(f=>fs.readFileSync(path.join(root,n,f),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));}
 function snapshot(f){const files={};function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){if(e.name==='.git')continue;const p=path.join(dir,e.name);if(e.isDirectory())walk(p);else files[path.relative(f.repo,p)]=hash(p);}}walk(f.repo);return {head:f.git(['rev-parse','HEAD']),index:hash(path.join(f.repo,'.git/index')),config:hash(path.join(f.repo,'.git/config')),files};}
 function checkBounds(){for(const c of state.controls.filter(c=>c.id.startsWith('map-')))assert(c.rect[0]>=0&&c.rect[1]>=0&&c.rect[2]<=state.viewport[0]+1&&c.rect[3]<=state.viewport[1]+1,'Offscreen '+JSON.stringify(c));}
 const FILE='应用/src/結果 🚀 é.rs';
@@ -374,6 +376,88 @@ function checkFitCounts(){
  return {width:state.viewport[0],height:state.viewport[1],zoom_percent:Math.round(map().zoom*100),
   arrows:arrows.length,visible_counts:labels.length};
 }
+async function assetReferences(){
+ async function revision(tip){
+  await load(tip);
+  await until(()=>map().data?.tip===tip&&!map().running &&
+   (map().kind==='Modules'||map().code_map.links&&!map().code_map.running),'selected revision and links');
+ }
+ async function pickFile(file){
+  const i=node(file).index;
+  await click((map().kind==='Modules'?'map-module-':'map-node-')+i);
+  assert.equal(map().selected,i);
+  await click('map-go-to-reference');
+ }
+ async function verify(tip,source,target,line,kind,text){
+  const ref=map().reference;
+  assert.equal(ref?.commit,tip);
+  const index=ref.sites.findIndex(s=>s.source===source&&s.target===target&&s.line===line&&s.kind===kind);
+  assert(index>=0,JSON.stringify({source,target,line,sites:ref.sites}));
+  if(ref.selected===null)await click('map-reference-'+index);
+  await until(()=>map().reference?.selected===index&&!map().reference.loading,'committed source');
+  assert.equal(map().reference.error,null);
+  assert.equal(map().reference.text,text);
+  await until(()=>!!control('map-reference-source-line-'+line),'highlighted row in viewport');
+  checkBounds();
+  report.reference_opens=(report.reference_opens??0)+1;
+ }
+ async function modules(language,tip){
+  await click('map-mode-modules');
+  await until(()=>map().data?.kind==='Modules'&&!map().running);
+  if(map().data.modules?.language!==language){
+   const i=map().data.module_packages.findIndex(p=>p.language===language);assert(i>=0);
+   await click('map-module-package');await click('map-module-package-'+i);
+  }
+  await revision(tip);
+ }
+ const rust=fixture('Rust locations 雪'), src='src/lib.rs', guide='入門.md', single='one.bin';
+ const earlier='const FIRST: &str = include_str!("../入門.md");';
+ const later='const SECOND: &str = include_str!("../入門.md");';
+ const bytes='const ONE: &[u8] = include_bytes!("../one.bin");';
+ const body=['// include_str!("../入門.md")',earlier,...Array(725).fill('// padding'),later,...Array(55000).fill(''),bytes].join('\r\n')+'\r\n';
+ rust.write('Cargo.toml',"[package]\nname='reference_demo'\nversion='0.1.0'\n");
+ rust.write(src,body);rust.write(guide,'hello');rust.write(single,Buffer.from([0,255]));
+ const first=rust.commit('Original embedded locations');
+ rust.write(src,'// moved\n// again\n'+body.replace('const SECOND','pub const SECOND'));
+ const second=rust.commit('Move reference lines');
+ rust.write(src,'// staged Rust source\n');rust.git(['add','--',src]);rust.write(src,'// local Rust source\n');
+ await folders(rust,second);await revision(first);await expand(['src']);await click('map-fit');
+ const before=snapshot(rust);await pickFile(guide);assert.equal(map().reference.count,2);
+ await click('map-reference-close');assert.equal(map().selected,node(guide).index);
+ await click('map-go-to-reference');
+ await verify(first,src,guide,2,'include_str!',earlier);
+ await click('map-reference-list');await verify(first,src,guide,728,'include_str!',later);
+ await keepCapture('rust-reference');await click('map-reference-close');assert.equal(map().selected,node(guide).index);
+ await pickFile(src);assert.equal(map().reference.count,3);await verify(first,src,single,55729,'include_bytes!',bytes);
+ await click('map-reference-close');assert.deepEqual(snapshot(rust),before);
+ passed('Folders opens both occurrences of a Rust embed and the byte embed at the selected older commit, including visible highlights on lines 728 and 55729');
+ await modules('Rust',second);await pickFile(guide);
+ await verify(second,src,guide,730,'include_str!',later.replace('const SECOND','pub const SECOND'));
+ await click('map-reference-close');assert.deepEqual(snapshot(rust),before);
+ passed('Modules follows the same asset to its moved line at a newer commit while the index and checkout contain different text');
+
+ const web=fixture('Web locations 雪'), page='頁.html', sheet='site.css', base='base.css', pic='雪.png';
+ const html=['<!-- <img src="雪.png"> -->','<link rel="stylesheet"',' href="site.css">','<img srcset="missing.png 1x,',' 雪.png 2x">','<div style="color: red&#59;',' background: url(&quot;雪.png&quot;)"></div>'];
+ const css=['/* url(雪.png) */','@import',' "base.css";','body { background: url(',' 雪.png) }'];
+ web.write(page,html.join('\r\n'));web.write(sheet,css.join('\r\n'));web.write(base,'/* base */');web.write(pic,Buffer.from([0,254]));
+ const original=web.commit('Original web references');
+ web.write(page,'\n\n'+html.join('\n'));web.write(sheet,'\n'+css.join('\n'));
+ const head=web.commit('Move web references');web.write(page,'<p>Staged</p>');web.git(['add','--',page]);web.write(page,'<p>Unstaged</p>');
+ await folders(web,head);await revision(original);
+ // An external edit after the map has loaded must not change the source we open.
+ fs.unlinkSync(path.join(web.repo,sheet));const unchanged=snapshot(web);
+ await pickFile(pic);assert.equal(map().reference.count,3);
+ await verify(original,page,pic,5,'srcset',html[4]);await click('map-reference-list');
+ await verify(original,page,pic,7,'url()',html[6]);await click('map-reference-list');
+ await verify(original,sheet,pic,5,'url()',css[4]);await click('map-reference-close');
+ passed('Shared Unicode image opens the exact HTML srcset, entity-encoded inline CSS and standalone CSS lines after the working stylesheet is deleted');
+ await modules('HtmlCss',original);await pickFile(base);assert.equal(map().reference.count,1);
+ await verify(original,sheet,base,3,'@import',css[2]);await click('map-reference-close');
+ await pickFile(page);await resize(780,620);await verify(original,page,sheet,3,'stylesheet',html[2]);
+ await keepCapture('compact-reference');await click('map-reference-close');assert.equal(map().selected,node(page).index);
+ assert.deepEqual(snapshot(web),unchanged);
+ passed('A single CSS import opens directly. A compact window shows the selected commit and highlighted HTML line, returns to the same module and preserves local files, index, config and HEAD');
+}
 async function rustAssets(){
  const f=fixture('Rust resources'), guide='docs/入門 #1.md', script='src/app_update/extract.ps1', image='assets/themes/astronaut.jpg';
  const update='src/app_update.rs', picture='src/theme/picture.rs', help='src/theme/help.rs', settings='src/theme/settings.rs';
@@ -675,7 +759,7 @@ async function run(){try{
  passed('Empty views and date scope, bounded Unicode labels, readable large-tree focus and complete Fit, one-click Code cancellation, a stopped read that never publishes, and unchanged Git/files');
 
  await closeWindow();await client.raw('POST','/shutdown');
- const recordsLog=fs.readdirSync(root).filter(n=>n.startsWith('mcp-logs-')).flatMap(n=>fs.readdirSync(path.join(root,n)).filter(f=>/^rocket(?:\.\d+)?\.jsonl$/.test(f)).flatMap(f=>fs.readFileSync(path.join(root,n,f),'utf8').trim().split(/\r?\n/).filter(Boolean).map(JSON.parse)));
+ const recordsLog=diagnosticRecords();
  assert(recordsLog.length);assert(recordsLog.every(r=>r.dropped_before===0));const payload=JSON.stringify(recordsLog);for(const secret of ['PRIVATE_','検索',FILE,root,blob,...privateIds])assert(!payload.includes(secret),'Diagnostic payload leak');
  for(const op of ['map-code','map-history','map-people',...(edgesOnly?[]:['map-modules','map-code-links','map-code-history','map-code-changes'])]){const starts=recordsLog.filter(r=>r.event==='request_start'&&r.operation===op);assert(starts.length,'Missing '+op);for(const start of starts)assert(recordsLog.some(r=>r.event==='request_end'&&r.session===start.session&&r.request===start.request),'Unpaired '+op);}
  for(const start of recordsLog.filter(r=>r.event==='step_start'&&r.operation?.startsWith('map-')))assert(recordsLog.some(r=>r.event==='step_end'&&r.step===start.step&&r.session===start.session&&r.request===start.request),'Unpaired step');
@@ -692,6 +776,15 @@ finally{
   try{
    assert.equal(report.cleanup.service_exit,0,'isolated MCP service did not exit cleanly');
    assert(report.cleanup.token_removed && !report.forced_service_stop);
+   if(focused.flag==='--references-only'){
+    const records=diagnosticRecords().filter(r=>r.operation==='map-open-reference');
+    const starts=records.filter(r=>r.event==='request_start');
+    assert.equal(starts.length,report.reference_opens);
+    for(const start of starts) assert(records.some(r=>r.event==='request_end'&&r.session===start.session&&r.request===start.request));
+    const logged=JSON.stringify(records);
+    for(const privateText of ['入門.md','頁.html','雪.png','const SECOND',root])assert(!logged.includes(privateText));
+    passed('Each source read has paired diagnostic records without source text or fixture paths');
+   }
    const base=fs.realpathSync(path.resolve('work/mcp-fixtures')), owned=fs.realpathSync(root);
    assert.equal(path.dirname(owned),base);
    assert.match(path.basename(owned),/^repository-map-[0-9a-f]{32}$/);

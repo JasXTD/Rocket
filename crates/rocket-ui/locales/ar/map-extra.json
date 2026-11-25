@@ -1,4 +1,7 @@
 {
+  "Go to reference": "انتقل إلى المرجع",
+  "References": "المراجع",
+  "This reference line is unavailable in the selected commit.": "سطر المرجع غير متاح في الالتزام المحدد.",
   "Map read stopped. Previous results retained.": "توقفت قراءة الخريطة. تم الاحتفاظ بالنتائج السابقة.",
   "Stopping map read…": "جارٍ إيقاف قراءة الخريطة…",
   "Could not read the map's local Git objects. Check the revision and object availability, then refresh. Previous results retained.": "تعذرت قراءة كائنات Git المحلية للخريطة. تحقق من المراجعة وتوفر الكائنات، ثم حدّث. تم الاحتفاظ بالنتائج السابقة.",

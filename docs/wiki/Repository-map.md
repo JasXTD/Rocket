@@ -30,6 +30,13 @@ Rust source. For example, Rocket's `app_update.rs` points to the `extract.ps1` s
 it includes. In **Modules**, select the script to see **Used by**, then select a
 caller to trace the connection back. A shared file lists each calling module.
 
+In **Folders** or **Modules**, select either the source file or its asset, then choose
+**Go to reference** in Details. A single reference opens immediately. With several,
+choose a source path and line from the list. The highlighted line shows the Rust
+macro call or the HTML/CSS asset URL as it appeared in the map’s selected commit.
+You can keep local edits open while reading it. Choose **Close** to return to your
+map selection.
+
 To trace a Rust native call, expand the crate in **Folders**. Select the Rust file
 and follow its arrow to the C-family source. The arrow lists matching linker names.
 For example, Rocket's `rocket_spell_check` connects `macos.rs` to `macos.m`.

@@ -1,4 +1,7 @@
 {
+  "Go to reference": "Перейти до місця посилання",
+  "References": "Місця посилань",
+  "This reference line is unavailable in the selected commit.": "Рядок цього посилання недоступний у вибраному коміті.",
   "Map read stopped. Previous results retained.": "Читання карти зупинено. Попередні результати збережено.",
   "Stopping map read…": "Зупинення читання карти…",
   "Could not read the map's local Git objects. Check the revision and object availability, then refresh. Previous results retained.": "Не вдалося прочитати локальні об’єкти Git для карти. Перевірте ревізію та доступність об’єктів, потім оновіть. Попередні результати збережено.",

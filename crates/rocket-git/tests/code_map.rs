@@ -46,6 +46,13 @@ fn rust_embedded_files_connect_both_maps_at_the_selected_commit() {
         assert_eq!(pairs(&all), expected);
         assert!(!all.limited);
         let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, ..Default::default() }, &token()).unwrap();
+        let refs = &map.modules.as_ref().unwrap().references;
+        assert_eq!(refs, &all.references, "both views must open the same Rust source lines");
+        let guide = refs.for_file("docs/入門 #1.md".as_bytes()).unwrap();
+        let sites: Vec<_> = guide.iter().map(|r| (r.source.as_ref(), r.line, r.kind)).collect();
+        assert_eq!(sites, [(b"src/lib.rs".as_slice(), 2, "include_str!"), (b"src/lib.rs", 3, "include_bytes!"),
+            (b"src/update.rs", 1, "include_str!")]);
+        assert!(refs.for_file(b"decoy").is_none());
         let mut pairs = Vec::new();
         for edge in map.links.iter().filter(|l| l.kind == MapLinkKind::DependsOn) {
             let path = |i: usize| String::from_utf8_lossy(map.nodes[i].path.as_deref().unwrap());
@@ -105,6 +112,15 @@ fn web_assets_connect_shared_styles_pages_and_binary_files_from_the_selected_com
         }).collect::<Vec<_>>();
         edges.sort();
         assert_eq!(edges, expected);
+        let refs = &map.modules.as_ref().unwrap().references;
+        assert_eq!(refs, &all.references);
+        let sites: Vec<_> = refs.for_file("pages/pictures/猫.png".as_bytes()).unwrap().iter()
+            .map(|r| (r.source.as_ref(), r.line, r.kind)).collect();
+        assert_eq!(sites, [(b"pages/index.html".as_slice(), 2, "image"), (b"pages/index.html", 3, "srcset"),
+            (b"styles/site.css", 2, "url()")]);
+        let mut merged = all;
+        merged.merge(selected);
+        assert_eq!(&merged.references, refs, "reading a folder again must not duplicate its reference sites");
         assert!(map.modules.unwrap().unlinked.contains(&(b"pages/packed.HTM".to_vec(), UnlinkedReason::Binary)));
     });
 }

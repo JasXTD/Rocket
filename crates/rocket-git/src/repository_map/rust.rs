@@ -27,7 +27,7 @@ pub(super) struct Facts {
     /// The source exceeded a nesting, expanded-import or literal embed limit.
     pub limited: bool,
     /// Literal built-in include calls, relative to this source file.
-    pub embeds: Vec<(&'static str, String)>,
+    pub embeds: Vec<(&'static str, String, u32)>,
     /// `mod name;`: a module in its own file.
     pub declarations: Vec<Declaration>,
     /// `mod name { … }`: the module path inside the file, ending in its own name.
@@ -126,9 +126,10 @@ fn quote(c: &[char], i: usize) -> usize {
     (j - i).max(1)
 }
 
-fn lex(source: &str) -> Vec<Token> {
+fn lex(source: &str, mut embed_line: impl FnMut(usize, u32)) -> Vec<Token> {
     let c: Vec<char> = source.chars().collect();
     let n = c.len();
+    let (mut counted, mut line) = (0, 1u32);
     let mut out = Vec::new();
     let mut i = 0;
     while i < n {
@@ -212,7 +213,13 @@ fn lex(source: &str) -> Vec<Token> {
             while i < n && ident_part(c[i]) {
                 i += 1;
             }
-            out.push(Token::Ident(c[start..i].iter().collect()));
+            let name: String = c[start..i].iter().collect();
+            if matches!(name.as_str(), "include_str" | "include_bytes") {
+                line += c[counted..start].iter().filter(|&&ch| ch == '\n').count() as u32;
+                counted = start;
+                embed_line(out.len(), line);
+            }
+            out.push(Token::Ident(name));
             continue;
         }
         let pair = |a: char, b: char| ch == a && next == Some(b);
@@ -260,7 +267,7 @@ const ITEMS: [&str; 8] = ["fn", "struct", "enum", "trait", "type", "const", "sta
 pub(super) fn native_inputs(source: &str, helper_exists: impl Fn(&str) -> bool) -> Vec<(String, bool)> {
     use Token::{Ident, Punct, Str};
     if !source.contains("build_objc") && !source.contains("Build") { return Vec::new(); }
-    let tokens = lex(source);
+    let tokens = lex(source, |_, _| {});
     let mut depth = 0usize;
     let mut main = None;
     let mut objc_helper = false;
@@ -330,7 +337,8 @@ pub(super) fn native_inputs(source: &str, helper_exists: impl Fn(&str) -> bool) 
 pub(super) fn read_with_budget(source: &str, budget: &mut ReadBudget) -> Facts {
     // A byte-order mark is no part of the first line.
     let source = source.strip_prefix('﻿').unwrap_or(source);
-    let t = lex(source);
+    let mut embed_lines = std::collections::BTreeMap::new();
+    let t = lex(source, |token, line| { embed_lines.insert(token, line); });
     let mut facts = Facts::default();
     let allowance = FILE_IMPORT_BYTES.min(MAP_IMPORT_BYTES.saturating_sub(budget.import_bytes));
     let mut import_budget = allowance;
@@ -545,7 +553,7 @@ pub(super) fn read_with_budget(source: &str, budget: &mut ReadBudget) -> Facts {
     }
     budget.import_bytes += allowance - import_budget;
     if source.contains("include_str") || source.contains("include_bytes") {
-        embedded::calls(&t, &mut budget.embed_candidates, &mut facts);
+        embedded::calls(&t, &embed_lines, &mut budget.embed_candidates, &mut facts);
     }
     facts
 }
@@ -875,7 +883,7 @@ mod both;
 
         let mut facts = Facts::default();
         let mut budget = size_of::<Use>() + 2 * size_of::<String>() + "groupOne".len();
-        expand(&lex("group::{One, Two}"), &[], &mut budget, &mut facts);
+        expand(&lex("group::{One, Two}", |_, _| {}), &[], &mut budget, &mut facts);
         assert!(facts.limited);
         assert_eq!(facts.uses.len(), 1);
         assert_eq!(facts.uses[0].segments, ["group", "One"]);

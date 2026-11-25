@@ -1,4 +1,7 @@
 {
+  "Go to reference": "Aller à la référence",
+  "References": "Références",
+  "This reference line is unavailable in the selected commit.": "La ligne de cette référence est indisponible dans le commit sélectionné.",
   "Map read stopped. Previous results retained.": "Lecture de la carte arrêtée. Résultats précédents conservés.",
   "Stopping map read…": "Arrêt de la lecture de la carte…",
   "Could not read the map's local Git objects. Check the revision and object availability, then refresh. Previous results retained.": "Impossible de lire les objets Git locaux de la carte. Vérifiez la révision et la disponibilité des objets, puis actualisez. Résultats précédents conservés.",

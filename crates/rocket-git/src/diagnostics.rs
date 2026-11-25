@@ -1167,7 +1167,7 @@ fn operation_label(value: &str) -> &'static str {
         "tree-list",
         "tree-content",
         "map-code", "map-history", "map-people", "map-modules", "map-export",
-        "map-code-links", "map-code-history", "map-code-changes",
+        "map-code-links", "map-code-history", "map-code-changes", "map-open-reference",
         "compare",
         "compare-base",
         "compare-target",
