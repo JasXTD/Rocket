@@ -20,6 +20,48 @@ fn pairs(links: &CodeLinks) -> Vec<String> {
 }
 
 #[test]
+fn rust_embedded_files_connect_both_maps_at_the_selected_commit() {
+    isolated("ROCKET_CODE_MAP_TEST", "rust_embedded_files_connect_both_maps_at_the_selected_commit", || {
+        let f = Fixture::new();
+        f.write("Cargo.toml", "[package]\nname='embed_demo'\nversion='0.1.0'\n");
+        f.write("src/lib.rs", r##"mod update;
+            pub const GUIDE: &str = include_str!("../docs/入門 #1.md");
+            pub const RAW: &[u8] = std::include_bytes![r#"../docs/入門 #1.md"#,];
+            pub const PICTURE: &[u8] = include_bytes!("../img/planet.bin");
+            pub const GENERATED: &str = include_str!(concat!("../", "decoy"));
+            const EXAMPLE: &str = stringify!(include_str!("../decoy"));
+            // include_bytes!("../decoy");
+        "##);
+        f.write("src/update.rs", r#"pub const GUIDE: &str = include_str!("../docs/入門 #1.md");"#);
+        f.write("docs/入門 #1.md", "guide");
+        f.write("img/planet.bin", vec![0xff; 1024 * 1024 + 1]);
+        f.write("decoy", "fixture");
+        f.commit("Committed assets");
+        let tip = head(&f);
+        f.write("src/update.rs", r#"include_str!("../untracked")"#);
+        f.write("untracked", "working edit");
+        let repo = f.repo();
+        let all = repo.code_links(&tip, None, &token()).unwrap();
+        let expected = ["src/lib.rs -> docs/入門 #1.md", "src/lib.rs -> img/planet.bin", "src/update.rs -> docs/入門 #1.md"];
+        assert_eq!(pairs(&all), expected);
+        assert!(!all.limited);
+        let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, ..Default::default() }, &token()).unwrap();
+        let mut pairs = Vec::new();
+        for edge in map.links.iter().filter(|l| l.kind == MapLinkKind::DependsOn) {
+            let path = |i: usize| String::from_utf8_lossy(map.nodes[i].path.as_deref().unwrap());
+            let pair = format!("{} -> {}", path(edge.from), path(edge.to));
+            if pair == expected[0] {
+                assert_eq!(edge.evidence, [b"include_bytes!".to_vec(), b"include_str!".to_vec()]);
+            }
+            pairs.push(pair);
+        }
+        pairs.sort();
+        assert_eq!(pairs, expected);
+        assert!(!map.limited);
+    });
+}
+
+#[test]
 fn web_assets_connect_shared_styles_pages_and_binary_files_from_the_selected_commit() {
     isolated("ROCKET_CODE_MAP_TEST", "web_assets_connect_shared_styles_pages_and_binary_files_from_the_selected_commit", || {
         let f = Fixture::new();

@@ -10,6 +10,7 @@ const focused=[
  {flag:'--lua-only',directory:'lua-code-map',run:luaModules},
  {flag:'--workflows-only',directory:'workflow-code-map',run:workflowLinks},
  {flag:'--web-only',directory:'web-code-map',run:webAssets},
+ {flag:'--rust-assets-only',directory:'rust-embedded-code-map',run:rustAssets},
 ].find(test=>process.argv.includes(test.flag));
 const evidence=path.resolve('tools/maintenance',focused?.directory??'repository-map-redesign-20261105');
 const version=fs.readFileSync('Cargo.toml','utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([^"]+)"/)[1];
@@ -278,11 +279,14 @@ async function workflowLinks(){
  assert.deepEqual(snapshot(h),original);
  passed('Stop cancels an active workflow map read and reloading an older revision restores its original link');
 }
-async function webAssets(){
+function committedFile(p){
+ return cp.execFileSync('git',['-C',path.resolve(__dirname,'../..'),'show','HEAD:'+p],{env,windowsHide:true});
+}
+async function sharedWebsiteFolders(){
  const f=fixture('Rocket website'), style='docs/site.css', script='docs/site.js', logo='docs/images/rocket-logo.png';
  const pages=['docs/get.html','docs/index.html','docs/privacy.html'], nested='docs/guide/start.htm';
  for(const p of [...pages,'docs/404.html',style,script,logo]){
-  f.write(p,cp.execFileSync('git',['-C',path.resolve(__dirname,'../..'),'show','HEAD:'+p],{env,windowsHide:true}));
+  f.write(p,committedFile(p));
  }
  f.write(nested,'<link rel=stylesheet href="../site.css?v=2"><script src="../site.js"></script><img src="../images/rocket-logo.png#logo">');
  const callers=[...pages,nested].sort(), tip=f.commit('Shared website assets');
@@ -295,6 +299,10 @@ async function webAssets(){
  }
  // The actual 404 page uses a deployment mount (/Rocket/), absent from this Git tree.
  assert(!arrow('docs/404.html',style));
+ return {f,style,nested,callers,before};
+}
+async function webAssets(){
+ const {f,style,nested,callers,before}=await sharedWebsiteFolders();
  await capture('web-folders');fs.copyFileSync(path.join(root,'web-folders.png'),path.join(evidence,'folders.png'));
  passed('Folders shows twelve links from three committed Rocket pages and a nested page; the deployment-only 404 base stays unresolved');
  await click('map-mode-modules');await until(()=>!map().running&&map().data?.kind==='Modules','web picker');
@@ -348,6 +356,91 @@ async function webAssets(){
  await expand(['css','css/theme','fonts']);assert.deepEqual(arrow(sub,font)?.names,['url()']);
  assert.deepEqual(snapshot(h),original);
  passed('Stop interrupts an active read; loading the older revision restores its seven links and preserves HEAD, index, config and working files');
+}
+async function keepCapture(name){
+ await capture(name);fs.copyFileSync(path.join(root,name+'.png'),path.join(evidence,name+'.png'));
+}
+function checkFitCounts(){
+ const {arrows,count_labels:labels}=map().code_map.picture;
+ assert.equal(arrows.length,12);
+ const cards=state.controls.filter(c=>/^map-(node-\d+|toggle-\d+|files-(\d+|top))$/.test(c.id));
+ assert(cards.length>=8,'fitted website cards must be available for hit testing');
+ const intersects=(a,b)=>a[0]<b[2]&&a[2]>b[0]&&a[1]<b[3]&&a[3]>b[1];
+ for(const [i,label] of labels.entries()){
+  assert(label[0]>=0&&label[1]>=0&&label[2]<=state.viewport[0]&&label[3]<=state.viewport[1]);
+  assert(!cards.some(c=>intersects(label,c.rect)),'count touches a card '+JSON.stringify(label));
+  assert(!labels.slice(0,i).some(other=>intersects(label,other)),'two counts overlap');
+ }
+ return {width:state.viewport[0],height:state.viewport[1],zoom_percent:Math.round(map().zoom*100),
+  arrows:arrows.length,visible_counts:labels.length};
+}
+async function rustAssets(){
+ const f=fixture('Rust resources'), guide='docs/入門 #1.md', script='src/app_update/extract.ps1', image='assets/themes/astronaut.jpg';
+ const update='src/app_update.rs', picture='src/theme/picture.rs', help='src/theme/help.rs', settings='src/theme/settings.rs';
+ f.write('Cargo.toml',"[package]\nname='rocket_map_demo'\nversion='0.1.0'\n");
+ f.write('src/lib.rs','mod app_update; mod theme;\n');f.write('src/theme/mod.rs','mod help; mod settings; mod picture;\n');
+ for(const p of [update,script])f.write(p,committedFile('crates/rocket-git/'+p));
+ for(const p of [picture,image])f.write(p,committedFile('crates/rocket-ui/'+p));
+ f.write(help,'#![doc = std::include_str!("../../docs/入門 #1.md")]\n');
+ f.write(settings,'const GUIDE: &[u8] = include_bytes![r#"../../docs/入門 #1.md"#,];\n'+
+  'const NEVER: &str = stringify!(include_str!("../../decoy"));\n'+
+  'const DYNAMIC: &str = include_str!(concat!("../../","decoy"));\n'+
+  'const LINK: &str = include_str!("../../linked");\n');
+ f.write(guide,'Shared guide\n');f.write('decoy','ordinary file\n');f.commit('Rust modules and their resources');
+ const link=f.git(['hash-object','-w','--stdin'],'decoy');
+ f.git(['update-index','--add','--cacheinfo','120000',link,'linked']);f.git(['commit','-m','Tracked symlink']);
+ const light=f.git(['rev-parse','HEAD']);
+ f.git(['switch','--quiet','-c','large-rust']);
+ const bulk='const _: &[u8] = include_bytes!("../docs/入門 #1.md");\n'.repeat(1900);
+ for(let n=0;n<40;n++)f.write('src/bulk'+n+'.rs','// file '+n+'\n'+bulk);
+ const heavy=f.commit('Many candidate reads for Stop');
+ f.git(['switch','--quiet',branch]);f.write(help,'// local changes\n');f.write('untracked.bin',Buffer.from([0,255,9]));
+ const before=snapshot(f);
+ await folders(f,light);
+ const edges=[[update,script,'include_str!'],[picture,image,'include_bytes!'],[help,guide,'include_str!'],[settings,guide,'include_bytes!']];
+ await expand(['src','src/app_update','src/theme','assets','assets/themes','docs']);await click('map-fit');
+ for(const [from,to,kind] of edges)assert.deepEqual(arrow(from,to)?.names,[kind],from+' -> '+to);
+ assert(!arrow(settings,'decoy'));
+ const symlink=map().data.nodes.find(n=>n.path==='linked');
+ assert(!symlink||!map().code_map.picture.arrows.some(e=>e.from===node(settings).index&&e.to===symlink.index));
+ await keepCapture('rust-folders');
+ passed('Folders traces the committed Rocket updater to its PowerShell helper, its theme to the binary image, and two modules to a shared Unicode guide');
+ await click('map-mode-modules');await until(()=>!map().running&&map().data?.kind==='Modules','Modules picker');
+ if(map().data.modules?.language!=='Rust'){
+  const i=map().data.module_packages.findIndex(p=>p.language==='Rust');assert(i>=0);
+  await click('map-module-package');await click('map-module-package-'+i);
+ }
+ await until(()=>!map().running&&map().data?.modules?.language==='Rust','Rust modules');
+ const data=map().data, file=node(guide);
+ assert.deepEqual(data.links.filter(e=>e.kind==='DependsOn'&&e.to===file.index).map(e=>data.nodes[e.from].path).sort(),[help,settings]);
+ for(const [from,to] of [[update,script],[picture,image],[help,guide]]){
+  const caller=node(from),asset=node(to);
+  await click('map-module-'+asset.index);assert.equal(map().selected,asset.index);
+  if(to===guide){
+   assert(map().captions.some(c=>c.what==='UsedBy'&&c.count===2));
+   assert(control('map-node-'+node(settings).index)?.enabled);
+  }
+  await click('map-node-'+caller.index);assert.equal(map().selected,caller.index);
+  await click('map-node-'+asset.index);assert.equal(map().selected,asset.index);
+ }
+ await keepCapture('rust-modules');
+ await resize(780,620);assert(control('map-module-switcher'));checkBounds();await keepCapture('rust-compact');
+ assert.deepEqual(snapshot(f),before);
+ passed('Modules navigates from each resource to its caller and back, distinguishes sibling callers and fits at 780 × 620');
+ await resize(1480,920);await stopThenReload(light,heavy);
+ await expand(['src','src/theme','docs']);await click('map-fit');assert.deepEqual(arrow(help,guide)?.names,['include_str!']);
+ assert.deepEqual(snapshot(f),before);
+ passed('One Stop click interrupts an active read; the original embed returns on revision reload with HEAD, config, index and working files intact');
+ const site=await sharedWebsiteFolders();
+ report.fit=[checkFitCounts()];assert(report.fit[0].visible_counts>0,'the wide example must display counts');
+ await keepCapture('fit-wide');await resize(780,620);
+ if(control('map-close-details')?.enabled)await click('map-close-details');
+ await click('map-fit');checkBounds();
+ const compact=checkFitCounts();assert(compact.visible_counts>0,'compact Fit must display counts where space permits');
+ report.fit.push(compact);await keepCapture('fit-compact');
+ const privacy=node('docs/privacy.html');await click('map-node-'+privacy.index);assert.equal(map().selected,privacy.index);
+ assert.deepEqual(snapshot(site.f),site.before);
+ passed('All twelve website arrows survive Fit at both sizes; counts clear every visible card and each other, and the compact privacy.html card can be selected');
 }
 async function nativeBridges(){
  const f=fixture('native imports 資料');

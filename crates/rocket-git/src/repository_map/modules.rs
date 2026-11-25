@@ -411,7 +411,7 @@ pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel:
 #[derive(Default)]
 struct Sources {
     facts: HashMap<Vec<u8>, Facts>,
-    import_bytes: usize,
+    budget: rust::ReadBudget,
     lines: HashMap<Vec<u8>, usize>,
     unlinked: BTreeMap<Vec<u8>, UnlinkedReason>,
     total: usize,
@@ -634,7 +634,7 @@ impl Repository {
             let module = (found.language == ModuleLanguage::Go).then(|| found.manifest.as_ref().and_then(|m| small.get(m)).and_then(|t| packages::go_module(t)).unwrap_or_default());
             return self.map_other(map, package, found, module, &blobs, cancel);
         }
-        map.notes.push("Read from the committed Rust files of one package. Connections come from use lines and from paths into the package; names a use …::* line brings in are matched by name. Macros and cfg are not expanded, and other packages are not followed.".into());
+        map.notes.push("Read from the committed Rust files of one package. Connections follow use lines, paths into the package and literal files embedded by include_str! or include_bytes!. Names from use …::* are matched by name. Macro expansion and cfg evaluation are outside this analysis.".into());
         let package = chosen;
         let src = src_of(&packages[package].0);
         let mut details = ModuleMap {
@@ -673,7 +673,7 @@ impl Repository {
                 match std::str::from_utf8(blob) {
                     Ok(text) => {
                         s.lines.insert(path.clone(), text.lines().count().max(1));
-                        let facts = rust::read_with_budget(text, &mut s.import_bytes);
+                        let facts = rust::read_with_budget(text, &mut s.budget);
                         map.limited |= facts.limited;
                         s.facts.insert(path.clone(), facts);
                     }
@@ -756,23 +756,47 @@ impl Repository {
             }
         }
         let shown = map.nodes.len() - base;
+        let mut uses = found.uses;
+        uses.retain(|&(from, to), _| from < shown && to < shown);
+        let mut by_file: HashMap<Vec<u8>, usize> = modules.iter().take(shown).enumerate().map(|(i, m)| (m.file.clone(), i)).collect();
+        for (from, m) in modules.iter().take(shown).enumerate() {
+            let Some(source) = facts.get(&m.file) else { continue };
+            for embedded in source.embedded_files(&m.file, &blobs, cancel) {
+                let (kind, path) = embedded?;
+                let existing = by_file.get(&path).copied();
+                if existing == Some(from) { continue; }
+                if map.links.len() + uses.len() >= MAP_LINKS && !existing.is_some_and(|to| uses.contains_key(&(from, to))) {
+                    map.limited = true;
+                    continue;
+                }
+                let to = if let Some(to) = existing { to } else {
+                    if map.nodes.len() >= MAP_NODES { map.limited = true; continue; }
+                    let mut asset = node(MapNodeKind::Module, [b"asset:".as_slice(), &path].concat(), path.clone(), b"Referenced file".to_vec());
+                    asset.path = Some(path.clone());
+                    asset.files = 1;
+                    let to = map.nodes.len() - base;
+                    map.nodes.push(asset);
+                    by_file.insert(path, to);
+                    to
+                };
+                uses.entry((from, to)).or_default().insert(kind.to_owned());
+                details.followed += 1;
+            }
+        }
         for (m, names) in found.outside {
             if m < shown {
                 details.outside.insert(base + m, names.into_iter().map(String::into_bytes).collect());
             }
         }
-        for ((from, to), names) in found.uses {
-            if from >= shown || to >= shown || map.links.len() >= MAP_LINKS {
-                map.limited |= from < shown && to < shown;
-                continue;
-            }
+        for ((from, to), names) in uses {
+            if map.links.len() >= MAP_LINKS { map.limited = true; break; }
             let mut e = link(base + from, base + to, MapLinkKind::DependsOn);
             e.weight = names.len();
             e.evidence = names.into_iter().take(NAMES).map(String::into_bytes).collect();
             map.links.push(e);
         }
         details.root = (shown > 0).then_some(base);
-        details.followed = found.followed;
+        details.followed += found.followed;
         details.unknown = found.unknown;
         map.modules = Some(details);
         Ok(())

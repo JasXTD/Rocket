@@ -1,8 +1,15 @@
 //! A small lexical reader for Rust source: module declarations, `use` trees, paths
 //! into this crate and the items a file declares at its top level. Comments and
-//! literals are skipped. Macros are not expanded, `cfg` is not evaluated and nothing
+//! literals are skipped except where a known construct takes a string. Macros are not expanded, `cfg` is not evaluated and nothing
 //! is compiled or run, so what it reports is what the text says, not what rustc sees.
 use super::{OutlineItem, OutlineKind};
+mod embedded;
+
+#[derive(Default)]
+pub(super) struct ReadBudget {
+    import_bytes: usize,
+    embed_candidates: usize,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Token {
@@ -10,14 +17,17 @@ enum Token {
     /// A raw identifier (`r#type`): a name, never a keyword.
     Raw(String),
     Str(String),
+    Other,
     Punct(&'static str),
 }
 
 /// What one file says about modules and names.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Facts {
-    /// The source exceeded a nesting or expanded-import limit.
+    /// The source exceeded a nesting, expanded-import or literal embed limit.
     pub limited: bool,
+    /// Literal built-in include calls, relative to this source file.
+    pub embeds: Vec<(&'static str, String)>,
     /// `mod name;`: a module in its own file.
     pub declarations: Vec<Declaration>,
     /// `mod name { … }`: the module path inside the file, ending in its own name.
@@ -65,24 +75,18 @@ fn ident_part(c: char) -> bool {
 }
 
 /// A quoted literal starting at `c[i] == '"'`: its length and text.
-fn quoted(c: &[char], i: usize) -> (usize, String) {
+fn quoted(c: &[char], i: usize) -> (usize, Token) {
     let mut j = i + 1;
-    let mut text = String::new();
     while j < c.len() && c[j] != '"' {
-        if c[j] == '\\' {
-            if let Some(&next) = c.get(j + 1) {
-                text.push(next);
-            }
-            j += 2;
-        } else {
-            text.push(c[j]);
-            j += 1;
-        }
+        j += if c[j] == '\\' { 2 } else { 1 };
     }
-    ((j + 1).min(c.len()) - i, text)
+    let token = if j < c.len() {
+        embedded::string_value(&c[i + 1..j]).map_or(Token::Other, Token::Str)
+    } else { Token::Other };
+    ((j + 1).min(c.len()) - i, token)
 }
 /// A raw literal whose `r` is at `c[i]`: `r"…"`, `r#"…"#`. None when it isn't one.
-fn raw(c: &[char], i: usize) -> Option<(usize, String)> {
+fn raw(c: &[char], i: usize) -> Option<(usize, Token)> {
     let mut j = i + 1;
     while c.get(j) == Some(&'#') {
         j += 1;
@@ -95,11 +99,12 @@ fn raw(c: &[char], i: usize) -> Option<(usize, String)> {
     let mut k = start;
     while k < c.len() {
         if c[k] == '"' && (1..=hashes).all(|h| c.get(k + h) == Some(&'#')) {
-            return Some((k + 1 + hashes - i, c[start..k].iter().collect()));
+            let token = if hashes <= 255 { Token::Str(c[start..k].iter().collect()) } else { Token::Other };
+            return Some((k + 1 + hashes - i, token));
         }
         k += 1;
     }
-    Some((c.len() - i, c[start..].iter().collect()))
+    Some((c.len() - i, Token::Other))
 }
 /// A character literal or a lifetime at `c[i] == '\''`: how much to skip.
 fn quote(c: &[char], i: usize) -> usize {
@@ -163,12 +168,13 @@ fn lex(source: &str) -> Vec<Token> {
             continue;
         }
         if matches!(ch, 'b' | 'c') && next == Some('"') {
-            let (len, text) = quoted(&c, i + 1);
-            out.push(Token::Str(text));
+            let (len, _) = quoted(&c, i + 1);
+            out.push(Token::Other);
             i += 1 + len;
             continue;
         }
         if ch == 'b' && next == Some('\'') {
+            out.push(Token::Other);
             i += 1 + quote(&c, i + 1);
             continue;
         }
@@ -177,22 +183,24 @@ fn lex(source: &str) -> Vec<Token> {
             ('b' | 'c', Some('r')) => Some(i + 1),
             _ => None,
         };
-        if let Some((len, text)) = raw_at.and_then(|at| raw(&c, at).map(|(len, text)| (len + at - i, text))) {
-            out.push(Token::Str(text));
+        if let Some((len, token)) = raw_at.and_then(|at| raw(&c, at).map(|(len, token)| (len + at - i, token))) {
+            out.push(if ch == 'r' { token } else { Token::Other });
             i += len;
             continue;
         }
         if ch == '"' {
-            let (len, text) = quoted(&c, i);
-            out.push(Token::Str(text));
+            let (len, token) = quoted(&c, i);
+            out.push(token);
             i += len;
             continue;
         }
         if ch == '\'' {
+            out.push(Token::Other);
             i += quote(&c, i);
             continue;
         }
         if ch.is_ascii_digit() {
+            out.push(Token::Other);
             // Digits, suffixes and a decimal point followed by a digit (`1.5`, not `1..2`).
             while i < n && (ident_part(c[i]) || c[i] == '.' && c.get(i + 1).is_some_and(char::is_ascii_digit)) {
                 i += 1;
@@ -237,6 +245,8 @@ fn lex(source: &str) -> Vec<Token> {
         };
         if !punct.is_empty() {
             out.push(Token::Punct(punct));
+        } else if !ch.is_whitespace() {
+            out.push(Token::Other);
         }
         i += punct.len().max(1);
     }
@@ -316,13 +326,13 @@ pub(super) fn native_inputs(source: &str, helper_exists: impl Fn(&str) -> bool) 
     result
 }
 
-/// Read one file and charge its flattened imports to the whole map request.
-pub(super) fn read_with_budget(source: &str, map_import_bytes: &mut usize) -> Facts {
+/// Read one file and charge imports and literal embed candidates to the whole map request.
+pub(super) fn read_with_budget(source: &str, budget: &mut ReadBudget) -> Facts {
     // A byte-order mark is no part of the first line.
     let source = source.strip_prefix('﻿').unwrap_or(source);
     let t = lex(source);
     let mut facts = Facts::default();
-    let allowance = FILE_IMPORT_BYTES.min(MAP_IMPORT_BYTES.saturating_sub(*map_import_bytes));
+    let allowance = FILE_IMPORT_BYTES.min(MAP_IMPORT_BYTES.saturating_sub(budget.import_bytes));
     let mut import_budget = allowance;
     let is = |k: usize, p: &str| matches!(t.get(k), Some(Token::Punct(x)) if *x == p);
     let name = |k: usize| match t.get(k) {
@@ -533,13 +543,16 @@ pub(super) fn read_with_budget(source: &str, map_import_bytes: &mut usize) -> Fa
         fresh = false;
         k += 1;
     }
-    *map_import_bytes += allowance - import_budget;
+    budget.import_bytes += allowance - import_budget;
+    if source.contains("include_str") || source.contains("include_bytes") {
+        embedded::calls(&t, &mut budget.embed_candidates, &mut facts);
+    }
     facts
 }
 
 #[cfg(test)]
 pub(super) fn read(source: &str) -> Facts {
-    read_with_budget(source, &mut 0)
+    read_with_budget(source, &mut ReadBudget::default())
 }
 
 fn outline(kind: OutlineKind, name: &str, visibility: Option<String>) -> OutlineItem {
@@ -871,11 +884,11 @@ mod both;
     #[test]
     fn import_budget_is_shared_across_source_files() {
         let one = size_of::<Use>() + size_of::<String>() + "Item".len();
-        let mut used = MAP_IMPORT_BYTES - one;
+        let mut used = ReadBudget { import_bytes: MAP_IMPORT_BYTES - one, ..Default::default() };
         let first = read_with_budget("use Item;", &mut used);
         assert!(!first.limited);
         assert_eq!(first.uses.len(), 1);
-        assert_eq!(used, MAP_IMPORT_BYTES);
+        assert_eq!(used.import_bytes, MAP_IMPORT_BYTES);
         let next = read_with_budget("use Other; pub fn independent() {}", &mut used);
         assert!(next.limited);
         assert!(next.uses.is_empty());

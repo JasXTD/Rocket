@@ -988,6 +988,24 @@ fn modules_page(data: RepositoryMap) -> MapPage {
     s.rebuild();
     s
 }
+#[test]
+fn modules_rust_embedded_files_list_their_callers_individually() {
+    let mut data = modules_map(
+        &[("", None, 5), ("ui", Some(0), 2), ("ui::help", Some(1), 3), ("ui::settings", Some(1), 4), ("guide", None, 0)],
+        &[(2, 4, &["include_str!"]), (3, 4, &["include_bytes!"])],
+    );
+    let asset = &mut data.nodes[m(4)];
+    asset.key = b"asset:docs/guide.md".to_vec();
+    asset.detail = b"Referenced file".to_vec();
+    asset.path = Some(b"docs/guide.md".to_vec());
+    let units = modules::Units::new(&data);
+    assert!(units.top.contains(&m(4)));
+    let mut users: Vec<_> = units.neighbors(&data, m(4)).0.iter().map(|u| u.unit).collect();
+    users.sort_unstable();
+    assert_eq!(users, [m(2), m(3)]);
+    assert_eq!(units.used_by[&m(4)], 2);
+    assert_eq!(modules::Words::of(&modules_page(data)).find(), "Find a file");
+}
 fn owned(list: &[(String, Option<usize>, usize)]) -> Vec<(&str, Option<usize>, usize)> {
     list.iter().map(|(p, a, l)| (p.as_str(), *a, *l)).collect()
 }
@@ -1475,9 +1493,9 @@ fn modules_javascript_folders_group_their_files_and_cards_use_file_names() {
         assert_eq!(words.find(), "Find a module");
         assert_eq!(words.files(226), "226 JavaScript files");
         assert_eq!(words.keyword(OutlineKind::Function), "function");
-        assert_eq!(modules::Words { language: ModuleLanguage::Python, dialect: None }.keyword(OutlineKind::Function), "def");
-        assert_eq!(modules::Words { language: ModuleLanguage::Go, dialect: None }.keyword(OutlineKind::Function), "func");
-        assert_eq!(modules::Words { language: ModuleLanguage::JavaScript, dialect: Some(Dialect::TypeScript) }.package_kind(false), "TypeScript folder · modules");
+        assert_eq!(modules::Words::new(ModuleLanguage::Python, None).keyword(OutlineKind::Function), "def");
+        assert_eq!(modules::Words::new(ModuleLanguage::Go, None).keyword(OutlineKind::Function), "func");
+        assert_eq!(modules::Words::new(ModuleLanguage::JavaScript, Some(Dialect::TypeScript)).package_kind(false), "TypeScript folder · modules");
     });
 }
 
@@ -1511,26 +1529,26 @@ fn modules_java_packages_stand_alone_and_each_language_names_its_units() {
         assert_eq!(words.keyword(OutlineKind::Annotation), "@interface");
         assert_eq!(words.keyword(OutlineKind::Record), "record");
         // Kotlin's words in a project mostly in Kotlin.
-        let kotlin = modules::Words { language: ModuleLanguage::Java, dialect: Some(Dialect::Kotlin) };
+        let kotlin = modules::Words::new(ModuleLanguage::Java, Some(Dialect::Kotlin));
         assert_eq!((kotlin.files(1), kotlin.package_kind(false)), ("1 Kotlin file".to_owned(), "Kotlin folder · packages"));
         let keywords: Vec<&str> = [OutlineKind::Function, OutlineKind::Const, OutlineKind::Var, OutlineKind::Enum, OutlineKind::Object, OutlineKind::Type, OutlineKind::Annotation].iter().map(|k| kotlin.keyword(*k)).collect();
         assert_eq!(keywords, ["fun", "val", "var", "enum class", "object", "typealias", "annotation class"]);
         // C# has namespaces; C and C++ files.
-        let csharp = modules::Words { language: ModuleLanguage::CSharp, dialect: None };
+        let csharp = modules::Words::new(ModuleLanguage::CSharp, None);
         assert_eq!((csharp.find(), csharp.legend(5, 4)), ("Find a namespace", "Namespaces 5 · links 4 · arrows point to what is used".to_owned()));
         assert_eq!((csharp.files(2), csharp.package_kind(true), csharp.keyword(OutlineKind::Type)), ("2 C# files".to_owned(), "C# project · namespaces", "delegate"));
-        let c = modules::Words { language: ModuleLanguage::C, dialect: None };
+        let c = modules::Words::new(ModuleLanguage::C, None);
         assert_eq!((c.find(), c.legend(4, 1)), ("Find a file", "Files 4 · links 1 · arrows point to what is used".to_owned()));
         assert_eq!((c.files(3), c.package_kind(false)), ("3 C files".to_owned(), "C folder · files"));
         for (language, name) in [(ModuleLanguage::PowerShell, "PowerShell"), (ModuleLanguage::Bash, "Bash"), (ModuleLanguage::Lua, "Lua")] {
-            let scripts = modules::Words { language, dialect: None };
+            let scripts = modules::Words::new(language, None);
             assert_eq!(scripts.find(), "Find a file");
             assert_eq!(scripts.files(1), format!("1 {name} file"));
             assert_eq!(scripts.files(2), format!("2 {name} files"));
             assert_eq!(scripts.package_kind(false), format!("{name} scripts"));
             assert_eq!(modules::language_name(language, None), name);
         }
-        let workflow = modules::Words { language: ModuleLanguage::GitHubActions, dialect: None };
+        let workflow = modules::Words::new(ModuleLanguage::GitHubActions, None);
         assert_eq!(workflow.find(), "Find a file");
         assert_eq!(workflow.files(2), "2 files");
         assert_eq!(workflow.package_kind(false), "GitHub Actions");
@@ -1542,15 +1560,15 @@ fn modules_java_packages_stand_alone_and_each_language_names_its_units() {
         let units = modules::Units::new(&data);
         assert_eq!(modules::size_text(&units, 1), "8 lines");
         assert!(modules::size_text(&units, 2).is_empty());
-        let web = modules::Words { language: ModuleLanguage::HtmlCss, dialect: None };
+        let web = modules::Words::new(ModuleLanguage::HtmlCss, None);
         assert_eq!((web.find(), web.package_kind(false), web.files(2)), ("Find a file", "HTML / CSS", "2 files".to_owned()));
         assert_eq!(modules::language_name(web.language, None), "HTML / CSS");
         let keywords: Vec<&str> = [OutlineKind::Function, OutlineKind::Macro, OutlineKind::Type, OutlineKind::Struct, OutlineKind::Var].iter().map(|k| c.keyword(*k)).collect();
         assert_eq!(keywords, ["function", "#define", "typedef", "struct", "extern"]);
-        let cpp = modules::Words { language: ModuleLanguage::C, dialect: Some(Dialect::Cpp) };
+        let cpp = modules::Words::new(ModuleLanguage::C, Some(Dialect::Cpp));
         assert_eq!((cpp.files(9), cpp.package_kind(true)), ("9 C++ files".to_owned(), "C++ project · files"));
         for (dialect, name) in [(Dialect::ObjectiveC, "Objective-C"), (Dialect::ObjectiveCpp, "Objective-C++")] {
-            let words = modules::Words { language: ModuleLanguage::C, dialect: Some(dialect) };
+            let words = modules::Words::new(ModuleLanguage::C, Some(dialect));
             assert_eq!(modules::language_name(words.language, words.dialect), name);
             assert_eq!(words.files(2), format!("2 {name} files"));
             assert_eq!(words.package_kind(false), format!("{name} folder · files"));

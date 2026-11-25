@@ -247,7 +247,7 @@ type Batch = Vec<(Vec<u8>, ObjectId, usize)>;
 struct Budget {
     files: usize,
     bytes: usize,
-    import_bytes: usize,
+    rust: rust::ReadBudget,
     limited: bool,
 }
 impl Budget {
@@ -651,7 +651,7 @@ impl Repository {
         for path in files {
             cancel.check()?;
             if let Some(text) = read.texts.get(path) {
-                facts.insert(path.clone(), rust::read_with_budget(text, &mut read.budget.import_bytes));
+                facts.insert(path.clone(), rust::read_with_budget(text, &mut read.budget.rust));
             }
         }
         let known = |p: &[u8]| blobs.contains_key(p);
@@ -677,7 +677,7 @@ impl Repository {
                         continue;
                     }
                     if let Some(text) = read.texts.get(&path) {
-                        facts.insert(path.clone(), rust::read_with_budget(text, &mut read.budget.import_bytes));
+                        facts.insert(path.clone(), rust::read_with_budget(text, &mut read.budget.rust));
                         found = true;
                     } else if let Some(entry) = readable(blobs, &path) {
                         if read.budget.reserve(1, entry.2) {
@@ -690,7 +690,7 @@ impl Repository {
                 if !missing.is_empty() {
                     for (path, text) in self.code_texts("read-sources", &missing, cancel)? {
                         read.lines.insert(path.clone(), text.lines().count().max(1));
-                        facts.insert(path.clone(), rust::read_with_budget(&text, &mut read.budget.import_bytes));
+                        facts.insert(path.clone(), rust::read_with_budget(&text, &mut read.budget.rust));
                         read.texts.insert(path, text);
                         found = true;
                     }
@@ -740,6 +740,15 @@ impl Repository {
             }
         }
         *read.limited |= facts.values().any(|f| f.limited);
+        // The Folders view is file-based, including build scripts and test programs.
+        let mut sources: Vec<_> = facts.iter().filter(|(_, f)| !f.embeds.is_empty()).collect();
+        sources.sort_unstable_by_key(|(path, _)| *path);
+        for (path, source) in sources {
+            for embedded in source.embedded_files(path, blobs, cancel) {
+                let (kind, target) = embedded?;
+                b.link(path, false, &target, false, [kind.to_owned()]);
+            }
+        }
         Ok(())
     }
 

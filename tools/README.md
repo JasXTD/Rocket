@@ -178,6 +178,8 @@ Use `--lua-only` for Lua module lookup, Rocket integration entries and cancellat
 Use `--workflows-only` for local GitHub Actions dependencies, revision reload and Stop in the native Code Map.
 Use `--web-only` for HTML and CSS asset links, navigation from a shared stylesheet
 back to its pages, compact windows and cancellation in two disposable repositories.
+Use `--rust-assets-only` to trace Rust embedded files in both directions, stop and
+reload a revision, and check Fit count placement in wide and compact windows.
 It tests the native Code, Git history and People pages through an isolated
 localhost MCP profile using synthetic local repositories. It covers Unicode,
 Cargo path links, merge parents, canonical authors, compact detail drawers,

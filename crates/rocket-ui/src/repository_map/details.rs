@@ -293,7 +293,7 @@ fn node_heading(s: &MapPage, data: &RepositoryMap, i: usize) -> (Mark, String, S
                 b"C source" | b"C header" | b"C++ source" | b"C++ header" | b"Objective-C source" | b"Objective-C++ source" | b"PowerShell script" | b"Bash script" | b"Lua script" | b"JSON file" | b"GitHub Actions workflow" | b"Referenced file" | b"HTML page" | b"Stylesheet" => trf!("File · {package}", package = package),
                 _ => trf!("Module · {package}", package = package),
             };
-            let mark = if n.detail == b"Folder" { Icon::Folder } else { Icon::Braces };
+            let mark = match n.detail.as_slice() { b"Folder" => Icon::Folder, b"Referenced file" => Icon::File, _ => Icon::Braces };
             (Mark::Icon(mark, TEAL()), modules::name(data, i), about)
         }
     }

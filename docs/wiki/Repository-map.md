@@ -25,6 +25,11 @@ or use **Expand all / Collapse all**, and it becomes a box holding its folders a
 files. A folder's own files show one by one up to eight; more share one dashed card,
 which opens the same way.
 
+To trace an embedded Rust resource, expand its folder and the folder containing the
+Rust source. For example, Rocket's `app_update.rs` points to the `extract.ps1` script
+it includes. In **Modules**, select the script to see **Used by**, then select a
+caller to trace the connection back. A shared file lists each calling module.
+
 To trace a Rust native call, expand the crate in **Folders**. Select the Rust file
 and follow its arrow to the C-family source. The arrow lists matching linker names.
 For example, Rocket's `rocket_spell_check` connects `macos.rs` to `macos.m`.
@@ -44,8 +49,11 @@ name, a package.json name, another Python package or Go module of the repository
 package or C# namespace another project declares (or whose folders it is laid out in),
 or a C or C++ file of another project. Script loads can connect individual files across
 folders. An arrow between two cards gathers every link
-between the files inside them, and its number counts the files on the using side. What
-uses sits above what it uses; when two use each other, the arrow pointing up is dashed.
+between the files inside them, and its number counts the files on the using side.
+At Fit zoom, a count moves along its arrow if a card is in the way. When space runs
+out, the arrow stays visible and you can select the card to inspect its connections.
+In a compact window, fitted cards show a single-line filename when there is room.
+What uses sits above what it uses; when two use each other, the arrow pointing up is dashed.
 Cards that connect to nothing at their level sit under **Not connected**. One read takes
 up to 512 packages, 10,000 code files and 64 MiB. Empty packages count
 toward the package limit. A deferred package is read once its folder is open,
@@ -118,7 +126,10 @@ Modules reads the committed `.rs` files as text, up to 2,000 files of 1 MiB each
 32 MiB in all. It follows `mod` declarations from `src/lib.rs` (or `src/main.rs`),
 including `#[path]` files elsewhere in the repository, and connects a module to another
 through `use` lines, paths starting `crate::`, `super::` or `self::`, and paths into its
-own modules. Names a `use …::*` line brings in are matched by name. Macros and `cfg` are
+own modules. The map also reads literal `include_str!` and `include_bytes!` paths
+relative to their source file. A regular file in the selected commit can be a target
+regardless of its size or encoding. Computed paths, symlinks and calls inside
+other macros' input are skipped. Names a `use …::*` line brings in are matched by name. Macros and `cfg` are
 not expanded, other packages are not followed, and which function calls which is not
 shown: that needs the compiler. Nothing is compiled or run.
 

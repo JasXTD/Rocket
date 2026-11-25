@@ -91,6 +91,8 @@ pub struct CodeMap {
     /// The snapshot the reads are for.
     tip: Option<ObjectId>,
     pub layout: Option<Arc<Picture>>,
+    /// Screen rectangles of the link counts painted in the last Folders frame.
+    pub link_count_rects: Vec<Rect>,
     key: Option<Inputs>,
     /// The snapshot the view was last fitted to, so a Refresh keeps the view.
     fitted: Option<ObjectId>,
@@ -119,6 +121,7 @@ impl Default for CodeMap {
             stopped: false,
             tip: None,
             layout: None,
+            link_count_rects: Vec::new(),
             key: None,
             fitted: None,
             facts: None,
@@ -1527,7 +1530,78 @@ pub fn title(data: &RepositoryMap, f: &Facts, item: Item) -> (Icon, Color32, Str
     }
 }
 
+/// Index visible obstacles by horizontal strip so each candidate only checks
+/// nearby cards and labels. All dimensions here are in screen points.
+struct CountSpace {
+    viewport: Rect,
+    rows: Vec<Vec<Rect>>,
+}
+
+/// When a fitted card still has room for one line, give the filename that line.
+fn compact_title(painter: &Painter, bounds: Rect, name: String) {
+    let ink = painter.with_clip_rect(bounds.intersect(painter.clip_rect()));
+    let text = ink.layout_job(drawing::title_job(name, 0.75, bounds.width().max(1.)));
+    ink.galley(pos2(bounds.left(), bounds.center().y - text.size().y / 2.), text, TEXT());
+}
+
+impl CountSpace {
+    const ROW_HEIGHT: f32 = 32.;
+
+    fn new(viewport: Rect) -> Self {
+        let rows = (viewport.height() / Self::ROW_HEIGHT).ceil().max(1.) as usize;
+        Self { viewport, rows: vec![Vec::new(); rows] }
+    }
+
+    fn bands(&self, r: Rect) -> std::ops::RangeInclusive<usize> {
+        let row = |y: f32| (((y - self.viewport.top()) / Self::ROW_HEIGHT) as usize).min(self.rows.len() - 1);
+        row(r.top())..=row(r.bottom())
+    }
+
+    fn reserve(&mut self, r: Rect) {
+        let r = r.expand(2.).intersect(self.viewport);
+        if r.is_positive() {
+            for row in self.bands(r) { self.rows[row].push(r); }
+        }
+    }
+
+    fn place(&mut self, curve: &epaint::CubicBezierShape, size: Vec2) -> Option<Rect> {
+        for fraction in [0.5, 0.38, 0.62, 0.26, 0.74, 0.14, 0.86] {
+            let pill = Rect::from_center_size(curve.sample(fraction), size);
+            if self.viewport.contains_rect(pill) && !self.rows[self.bands(pill)].iter().flatten().any(|r| r.intersects(pill)) {
+                self.reserve(pill);
+                return Some(pill);
+            }
+        }
+        None
+    }
+}
+
+#[cfg(test)]
+mod count_tests {
+    use super::*;
+
+    #[test]
+    fn count_badges_move_along_the_arrow_and_yield_to_card_labels() {
+        let viewport = Rect::from_min_max(pos2(0., 0.), pos2(240., 90.));
+        let mut space = CountSpace::new(viewport);
+        let curve = epaint::CubicBezierShape::from_points_stroke(
+            [pos2(0., 32.), pos2(80., 32.), pos2(160., 32.), pos2(240., 32.)], false, Color32::TRANSPARENT, Stroke::NONE,
+        );
+        let card = Rect::from_center_size(curve.sample(0.5), vec2(50., 26.));
+        space.reserve(card);
+        let size = vec2(20., 14.);
+        let first = space.place(&curve, size).unwrap();
+        let second = space.place(&curve, size).unwrap();
+        assert!(viewport.contains_rect(first) && viewport.contains_rect(second));
+        assert!(!first.intersects(card) && !second.intersects(card) && !first.intersects(second));
+        assert!((first.center().y - 32.).abs() < 0.001);
+        space.reserve(viewport);
+        assert!(space.place(&curve, size).is_none());
+    }
+}
+
 pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, intents: &mut Vec<Intent>, widgets: &mut HashMap<String, UiControl>) {
+    s.code.link_count_rects.clear();
     let painter = ui.painter().with_clip_rect(rect.intersect(ui.clip_rect()));
     let canvas = ui.interact(rect, ui.scope_id().with("repository-map-canvas"), if covered { Sense::hover() } else { Sense::click_and_drag() });
     if !covered {
@@ -1610,6 +1684,7 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
     let mut toggled: Option<usize> = None;
     let mut picked: Option<usize> = None;
     let hit_area = rect.shrink2(vec2(0., 36.));
+    let mut count_space = (zoom >= 0.30 && !layout.arrows.is_empty()).then(|| CountSpace::new(hit_area));
     for &b in &boxes {
         let p = &layout.placed[b];
         let r = screen(p.rect);
@@ -1619,23 +1694,28 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
         let on = selected == Some(b);
         painter.rect(r, 10. * zoom.min(1.), VIEW_PANEL().gamma_multiply(0.72), Stroke::new(if on { 1.8 } else { 1. }, if on { BLUE() } else { BORDER() }), StrokeKind::Inside);
         band_shape(&painter, r, &p.paint.band, 3. * zoom.max(0.5), 10. * zoom.min(1.));
-        if zoom >= 0.35 {
+        let head = Rect::from_min_size(r.min, vec2(r.width(), HEADER * zoom));
+        if head.width() >= 30. && head.height() >= 11. {
             let ink = painter.with_clip_rect(r.shrink(2.).intersect(rect));
-            let head = Rect::from_min_size(r.min, vec2(r.width(), HEADER * zoom));
+            if let Some(space) = &mut count_space { space.reserve(head); }
             icon(&ink, Rect::from_min_size(head.min + vec2(10., 13.) * zoom, vec2(11., 11.) * zoom), Icon::Chevron, HINT());
             let (kind_icon, tint, name) = title(&data, &facts, p.item);
-            icon(&ink, Rect::from_min_size(head.min + vec2(27., 11.) * zoom, vec2(15., 15.) * zoom), kind_icon, if on { BLUE() } else { tint });
-            let mut job = text::LayoutJob::default();
-            let chain: String = p.chain.iter().map(|c| format!("{} / ", drawing::folder_name(&data.nodes[*c]))).collect();
-            if !chain.is_empty() {
-                job.append(&chain, 0., TextFormat::simple(FontId::proportional(13. * zoom), HINT()));
+            if zoom < 0.55 {
+                compact_title(&ink, Rect::from_min_max(head.min + vec2(26. * zoom, 1.), head.max - vec2(2., 0.)), name.clone());
+            } else {
+                icon(&ink, Rect::from_min_size(head.min + vec2(27., 11.) * zoom, vec2(15., 15.) * zoom), kind_icon, if on { BLUE() } else { tint });
+                let mut job = text::LayoutJob::default();
+                let chain: String = p.chain.iter().map(|c| format!("{} / ", drawing::folder_name(&data.nodes[*c]))).collect();
+                if !chain.is_empty() {
+                    job.append(&chain, 0., TextFormat::simple(FontId::proportional(13. * zoom), HINT()));
+                }
+                job.append(&name, 0., TextFormat::simple(semibold(13. * zoom), TEXT()));
+                if !p.paint.sub.is_empty() {
+                    job.append(&format!("   {}", p.paint.sub), 0., TextFormat::simple(FontId::proportional(11.5 * zoom), HINT()));
+                }
+                job.wrap = text::TextWrapping::truncate_at_width((r.width() - 56. * zoom).max(1.));
+                ink.galley(head.min + vec2(48., 11.) * zoom, ink.layout_job(job), TEXT());
             }
-            job.append(&name, 0., TextFormat::simple(semibold(13. * zoom), TEXT()));
-            if !p.paint.sub.is_empty() {
-                job.append(&format!("   {}", p.paint.sub), 0., TextFormat::simple(FontId::proportional(11.5 * zoom), HINT()));
-            }
-            job.wrap = text::TextWrapping::truncate_at_width((r.width() - 56. * zoom).max(1.));
-            ink.galley(head.min + vec2(48., 11.) * zoom, ink.layout_job(job), TEXT());
             if !covered {
                 let header = head.intersect(hit_area);
                 if header.width() > 12. && header.height() > 8. {
@@ -1664,7 +1744,8 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
     }
     for c in &layout.captions {
         if zoom >= 0.4 {
-            painter.text(to_screen(*c), Align2::LEFT_TOP, tr("NOT CONNECTED"), semibold(11. * zoom.min(1.2)), HINT());
+            let caption = painter.text(to_screen(*c), Align2::LEFT_TOP, tr("NOT CONNECTED"), semibold(11. * zoom.min(1.2)), HINT());
+            if let Some(space) = &mut count_space { space.reserve(caption); }
         }
     }
     // Arrows: from the user's bottom to the top of what it uses, spread along both edges.
@@ -1686,7 +1767,7 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
         let n = list.len() as f32;
         r.left() + r.width() * (at + 1.) / (n + 1.)
     };
-    let mut pills: Vec<(Pos2, String, bool)> = Vec::new();
+    let mut pills = Vec::new();
     for (k, a) in layout.arrows.iter().enumerate() {
         let (from, to) = (layout.placed[a.from].rect, layout.placed[a.to].rect);
         let active = selected.is_some_and(|sel| a.from == sel || a.to == sel);
@@ -1715,8 +1796,8 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
         let tip = vec2(0., dir);
         let cross = vec2(-tip.y, tip.x);
         painter.add(Shape::convex_polygon(vec![e0, e0 - tip * 7. + cross * 3.5, e0 - tip * 7. - cross * 3.5], color, Stroke::NONE));
-        if zoom >= 0.55 {
-            pills.push((shape.sample(0.5), pages::number_text(a.files), active));
+        if count_space.is_some() {
+            pills.push((shape, a.files, active));
         }
     }
     // Cards.
@@ -1729,6 +1810,7 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
             continue;
         }
         let on = selected == Some(i);
+        if let Some(space) = &mut count_space { space.reserve(r); }
         let fade = if matched(p) { 1. } else { 0.45 };
         let radius = 8. * zoom.min(1.);
         painter.rect_filled(r, radius, p.paint.fill.unwrap_or(VIEW_RAISED()).gamma_multiply(fade));
@@ -1747,7 +1829,9 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
         }
         let folder = matches!(p.item, Item::Node(n) if is_folder(&data.nodes[n]));
         let group = matches!(p.item, Item::Files(_));
-        if zoom >= 0.4 {
+        if zoom < 0.4 && r.width() >= 30. && r.height() >= 13. {
+            compact_title(&painter, r.shrink2(vec2(3., 1.)), title(&data, &facts, p.item).2);
+        } else if zoom >= 0.4 {
             let ink = painter.with_clip_rect(r.shrink(3.).intersect(rect));
             let mut left = 10.;
             if folder || group {
@@ -1769,7 +1853,7 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
             }
         }
         let hit = r.intersect(hit_area);
-        if !covered && hit.width() > 20. && hit.height() > 18. {
+        if !covered && hit.width() > 20. && hit.height() >= 13. {
             let id = match p.item {
                 Item::Node(n) => format!("map-node-{n}"),
                 Item::Files(Some(c)) => format!("map-files-{c}"),
@@ -1799,12 +1883,15 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
             }
         }
     }
-    for (at, text, active) in pills {
-        if rect.contains(at) {
-            let galley = painter.layout_no_wrap(text, FontId::proportional(10.5), if active { BLUE() } else { MUTED() });
-            let pill = Rect::from_center_size(at, galley.size() + vec2(12., 4.));
+    if let Some(mut space) = count_space {
+        // Prioritize selected edges, then counts that summarize several files.
+        pills.sort_by_key(|(_, files, active)| (!*active, std::cmp::Reverse(*files)));
+        for (curve, files, active) in pills {
+            let galley = painter.layout_no_wrap(pages::number_text(files), FontId::proportional(10.5), if active { BLUE() } else { MUTED() });
+            let Some(pill) = space.place(&curve, galley.size() + vec2(12., 4.)) else { continue };
             painter.rect(pill, 9., VIEW_PANEL(), Stroke::new(1., if active { BLUE().gamma_multiply(0.4) } else { CARD_STROKE() }), StrokeKind::Inside);
             painter.galley(pill.center() - galley.size() / 2., galley, MUTED());
+            s.code.link_count_rects.push(pill);
         }
     }
     // A click toggles or chooses once everything is drawn.
@@ -2050,8 +2137,10 @@ fn zoom_bar(ui: &mut Ui, s: &mut MapPage, layout: &Picture, rect: Rect, widgets:
 fn fit(s: &mut MapPage, layout: &Picture, rect: Rect) {
     let b = layout.bounds;
     if b.is_finite() && b.is_positive() {
-        s.zoom = ((rect.width() - 60.).max(1.) / b.width()).min((rect.height() - 110.).max(1.) / b.height()).clamp(0.00001, 1.);
-        s.pan = (rect.size() - b.size() * s.zoom) / 2. - b.min.to_vec2() * s.zoom + vec2(0., 10.);
+        let top = (rect.height() * 0.1).clamp(36., 65.);
+        let available = vec2((rect.width() - 60.).max(1.), (rect.height() - top - 45.).max(1.));
+        s.zoom = (available.x / b.width()).min(available.y / b.height()).clamp(0.00001, 1.);
+        s.pan = vec2(30., top) + (available - b.size() * s.zoom) / 2. - b.min.to_vec2() * s.zoom;
     }
 }
 fn focus(s: &mut MapPage, layout: &Picture, rect: Rect) {

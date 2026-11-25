@@ -96,6 +96,7 @@ to restart. See the [full release notes](docs/releases/0.92.6.md).
   Rocket integration, the map connects its manifest to `main.lua`. In **Folders**,
   follow a Rust foreign function to its native implementation. In either view,
   select a GitHub Actions workflow to see its scripts, local actions and reusable workflows.
+  In a Rust package, select an embedded file to see which modules include it.
   Select a stylesheet in **HTML / CSS** to see every mapped page that uses it, or
   follow a page to its scripts, images and styles.
 - [**Insights**](docs/Insights.md) replaces Statistics: commit activity, a
@@ -391,7 +392,8 @@ Official comparison sources:
 - **Map and Insights:** Modules reads Rust, JavaScript and TypeScript, Python, Go, Java
   and Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, PowerShell and Bash as text.
   HTML and CSS links follow local assets in the selected commit. GitHub Actions links
-  use literal paths in block-form workflows. Macros, `cfg`, C
+  use literal paths in block-form workflows. Rust links direct `include_str!` and
+  `include_bytes!` calls with literal paths. Macro expansion, `cfg`, C
   preprocessing, other build constraints and imports computed at runtime are outside
   the analysis. Insights counts a loaded sample of up to 500
   pull requests; time to first review is measured on GitHub, GitHub Enterprise Server,

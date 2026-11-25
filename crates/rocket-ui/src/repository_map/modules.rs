@@ -26,18 +26,24 @@ enum Noun {
 pub(super) struct Words {
     pub language: ModuleLanguage,
     pub dialect: Option<Dialect>,
+    includes_rust_assets: bool,
 }
 impl Words {
+    pub fn new(language: ModuleLanguage, dialect: Option<Dialect>) -> Self {
+        Self { language, dialect, includes_rust_assets: false }
+    }
     pub fn of(s: &MapPage) -> Self {
-        let info = s.units.as_ref().and_then(|u| u.info.clone());
-        let language = info.as_ref().map(|p| p.language).or(s.package.as_ref().map(|p| p.language)).unwrap_or_default();
+        let info = s.units.as_ref().and_then(|u| u.info.as_ref());
+        let language = info.map(|p| p.language).or(s.package.as_ref().map(|p| p.language)).unwrap_or_default();
         Self {
-            language,
-            dialect: info.and_then(|p| p.dialect),
+            includes_rust_assets: language == ModuleLanguage::Rust
+                && s.units.as_ref().is_some_and(|u| u.root.is_some_and(|r| u.top.len() > u.children(r).len())),
+            ..Self::new(language, info.and_then(|p| p.dialect))
         }
     }
     fn noun(self) -> Noun {
         match self.language {
+            ModuleLanguage::Rust if self.includes_rust_assets => Noun::File,
             ModuleLanguage::Go | ModuleLanguage::Java => Noun::Package,
             ModuleLanguage::CSharp => Noun::Namespace,
             ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions | ModuleLanguage::HtmlCss => Noun::File,
@@ -94,7 +100,7 @@ impl Words {
     }
     fn whole(self) -> &'static str {
         match (self.noun(), self.language) {
-            (Noun::Module, _) => tr("Whole package"),
+            (Noun::Module, _) | (_, ModuleLanguage::Rust) => tr("Whole package"),
             (Noun::Package, ModuleLanguage::Go) => tr("Whole module"),
             _ => tr("Whole project"),
         }
@@ -390,7 +396,10 @@ impl Units {
         };
         let (top, list_top) = match root {
             Some(r) => {
-                let top = children.get(&r).cloned().unwrap_or_default();
+                let mut top = children.get(&r).cloned().unwrap_or_default();
+                if language == ModuleLanguage::Rust {
+                    top.extend(parentless(&|i| data.nodes[i].key.starts_with(b"asset:")));
+                }
                 let list = top.iter().copied().chain(Some(r)).collect();
                 (top, list)
             }
@@ -492,6 +501,9 @@ impl Units {
     /// else as the module on its side of the nearest module they share.
     fn unit_of(&self, f: usize, chosen: usize) -> usize {
         let (theirs, ours) = (&self.chains[f], &self.chains[chosen]);
+        // An embedded file belongs to no Rust module. Show its actual callers,
+        // including two different modules under the same parent.
+        if self.language == ModuleLanguage::Rust && theirs.first() != ours.first() { return f; }
         if ours.contains(&f) {
             return f;
         }
@@ -1137,10 +1149,7 @@ pub(super) fn package_picker(ui: &mut Ui, s: &MapPage, packages: &[(ModulePackag
                 let r = ui.add_enabled(usable, Button::selectable(on, "").min_size(vec2(ui.available_width(), 30.)));
                 let painter = ui.painter();
                 icon(painter, Rect::from_center_size(pos2(r.rect.left() + 14., r.rect.center().y), vec2(13., 13.)), Icon::Package, if usable { TEAL() } else { FAINT() });
-                let words = Words {
-                    language: package.language,
-                    dialect: package.dialect,
-                };
+                let words = Words::new(package.language, package.dialect);
                 let count = match (*counted, package.files) {
                     (false, _) => String::new(),
                     (true, 0) => tr("No Rust files").to_owned(),

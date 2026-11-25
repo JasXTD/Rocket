@@ -12,6 +12,9 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Rust Code Map links literal `include_str!` and `include_bytes!` paths to files in the selected
+  commit. Select an embedded file in Modules to see its callers. In Folders, arrow counts
+  move along their arrows or hide when space is tight so filenames stay readable.
 - Code Map connects HTML pages to their local stylesheets, scripts and images, including
   responsive images. Follow CSS imports and image or font URLs, or select a shared asset
   in Modules to see which pages and stylesheets use it.
