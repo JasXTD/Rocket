@@ -38,7 +38,7 @@ file-private functions and ambiguous definitions stay unresolved.
 Arrows show which files use which. The map reads every package of the snapshot the way
 Modules reads one (Rust crates with their tests, examples and programs, JavaScript and
 TypeScript projects, Python packages, Go modules, Java and Kotlin, C, C++, Objective-C, Objective-C++, C#
-projects, Lua, PowerShell and Bash scripts, and GitHub Actions workflows) and connects packages through the names
+projects, Lua, PowerShell and Bash scripts, GitHub Actions workflows, and HTML pages and stylesheets) and connects packages through the names
 they import: a Cargo package's crate
 name, a package.json name, another Python package or Go module of the repository, a Java
 package or C# namespace another project declares (or whose folders it is laid out in),
@@ -87,7 +87,8 @@ appear.
 **Modules** shows the modules of one package and which module uses which: a Rust
 crate, a JavaScript or TypeScript project, a Python package, the packages of a Go module
 or of a Java or Kotlin project, the namespaces of a C# project, the files of a C-family
-project, a Lua group, the PowerShell or Bash scripts in a top-level folder, or GitHub Actions workflows. The button beside
+project, a Lua group, the PowerShell or Bash scripts in a top-level folder, GitHub Actions workflows,
+or the repository's HTML and CSS files. The button beside
 **Packages · Folders · Modules** lists the snapshot's packages by language. Choose
 one there, or select **Show modules** in a Cargo
 package's Details. Without a choice it reads the largest package of the language with
@@ -170,6 +171,17 @@ The other languages are read the same way, as text within the same limits:
   names a file uses, looked for as C# does (its own namespace, its parents, then the
   namespaces its `using` lines and the project's `global using` lines open), and by names
   written out in full. A partial class is one, its methods added up.
+- **HTML / CSS.** In **Modules**, select **HTML / CSS** and choose a page to see
+  the stylesheets, scripts and images it loads. Select a shared stylesheet, image or
+  font to see its callers under **Used by**, including pages in other folders.
+  The same arrows appear in **Folders**. The map reads literal asset URLs in committed
+  UTF-8 `.html`, `.htm` and `.css` files, including image candidates in `srcset`, inline
+  styles, CSS `@import` and `url()`. CSS paths resolve from the stylesheet's folder.
+  A local HTML `<base href>` changes the base for that page. Query strings and fragments
+  are stripped before matching, so an encoded `%23` still names a literal `#` in a file.
+  Root-relative URLs require a committed `index.html` or `index.htm` at the repository
+  root and a matching path there. Deployment mounts, external origins and generated
+  URLs can leave references unresolved. Browsing the map reads Git objects locally.
 - **GitHub Actions.** In **Folders**, open `.github/workflows`. In **Modules**,
   choose **GitHub Actions** and select a workflow or helper to follow its arrows in either direction.
   A `run` arrow points to a literal script called by a Bash or PowerShell step.

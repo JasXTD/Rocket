@@ -4,15 +4,17 @@ const crypto=require('node:crypto'),net=require('node:net'),assert=require('node
 const {RocketHttpClient}=require('../mcp/mcp-http-client.cjs');
 const root=path.resolve('work/mcp-fixtures/repository-map-'+crypto.randomUUID().replaceAll('-',''));
 const profile=path.join(root,'http-profile'),branch='rocket-ui-test/repository-map';
-const scriptsOnly=process.argv.includes('--scripts-only');
-const nativeOnly=process.argv.includes('--native-only');
-const luaOnly=process.argv.includes('--lua-only');
-const workflowsOnly=process.argv.includes('--workflows-only');
-const focused=scriptsOnly||nativeOnly||luaOnly||workflowsOnly;
-const evidence=path.resolve('tools/maintenance',workflowsOnly?'workflow-code-map':luaOnly?'lua-code-map':nativeOnly?'native-code-map':scriptsOnly?'script-code-map':'repository-map-redesign-20261105');
+const focused=[
+ {flag:'--scripts-only',directory:'script-code-map',run:scriptLoads},
+ {flag:'--native-only',directory:'native-code-map',run:nativeBridges},
+ {flag:'--lua-only',directory:'lua-code-map',run:luaModules},
+ {flag:'--workflows-only',directory:'workflow-code-map',run:workflowLinks},
+ {flag:'--web-only',directory:'web-code-map',run:webAssets},
+].find(test=>process.argv.includes(test.flag));
+const evidence=path.resolve('tools/maintenance',focused?.directory??'repository-map-redesign-20261105');
 const version=fs.readFileSync('Cargo.toml','utf8').match(/\[workspace\.package\][\s\S]*?version\s*=\s*"([^"]+)"/)[1];
 const edgesOnly=process.argv.includes('--edges-only'),privateIds=[];
-const report={passed:false,version,root,scope:workflowsOnly?'workflows-only':luaOnly?'lua-only':nativeOnly?'native-only':scriptsOnly?'scripts-only':edgesOnly?'edges-only':'full-map',cases:[]};
+const report={passed:false,version,root,scope:focused?.flag.slice(2)??(edgesOnly?'edges-only':'full-map'),cases:[]};
 fs.mkdirSync(root,{recursive:true});fs.mkdirSync(evidence,{recursive:true});
 fs.writeFileSync(path.join(root,'rocket-private-state'),'synthetic-content-only-v1\n');
 fs.mkdirSync(path.join(root,'empty-template'));fs.writeFileSync(path.join(root,'empty.config'),'');
@@ -140,8 +142,8 @@ async function expand(paths){
 }
 function node(p){const n=map().data.nodes.find(n=>n.path===p);assert(n,p);return n;}
 function arrow(a,b){return map().code_map.picture.arrows.find(e=>e.from===node(a).index && e.to===node(b).index);}
-async function stopThenReload(f,light,heavy){
- await open(f);await load(light);
+async function stopThenReload(light,heavy){
+ await settle();await load(light);
  if(control('map-mode-folders')) await click('map-mode-folders');
  await until(()=>map().data?.tip===light && map().code_map.links && !map().code_map.running,'small map');
  await openRevision();await type('map-revision',heavy);
@@ -212,7 +214,7 @@ async function luaModules(){
  const bulk='local x = require("helper")\n'.repeat(4500);
  for(let i=0;i<36;i++) h.write('bulk/caller'+i+'.lua','-- '+i+'\n'+bulk);
  const heavy=h.commit('Larger Lua map'), before=snapshot(h);
- await stopThenReload(h,light,heavy);
+ await open(h);await stopThenReload(light,heavy);
  assert.deepEqual(arrow('start.lua','helper.lua')?.names,['helper']);
  assert.deepEqual(snapshot(h),before);
  passed('Stop interrupts an active Lua map read, and reloading the older revision restores its original link and leaves the checkout intact');
@@ -271,10 +273,81 @@ async function workflowLinks(){
  const light=h.commit('Small workflow map'), bulk='      - run: bash helper.sh\n'.repeat(4400);
  for(let j=0;j<36;j++)h.write(directory+'/bulk'+j+'.yml','# '+j+'\n'+header+bulk);
  const heavy=h.commit('Large workflow map'), original=snapshot(h);
- await stopThenReload(h,light,heavy);assert.equal(map().code_map.links.links,1);
+ await open(h);await stopThenReload(light,heavy);assert.equal(map().code_map.links.links,1);
  await expand(['.github',directory]);assert.deepEqual(arrow(primary,'helper.sh')?.names,['run']);
  assert.deepEqual(snapshot(h),original);
  passed('Stop cancels an active workflow map read and reloading an older revision restores its original link');
+}
+async function webAssets(){
+ const f=fixture('Rocket website'), style='docs/site.css', script='docs/site.js', logo='docs/images/rocket-logo.png';
+ const pages=['docs/get.html','docs/index.html','docs/privacy.html'], nested='docs/guide/start.htm';
+ for(const p of [...pages,'docs/404.html',style,script,logo]){
+  f.write(p,cp.execFileSync('git',['-C',path.resolve(__dirname,'../..'),'show','HEAD:'+p],{env,windowsHide:true}));
+ }
+ f.write(nested,'<link rel=stylesheet href="../site.css?v=2"><script src="../site.js"></script><img src="../images/rocket-logo.png#logo">');
+ const callers=[...pages,nested].sort(), tip=f.commit('Shared website assets');
+ f.write(pages[1],'<img src="untracked.png">');f.write('docs/untracked.png','local work');
+ const before=snapshot(f);
+ await folders(f,tip);assert.equal(map().code_map.links.links,12);
+ await expand(['docs','docs/guide','docs/images']);await click('map-fit');
+ for(const p of callers)for(const [asset,kind] of [[style,'stylesheet'],[script,'script'],[logo,'image']]){
+  assert.deepEqual(arrow(p,asset)?.names,[kind],p+' -> '+asset);
+ }
+ // The actual 404 page uses a deployment mount (/Rocket/), absent from this Git tree.
+ assert(!arrow('docs/404.html',style));
+ await capture('web-folders');fs.copyFileSync(path.join(root,'web-folders.png'),path.join(evidence,'folders.png'));
+ passed('Folders shows twelve links from three committed Rocket pages and a nested page; the deployment-only 404 base stays unresolved');
+ await click('map-mode-modules');await until(()=>!map().running&&map().data?.kind==='Modules','web picker');
+ const i=map().data.module_packages.findIndex(p=>p.language==='HtmlCss');
+ assert(i>=0);assert.equal(map().data.module_packages[i].files,6);
+ if(map().package_language!=='HtmlCss'){await click('map-module-package');await click('map-module-package-'+i);}
+ await until(()=>!map().running&&map().data?.modules?.language==='HtmlCss','HTML / CSS modules');
+ const data=map().data, sheet=node(style), page=node(nested);
+ assert.deepEqual(data.links.filter(l=>l.kind==='DependsOn'&&l.to===sheet.index).map(l=>data.nodes[l.from].path).sort(),callers);
+ await click('map-module-'+sheet.index);
+ assert.equal(map().selected,sheet.index);assert(map().captions.some(c=>c.what==='UsedBy'&&c.count===4));
+ await click('map-node-'+page.index);
+ assert.equal(map().selected,page.index);assert(map().captions.some(c=>c.what==='Uses'&&c.count===3));
+ await click('map-node-'+sheet.index);assert.equal(map().selected,sheet.index);
+ await capture('web-modules');fs.copyFileSync(path.join(root,'web-modules.png'),path.join(evidence,'modules.png'));
+ await resize(780,620);assert(control('map-module-switcher'));checkBounds();
+ await capture('web-compact');fs.copyFileSync(path.join(root,'web-compact.png'),path.join(evidence,'compact.png'));
+ assert.deepEqual(snapshot(f),before);
+ passed('Modules shows all four users of a shared stylesheet, navigates to a page and back, and fits at 780 × 620 with local edits intact');
+
+ const h=fixture('Web assets 資料'), img='img/雪 #1.png', font='fonts/字体.woff2', sub='css/theme/sub.css';
+ const html='<link rel=stylesheet href="css/site.css?v=2#main"><script src=local.js></script>'+
+  '<picture><source srcset="data:image/png;base64,AA 1x, img/%E9%9B%AA%20%231.png?x 2x, img/large.png 3x"></picture>'+
+  '<!-- <img src=decoy.png> --><img src=linked.png>';
+ h.write('index.html',html);h.write('external.htm','<img src=decoy.png><base href="https://example.invalid/">');
+ h.write('css/site.css','@import "theme/sub.css?v=2"; body{background:url(../img/%E9%9B%AA%20%231.png#crop)}');
+ h.write(sub,'@font-face { src:url("../../fonts/字体.woff2?#v") }');
+ h.write('local.js',"require('node:fs').writeFileSync('map-executed','unexpected')\n");
+ for(const p of [img,'img/large.png',font,'decoy.png'])h.write(p,Buffer.from([0,255,128,3]));
+ h.commit('Unicode and binary assets');
+ const link=h.git(['hash-object','-w','--stdin'],'decoy.png');
+ h.git(['update-index','--add','--cacheinfo','120000',link,'linked.png']);h.git(['commit','-m','Tracked link']);
+ const light=h.git(['rev-parse','HEAD']);
+ // Build both revisions before opening the checkout so Stop targets the map
+ // read initiated below, independently of filesystem watcher refreshes.
+ h.git(['switch','--quiet','-c','large-site']);
+ const bulk='<img src="../img/large.png">'.repeat(4000);
+ for(let j=0;j<40;j++)h.write('bulk/page'+j+'.html','<!-- '+j+' -->\n'+bulk);
+ const heavy=h.commit('Large site for Stop');
+ h.git(['switch','--quiet',branch]);h.write('index.html','working edit\n');const original=snapshot(h);
+ await folders(h,light);assert.equal(map().code_map.links.links,7);
+ await expand(['css','css/theme','img','fonts']);await click('map-fit');
+ for(const [from,to,kind] of [['index.html','css/site.css','stylesheet'],['index.html','local.js','script'],
+  ['index.html',img,'srcset'],['index.html','img/large.png','srcset'],['css/site.css',sub,'@import'],
+  ['css/site.css',img,'url()'],[sub,font,'url()']]){
+  assert.deepEqual(arrow(from,to)?.names,[kind],from+' -> '+to);
+ }
+ assert.deepEqual(snapshot(h),original);assert(!fs.existsSync(path.join(h.repo,'map-executed')));
+ passed('A second checkout resolves responsive images, percent-encoded Unicode, CSS imports and a binary font, skipping remote, commented and symlink targets');
+ await stopThenReload(light,heavy);assert.equal(map().code_map.links.links,7);
+ await expand(['css','css/theme','fonts']);assert.deepEqual(arrow(sub,font)?.names,['url()']);
+ assert.deepEqual(snapshot(h),original);
+ passed('Stop interrupts an active read; loading the older revision restores its seven links and preserves HEAD, index, config and working files');
 }
 async function nativeBridges(){
  const f=fixture('native imports 資料');
@@ -337,7 +410,7 @@ async function nativeBridges(){
  const bulkSource=Array.from({length:3000},(_,i)=>'int item_'+i+'(void) { return '+i+'; }').join('\n');
  for(let i=0;i<32;i++) h.write('bulk/bridge'+i+'.mm','// source '+i+'\n'+bulkSource);
  const heavy=h.commit('Larger native map');const unchanged=snapshot(h);
- await stopThenReload(h,light,heavy);
+ await open(h);await stopThenReload(light,heavy);
  await expand(['src']);assert.deepEqual(arrow('src/lib.rs','native.m')?.names,['bridge']);
  assert.deepEqual(snapshot(h),unchanged);
  passed('Stop cancels an in-flight native map read; the earlier revision can be reloaded with its original bridge and unchanged working files');
@@ -349,10 +422,7 @@ async function run(){try{
  const log=fs.openSync(path.join(root,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env,windowsHide:true,stdio:['ignore','ignore',log]});fs.closeSync(log);client=new RocketHttpClient(profile);
  for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break;}catch(e){if(i===100)throw e;await delay(100);}}
  assert.equal((await client.initialize()).serverInfo.version,version);
- if(scriptsOnly){await scriptLoads();return;}
- if(nativeOnly){await nativeBridges();return;}
- if(luaOnly){await luaModules();return;}
- if(workflowsOnly){await workflowLinks();return;}
+ if(focused){await focused.run();return;}
  if(!edgesOnly){
  const f=fixture('PRIVATE_MAP_検索 🚀');
  f.write('Cargo.toml',"[workspace]\nmembers=['应用','core']\n");f.write('应用/Cargo.toml',"[package]\nname='界面'\n[dependencies]\ncore={path='../core'}\n");f.write('core/Cargo.toml',"[package]\nname='engine'\n");

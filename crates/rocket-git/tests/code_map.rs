@@ -20,6 +20,74 @@ fn pairs(links: &CodeLinks) -> Vec<String> {
 }
 
 #[test]
+fn web_assets_connect_shared_styles_pages_and_binary_files_from_the_selected_commit() {
+    isolated("ROCKET_CODE_MAP_TEST", "web_assets_connect_shared_styles_pages_and_binary_files_from_the_selected_commit", || {
+        let f = Fixture::new();
+        f.write("pages/index.html", r##"<LINK HREF='../styles/site.css?v=3#main' ReL='alternate stylesheet'>
+            <script src="../js/site.js"></script><img src="pictures/%E7%8C%AB.png#two">
+            <picture><source srcset="data:image/png;base64,AA 1x, pictures/猫.png 2x, pictures/large.png 3x"></picture>
+            <!-- <img src="decoy.png"> --><script>const example = '<img src="decoy.png">'</script>
+            <img src="//outside.invalid/decoy.png"><img src="../missing.png">"##);
+        f.write("second/about.htm", r#"<link href="site.css" rel="stylesheet"><base href="../styles/">"#);
+        f.write("styles/site.css", r##"@import url('theme/a.css?v=2');
+            .icon { background: url(../pages/pictures/%E7%8C%AB.png#icon) }
+            /* url(decoy.png) */ p::before { content: "url(decoy.png)" }"##);
+        f.write("styles/theme/a.css", r#"@font-face{src:URL("../../fonts/font.woff2?#v")}"#);
+        for path in ["pages/pictures/猫.png","pages/pictures/large.png","fonts/font.woff2","pages/decoy.png","styles/decoy.png"] {
+            f.write(path, b"\0\xffbinary".as_slice());
+        }
+        f.write("js/site.js", "// helper\n");
+        f.write("pages/packed.HTM", b"\0<img src='decoy.png'>".as_slice());
+        f.commit("Shared web assets");
+        let tip = head(&f);
+        f.write("styles/site.css", "body {background:url(local-only.png)}");
+        f.write("styles/local-only.png", "local");
+        let repo = f.repo();
+        let expected = [
+            "pages/index.html -> js/site.js", "pages/index.html -> pages/pictures/large.png",
+            "pages/index.html -> pages/pictures/猫.png", "pages/index.html -> styles/site.css",
+            "second/about.htm -> styles/site.css", "styles/site.css -> pages/pictures/猫.png",
+            "styles/site.css -> styles/theme/a.css", "styles/theme/a.css -> fonts/font.woff2",
+        ];
+        let all = repo.code_links(&tip, None, &token()).unwrap();
+        assert_eq!(pairs(&all), expected);
+        let selected = repo.code_links(&tip, Some(&[Vec::new()]), &token()).unwrap();
+        assert_eq!(pairs(&selected), expected);
+        let catalog = repo.repository_map(&MapOptions { kind: MapKind::Code, ..Default::default() }, &token()).unwrap();
+        let group = catalog.module_packages.iter().find(|p| p.name.as_slice() == b"HTML / CSS").unwrap();
+        assert_eq!(group.files, 5);
+        let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, package: Some(group.reference()), ..Default::default() }, &token()).unwrap();
+        let mut edges = map.links.iter().filter(|e| e.kind == MapLinkKind::DependsOn).map(|e| {
+            let path = |i: usize| String::from_utf8_lossy(map.nodes[i].path.as_deref().unwrap());
+            format!("{} -> {}", path(e.from), path(e.to))
+        }).collect::<Vec<_>>();
+        edges.sort();
+        assert_eq!(edges, expected);
+        assert!(map.modules.unwrap().unlinked.contains(&(b"pages/packed.HTM".to_vec(), UnlinkedReason::Binary)));
+    });
+}
+
+#[test]
+fn web_assets_share_a_budget_across_pages_and_stylesheets() {
+    isolated("ROCKET_CODE_MAP_TEST", "web_assets_share_a_budget_across_pages_and_stylesheets", || {
+        let f = Fixture::new();
+        f.write("a.html", format!("<img src=keep.png>{}", "<img src=missing>".repeat(6500)));
+        f.write("b.css", format!("a{{src:url(keep.png)}}{}a{{src:url(late.png)}}", "a{src:url(missing)}".repeat(6500)));
+        f.write("keep.png", "keep");
+        f.write("late.png", "later");
+        f.commit("Bound the shared web asset read");
+        let repo = f.repo();
+        let all = repo.code_links(&head(&f), None, &token()).unwrap();
+        assert!(all.sources_limited && all.limited);
+        assert_eq!(pairs(&all), ["a.html -> keep.png", "b.css -> keep.png"]);
+        let group = all.packages.into_iter().find(|p| p.language == ModuleLanguage::HtmlCss).unwrap();
+        let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, package: Some(group), ..Default::default() }, &token()).unwrap();
+        assert!(map.limited);
+        assert_eq!(map.links.iter().filter(|l| l.kind == MapLinkKind::DependsOn).count(), 2);
+    });
+}
+
+#[test]
 fn workflow_links_use_the_committed_step_directory_and_local_targets() {
     isolated("ROCKET_CODE_MAP_TEST", "workflow_links_use_the_committed_step_directory_and_local_targets", || {
         let f = Fixture::new();

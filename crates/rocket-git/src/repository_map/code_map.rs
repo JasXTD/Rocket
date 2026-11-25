@@ -401,7 +401,7 @@ impl Repository {
                     }
                 }
                 // Java's packages and C#'s namespaces are named by their files, once read.
-                ModuleLanguage::Java | ModuleLanguage::C | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions => {}
+                ModuleLanguage::Java | ModuleLanguage::C | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions | ModuleLanguage::HtmlCss => {}
             }
         }
         // Longest module paths first, so a nested module wins over its parent.
@@ -862,7 +862,7 @@ fn code_other(
         ModuleLanguage::C => units::c(&f.folder, &own, &f.files, names.known, names.headers, cancel)?,
         ModuleLanguage::CSharp => units::csharp(&own, cancel)?,
         ModuleLanguage::Lua => units::lua(f, &own, cancel)?,
-        ModuleLanguage::GitHubActions => units::workflows(&own, names.known, cancel)?,
+        ModuleLanguage::GitHubActions | ModuleLanguage::HtmlCss => units::file_dependencies(f, &own, names.known, cancel)?,
         ModuleLanguage::PowerShell | ModuleLanguage::Bash => units::scripts(f.language, &f.folder, &own, names.known, cancel)?,
         ModuleLanguage::Go | ModuleLanguage::Rust => units::go(&f.folder, &module, &own, &f.files, cancel)?,
     };
@@ -905,7 +905,7 @@ fn code_other(
                 ModuleLanguage::Python => names.python.get(name.split('.').next().unwrap_or_default()).cloned(),
                 ModuleLanguage::Java => names.java.get(name).cloned(),
                 ModuleLanguage::CSharp => names.csharp.get(name).cloned(),
-                ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions => None,
+                ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions | ModuleLanguage::HtmlCss => None,
                 ModuleLanguage::Go | ModuleLanguage::Rust => names.go.iter().find(|(m, _)| name == m || name.starts_with(&format!("{m}/"))).map(|(m, folder)| {
                     let rest = name[m.len()..].trim_start_matches('/');
                     let package = if rest.is_empty() { folder.clone() } else { packages::join(folder, rest.as_bytes()) };

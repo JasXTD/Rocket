@@ -482,7 +482,7 @@
   },
   "Lua scripts": "برامج Lua النصية",
   "No package to read in this snapshot": "لا توجد حزمة للقراءة في هذه اللقطة",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell and Bash.": "يقرأ عرض الوحدات Rust وJavaScript وTypeScript وPython وGo وJava وKotlin وC وC++ وObjective-C وObjective-C++ وC# وLua وGitHub Actions وPowerShell وBash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, HTML / CSS, GitHub Actions, PowerShell and Bash.": "يقرأ عرض الوحدات Rust وJavaScript وTypeScript وPython وGo وJava وKotlin وC وC++ وObjective-C وObjective-C++ وC# وLua وHTML / CSS وGitHub Actions وPowerShell وBash.",
   "The package to map": "الحزمة المراد رسم خريطتها",
   "OUTSIDE": "من الخارج",
   "build ignore": "مستثنى من البناء",

@@ -12,6 +12,9 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
+- Code Map connects HTML pages to their local stylesheets, scripts and images, including
+  responsive images. Follow CSS imports and image or font URLs, or select a shared asset
+  in Modules to see which pages and stylesheets use it.
 - Code Map links GitHub Actions workflows to the scripts, local actions and reusable
   workflows they reference in the selected commit. Select a helper to see which workflows use it.
 - Code Map connects Rocket integration manifests to `main.lua` and follows literal Lua

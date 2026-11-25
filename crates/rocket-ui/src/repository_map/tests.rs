@@ -1542,6 +1542,9 @@ fn modules_java_packages_stand_alone_and_each_language_names_its_units() {
         let units = modules::Units::new(&data);
         assert_eq!(modules::size_text(&units, 1), "8 lines");
         assert!(modules::size_text(&units, 2).is_empty());
+        let web = modules::Words { language: ModuleLanguage::HtmlCss, dialect: None };
+        assert_eq!((web.find(), web.package_kind(false), web.files(2)), ("Find a file", "HTML / CSS", "2 files".to_owned()));
+        assert_eq!(modules::language_name(web.language, None), "HTML / CSS");
         let keywords: Vec<&str> = [OutlineKind::Function, OutlineKind::Macro, OutlineKind::Type, OutlineKind::Struct, OutlineKind::Var].iter().map(|k| c.keyword(*k)).collect();
         assert_eq!(keywords, ["function", "#define", "typedef", "struct", "extern"]);
         let cpp = modules::Words { language: ModuleLanguage::C, dialect: Some(Dialect::Cpp) };

@@ -29,6 +29,14 @@ pub(super) struct Found {
 }
 
 impl Found {
+    pub(super) fn group_name(&self) -> Vec<u8> {
+        match self.language {
+            ModuleLanguage::HtmlCss => b"HTML / CSS".to_vec(),
+            ModuleLanguage::GitHubActions => b"GitHub Actions".to_vec(),
+            _ => file_name(&self.folder).to_vec(),
+        }
+    }
+
     pub(super) fn source_count(&self) -> usize {
         if self.language == ModuleLanguage::Lua && self.manifest.is_some() {
             self.files.iter().filter(|p| p.ends_with(b".lua")).count()
@@ -81,7 +89,7 @@ pub(super) fn go_file(path: &[u8]) -> bool {
     path.ends_with(b".go") && !path.ends_with(b"_test.go") && file_name(path).len() > 3
 }
 /// Returns the file's original extension, or an empty slice when it has none.
-fn extension(path: &[u8]) -> &[u8] {
+pub(super) fn extension(path: &[u8]) -> &[u8] {
     let name = file_name(path);
     match name.iter().rposition(|b| *b == b'.') {
         Some(at) if at > 0 => &name[at + 1..],
@@ -226,6 +234,11 @@ pub(super) fn find_up_to(paths: &[&[u8]], limit: usize) -> (Vec<Found>, bool) {
     add(csharp(paths), &mut out);
     let files = paths.iter().filter(|p| super::workflows::is_workflow(p)).map(|p| p.to_vec()).collect();
     add(vec![Found { folder: super::workflows::FOLDER.to_vec(), language: ModuleLanguage::GitHubActions, manifest: None, dialect: None, files }], &mut out);
+    // Pages in different folders can share a stylesheet. One group keeps all
+    // its callers available when navigating backwards from that stylesheet.
+    let language = ModuleLanguage::HtmlCss;
+    let files = paths.iter().filter(|p| super::web::format(p).is_some() && !skipped(p, language)).map(|p| p.to_vec()).collect();
+    add(vec![Found { folder: Vec::new(), language, manifest: None, dialect: None, files }], &mut out);
     for (language, folders) in script_folders(paths) {
         add(folders.into_iter().map(|(folder, mut files)| {
             files.sort();

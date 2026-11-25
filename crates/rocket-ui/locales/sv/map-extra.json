@@ -350,7 +350,7 @@
   },
   "Lua scripts": "Lua-skript",
   "No package to read in this snapshot": "Inget paket att läsa i den här ögonblicksbilden",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell and Bash.": "Vyn Moduler läser Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell och Bash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, HTML / CSS, GitHub Actions, PowerShell and Bash.": "Vyn Moduler läser Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, HTML / CSS, GitHub Actions, PowerShell och Bash.",
   "The package to map": "Paketet att kartlägga",
   "OUTSIDE": "UTANFÖR",
   "build ignore": "utesluten ur byggen",

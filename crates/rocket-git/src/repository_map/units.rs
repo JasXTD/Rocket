@@ -264,16 +264,20 @@ fn script_units<'a>(folder: &[u8], texts: &'a BTreeMap<Vec<u8>, String>, detail:
     Ok((built, files))
 }
 
-pub(super) fn workflows(texts: &BTreeMap<Vec<u8>, String>, known: &HashSet<&[u8]>, cancel: &CancellationToken) -> Result<Built> {
-    let (mut built, files) = script_units(workflows::FOLDER, texts, |_| b"GitHub Actions workflow", cancel)?;
+pub(super) fn file_dependencies(group: &packages::Found, texts: &BTreeMap<Vec<u8>, String>, known: &HashSet<&[u8]>, cancel: &CancellationToken) -> Result<Built> {
+    let page_assets = group.language == ModuleLanguage::HtmlCss;
+    let (mut built, files) = script_units(&group.folder, texts, |p| match web::format(p) {
+        Some(web::Format::Html) => b"HTML page", Some(web::Format::Css) => b"Stylesheet", None => b"GitHub Actions workflow",
+    }, cancel)?;
+    for unit in &mut built.units { unit.key = text(&unit.path); }
     let mut targets = HashMap::new();
     for (&path, &id) in &files {
-        built.units[id].key = text(path);
         targets.insert(path.to_vec(), id);
     }
+    let mut remaining = MAP_LINKS;
     for (path, source) in texts {
         let from = files[path.as_slice()];
-        let complete = workflows::read(source, known, cancel, |kind, path| {
+        let mut link = |kind: &'static str, path: Vec<u8>| {
             if built.followed >= MAP_LINKS { built.limited = true; return; }
             built.followed += 1;
             let to = if let Some(&id) = targets.get(&path) { id } else {
@@ -284,9 +288,11 @@ pub(super) fn workflows(texts: &BTreeMap<Vec<u8>, String>, known: &HashSet<&[u8]
                 id
             };
             built.uses(from, to, [kind.to_owned()]);
-        })?;
+        };
+        let complete = if page_assets { web::read(path, source, known, &mut remaining, cancel, &mut link)? }
+            else { workflows::read(source, known, cancel, &mut link)? };
         built.limited |= !complete;
-        if built.limited && built.followed >= MAP_LINKS { break; }
+        if built.limited && (built.followed >= MAP_LINKS || remaining == 0) { break; }
     }
     Ok(built)
 }

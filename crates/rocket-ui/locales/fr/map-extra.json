@@ -350,7 +350,7 @@
   },
   "Lua scripts": "Scripts Lua",
   "No package to read in this snapshot": "Aucun paquet à lire dans cet instantané",
-  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell and Bash.": "La vue Modules lit Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell et Bash.",
+  "Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, HTML / CSS, GitHub Actions, PowerShell and Bash.": "La vue Modules lit Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, HTML / CSS, GitHub Actions, PowerShell et Bash.",
   "The package to map": "Le paquet à cartographier",
   "OUTSIDE": "EXTERNES",
   "build ignore": "exclu des builds",

@@ -40,7 +40,7 @@ impl Words {
         match self.language {
             ModuleLanguage::Go | ModuleLanguage::Java => Noun::Package,
             ModuleLanguage::CSharp => Noun::Namespace,
-            ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions => Noun::File,
+            ModuleLanguage::C | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions | ModuleLanguage::HtmlCss => Noun::File,
             ModuleLanguage::Rust | ModuleLanguage::JavaScript | ModuleLanguage::Python => Noun::Module,
         }
     }
@@ -196,7 +196,7 @@ impl Words {
             (ModuleLanguage::PowerShell, _) => trn!(n, "{n} PowerShell file", "{n} PowerShell files"),
             (ModuleLanguage::Bash, _) => trn!(n, "{n} Bash file", "{n} Bash files"),
             (ModuleLanguage::Lua, _) => trn!(n, "{n} Lua file", "{n} Lua files"),
-            (ModuleLanguage::GitHubActions, _) => trn!(n, "{n} file", "{n} files"),
+            (ModuleLanguage::GitHubActions | ModuleLanguage::HtmlCss, _) => trn!(n, "{n} file", "{n} files"),
         }
     }
     /// The package's own name for itself: "TypeScript project · modules".
@@ -230,6 +230,7 @@ impl Words {
             (ModuleLanguage::Bash, ..) => tr("Bash scripts"),
             (ModuleLanguage::Lua, ..) => tr("Lua scripts"),
             (ModuleLanguage::GitHubActions, ..) => "GitHub Actions",
+            (ModuleLanguage::HtmlCss, ..) => "HTML / CSS",
         }
     }
     /// The keyword a declaration is written with. A Java project mostly in Kotlin shows
@@ -288,6 +289,7 @@ pub(super) fn language_name(language: ModuleLanguage, dialect: Option<Dialect>) 
         (ModuleLanguage::Bash, _) => "Bash",
         (ModuleLanguage::Lua, _) => "Lua",
         (ModuleLanguage::GitHubActions, _) => "GitHub Actions",
+        (ModuleLanguage::HtmlCss, _) => "HTML / CSS",
     }
 }
 /// A package's name; one at the top of the repository may have none.
@@ -551,7 +553,7 @@ impl Units {
 pub(super) fn name(data: &RepositoryMap, i: usize) -> String {
     let n = &data.nodes[i];
     // JavaScript and C files by their names, Java packages and C# namespaces by theirs below the part all share.
-    let by_label = data.modules.as_ref().is_some_and(|m| matches!(m.language, ModuleLanguage::JavaScript | ModuleLanguage::C | ModuleLanguage::Java | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions));
+    let by_label = data.modules.as_ref().is_some_and(|m| matches!(m.language, ModuleLanguage::JavaScript | ModuleLanguage::C | ModuleLanguage::Java | ModuleLanguage::CSharp | ModuleLanguage::PowerShell | ModuleLanguage::Bash | ModuleLanguage::Lua | ModuleLanguage::GitHubActions | ModuleLanguage::HtmlCss));
     match n.key.strip_prefix(b"module:") {
         Some(path) if !path.is_empty() && !by_label => label(path),
         _ => label(&n.label),
@@ -874,7 +876,7 @@ pub(super) fn body(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, comp
         icon(card.painter(), Rect::from_center_size(card.cursor().center_top() + vec2(0., 11.), vec2(22., 22.)), Icon::Braces, FAINT());
         card.add_space(28.);
         card.label(RichText::new(tr("No package to read in this snapshot")).font(semibold(14.)).color(TEXT()));
-        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, GitHub Actions, PowerShell and Bash.")).color(MUTED()));
+        card.label(RichText::new(tr("Modules reads Rust, JavaScript, TypeScript, Python, Go, Java, Kotlin, C, C++, Objective-C, Objective-C++, C#, Lua, HTML / CSS, GitHub Actions, PowerShell and Bash.")).color(MUTED()));
         card.add_space(6.);
         if button(&mut card, widgets, "map-modules-show-folders", crate::i18n::tr("Show folders"), !covered) {
             emit(intents, MapIntent::CodeView(false));

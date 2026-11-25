@@ -19,6 +19,7 @@ mod python;
 mod rust;
 mod scripts;
 mod units;
+mod web;
 mod workflows;
 pub use code_map::{
     CODE_HISTORY_COMMITS, CODE_MAP_FILES, CODE_MAP_PACKAGES, ChangesOutcome, CodeChanges, CodeEnd, CodeHistory, CodeLink, CodeLinks, FileKind, HistoryCommit, OwnerRules, file_kind,
@@ -36,10 +37,14 @@ const MAP_PATHS: usize = 100_000;
 const EVIDENCE: usize = 24;
 const LABEL_BYTES: usize = 4096;
 
+fn is_binary_source(path: &[u8], bytes: &[u8]) -> bool {
+    (path.ends_with(b".lua") && lua::binary(bytes)) || (web::format(path).is_some() && bytes.contains(&0))
+}
+
 /// Windows PowerShell also writes scripts as BOM-marked UTF-16. Other source
 /// readers keep their original UTF-8 contract. Git read budgets use the blob size.
 fn source_text(path: &[u8], bytes: &[u8]) -> Option<String> {
-    if path.ends_with(b".lua") && lua::binary(bytes) { return None; }
+    if is_binary_source(path, bytes) { return None; }
     if let Ok(text) = std::str::from_utf8(bytes) {
         return Some(text.to_owned());
     }
@@ -134,12 +139,13 @@ pub enum ModuleLanguage {
     Bash,
     Lua,
     GitHubActions,
+    HtmlCss,
 }
 impl ModuleLanguage {
     /// These units are independent. Their folders organize the list, while arrows
     /// point to individual packages, namespaces or script files.
     pub fn standalone(self) -> bool {
-        matches!(self, Self::Go | Self::Java | Self::CSharp | Self::PowerShell | Self::Bash | Self::Lua | Self::GitHubActions)
+        matches!(self, Self::Go | Self::Java | Self::CSharp | Self::PowerShell | Self::Bash | Self::Lua | Self::GitHubActions | Self::HtmlCss)
     }
 }
 /// The second language a package of one is written in, which names the package.
@@ -787,7 +793,7 @@ impl Repository {
         map.module_packages = found
             .into_iter()
             .map(|f| ModulePackage {
-                name: packages::file_name(&f.folder).to_vec(),
+                name: f.group_name(),
                 language: f.language,
                 dialect: f.dialect,
                 manifest: f.manifest.is_some(),

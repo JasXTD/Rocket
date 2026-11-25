@@ -559,7 +559,7 @@ impl Repository {
         }
         for f in &others {
             let text = f.manifest.as_ref().and_then(|m| small.get(m));
-            let own = packages::file_name(&f.folder).to_vec();
+            let own = f.group_name();
             let built = f.manifest.is_some();
             let named = || f.manifest.as_ref().and_then(|m| packages::project_name(m, text.map(String::as_str))).map(String::into_bytes).unwrap_or_else(|| own.clone());
             let (prefix, name, detail): (&[u8], Vec<u8>, &[u8]) = match f.language {
@@ -598,13 +598,14 @@ impl Repository {
                 ModuleLanguage::PowerShell => (b"package-powershell:", own, b"PowerShell scripts"),
                 ModuleLanguage::Bash => (b"package-bash:", own, b"Bash scripts"),
                 ModuleLanguage::Lua => (b"package-lua:", own, b"Lua scripts"),
-                ModuleLanguage::GitHubActions => (b"package-github-actions:", b"GitHub Actions".to_vec(), b"GitHub Actions workflows"),
+                ModuleLanguage::GitHubActions => (b"package-github-actions:", own, b"GitHub Actions workflows"),
+                ModuleLanguage::HtmlCss => (b"package-html-css:", own, b"HTML / CSS"),
                 ModuleLanguage::Go | ModuleLanguage::Rust => (b"package-go:", text.and_then(|t| packages::go_module(t)).map(String::into_bytes).unwrap_or(own), b"Go module"),
             };
             let mut n = node(MapNodeKind::Crate, [prefix, f.folder.as_slice()].concat(), name.clone(), detail.to_vec());
             n.path = Some(f.folder.clone());
-            n.files = entries.iter().filter(|(path, ..)| inside(path, &f.folder)).count();
             let source_count = f.source_count();
+            n.files = if f.language == ModuleLanguage::HtmlCss { source_count } else { entries.iter().filter(|(path, ..)| inside(path, &f.folder)).count() };
             n.count = source_count;
             let at = map.nodes.len();
             map.nodes.push(n);
@@ -843,7 +844,7 @@ impl Repository {
                     Some(text) => {
                         texts.insert(path.clone(), text);
                     }
-                    None if path.ends_with(b".lua") && lua::binary(blob) => details.unlinked.push((path.clone(), UnlinkedReason::Binary)),
+                    None if is_binary_source(path, blob) => details.unlinked.push((path.clone(), UnlinkedReason::Binary)),
                     None => details.unlinked.push((path.clone(), UnlinkedReason::NotUtf8)),
                 }
             }
@@ -866,7 +867,7 @@ impl Repository {
             }
             ModuleLanguage::CSharp => units::csharp(&texts, cancel),
             ModuleLanguage::Lua => units::lua(found, &texts, cancel),
-            ModuleLanguage::GitHubActions => units::workflows(&texts, &blobs.keys().copied().collect(), cancel),
+            ModuleLanguage::GitHubActions | ModuleLanguage::HtmlCss => units::file_dependencies(found, &texts, &blobs.keys().copied().collect(), cancel),
             ModuleLanguage::PowerShell | ModuleLanguage::Bash => {
                 let known = blobs.keys().copied().collect();
                 units::scripts(found.language, &found.folder, &texts, &known, cancel)
@@ -884,6 +885,7 @@ impl Repository {
                 ModuleLanguage::Bash => "Arrows show which committed scripts load a helper with source or dot. Runtime expressions, PATH lookups and ambiguous working-directory paths are skipped.",
                 ModuleLanguage::Lua => "Rocket integration manifests point to main.lua. Ordinary Lua scripts link to unique committed modules named in literal require calls.",
                 ModuleLanguage::GitHubActions => "Workflow arrows point to committed scripts, local action manifests and reusable workflows. Script paths use the working directory for that step.",
+                ModuleLanguage::HtmlCss => "Arrows connect pages and stylesheets to committed assets. Select an asset to see which pages and stylesheets use it.",
                 ModuleLanguage::Go | ModuleLanguage::Rust => "Read from the committed Go files of one module. Each package stands alone; connections come from imports and the names used through them. Test files and files marked //go:build ignore are left out; other build constraints are not evaluated.",
             }
             .into(),
