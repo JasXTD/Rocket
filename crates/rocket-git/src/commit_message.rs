@@ -1,6 +1,10 @@
 //! Commit message helpers: the file named by Git's `commit.template`.
 use crate::{runner::args, *};
-use std::path::PathBuf;
+use std::{
+    fs,
+    io::Read,
+    path::{Component, Path, PathBuf},
+};
 
 /// Largest template file Rocket reads.
 const TEMPLATE_LIMIT: u64 = 64 * 1024;
@@ -29,7 +33,7 @@ impl Repository {
         } else {
             self.cwd().join(path)
         };
-        let text = read_template(&path)?;
+        let text = read_template(&path, self.cwd(), self.runner.transport_scope.as_ref())?;
         let mut comment = self.config_get("core.commentString", false, cancel)?;
         if comment.is_none() {
             comment = self.config_get("core.commentChar", false, cancel)?;
@@ -66,15 +70,76 @@ impl Repository {
     }
 }
 
-fn read_template(path: &std::path::Path) -> Result<String> {
-    let metadata =
-        std::fs::metadata(path).map_err(|e| Error::io("read the commit.template file", e))?;
-    if !metadata.is_file() || metadata.len() > TEMPLATE_LIMIT {
-        return Err(Error::Unsupported(
-            "commit.template must name a text file of at most 64 KiB".into(),
-        ));
+fn read_template(path: &Path, repository: &Path, scope: Option<&TransportScope>) -> Result<String> {
+    let refused = || {
+        Error::InvalidInput(
+            "The commit template must be a regular file inside the active fixture.".into(),
+        )
+    };
+    let invalid =
+        || Error::Unsupported("commit.template must name a text file of at most 64 KiB".into());
+    let io = |e| Error::io("read the commit.template file", e);
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    // A FIFO substituted before open must not block the composer.
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        #[cfg(target_os = "linux")]
+        let (nonblock, nofollow) = (0o4000, 0o400000);
+        #[cfg(target_os = "macos")]
+        let (nonblock, nofollow) = (0x4, 0x100);
+        options.custom_flags(nonblock | if scope.is_some() { nofollow } else { 0 });
     }
-    let bytes = std::fs::read(path).map_err(|e| Error::io("read the commit.template file", e))?;
+    let file = if let Some(scope) = scope {
+        // Check the configured spelling before touching it, including UNC paths on Windows.
+        let relative = path
+            .strip_prefix(repository)
+            .or_else(|_| path.strip_prefix(Path::new(&crate::runner::git_path(repository))))
+            .map_err(|_| refused())?;
+        if !repository.starts_with(scope.root())
+            || relative.as_os_str().is_empty()
+            || relative
+                .components()
+                .any(|c| !matches!(c, Component::Normal(_)))
+        {
+            return Err(refused());
+        }
+        let path = repository.join(relative);
+        let _parents =
+            local_files::pin_directories(scope.root(), path.parent().ok_or_else(refused)?)?;
+        let leaf = fs::symlink_metadata(&path).map_err(io)?;
+        if !leaf.is_file() || local_files::redirected(&leaf) {
+            return Err(refused());
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            options.share_mode(1).custom_flags(0x00200000); // FILE_FLAG_OPEN_REPARSE_POINT
+        }
+        let file = options.open(&path).map_err(io)?;
+        crate::review::verify_handle_under(&file, repository, &path)?;
+        if !local_files::single_link(&file)? {
+            return Err(refused());
+        }
+        file
+    } else {
+        if !fs::metadata(path).map_err(io)?.is_file() {
+            return Err(invalid());
+        }
+        options.open(path).map_err(io)?
+    };
+    let metadata = file.metadata().map_err(io)?;
+    if !metadata.is_file() || metadata.len() > TEMPLATE_LIMIT {
+        return Err(invalid());
+    }
+    let mut bytes = Vec::new();
+    file.take(TEMPLATE_LIMIT + 1)
+        .read_to_end(&mut bytes)
+        .map_err(io)?;
+    if bytes.len() as u64 > TEMPLATE_LIMIT {
+        return Err(invalid());
+    }
     String::from_utf8(bytes)
         .map_err(|_| Error::Unsupported("commit.template is not UTF-8 text".into()))
 }

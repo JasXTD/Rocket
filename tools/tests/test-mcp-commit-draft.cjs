@@ -68,9 +68,9 @@ async function closeDialog() { for (let n = 0; state?.dialog && n < 3; n++) awai
 async function closeWindow() { if (state?.dialog && !state.write) await closeDialog(); await client.tool('rocket_close'); await until(s => ['closed', 'not_started'].includes(s.window) || (s.dialog?.kind === 'quit' && !s.input_pending), 'Close window or exit confirmation'); if (state.dialog?.kind === 'quit') { await client.tool('rocket_click', { target: 'dialog-submit', expected_tab: state.active_tab }); await until(s => ['closed', 'not_started'].includes(s.window), 'Closed window'); } }
 async function scroll(target, direction, pixels) { await client.tool('rocket_scroll', { target, direction, pixels, expected_tab: state.active_tab }); await settle(); }
 /// Scroll Preferences until a control is fully visible (published controls are clipped).
-async function reveal(id) { await stable(); for (let i = 0; i < 12 && !(control(id) && control(id).rect[3] - control(id).rect[1] >= 16); i++) { await scroll('dialog-scroll', 'down', 160); await stable(); } assert(control(id), 'Not visible: ' + id); }
-async function preferences() { await click('menu-edit'); await click('preferences'); await until(s => s.dialog && control('pref-sidebar'), 'Preferences'); await reveal('pref-ai-enabled'); }
-async function closePreferences() { await click('dialog-submit'); await until(s => !s.dialog, 'Preferences closed'); }
+async function reveal(id) { await stable(); for (let i = 0; i < 12 && !(control(id) && control(id).rect[3] - control(id).rect[1] >= 16); i++) { await scroll('prefs-scroll', 'down', 160); await stable(); } assert(control(id), 'Not visible: ' + id); }
+async function preferences() { await click('menu-edit'); await click('preferences'); await until(s => s.dialog && control('pref-page-commit'), 'Preferences'); await click('pref-page-commit'); await reveal('pref-ai-enabled'); }
+async function closePreferences() { await click('dialog-close'); await until(s => !s.dialog, 'Preferences closed'); }
 /// Draft and wait for the result (no first-use dialog expected).
 async function drafted() { const count = requests(); await click('composer-draft'); await until(s => !draft().running && !draft().requested && !s.busy, 'Draft finished'); return requests() - count; }
 /// Stage a change outside Rocket, then wait until the composer sees it (Draft is enabled again).
@@ -130,7 +130,7 @@ async function main() {
     const args = recorded(1, 'arguments').split('\n');
     assert(args.some((a, i) => a === '--tools' && args[i + 1] === ''), 'No tools'); assert(args.includes('--safe-mode') && args.includes('--no-session-persistence') && args.includes('--strict-mcp-config'));
     const cwd = recorded(1, 'environment').split(/\r?\n/).find(l => l.startsWith('cwd=')).slice(4);
-    assert(!path.resolve(cwd).startsWith(f.repo) && /rocket-claude-/.test(cwd), cwd);
+    assert(!path.resolve(cwd).startsWith(f.repo) && /^rocket-request-[a-f0-9]{32}$/.test(path.basename(cwd)), cwd);
     await capture('draft-filled');
     await type('commit-message', 'PRIVATE_EDITED summary');
     await click('commit');

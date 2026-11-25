@@ -149,7 +149,7 @@ async function main() {
     for (const feature of ['shell_tool', 'code_mode_host', 'apps', 'hooks']) assert(args.some((a, i) => a === '--disable' && args[i + 1] === feature), feature);
     report.codex_arguments = args.length;
     const cwd = recorded('codex', 1, 'environment').split(/\r?\n/).find(l => l.startsWith('cwd=')).slice(4);
-    assert(!path.resolve(cwd).startsWith(f.repo) && /rocket-codex-/.test(cwd) && !fs.existsSync(cwd), cwd);
+    assert(!path.resolve(cwd).startsWith(f.repo) && /^rocket-request-[a-f0-9]{32}$/.test(path.basename(cwd)) && !fs.existsSync(cwd), cwd);
     await capture('codex-filled');
     await type('commit-message', 'PRIVATE_EDITED summary');
     await click('commit');

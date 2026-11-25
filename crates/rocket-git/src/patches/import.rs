@@ -282,10 +282,10 @@ fn publish_journal(repo: &Repository, expected: Option<&[u8]>, bytes: &[u8]) -> 
                 .unwrap_or_default()
                 .as_nanos()
         ));
-        files::write_new(&temporary, bytes, &c)?;
+        files::write_private(&temporary, bytes, &c)?;
         fs::rename(&temporary, &path).map_err(|e| Error::io("publish import recovery record", e))
     } else {
-        files::write_new(&path, bytes, &c)
+        files::write_private(&path, bytes, &c)
     }
 }
 impl Repository {
@@ -757,7 +757,7 @@ impl Repository {
                 .as_nanos()
         ));
         let _guard = files::pin_parent(&directory)?;
-        fs::create_dir(&directory).map_err(|e| Error::io("reserve import recovery backup", e))?;
+        local_files::create_recovery_directory(&directory).map_err(|e| Error::io("reserve import recovery backup", e))?;
         let _guard = local_files::pin_directories(&self.info().git_dir, &directory)?;
         let mut manifest = String::from(
             "Rocket mail import recovery copies. Original paths are quoted; missing means the file was absent.\n",
@@ -765,7 +765,7 @@ impl Repository {
         for (i, (path, value)) in p.context.files.iter().enumerate() {
             let name = format!("working-{i:04}");
             match value {
-                WorkingFile::Bytes(bytes) => files::write_new(&directory.join(&name), bytes, c)?,
+                WorkingFile::Bytes(bytes) => files::write_private(&directory.join(&name), bytes, c)?,
                 WorkingFile::Missing => {}
                 WorkingFile::Link(_) => {
                     return Err(bad(
@@ -784,7 +784,7 @@ impl Repository {
                 }
             ));
         }
-        files::write_new(&directory.join("manifest.log"), manifest.as_bytes(), c)?;
+        files::write_private(&directory.join("manifest.log"), manifest.as_bytes(), c)?;
         let staged = self.mail_read(
             &[
                 "diff",
@@ -798,7 +798,7 @@ impl Repository {
             ],
             c,
         )?;
-        files::write_new(&directory.join("staged.patch"), &staged, c)?;
+        files::write_private(&directory.join("staged.patch"), &staged, c)?;
         Ok(Some(directory))
     }
     pub fn apply_mail_import(

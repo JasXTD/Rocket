@@ -81,6 +81,13 @@ pub fn create_private_new(directory: &Path) -> io::Result<()> {
     }
 }
 
+/// An exclusive child of an existing directory. A disappeared repository or
+/// temp parent must not be recreated while an operation is in progress.
+#[cfg(unix)]
+pub(crate) fn create_private_child(directory: &Path) -> io::Result<()> {
+    unix::directory(directory, unix::Mode::NewChild)
+}
+
 /// Check an existing private folder and its ancestors without creating anything.
 pub fn check_private(directory: &Path) -> io::Result<()> {
     #[cfg(unix)]
@@ -118,6 +125,7 @@ mod unix {
     pub(super) enum Mode {
         Private,
         New,
+        NewChild,
         Check,
         Protected,
     }
@@ -153,20 +161,22 @@ mod unix {
         // Root and processes with our own UID remain outside this trust boundary.
         for part in ancestors.into_iter().rev() {
             let leaf = part == directory;
+            let exclusive = leaf && matches!(mode, Mode::New | Mode::NewChild);
             let metadata = match fs::symlink_metadata(part) {
-                Ok(_) if leaf && matches!(mode, Mode::New) => {
+                Ok(_) if exclusive => {
                     return Err(io::Error::new(
                         io::ErrorKind::AlreadyExists,
                         "Storage already exists",
                     ));
                 }
                 Ok(metadata) => metadata,
-                Err(e) if e.kind() == io::ErrorKind::NotFound && !matches!(mode, Mode::Check) => {
+                Err(e) if e.kind() == io::ErrorKind::NotFound
+                    && !matches!(mode, Mode::Check) && (leaf || !matches!(mode, Mode::NewChild)) => {
                     match fs::DirBuilder::new().mode(0o700).create(part) {
                         Ok(()) => {}
                         Err(e)
                             if e.kind() == io::ErrorKind::AlreadyExists
-                                && !(leaf && matches!(mode, Mode::New)) => {}
+                                && !exclusive => {}
                         Err(e) => return Err(e),
                     }
                     fs::symlink_metadata(part)?

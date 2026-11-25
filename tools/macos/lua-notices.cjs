@@ -3,7 +3,8 @@ const fs = require('node:fs'), path = require('node:path'), assert = require('no
 const packages = require('../prototypes/macos-lua-wasm/approved-crates.json');
 const [vendor, output] = process.argv.slice(2);
 assert(vendor && output && path.isAbsolute(vendor) && path.isAbsolute(output));
-let notice = 'Rocket Mac Lua helper: Wasmtime/Pulley 50.0.1, Lua 5.5.1 and Rust bindings.\n\n';
+const engine = packages.find(p => p.name === 'wasmtime').version;
+let notice = `Rocket Mac Lua helper: Wasmtime/Pulley ${engine}, Lua 5.5.1 and Rust bindings.\n\n`;
 for (const p of packages) {
   const directory = path.join(vendor, p.name + '-' + p.version);
   let licenseDirectory = directory;

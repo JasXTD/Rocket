@@ -388,6 +388,7 @@ pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel:
 #[derive(Default)]
 struct Sources {
     facts: HashMap<Vec<u8>, Facts>,
+    import_bytes: usize,
     lines: HashMap<Vec<u8>, usize>,
     unlinked: BTreeMap<Vec<u8>, UnlinkedReason>,
     total: usize,
@@ -638,7 +639,9 @@ impl Repository {
                 match std::str::from_utf8(blob) {
                     Ok(text) => {
                         s.lines.insert(path.clone(), text.lines().count().max(1));
-                        s.facts.insert(path.clone(), rust::read(text));
+                        let facts = rust::read_with_budget(text, &mut s.import_bytes);
+                        map.limited |= facts.limited;
+                        s.facts.insert(path.clone(), facts);
                     }
                     Err(_) => {
                         s.unlinked.insert(path.clone(), UnlinkedReason::NotUtf8);

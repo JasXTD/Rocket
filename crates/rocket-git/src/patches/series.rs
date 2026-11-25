@@ -230,7 +230,9 @@ Review again. Nothing was saved.",
                 let scratch_guard = local_files::pin_directories(parent, &scratch)?;
                 for entry in &p.entries {
                     cancel.check()?;
-                    files::write_new(&scratch.join(&entry.filename), &entry.bytes, cancel)?;
+                    let file = fs::File::create_new(scratch.join(&entry.filename))
+                        .map_err(|e| Error::io("reserve patch file", e))?;
+                    files::write(file, &entry.bytes, cancel)?;
                 }
                 self.runner
                     .step("patch-series-export", "verify_prepared_files", || {

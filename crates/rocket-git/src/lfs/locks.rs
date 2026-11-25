@@ -414,7 +414,7 @@ impl Repository {
         if metadata.len() > LFS_FILE_LIMIT {
             return fail(LfsFailure::Limit);
         }
-        if metadata.permissions().readonly() && !single_link(&file)? {
+        if metadata.permissions().readonly() && !crate::local_files::single_link(&file)? {
             return fail(LfsFailure::Layout);
         }
         let stamp = helper::hash(self, helper, &target, c)?;
@@ -690,49 +690,6 @@ impl Drop for LockCache {
             let _ = fs::remove_dir_all(&self.path);
         }
     }
-}
-#[cfg(windows)]
-fn single_link(file: &File) -> Result<bool> {
-    use std::os::windows::io::AsRawHandle;
-    #[repr(C)]
-    struct Info {
-        attributes: u32,
-        creation: [u32; 2],
-        access: [u32; 2],
-        write: [u32; 2],
-        volume: u32,
-        size_high: u32,
-        size_low: u32,
-        links: u32,
-        index_high: u32,
-        index_low: u32,
-    }
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn GetFileInformationByHandle(handle: *mut std::ffi::c_void, info: *mut Info) -> i32;
-    }
-    let mut info = std::mem::MaybeUninit::<Info>::uninit();
-    // SAFETY: File owns a live handle; Win32 initializes the repr(C) structure on success.
-    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), info.as_mut_ptr()) } == 0 {
-        return Err(Error::io(
-            "inspect LFS file links",
-            std::io::Error::last_os_error(),
-        ));
-    }
-    Ok(unsafe { info.assume_init() }.links == 1)
-}
-#[cfg(unix)]
-fn single_link(file: &File) -> Result<bool> {
-    use std::os::unix::fs::MetadataExt;
-    Ok(file
-        .metadata()
-        .map_err(|e| Error::io("inspect LFS file links", e))?
-        .nlink()
-        == 1)
-}
-#[cfg(not(any(windows, unix)))]
-fn single_link(_: &File) -> Result<bool> {
-    Ok(false)
 }
 #[cfg(test)]
 mod tests {

@@ -191,7 +191,7 @@ fn drafts_from_the_staged_diff_only_through_a_contained_no_tools_run() {
                 .lines()
                 .find_map(|l| l.strip_prefix("cwd="))
                 .unwrap();
-            assert!(cwd.contains("rocket-claude-"), "{cwd}");
+            assert!(Path::new(cwd).file_name().unwrap().to_string_lossy().starts_with("rocket-request-"), "{cwd}");
             assert!(
                 !Path::new(cwd).exists(),
                 "the empty folder is removed afterwards"
@@ -207,6 +207,8 @@ fn drafts_from_the_staged_diff_only_through_a_contained_no_tools_run() {
             };
             mode(&exe, "fence");
             let draft = repo.draft_commit_message(&conventional, &token()).unwrap();
+            let second = recorded(&exe, 2, "environment");
+            assert_ne!(cwd, second.lines().find_map(|l| l.strip_prefix("cwd=")).unwrap());
             assert!(draft.message.starts_with("Add PRIVATE_DRAFT_SUBJECT"));
             let prompt = recorded(&exe, 2, "request");
             assert!(prompt.contains("Conventional Commits"));
@@ -456,7 +458,7 @@ fn codex_drafts_run_read_only_without_tools_settings_or_session() {
                 .lines()
                 .find_map(|l| l.strip_prefix("cwd="))
                 .unwrap();
-            assert!(cwd.contains("rocket-codex-"), "{cwd}");
+            assert!(Path::new(cwd).file_name().unwrap().to_string_lossy().starts_with("rocket-request-"), "{cwd}");
             assert!(
                 !Path::new(cwd).exists(),
                 "the empty folder is removed afterwards"

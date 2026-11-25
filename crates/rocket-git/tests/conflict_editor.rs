@@ -49,6 +49,13 @@ fn unicode_save_then_stage_preserves_history_and_recovery() {
                 assert!(saved.saved && !saved.staged);
                 assert_eq!(fs::read(f.repository.join(".git/index")).unwrap(), index);
                 let recovery = saved.recovery_directory.unwrap();
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    for path in [recovery.clone(), recovery.join("observed-original"), recovery.join("result")] {
+                        assert_eq!(fs::metadata(path).unwrap().permissions().mode() & 0o077, 0);
+                    }
+                }
                 assert_eq!(
                     fs::read(recovery.join("replaced-original")).unwrap(),
                     original

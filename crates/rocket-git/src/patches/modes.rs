@@ -74,11 +74,11 @@ pub(super) fn publish(
             .unwrap_or_default()
             .as_nanos()
     ));
-    fs::create_dir(&dir).map_err(|e| Error::io("reserve patch index recovery", e))?;
+    crate::local_files::create_recovery_directory(&dir).map_err(|e| Error::io("reserve patch index recovery", e))?;
     recovery.push(dir.clone());
     let _dir = crate::local_files::pin_directories(root, &dir)?;
-    files::write_new(&dir.join("index-before"), before, c)?;
-    files::write_new(&dir.join("RECOVERY.md"),b"Original index before patch executable-mode changes. Existing staged blobs are preserved; new executable files are staged. Compare current status before restoring this copy over newer staging.\n",c)?;
+    files::write_private(&dir.join("index-before"), before, c)?;
+    files::write_private(&dir.join("RECOVERY.md"),b"Original index before patch executable-mode changes. Existing staged blobs are preserved; new executable files are staged. Compare current status before restoring this copy over newer staging.\n",c)?;
     let prepared = dir.join("index-after");
     if before.is_empty() {
         repo.runner
@@ -91,7 +91,7 @@ pub(super) fn publish(
             )?
             .success("patch-index")?;
     } else {
-        files::write_new(&prepared, before, c)?;
+        files::write_private(&prepared, before, c)?;
     }
     let mut input = Vec::new();
     for (path, mode) in &p.modes {

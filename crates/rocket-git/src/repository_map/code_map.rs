@@ -154,7 +154,7 @@ pub struct CodeLinks {
     /// Code files read.
     pub files: usize,
     pub limited: bool,
-    /// Source follow-ups were clipped even within a selected package.
+    /// A source read or Rust import expansion reached its limit inside a selected package.
     pub sources_limited: bool,
     /// Absent without a CODEOWNERS file, or when this read was for one folder.
     pub owners: Option<OwnerRules>,
@@ -247,6 +247,7 @@ type Batch = Vec<(Vec<u8>, ObjectId, usize)>;
 struct Budget {
     files: usize,
     bytes: usize,
+    import_bytes: usize,
     limited: bool,
 }
 impl Budget {
@@ -535,7 +536,7 @@ impl Repository {
             out.packages.push(reference);
         }
         out.files = budget.files;
-        out.limited = !out.unread.is_empty() || budget.limited || b.limited || manifest_limited || out.owners_limited;
+        out.limited = !out.unread.is_empty() || budget.limited || b.limited || manifest_limited || out.sources_limited || out.owners_limited;
         out.ends = b.ends;
         out.links = b.links.into_iter().map(|((from, to), names)| CodeLink { from, to, names: names.into_iter().collect() }).collect();
         Ok(out)
@@ -637,7 +638,7 @@ impl Repository {
         let mut facts: HashMap<Vec<u8>, rust::Facts> = HashMap::new();
         for path in files {
             if let Some(text) = read.texts.get(path) {
-                facts.insert(path.clone(), rust::read(text));
+                facts.insert(path.clone(), rust::read_with_budget(text, &mut read.budget.import_bytes));
             }
         }
         let known = |p: &[u8]| blobs.contains_key(p);
@@ -659,7 +660,7 @@ impl Repository {
                         continue;
                     }
                     if let Some(text) = read.texts.get(&path) {
-                        facts.insert(path.clone(), rust::read(text));
+                        facts.insert(path.clone(), rust::read_with_budget(text, &mut read.budget.import_bytes));
                         found = true;
                     } else if let Some(entry) = readable(blobs, &path) {
                         if read.budget.reserve(1, entry.2) {
@@ -672,7 +673,7 @@ impl Repository {
                 if !missing.is_empty() {
                     for (path, text) in self.code_texts("read-sources", &missing, cancel)? {
                         read.lines.insert(path.clone(), text.lines().count().max(1));
-                        facts.insert(path.clone(), rust::read(&text));
+                        facts.insert(path.clone(), rust::read_with_budget(&text, &mut read.budget.import_bytes));
                         read.texts.insert(path, text);
                         found = true;
                     }
@@ -707,6 +708,7 @@ impl Repository {
                 }
             }
         }
+        *read.limited |= facts.values().any(|f| f.limited);
         Ok(())
     }
 }

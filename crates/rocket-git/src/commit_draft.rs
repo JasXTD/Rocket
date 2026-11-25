@@ -467,7 +467,8 @@ impl Repository {
         request.validate()?;
         let provider = request.provider;
         let executable = provider.executable(request.executable.as_deref())?;
-        let folder = draft_folder(provider)?;
+        // Each provider invocation starts outside the repository in its own empty directory.
+        let folder = crate::hosting::neutral_directory()?;
         let mut runner = self.runner.clone();
         runner.limits = CommandLimits {
             timeout: limits.timeout,
@@ -488,8 +489,7 @@ impl Repository {
                 cancel,
             )
         });
-        // Only an empty folder is removed; a draft running in another tab keeps it.
-        let _ = std::fs::remove_dir(&folder);
+        drop(folder);
         let output = output.or_else(|e| match e {
             Error::TimedOut => refused(provider, DraftFailure::TimedOut),
             Error::OutputLimit { .. } => refused(provider, DraftFailure::InvalidReply),
@@ -784,15 +784,6 @@ fn codex_arguments_for(instructions: &'static str) -> Vec<OsString> {
 #[cfg(test)]
 fn codex_arguments() -> Vec<OsString> {
     codex_arguments_for(SYSTEM_PROMPT)
-}
-
-/// An empty folder of Rocket's own: the CLI must not pick up a repository's project
-/// settings, `.mcp.json`, CLAUDE.md, AGENTS.md or `.codex` from its working directory.
-fn draft_folder(provider: DraftProvider) -> Result<PathBuf> {
-    let folder =
-        std::env::temp_dir().join(format!("rocket-{}-{}", provider.code(), std::process::id()));
-    std::fs::create_dir_all(&folder).map_err(|e| Error::io("prepare the drafting folder", e))?;
-    Ok(folder)
 }
 
 /// The draft from Claude Code's JSON result, or a typed failure. The reply text and

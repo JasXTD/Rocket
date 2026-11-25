@@ -456,6 +456,23 @@ fn modules(f: &Fixture, package: Option<&str>) -> Result<RepositoryMap> {
 }
 
 #[test]
+fn both_rust_maps_report_partial_imports() {
+    isolated("ROCKET_MAP_TEST", "both_rust_maps_report_partial_imports", || {
+        let f = Fixture::new();
+        f.write("Cargo.toml", "[package]\nname='sample'\n");
+        f.write("src/lib.rs", format!("pub mod kept;\nuse {}Item{};\n", "{".repeat(65), "}".repeat(65)));
+        f.write("src/kept.rs", "pub struct Item;\n");
+        f.commit("map fixture");
+        let map = modules(&f, None).unwrap();
+        assert!(map.limited);
+        let tip = ObjectId::parse(String::from_utf8(f.run(&["rev-parse", "HEAD"])).unwrap().trim()).unwrap();
+        let code = f.repo().code_links(&tip, None, &token()).unwrap();
+        assert!(code.sources_limited && code.limited);
+        assert!(code.lines.contains_key(b"src/kept.rs".as_slice()));
+    });
+}
+
+#[test]
 fn committed_rust_modules_connections_and_unlinked_files() {
     isolated(
         "ROCKET_MAP_TEST",

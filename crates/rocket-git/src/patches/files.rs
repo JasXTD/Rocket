@@ -77,12 +77,11 @@ pub(super) fn read_bounded(path: &Path, limit: usize, cancel: &CancellationToken
     }
     Ok(bytes)
 }
-pub(super) fn write_new(path: &Path, bytes: &[u8], cancel: &CancellationToken) -> Result<()> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(path)
-        .map_err(|e| Error::io("reserve patch file", e))?;
+pub(super) fn write_private(path: &Path, bytes: &[u8], cancel: &CancellationToken) -> Result<()> {
+    let file = local_files::create_private_file(path).map_err(|e| Error::io("reserve patch file", e))?;
+    write(file, bytes, cancel)
+}
+pub(super) fn write(mut file: File, bytes: &[u8], cancel: &CancellationToken) -> Result<()> {
     for chunk in bytes.chunks(65536) {
         cancel.check()?;
         file.write_all(chunk)
@@ -104,7 +103,7 @@ impl Scratch {
             .map_err(|e| Error::io("resolve patch preview folder", e))?;
         let path = base.join(unique());
         let mut guards = pin_parent(&path)?;
-        fs::create_dir(&path).map_err(|e| Error::io("reserve patch preview folder", e))?;
+        local_files::create_recovery_directory(&path).map_err(|e| Error::io("reserve patch preview folder", e))?;
         guards.extend(local_files::pin_directories(&base, &path)?);
         Ok(Self { path, guards, base })
     }
@@ -137,6 +136,20 @@ impl Drop for Scratch {
         self.guards.clear();
         let _ = self.remove();
     }
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn scratch_and_its_working_copy_are_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let scratch = Scratch::new().unwrap();
+    let path = scratch.path.join("working-copy");
+    write_private(&path, b"local changes", &CancellationToken::new()).unwrap();
+    for p in [&scratch.path, &path] {
+        assert_eq!(fs::metadata(p).unwrap().permissions().mode() & 0o077, 0);
+    }
+    scratch.cleanup().unwrap();
+    assert!(!path.exists());
 }
 
 pub(super) fn validate_destination(repo: &Repository, path: &Path) -> Result<()> {

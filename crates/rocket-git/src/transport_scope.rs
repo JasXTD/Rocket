@@ -101,6 +101,10 @@ pub struct TransportScope {
 }
 
 impl TransportScope {
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
     pub fn new(root: &Path, network_urls: Vec<String>) -> Result<Self> {
         let root = root
             .canonicalize()

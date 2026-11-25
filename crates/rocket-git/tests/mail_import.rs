@@ -287,6 +287,14 @@ fn conflict_continue_skip_abort_protect_resolutions_and_recovery_state() {
                 if action == MailImportAction::Abort {
                     assert_eq!(oid(&f), original);
                     let backup = r.backup.unwrap();
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::fs::PermissionsExt;
+                        assert_eq!(fs::metadata(&backup).unwrap().permissions().mode() & 0o077, 0);
+                        for entry in fs::read_dir(&backup).unwrap() {
+                            assert_eq!(entry.unwrap().metadata().unwrap().permissions().mode() & 0o077, 0);
+                        }
+                    }
                     assert!(backup.join("manifest.log").is_file());
                     assert!(fs::read_dir(&backup).unwrap().any(|e| {
                         fs::read(e.unwrap().path()).ok().as_deref() == Some(b"late edit\n")

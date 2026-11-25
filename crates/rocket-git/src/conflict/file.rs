@@ -226,7 +226,7 @@ pub(super) fn publish_change(
     let git_dir = &repo.info().git_dir;
     let _git_guard = local_files::pin_directories(git_dir, git_dir)?;
     let parent = git_dir.join("rocket-conflict-recovery");
-    match fs::create_dir(&parent) {
+    match local_files::create_recovery_directory(&parent) {
         Ok(()) => (),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
         Err(e) => return Err(io("create conflict recovery directory", e)),
@@ -242,14 +242,11 @@ pub(super) fn publish_change(
         NEXT.fetch_add(1, Ordering::Relaxed)
     );
     let directory = parent.join(unique);
-    fs::create_dir(&directory).map_err(|e| io("reserve conflict recovery directory", e))?;
+    local_files::create_recovery_directory(&directory).map_err(|e| io("reserve conflict recovery directory", e))?;
     let _recovery_guard = local_files::pin_directories(git_dir, &directory)?;
     *recovery = Some(directory.clone());
     let write = |name: &str, content: &[u8]| -> Result<()> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(directory.join(name))
+        let mut file = local_files::create_recovery_file(&directory, name)
             .map_err(|e| io("prepare conflict recovery copy", e))?;
         file.write_all(content)
             .and_then(|()| file.sync_all())

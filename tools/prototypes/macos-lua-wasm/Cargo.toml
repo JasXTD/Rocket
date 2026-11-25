@@ -21,5 +21,4 @@ opt-level = 2
 codegen-units = 8
 incremental = false
 
-# Standalone compatibility experiment. Not a member of Rocket's application
-# workspace and not a production macOS sandbox or bundled release component.
+# Separately locked compiler, fixed-guest macOS helper and compatibility tests.

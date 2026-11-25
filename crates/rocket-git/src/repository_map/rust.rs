@@ -16,6 +16,8 @@ enum Token {
 /// What one file says about modules and names.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Facts {
+    /// The source exceeded a nesting or expanded-import limit.
+    pub limited: bool,
     /// `mod name;`: a module in its own file.
     pub declarations: Vec<Declaration>,
     /// `mod name { … }`: the module path inside the file, ending in its own name.
@@ -241,12 +243,14 @@ fn lex(source: &str) -> Vec<Token> {
 
 const ITEMS: [&str; 8] = ["fn", "struct", "enum", "trait", "type", "const", "static", "union"];
 
-/// Reads one file.
-pub(super) fn read(source: &str) -> Facts {
+/// Read one file and charge its flattened imports to the whole map request.
+pub(super) fn read_with_budget(source: &str, map_import_bytes: &mut usize) -> Facts {
     // A byte-order mark is no part of the first line.
     let source = source.strip_prefix('﻿').unwrap_or(source);
     let t = lex(source);
     let mut facts = Facts::default();
+    let allowance = FILE_IMPORT_BYTES.min(MAP_IMPORT_BYTES.saturating_sub(*map_import_bytes));
+    let mut import_budget = allowance;
     let is = |k: usize, p: &str| matches!(t.get(k), Some(Token::Punct(x)) if *x == p);
     let name = |k: usize| match t.get(k) {
         Some(Token::Ident(x) | Token::Raw(x)) => Some(x.clone()),
@@ -262,6 +266,10 @@ pub(super) fn read(source: &str) -> Facts {
     let mut fresh = true;
     let mut k = 0;
     while k < t.len() {
+        if scopes.len() > MAX_NESTING {
+            facts.limited = true;
+            break;
+        }
         match &t[k] {
             Token::Punct("#") if is(k + 1, "[") || is(k + 1, "!") && is(k + 2, "[") => {
                 let outer = is(k + 1, "[");
@@ -361,17 +369,7 @@ pub(super) fn read(source: &str) -> Facts {
                 while end < t.len() && !is(end, ";") {
                     end += 1;
                 }
-                let here = chain(&scopes);
-                for (segments, alias, glob) in expand(&t[start..end]) {
-                    if !segments.is_empty() {
-                        facts.uses.push(Use {
-                            chain: here.clone(),
-                            segments,
-                            alias,
-                            glob,
-                        });
-                    }
-                }
+                expand(&t[start..end], &chain(&scopes), &mut import_budget, &mut facts);
                 k = end;
                 continue;
             }
@@ -437,7 +435,13 @@ pub(super) fn read(source: &str) -> Facts {
         fresh = false;
         k += 1;
     }
+    *map_import_bytes += allowance - import_budget;
     facts
+}
+
+#[cfg(test)]
+pub(super) fn read(source: &str) -> Facts {
+    read_with_budget(source, &mut 0)
 }
 
 fn outline(kind: OutlineKind, name: &str, visibility: Option<String>) -> OutlineItem {
@@ -540,71 +544,76 @@ fn implementation(t: &[Token], k: usize) -> OutlineItem {
     }
 }
 
-type Tree = (Vec<String>, Option<String>, bool);
-/// A `use` tree as flat paths: segments, `as` name, and whether it ends in `*`.
-fn expand(body: &[Token]) -> Vec<Tree> {
-    let mut out = Vec::new();
+const MAX_NESTING: usize = 64;
+// Charge each flattened import for its owned strings, including repeated prefixes.
+const FILE_IMPORT_BYTES: usize = 4 * 1024 * 1024;
+const MAP_IMPORT_BYTES: usize = 32 * 1024 * 1024;
+
+fn expand(body: &[Token], chain: &[String], budget: &mut usize, facts: &mut Facts) {
+    let cost = |part: &str| size_of::<String>() + part.len();
+    let base = size_of::<Use>() + chain.iter().map(|part| cost(part)).sum::<usize>();
+    let mut groups = Vec::new();
+    let mut segments = Vec::new();
+    let mut bytes = base;
     let mut i = 0;
-    while i < body.len() {
-        let before = i;
-        i = walk(body, i, &[], &mut out);
-        if i == before {
-            i += 1;
-        }
-    }
-    out
-}
-fn walk(body: &[Token], mut i: usize, prefix: &[String], out: &mut Vec<Tree>) -> usize {
-    let mut segments = prefix.to_vec();
-    let alias = |j: usize| match body.get(j) {
-        Some(Token::Ident(a) | Token::Raw(a)) => Some(a.clone()),
-        _ => None,
-    };
-    while i < body.len() {
-        match &body[i] {
+    while let Some(token) = body.get(i) {
+        i += 1;
+        let mut alias = None;
+        let glob = match token {
             Token::Punct("::") => {
-                // A leading `::` names another crate.
                 if segments.is_empty() {
-                    segments.push(String::new());
+                    segments.push("");
+                    bytes += cost("");
                 }
-                i += 1;
-            }
-            Token::Punct("*") => {
-                out.push((segments, None, true));
-                return i + 1;
+                continue;
             }
             Token::Punct("{") => {
-                i += 1;
-                while i < body.len() && !matches!(body[i], Token::Punct("}")) {
-                    if matches!(body[i], Token::Punct(",")) {
-                        i += 1;
-                        continue;
-                    }
-                    let before = i;
-                    i = walk(body, i, &segments, out);
-                    if i == before {
-                        i += 1;
-                    }
+                if groups.len() == MAX_NESTING {
+                    facts.limited = true;
+                    return;
                 }
-                return i + 1;
+                groups.push((segments.len(), bytes));
+                continue;
             }
+            Token::Punct("}") => {
+                groups.pop();
+                None
+            }
+            Token::Punct("*") => Some(true),
             Token::Ident(part) | Token::Raw(part) => {
-                segments.push(part.clone());
-                i += 1;
+                segments.push(part.as_str());
+                bytes += cost(part);
                 if matches!(body.get(i), Some(Token::Punct("::"))) {
                     continue;
                 }
-                if matches!(body.get(i), Some(Token::Ident(a)) if a == "as") {
-                    out.push((segments, alias(i + 1), false));
-                    return i + 2;
+                if matches!(body.get(i), Some(Token::Ident(word)) if word == "as") {
+                    if let Some(Token::Ident(name) | Token::Raw(name)) = body.get(i + 1) {
+                        alias = Some(name);
+                        bytes += cost(name);
+                    }
+                    i += 2;
                 }
-                out.push((segments, None, false));
-                return i;
+                Some(false)
             }
-            _ => return i,
+            _ => None,
+        };
+        if let Some(glob) = glob && !segments.is_empty() {
+            let Some(left) = budget.checked_sub(bytes) else {
+                facts.limited = true;
+                return;
+            };
+            *budget = left;
+            facts.uses.push(Use {
+                chain: chain.to_vec(),
+                segments: segments.iter().map(|part| (*part).to_owned()).collect(),
+                alias: alias.cloned(),
+                glob,
+            });
         }
+        let (len, prefix_bytes) = groups.last().copied().unwrap_or((0, base));
+        segments.truncate(len);
+        bytes = prefix_bytes;
     }
-    i
 }
 
 #[cfg(test)]
@@ -740,5 +749,38 @@ mod both;
         for source in ["r#\"open", "'", "/* open", "b'", "r#", "#[", "use crate::{a, b", "mod"] {
             let _ = read(source);
         }
+    }
+
+    #[test]
+    fn imports_report_limits_and_keep_independent_items() {
+        let nested = |n: usize| format!("use {}Item{}; use next::Value;", "{".repeat(n), "}".repeat(n));
+        let within = read(&nested(MAX_NESTING));
+        assert!(!within.limited);
+        assert_eq!(within.uses[0].segments, ["Item"]);
+        let beyond = read(&nested(MAX_NESTING + 1));
+        assert!(beyond.limited);
+        assert_eq!(beyond.uses.len(), 1);
+        assert_eq!(beyond.uses[0].segments, ["next", "Value"]);
+
+        let mut facts = Facts::default();
+        let mut budget = size_of::<Use>() + 2 * size_of::<String>() + "groupOne".len();
+        expand(&lex("group::{One, Two}"), &[], &mut budget, &mut facts);
+        assert!(facts.limited);
+        assert_eq!(facts.uses.len(), 1);
+        assert_eq!(facts.uses[0].segments, ["group", "One"]);
+    }
+
+    #[test]
+    fn import_budget_is_shared_across_source_files() {
+        let one = size_of::<Use>() + size_of::<String>() + "Item".len();
+        let mut used = MAP_IMPORT_BYTES - one;
+        let first = read_with_budget("use Item;", &mut used);
+        assert!(!first.limited);
+        assert_eq!(first.uses.len(), 1);
+        assert_eq!(used, MAP_IMPORT_BYTES);
+        let next = read_with_budget("use Other; pub fn independent() {}", &mut used);
+        assert!(next.limited);
+        assert!(next.uses.is_empty());
+        assert_eq!(next.outline[0].name, b"independent");
     }
 }

@@ -1,6 +1,5 @@
 'use strict';
-// Exact copies of the archives approved, hashed, source-reviewed and scanned on
-// 2026-11-09. Stages a private offline Cargo directory, never a system install.
+// Stage the checksum-pinned registry archives in a private offline Cargo directory.
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
 const zlib = require('node:zlib'), assert = require('node:assert/strict');
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex');

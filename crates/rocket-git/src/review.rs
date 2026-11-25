@@ -428,8 +428,17 @@ fn review_options(path: &RepoPath, staged: bool) -> DiffOptions {
     }
 }
 
-#[cfg(windows)]
 pub(crate) fn verify_preview_handle(
+    file: &std::fs::File,
+    root: &std::path::Path,
+    path: &std::path::Path,
+) -> Result<()> {
+    verify_handle_under(file, &std::fs::canonicalize(root).map_err(preview_io)?, path)
+}
+
+/// Compare the opened file to a root resolved when its scope was established.
+#[cfg(windows)]
+pub(crate) fn verify_handle_under(
     file: &std::fs::File,
     root: &std::path::Path,
     _path: &std::path::Path,
@@ -465,8 +474,7 @@ pub(crate) fn verify_preview_handle(
         return Err(Error::InvalidInput("Preview path is too long.".into()));
     }
     let opened = PathBuf::from(std::ffi::OsString::from_wide(&buffer[..size]));
-    let root = std::fs::canonicalize(root).map_err(preview_io)?;
-    if !opened.starts_with(&root) {
+    if !opened.starts_with(root) {
         return Err(Error::InvalidInput(
             "Preview path resolves outside this working tree.".into(),
         ));
@@ -474,7 +482,7 @@ pub(crate) fn verify_preview_handle(
     Ok(())
 }
 #[cfg(not(windows))]
-pub(crate) fn verify_preview_handle(
+pub(crate) fn verify_handle_under(
     file: &std::fs::File,
     root: &std::path::Path,
     path: &std::path::Path,
@@ -507,7 +515,7 @@ pub(crate) fn verify_preview_handle(
         }
         std::fs::canonicalize(path).map_err(preview_io)?
     };
-    if !opened.starts_with(std::fs::canonicalize(root).map_err(preview_io)?) {
+    if !opened.starts_with(root) {
         return Err(Error::InvalidInput(
             "Preview path resolves outside this working tree.".into(),
         ));

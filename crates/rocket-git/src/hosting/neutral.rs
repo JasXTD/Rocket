@@ -40,8 +40,10 @@ impl NeutralDirectory {
         // also enforces 0700, ownership and safe ancestors (including Darwin ACLs).
         // Root and processes with our own identity remain outside this boundary.
         #[cfg(unix)]
-        local_storage::create_private_new(&path)?;
-        #[cfg(not(unix))]
+        local_storage::create_private_child(&path)?;
+        #[cfg(windows)]
+        crate::local_files::private_windows::create(&path)?;
+        #[cfg(not(any(unix, windows)))]
         fs::create_dir(&path)?;
         Ok(Self(Arc::new(OwnedDirectory(path))))
     }

@@ -192,10 +192,7 @@ pub(super) fn read_working(
 }
 #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn write(directory: &Path, name: &str, bytes: &[u8], cancel: &CancellationToken) -> Result<()> {
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(directory.join(name))
+    let mut file = local_files::create_recovery_file(directory, name)
         .map_err(|e| Error::io("reserve file recovery copy", e))?;
     for chunk in bytes.chunks(65536) {
         cancel.check()?;
@@ -328,7 +325,7 @@ pub(super) fn publish(
     let git = &repo.info().git_dir;
     let _git_guard = local_files::pin_directories(git, git)?;
     let parent = git.join(FOLDER);
-    match fs::create_dir(&parent) {
+    match local_files::create_recovery_directory(&parent) {
         Ok(()) => (),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
         Err(e) => return Err(Error::io("create file recovery folder", e)),
@@ -344,7 +341,7 @@ pub(super) fn publish(
         NEXT.fetch_add(1, Ordering::Relaxed)
     );
     let directory = parent.join(&id);
-    fs::create_dir(&directory).map_err(|e| Error::io("reserve file recovery folder", e))?;
+    local_files::create_recovery_directory(&directory).map_err(|e| Error::io("reserve file recovery folder", e))?;
     let _backup_guard = local_files::pin_directories(git, &directory)?;
     *recovery = Some(directory.clone());
     repo.runner.step(p.source.label(), "prepare-backup", || {

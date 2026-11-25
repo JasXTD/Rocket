@@ -15,6 +15,9 @@ and the native VM are trusted, hash-reviewed build inputs.
 Dependencies were approved on 2026-11-09. All 127 archives matched their official
 SHA-256 hashes and the user reported a clean Malwarebytes scan before extraction.
 The standalone lockfile and `approved-crates.json` bind all 124 registry versions.
+The November 25 security update pins Wasmtime and Pulley 50.0.2 and Cranelift
+0.137.2. It changes 25 of those entries. The November 9 results below apply to
+the earlier pins. [Wasmtime 50.0.2 security fixes](https://github.com/bytecodealliance/wasmtime/releases/tag/v50.0.2)
 No system toolchain, root Cargo dependency or production package is changed.
 
 The first build with stable Rust's prebuilt WASI std failed four Rust callback

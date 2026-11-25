@@ -30,7 +30,7 @@ fn main() -> Result<()> {
     fs::write(
         output.join("module.json"),
         serde_json::to_vec_pretty(
-            &serde_json::json!({"engine":"wasmtime-50.0.1-pulley64","production_ready":false,"imports":imports,"exports":exports}),
+            &serde_json::json!({"engine":"wasmtime-50.0.2-pulley64","production_ready":false,"imports":imports,"exports":exports}),
         )?,
     )?;
     fs::write(output.join("guest.cwasm"), module.serialize()?)?;

@@ -79,18 +79,8 @@ pub(super) fn read(p: &Path, limit: usize) -> Result<Vec<u8>> {
     Ok(b)
 }
 pub(super) fn create_file(p: &Path, b: &[u8]) -> Result<()> {
-    let mut options = OpenOptions::new();
-    // Unix: only this user can open it, like the folder it is in (Windows files take
-    // the folder's protected permissions).
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.mode(0o600);
-    }
-    options
-        .write(true)
-        .create_new(true)
-        .open(p)
+    // Windows inherits the protected directory ACL; Unix sets mode 0600 at creation.
+    local_files::create_private_file(p)
         .and_then(|mut f| {
             f.write_all(b)?;
             f.sync_all()
@@ -115,107 +105,7 @@ pub(super) fn ensure_private_parent(p: &Path) -> Result<()> {
 }
 #[cfg(windows)]
 pub(super) fn create_private_dir(p: &Path) -> Result<()> {
-    use std::{ffi::c_void, os::windows::ffi::OsStrExt, ptr};
-    type Handle = *mut c_void;
-    #[repr(C)]
-    struct Sa {
-        len: u32,
-        descriptor: Handle,
-        inherit: i32,
-    }
-    #[link(name = "advapi32")]
-    unsafe extern "system" {
-        fn OpenProcessToken(p: Handle, access: u32, token: *mut Handle) -> i32;
-        fn GetTokenInformation(t: Handle, class: u32, out: Handle, n: u32, needed: *mut u32)
-        -> i32;
-        fn ConvertSidToStringSidW(sid: Handle, text: *mut *mut u16) -> i32;
-        fn ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            s: *const u16,
-            revision: u32,
-            out: *mut Handle,
-            len: *mut u32,
-        ) -> i32;
-    }
-    #[link(name = "kernel32")]
-    unsafe extern "system" {
-        fn GetCurrentProcess() -> Handle;
-        fn CloseHandle(h: Handle) -> i32;
-        fn LocalFree(h: Handle) -> Handle;
-        fn CreateDirectoryW(name: *const u16, sa: *const Sa) -> i32;
-    }
-    struct Owned(Handle, bool);
-    impl Drop for Owned {
-        fn drop(&mut self) {
-            unsafe {
-                if self.1 {
-                    LocalFree(self.0);
-                } else {
-                    CloseHandle(self.0);
-                }
-            }
-        }
-    }
-    let io = || {
-        Error::io(
-            "create protected SSH directory",
-            std::io::Error::last_os_error(),
-        )
-    };
-    let mut token = ptr::null_mut();
-    if unsafe { OpenProcessToken(GetCurrentProcess(), 8, &mut token) } == 0 {
-        return Err(io());
-    }
-    let token = Owned(token, false);
-    let mut n = 0;
-    unsafe {
-        GetTokenInformation(token.0, 1, ptr::null_mut(), 0, &mut n);
-    }
-    if n == 0 || n > 65536 {
-        return Err(io());
-    }
-    let mut b = vec![0usize; (n as usize).div_ceil(std::mem::size_of::<usize>())];
-    if unsafe { GetTokenInformation(token.0, 1, b.as_mut_ptr().cast(), n, &mut n) } == 0 {
-        return Err(io());
-    }
-    // TOKEN_USER starts with a SID pointer. Aligned storage remains live below.
-    let sid = unsafe { *(b.as_ptr().cast::<Handle>()) };
-    let mut s = ptr::null_mut();
-    if unsafe { ConvertSidToStringSidW(sid, &mut s) } == 0 {
-        return Err(io());
-    }
-    let _sid = Owned(s.cast(), true);
-    let mut len = 0;
-    while unsafe { *s.add(len) } != 0 {
-        len += 1;
-    }
-    let user = String::from_utf16_lossy(unsafe { std::slice::from_raw_parts(s, len) });
-    let sddl: Vec<_> = format!("D:P(A;OICI;FA;;;{user})(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
-        .encode_utf16()
-        .chain(Some(0))
-        .collect();
-    let mut descriptor = ptr::null_mut();
-    if unsafe {
-        ConvertStringSecurityDescriptorToSecurityDescriptorW(
-            sddl.as_ptr(),
-            1,
-            &mut descriptor,
-            ptr::null_mut(),
-        )
-    } == 0
-    {
-        return Err(io());
-    }
-    let _descriptor = Owned(descriptor, true);
-    let name: Vec<_> = p.as_os_str().encode_wide().chain(Some(0)).collect();
-    let sa = Sa {
-        len: std::mem::size_of::<Sa>() as u32,
-        descriptor,
-        inherit: 0,
-    };
-    if unsafe { CreateDirectoryW(name.as_ptr(), &sa) } == 0 {
-        return Err(io());
-    }
-    Ok(())
+    local_files::private_windows::create(p).map_err(|e| Error::io("create protected SSH directory", e))
 }
 /// Unix: a new folder only this user can open (0700). It must not exist yet.
 #[cfg(unix)]

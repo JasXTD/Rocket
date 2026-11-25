@@ -22,7 +22,16 @@ fn apply(repo: &Repository, p: &FileEditPreview) {
     r.result.unwrap();
     r.verification.unwrap();
     r.status.unwrap();
-    assert!(r.recovery_directory.unwrap().is_dir());
+    let directory = r.recovery_directory.unwrap();
+    assert!(directory.is_dir());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for entry in [Some(directory.clone()), p.before().map(|_| directory.join("observed-original")),
+            p.after().map(|_| directory.join("result"))].into_iter().flatten() {
+            assert_eq!(fs::metadata(entry).unwrap().permissions().mode() & 0o077, 0);
+        }
+    }
 }
 #[test]
 fn discard_preserves_staged_content_and_recovers_exact_unicode_file() {

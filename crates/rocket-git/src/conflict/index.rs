@@ -52,10 +52,7 @@ fn read(path: &Path) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 fn write_new(path: &Path, bytes: &[u8]) -> Result<()> {
-    let mut f = OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .open(path)
+    let mut f = local_files::create_private_file(path)
         .map_err(|e| Error::io("create conflict index recovery", e))?;
     f.write_all(bytes)
         .and_then(|()| f.sync_all())
@@ -116,7 +113,7 @@ pub(super) fn stage(
     let original = read(&admin.join("index"))?;
     if recovery.is_none() {
         let parent = admin.join("rocket-conflict-recovery");
-        match fs::create_dir(&parent) {
+        match local_files::create_recovery_directory(&parent) {
             Ok(()) => (),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => (),
             Err(e) => return Err(Error::io("create conflict recovery", e)),
@@ -132,7 +129,7 @@ pub(super) fn stage(
             NEXT.fetch_add(1, Ordering::Relaxed)
         );
         let directory = parent.join(id);
-        fs::create_dir(&directory).map_err(|e| Error::io("reserve conflict recovery", e))?;
+        local_files::create_recovery_directory(&directory).map_err(|e| Error::io("reserve conflict recovery", e))?;
         *recovery = Some(directory);
     }
     let directory = recovery.as_ref().unwrap();

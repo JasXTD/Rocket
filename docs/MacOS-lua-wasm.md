@@ -14,8 +14,10 @@ remain separate from this development-runner result.
 
 ## Recommendation
 
-Continue from the tested Lua prototype inside **Wasmtime 50.0.1 using its Pulley
-interpreter**, toward a separate Mac worker with App Sandbox as an outer boundary.
+The macOS worker uses **Wasmtime 50.0.2 with the Pulley interpreter** inside App
+Sandbox. On November 25 the rebuilt guest passed the VM and worker lifecycle
+tests on Linux, and all 14 Lua responses matched the native reference. The
+November 9 Apple Silicon qualification below used version 50.0.1.
 The user approved app integration after the isolated qualification. This is not
 a safety certification; the native VM and operating system remain trusted.
 

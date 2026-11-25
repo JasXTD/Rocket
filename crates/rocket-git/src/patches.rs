@@ -274,7 +274,7 @@ impl Repository {
             // Highest-precedence attributes disable every conversion in the sandbox.
             std::fs::create_dir_all(scratch.path.join(".git/info"))
                 .map_err(|e| Error::io("prepare patch sandbox attributes", e))?;
-            files::write_new(
+            files::write_private(
                 &scratch.path.join(".git/info/attributes"),
                 b"* -text -filter -ident -working-tree-encoding\n",
                 cancel,
@@ -284,7 +284,7 @@ impl Repository {
                 std::fs::create_dir_all(path.parent().unwrap())
                     .map_err(|e| Error::io("prepare patch sandbox parent", e))?;
                 if let Some(input) = input {
-                    files::write_new(&path, input, cancel)?;
+                    files::write_private(&path, input, cancel)?;
                 }
             }
             let canonical: Vec<u8> = parsed

@@ -13,6 +13,82 @@ use darwin as atomic;
 #[cfg(target_os = "linux")]
 use linux as atomic;
 
+#[cfg(windows)]
+pub(crate) mod private_windows;
+
+/// Reserve an operation's scratch or recovery directory before storing repository data.
+pub(crate) fn create_recovery_directory(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    return crate::local_storage::create_private_child(path);
+    #[cfg(not(unix))]
+    fs::create_dir(path)
+}
+
+pub(crate) fn create_private_file(path: &Path) -> std::io::Result<File> {
+    let mut options = fs::OpenOptions::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options.write(true).create_new(true).open(path)
+}
+
+/// Only the replacement leaves this private directory. Give it normal creation
+/// permissions so a newly restored worktree file honors the user's umask.
+pub(crate) fn create_recovery_file(directory: &Path, name: &str) -> std::io::Result<File> {
+    let path = directory.join(name);
+    if name == "replacement" {
+        File::create_new(path)
+    } else {
+        create_private_file(&path)
+    }
+}
+
+#[cfg(windows)]
+pub(crate) fn single_link(file: &File) -> Result<bool> {
+    use std::os::windows::io::AsRawHandle;
+    #[repr(C)]
+    struct Info {
+        attributes: u32,
+        creation: [u32; 2],
+        access: [u32; 2],
+        write: [u32; 2],
+        volume: u32,
+        size_high: u32,
+        size_low: u32,
+        links: u32,
+        index_high: u32,
+        index_low: u32,
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFileInformationByHandle(handle: *mut std::ffi::c_void, info: *mut Info) -> i32;
+    }
+    let mut info = std::mem::MaybeUninit::<Info>::uninit();
+    // SAFETY: File owns a live handle; Win32 initializes the repr(C) structure on success.
+    if unsafe { GetFileInformationByHandle(file.as_raw_handle(), info.as_mut_ptr()) } == 0 {
+        return Err(Error::io(
+            "inspect file links",
+            std::io::Error::last_os_error(),
+        ));
+    }
+    Ok(unsafe { info.assume_init() }.links == 1)
+}
+#[cfg(unix)]
+pub(crate) fn single_link(file: &File) -> Result<bool> {
+    use std::os::unix::fs::MetadataExt;
+    Ok(file
+        .metadata()
+        .map_err(|e| Error::io("inspect file links", e))?
+        .nlink()
+        == 1)
+}
+#[cfg(not(any(windows, unix)))]
+pub(crate) fn single_link(_: &File) -> Result<bool> {
+    Ok(false)
+}
+
 pub(crate) fn redirected(meta: &fs::Metadata) -> bool {
     #[cfg(windows)]
     {
@@ -500,6 +576,27 @@ mod unix_tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.0);
         }
+    }
+
+    #[test]
+    fn recovery_copies_are_private_and_new_working_files_keep_the_normal_mode() {
+        let scratch = Scratch::new("recovery-modes");
+        fs::set_permissions(&scratch.0, fs::Permissions::from_mode(0o700)).unwrap();
+        let directory = scratch.0.join("recovery");
+        create_recovery_directory(&directory).unwrap();
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let ordinary = scratch.0.join("ordinary");
+        File::create_new(&ordinary).unwrap();
+        for name in ["observed-original", "result", "replacement"] {
+            create_recovery_file(&directory, name).unwrap();
+        }
+        assert_eq!(mode(&directory) & 0o077, 0);
+        assert_eq!(mode(&directory.join("observed-original")) & 0o077, 0);
+        assert_eq!(mode(&directory.join("result")) & 0o077, 0);
+        assert_eq!(mode(&directory.join("replacement")), mode(&ordinary));
+        let missing = scratch.0.join("missing-parent");
+        assert_eq!(create_recovery_directory(&missing.join("copy")).unwrap_err().kind(), ErrorKind::NotFound);
+        assert!(!missing.exists());
     }
 
     #[test]

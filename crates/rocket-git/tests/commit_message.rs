@@ -57,6 +57,45 @@ fn read_commit_template() {
         ("", "guidance only")
     );
 
+    // The MCP client uses the same composer, with a scope attached to its Git client.
+    let scoped = f
+        .git
+        .clone()
+        .with_transport_scope(Some(TransportScope::new(&f.root, vec![]).unwrap()))
+        .open(&f.repository, &token())
+        .unwrap();
+    assert!(scoped.commit_template(&token()).is_err());
+    f.run(&["config", "commit.template", "../outside template.txt"]);
+    assert!(scoped.commit_template(&token()).is_err());
+    let inside = f.repository.join(".gitmessage 文");
+    for configured in [".gitmessage 文", inside.to_str().unwrap()] {
+        f.run(&["config", "commit.template", configured]);
+        assert_eq!(
+            scoped.commit_template(&token()).unwrap().unwrap().message,
+            "feat:\n\nRefs:"
+        );
+    }
+    std::fs::hard_link(&outside, f.repository.join("linked-template")).unwrap();
+    f.run(&["config", "commit.template", "linked-template"]);
+    assert!(scoped.commit_template(&token()).is_err());
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&outside, f.repository.join("template-link")).unwrap();
+        f.run(&["config", "commit.template", "template-link"]);
+        assert!(scoped.commit_template(&token()).is_err());
+        assert_eq!(
+            repo.commit_template(&token()).unwrap().unwrap().guidance,
+            "guidance only"
+        );
+        std::os::unix::fs::symlink(&f.root, f.repository.join("template-folder")).unwrap();
+        f.run(&[
+            "config",
+            "commit.template",
+            "template-folder/outside template.txt",
+        ]);
+        assert!(scoped.commit_template(&token()).is_err());
+    }
+
     // A missing, oversized or non-UTF-8 template is an error, not an empty message.
     f.run(&["config", "commit.template", "missing.txt"]);
     assert!(matches!(

@@ -134,6 +134,15 @@ async function composer(f) {
   await capture('composer-template-error'); await click('composer-recent-0');
   assert.equal(await stageAndCommit(f, 'six.txt'), 'chore: PRIVATE_PERSISTED');
   passed('Recent messages persist across restarts; clearing empties the list; a missing template is shown as unavailable');
+
+  const siblingTemplate = path.join(root, 'sibling-template');
+  fs.writeFileSync(siblingTemplate, 'Fixture message from another folder\n');
+  f.git(['config', 'commit.template', siblingTemplate]);
+  await closeWindow(); await open(f); await click('view-changes');
+  await until(() => tab().composer?.template_error, 'Scoped template refusal');
+  assert.equal(tab().composer.template, null);
+  assert.equal(tab().draft_present, false);
+  passed('The scoped composer refuses a template outside its active repository and leaves the draft empty');
 }
 
 async function run() {
