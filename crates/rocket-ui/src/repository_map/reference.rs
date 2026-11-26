@@ -110,10 +110,9 @@ impl ReferenceView {
     }
 
     pub(super) fn open(&mut self, index: usize, ctx: &Context, backend: Backend, repo: Repository) {
-        let Some(site) = self.sites.get(index) else {
+        let Some(site) = self.sites.get(index).cloned() else {
             return;
         };
-        let (source, line) = (site.source.clone(), u64::from(site.line));
         let revision = FileSearchSource::Commit(self.commit.clone());
         self.selected = Some(index);
         self.listing = false;
@@ -127,8 +126,8 @@ impl ReferenceView {
             backend.log.request("map-open-reference", |log| {
                 let blob = repo
                     .with_log(log.clone())
-                    .search_file(&revision, &source, line, &cancel)?;
-                crate::tree::prepare_search(blob, line, &HashMap::new(), &cancel)
+                    .search_file(&revision, &site.source, site.line.into(), &cancel)?;
+                reference_content(blob, &site, &cancel)
             })
         }) {
             Ok(task) => self.task = Some(task),
@@ -146,15 +145,8 @@ impl ReferenceView {
         }
     }
 
-    /// The open reference's file arrived: mark where its line names the target, or say
-    /// the line isn't in this commit.
-    fn loaded(&mut self, mut content: Content) {
-        if let Some(site) = self.selected.and_then(|i| self.sites.get(i))
-            && let Some(index) = (site.line as usize).checked_sub(content.first)
-            && let Some(range) = content.lines.get(index).and_then(|text| mark(text, &site.target))
-        {
-            content.marks.insert(index, vec![range]);
-        }
+    /// Publish the prepared reference, including marks in display coordinates.
+    fn loaded(&mut self, content: Content) {
         self.content = Some(content);
         if self.focused_text().is_none() {
             self.missing = true;
@@ -474,26 +466,36 @@ fn site_row(
     r.clicked()
 }
 
-/// Where the line names the file it points to, in characters: the file's name
-/// (`"../docs/入門.md"` marks `入門.md`), else its module as a whole word (`mod model;`
-/// or `use crate::model::Thing` for `src/model.rs` or `src/model/mod.rs`). None when the
-/// line spells it some other way, such as percent-encoded; the line is still banded.
-fn mark(line: &str, target: &[u8]) -> Option<Range<usize>> {
-    let path = String::from_utf8_lossy(target);
-    let mut parts = path.rsplit('/');
-    let name = parts.next().filter(|n| !n.is_empty())?;
-    if let Some(found) = whole(line, name) {
-        return Some(found);
+fn reference_content(file: rocket_git::SearchFileContent, site: &AssetReference, cancel: &CancellationToken) -> rocket_git::Result<Content> {
+    let line = u64::from(site.line);
+    let (from, to) = site.columns;
+    let columns = HashMap::from([(line, vec![from as usize..to as usize])]);
+    let mut content = crate::tree::prepare_search(file, line, &columns, cancel)?;
+    if site.kind != "mod" && !site.kind.ends_with("use")
+        && let Some(i) = (site.line as usize).checked_sub(content.first)
+        && let Some(range) = content.marks.get_mut(&i).and_then(|marks| marks.first_mut())
+    {
+        // Keep the source token for aliases and escapes. When it spells the
+        // filename, narrow the mark within that occurrence to its basename.
+        let token: String = content.lines[i].chars().skip(range.start).take(range.len()).collect();
+        let spelling = if matches!(site.kind, "include_str!" | "include_bytes!") {
+            token.as_str()
+        } else {
+            token.split(['?', '#']).next().unwrap_or_default()
+        };
+        if let Some(name) = basename_mark(spelling, &site.target) {
+            *range = range.start + name.start..range.start + name.end;
+        }
     }
-    let stem = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
-    let stem = if stem == "mod" { parts.next().unwrap_or(stem) } else { stem };
-    whole(line, stem)
+    Ok(content)
 }
 
-/// The first place `word` stands on its own in `line`, as a character range.
-fn whole(line: &str, word: &str) -> Option<Range<usize>> {
+/// Character range of the last complete filename in the selected source token.
+fn basename_mark(line: &str, target: &[u8]) -> Option<Range<usize>> {
+    let path = String::from_utf8_lossy(target);
+    let word = path.rsplit('/').next().filter(|name| !name.is_empty())?;
     let part = |c: char| c.is_alphanumeric() || matches!(c, '_' | '-' | '.');
-    line.match_indices(word).find_map(|(at, _)| {
+    line.rmatch_indices(word).find_map(|(at, _)| {
         let end = at + word.len();
         let before = line[..at].chars().next_back().is_none_or(|c| !part(c));
         let after = line[end..].chars().next().is_none_or(|c| !part(c) || c == '.' && line[end + 1..].chars().next().is_none_or(|c| !part(c)));
@@ -507,37 +509,39 @@ mod tests {
 
     #[test]
     fn the_mark_lands_on_the_name_the_line_uses() {
-        let marked = |line: &str, target: &str| mark(line, target.as_bytes()).map(|r| line.chars().skip(r.start).take(r.len()).collect::<String>());
+        let marked = |line: &str, target: &str| basename_mark(line, target.as_bytes()).map(|r| line.chars().skip(r.start).take(r.len()).collect::<String>());
         // Embeds and web assets: the file's name inside its relative path.
         assert_eq!(marked(r#"    Guide { text: include_str!("../docs/入門.md") },"#, "docs/入門.md").as_deref(), Some("入門.md"));
         assert_eq!(marked(r#"        href="site.css">"#, "site.css").as_deref(), Some("site.css"));
         assert_eq!(marked(" background: url(&quot;雪.png&quot;)\"></div>", "雪.png").as_deref(), Some("雪.png"));
         // Not inside a longer name, and not the first look-alike when a real one follows.
-        assert_eq!(mark(r#"<link href="data.css"><link href="a.css">"#, b"a.css"), Some(34..39));
+        assert_eq!(basename_mark(r#"<link href="data.css"><link href="a.css">"#, b"a.css"), Some(34..39));
         assert_eq!(marked("@import url(print/a.css.map);", "a.css"), None);
-        // Rust modules: the module name as a word, a mod.rs by its folder.
-        assert_eq!(marked("pub mod model;", "src/model.rs").as_deref(), Some("model"));
-        assert_eq!(marked("use crate::model::Thing;", "src/model/mod.rs").as_deref(), Some("model"));
-        assert_eq!(marked("use crate::models::Thing;", "src/model.rs"), None);
         // A sentence ending in the name still marks it; an encoded name marks nothing.
         assert_eq!(marked("// see site.css.", "site.css").as_deref(), Some("site.css"));
         assert_eq!(marked(r#"<img src="%E9%9B%AA.png">"#, "雪.png"), None);
+        assert_eq!(marked("a%2Ecss", "a.css"), None);
     }
 
     fn site(source: &str, line: u32, target: &str, kind: &'static str) -> AssetReference {
-        AssetReference { source: Arc::from(source.as_bytes()), line, target: Arc::from(target.as_bytes()), kind }
+        AssetReference { source: Arc::from(source.as_bytes()), line, target: Arc::from(target.as_bytes()), kind, columns: (0, u32::MAX) }
     }
 
     /// As `open` leaves a reference once its file has arrived: selected, and to be scrolled to.
-    fn opened(view: &mut ReferenceView, index: usize, content: Content) {
+    fn opened(view: &mut ReferenceView, index: usize, file: rocket_git::SearchFileContent) {
         view.selected = Some(index);
         view.scroll = true;
-        view.loaded(content);
+        view.loaded(reference_content(file, &view.sites[index], &CancellationToken::new()).unwrap());
     }
 
-    fn text(lines: Vec<String>, first: usize, window: bool) -> Content {
-        let kind = HistoricalFileKind::Text;
-        Content { kind, bytes: 0, lines, limited: false, first, window, lossy: false, marks: HashMap::new() }
+    fn text(lines: Vec<String>, first: usize, window: bool) -> rocket_git::SearchFileContent {
+        if window || first != 1 {
+            rocket_git::SearchFileContent::Window(rocket_git::FileWindow {
+                first: first as u64, lines: lines.into_iter().map(String::into_bytes).collect(), ..Default::default()
+            })
+        } else {
+            rocket_git::SearchFileContent::Whole(rocket_git::HistoricalFile { kind: HistoricalFileKind::Text, bytes: lines.join("\n").into_bytes() })
+        }
     }
 
     /// What one frame of the view registered, painted and copied, and whether it closed.
@@ -585,6 +589,34 @@ mod tests {
 
     fn escape() -> Event {
         Event::Key { key: Key::Escape, physical_key: None, pressed: true, repeat: false, modifiers: Modifiers::NONE }
+    }
+
+    #[test]
+    fn opening_a_same_line_reference_keeps_the_selected_occurrence() {
+        let line = "\t雪<link href='light/theme.css'><link href='dark/theme.css'>";
+        let url = "dark/theme.css";
+        let start = line.find(url).unwrap();
+        let mut selected = site("index.html", 1, url, "stylesheet");
+        selected.columns = (start as u32, (start + url.len()) as u32);
+        let commit = ObjectId::parse(&"1".repeat(40)).unwrap();
+        let mut view = ReferenceView::new(commit, vec![selected], b"index.html".to_vec(), "main".into());
+        opened(&mut view, 0, text(vec![line.into()], 1, false));
+        let shown = line.replace('\t', "    ");
+        let second = shown[..shown.rfind("theme.css").unwrap()].chars().count();
+        assert_eq!(view.content.as_ref().unwrap().marks[&0], [second..second + "theme.css".len()]);
+
+        for (line, spelling, target, kind) in [
+            ("pub mod model;", "model", "src/model.rs", "mod"),
+            ("use crate::model::Thing;", "Thing", "src/model/mod.rs", "use"),
+            ("use crate::model::Thing as Alias;", "Alias", "src/model.rs", "use"),
+            ("<link href='a%2Ecss'>", "a%2Ecss", "a.css", "stylesheet"),
+        ] {
+            let mut selected = site("source", 1, target, kind);
+            let at = line.find(spelling).unwrap();
+            selected.columns = (at as u32, (at + spelling.len()) as u32);
+            let content = reference_content(text(vec![line.into()], 1, false), &selected, &CancellationToken::new()).unwrap();
+            assert_eq!(content.marks[&0], [at..at + spelling.len()]);
+        }
     }
 
     #[test]

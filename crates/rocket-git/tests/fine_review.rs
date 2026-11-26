@@ -21,6 +21,60 @@ fn apply(r: &Repository, p: &ChangeReview, lines: &[usize]) {
 }
 
 #[test]
+fn new_file_line_staging_respects_safecrlf_and_rechecks_changes() {
+    let f = Fixture::new();
+    f.write("base", "base\n");
+    f.commit("base");
+    f.run(&["config", "core.autocrlf", "true"]);
+    f.run(&["config", "core.safecrlf", "warn"]);
+    f.write("mixed.txt", b"first\r\nsecond\nthird\r\n");
+    let repo = f.repo();
+    let name = p("mixed.txt");
+    let old = repo.review_untracked(&name, &c()).unwrap();
+    assert!(old.selection_unavailable().is_none());
+    f.run(&["config", "core.safecrlf", "true"]);
+    assert!(!f.output(&f.repository, &["add", "--", "mixed.txt"]).status.success());
+    let blocked = repo.review_untracked(&name, &c()).unwrap();
+    assert!(blocked.selection_unavailable().is_some_and(|s| s.contains("safecrlf")));
+    assert!(repo.apply_review(&old, &old.changed_lines()[..2], &c()).is_err());
+    assert!(f.run(&["ls-files", "--", "mixed.txt"]).is_empty());
+    f.write("mixed.txt", b"first\r\nsecond\r\n");
+    let allowed = repo.review_untracked(&name, &c()).unwrap();
+    apply(&repo, &allowed, &[line(&allowed, b"+second")]);
+    assert_eq!(f.run(&["show", ":mixed.txt"]), b"second\n");
+
+    f.run(&["config", "core.autocrlf", "input"]);
+    f.write("input.txt", b"line\r\n");
+    assert!(!f.output(&f.repository, &["add", "--", "input.txt"]).status.success());
+    assert!(repo.review_untracked(&p("input.txt"), &c()).unwrap().selection_unavailable().is_some());
+}
+
+#[test]
+fn valueless_autocrlf_stages_the_same_blob_as_git() {
+    use std::io::Write;
+    let f = Fixture::new();
+    f.write("base", "base\n");
+    f.commit("base");
+    let mut config = fs::OpenOptions::new().append(true).open(f.repository.join(".git/config")).unwrap();
+    writeln!(config, "\n[core]\n\tautocrlf").unwrap();
+    drop(config);
+    assert_eq!(f.run(&["config", "--bool", "--get", "core.autocrlf"]), b"true\n");
+    f.write("native.txt", b"first\r\nsecond\r\n");
+    f.write("partial.txt", b"first\r\nsecond\r\n");
+    f.run(&["add", "--", "native.txt"]);
+    let repo = f.repo();
+    let review = repo.review_untracked(&p("partial.txt"), &c()).unwrap();
+    apply(&repo, &review, &review.changed_lines());
+    assert_eq!(f.run(&["show", ":partial.txt"]), f.run(&["show", ":native.txt"]));
+    // An explicitly empty value overrides the earlier, implicit true value.
+    f.run(&["config", "--add", "core.autocrlf", ""]);
+    f.write("literal.txt", b"first\r\n");
+    let literal = repo.review_untracked(&p("literal.txt"), &c()).unwrap();
+    apply(&repo, &literal, &literal.changed_lines());
+    assert_eq!(f.run(&["show", ":literal.txt"]), b"first\r\n");
+}
+
+#[test]
 fn legacy_crlf_partial_staging_matches_git_add_and_modern_text_takes_precedence() {
     let f = Fixture::new();
     f.run(&["config", "core.autocrlf", "true"]);

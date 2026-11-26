@@ -2,9 +2,12 @@
 //! images, fonts and other asset bodies are never opened for this analysis.
 mod css;
 mod html;
+mod named_entities;
 
 use super::{CancellationToken, LABEL_BYTES, Result, cargo, packages};
 use std::collections::HashSet;
+use std::ops::Range;
+use super::references::SourceLocation;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Format {
@@ -93,7 +96,7 @@ pub(super) fn read(
     known: &HashSet<&[u8]>,
     remaining: &mut usize,
     cancel: &CancellationToken,
-    mut found: impl FnMut(&'static str, Vec<u8>, u32),
+    mut found: impl FnMut(&'static str, Vec<u8>, SourceLocation),
 ) -> Result<bool> {
     cancel.check()?;
     let Some(format) = format(path) else { return Ok(true) };
@@ -106,7 +109,7 @@ pub(super) fn read(
         Format::Css => packages::parent(path).to_vec(),
     };
     let newlines = std::cell::OnceCell::new();
-    let mut emit = |kind, url: &str, offset: usize| {
+    let mut emit = |kind, url: &str, span: Range<usize>| {
         if *remaining == 0 {
             return false;
         }
@@ -115,7 +118,13 @@ pub(super) fn read(
             && known.contains(target.as_slice())
         {
             let breaks = newlines.get_or_init(|| source.match_indices('\n').map(|(i, _)| i).collect::<Vec<_>>());
-            found(kind, target, 1 + breaks.partition_point(|&i| i < offset) as u32);
+            let row = breaks.partition_point(|&i| i < span.start);
+            let start = row.checked_sub(1).map_or(0, |i| breaks[i] + 1);
+            let end = breaks.get(row).copied().unwrap_or(source.len()).min(span.end);
+            found(kind, target, SourceLocation {
+                line: row as u32 + 1,
+                columns: ((span.start - start) as u32, (end - start) as u32),
+            });
         }
         true
     };
@@ -195,6 +204,29 @@ mod tests {
     }
 
     #[test]
+    fn named_html_entities_resolve_the_same_assets_as_numeric_references() {
+        let html = r#"<base href="caf&eacute;/"><img src="caf&eacute;.png">
+            <img src="caf&#233;.png"><img src="x&NotEqualTilde;.png">
+            <img srcset="&copy;.png 1x"><div style="background:url(&quot;&pound;.png&quot;)"></div>"#;
+        let files = ["café/café.png", "café/x≂̸.png", "café/©.png", "café/£.png"];
+        let known = files.iter().map(|p| p.as_bytes()).collect();
+        let mut found = Vec::new();
+        assert!(read(b"index.html", html, &known, &mut 10, &CancellationToken::new(), |kind, target, site| {
+            let line = html.lines().nth(site.line as usize - 1).unwrap();
+            let (start, end) = site.columns;
+            found.push((kind, String::from_utf8(target).unwrap(), &line[start as usize..end as usize]));
+        }).unwrap());
+        let found: Vec<_> = found.iter().map(|(kind, target, raw)| (*kind, target.as_str(), *raw)).collect();
+        assert_eq!(found, [
+            ("image", "café/café.png", "caf&eacute;.png"), ("image", "café/café.png", "caf&#233;.png"),
+            ("image", "café/x≂̸.png", "x&NotEqualTilde;.png"), ("srcset", "café/©.png", "&copy;.png"),
+            ("url()", "café/£.png", "&pound;.png"),
+        ]);
+        assert_eq!(links("index.html", "<img src='caf&eacute.png'><img src='&copy=x'><img src='&fake;.png'>",
+            &["café.png", "&copy=x", "&fake;.png"]), ["image café.png", "image &copy=x", "image &fake;.png"]);
+    }
+
+    #[test]
     fn physical_lines_survive_entities_multiline_attributes_and_raw_styles() {
         let html = concat!(
             "<img src='\r\n a.png' srcset='missing&#32;1x,&#10;\r\n", // lines 1 and 2
@@ -207,7 +239,7 @@ mod tests {
         let mut sites = Vec::new();
         let mut budget = 10;
         assert!(read(b"index.html", html, &known, &mut budget, &CancellationToken::new(),
-            |kind, _, line| sites.push((kind, line))).unwrap());
+            |kind, _, site| sites.push((kind, site.line))).unwrap());
         assert_eq!(sites, [("image", 2), ("srcset", 3), ("url()", 4), ("url()", 6), ("url()", 8)]);
     }
 

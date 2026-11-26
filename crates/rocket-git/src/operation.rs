@@ -65,7 +65,7 @@ impl Repository {
         };
         // These are refs, potentially stored in reftable. MERGE_HEAD itself is a
         // multi-ID operation file, not an ordinary ref; keep that read separate.
-        let [merge_autostash_exists, cherry_pick, revert] = self.operation_refs(cancel)?;
+        let [merge_autostash_exists, cherry_pick, revert] = self.operation_refs_at(&self.info().git_dir, cancel)?;
         let merge_autostash = if merge_autostash_exists {
             let output = self
                 .runner
@@ -211,7 +211,7 @@ impl Repository {
         }
     }
 
-    fn operation_refs(&self, cancel: &CancellationToken) -> Result<[bool; 3]> {
+    pub(crate) fn operation_refs_at(&self, git_dir: &std::path::Path, cancel: &CancellationToken) -> Result<[bool; 3]> {
         // Exact checks are intentional: enumeration can omit dangling symbolic
         // root refs, and revision lookup can confuse these with branches/tags.
         // Only these three probes run concurrently, sharing cancellation. Scoped
@@ -220,28 +220,28 @@ impl Repository {
             let autostash = std::thread::Builder::new()
                 .name("rocket-operation-autostash".into())
                 .spawn_scoped(scope, || {
-                    self.operation_ref_exists("MERGE_AUTOSTASH", cancel)
+                    self.operation_ref_exists(git_dir, "MERGE_AUTOSTASH", cancel)
                 })
                 .map_err(|e| Error::io("start operation state worker", e))?;
             let cherry = std::thread::Builder::new()
                 .name("rocket-operation-cherry".into())
                 .spawn_scoped(scope, || {
-                    self.operation_ref_exists("CHERRY_PICK_HEAD", cancel)
+                    self.operation_ref_exists(git_dir, "CHERRY_PICK_HEAD", cancel)
                 })
                 .map_err(|e| Error::io("start operation state worker", e))?;
-            let revert = self.operation_ref_exists("REVERT_HEAD", cancel);
+            let revert = self.operation_ref_exists(git_dir, "REVERT_HEAD", cancel);
             let autostash = autostash.join().map_err(|_| Error::WorkerPanicked)?;
             let cherry = cherry.join().map_err(|_| Error::WorkerPanicked)?;
             Ok([autostash?, cherry?, revert?])
         })
     }
 
-    fn operation_ref_exists(&self, name: &str, cancel: &CancellationToken) -> Result<bool> {
+    fn operation_ref_exists(&self, git_dir: &std::path::Path, name: &str, cancel: &CancellationToken) -> Result<bool> {
         // Exact ref lookup: rev-parse would also resolve a branch or tag named
         // CHERRY_PICK_HEAD etc., incorrectly reporting an active operation.
         let output = self.runner.run(
-            self.cwd(),
-            &args(&["show-ref", "--exists", "--", name]),
+            git_dir,
+            &args(&["--git-dir=.", "show-ref", "--exists", "--", name]),
             Vec::new(),
             cancel,
         )?;

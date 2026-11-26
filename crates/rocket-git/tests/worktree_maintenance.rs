@@ -72,6 +72,43 @@ fn admin(f: &Fixture, e: &WorktreeEntry) -> PathBuf {
 }
 
 #[test]
+fn repair_relinks_an_externally_moved_relative_worktree_at_a_new_depth() {
+    let f = seed();
+    f.run(&["refs", "migrate", "--ref-format=reftable"]);
+    let original = f.root.join("relative");
+    f.run(&["worktree", "add", "--relative-paths", "-b", "topic", original.to_str().unwrap()]);
+    let entry = f.repo().worktrees(&token()).unwrap().into_iter().find(|e| !e.main).unwrap();
+    let registration = admin(&f, &entry);
+    let index = fs::read(registration.join("index")).unwrap();
+    fs::write(original.join("untracked"), b"keep me").unwrap();
+    let nested = destination(&f, "nested");
+    fs::create_dir(&nested).unwrap();
+    let moved = nested.join("renamed");
+    fs::rename(&original, &moved).unwrap();
+    let entry = fresh(&f, &entry);
+    let gitfile = moved.join(".git");
+    let original_link = fs::read(&gitfile).unwrap();
+    fs::write(&gitfile, "gitdir: ../other/.git/worktrees/relative\n").unwrap();
+    failure(preview(&f, WorktreeMaintenance::Repair, &entry, &moved), WorktreeFailure::StalePreview);
+    fs::write(&gitfile, &original_link).unwrap();
+    f.run_at(&registration, &["--git-dir=.", "update-ref", "CHERRY_PICK_HEAD", entry.head.as_ref().unwrap().as_str()]);
+    failure(preview(&f, WorktreeMaintenance::Repair, &entry, &moved), WorktreeFailure::ActiveOperation);
+    f.run_at(&registration, &["--git-dir=.", "update-ref", "-d", "CHERRY_PICK_HEAD"]);
+    let plan = preview(&f, WorktreeMaintenance::Repair, &entry, &moved).unwrap();
+    assert_eq!(fs::read(&gitfile).unwrap(), original_link);
+    let backup = ok(&f, &plan).metadata_backup.unwrap();
+    assert_eq!(fs::read(backup.join("gitfile.before")).unwrap(), original_link);
+    let repaired = fresh(&f, &entry);
+    assert_eq!(repaired.path, moved);
+    assert_eq!(repaired.head, entry.head);
+    assert!(repaired.prunable.is_none());
+    assert_ne!(fs::read(&gitfile).unwrap(), original_link);
+    assert_eq!(admin(&f, &repaired), registration);
+    assert_eq!(fs::read(registration.join("index")).unwrap(), index);
+    assert_eq!(f.run_at(&moved, &["status", "--short"]), b"?? untracked\n");
+}
+
+#[test]
 fn moving_a_relative_worktree_relinks_both_paths_at_the_new_depth() {
     let f = seed();
     let from = f.root.join("relative");

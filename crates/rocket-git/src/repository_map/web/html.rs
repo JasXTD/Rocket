@@ -188,68 +188,79 @@ impl<'a> Tags<'a> {
 struct Attribute<'a> {
     raw: &'a str,
     value: Cow<'a, str>,
-    // End offsets of each decoded entity in the value and in the original HTML.
-    ends: Vec<(usize, usize)>,
+    entities: Vec<EntitySpan>,
+}
+struct EntitySpan {
+    decoded: std::ops::Range<usize>,
+    raw: std::ops::Range<usize>,
 }
 impl std::ops::Deref for Attribute<'_> {
     type Target = str;
     fn deref(&self) -> &str { &self.value }
 }
 impl Attribute<'_> {
-    fn source_offset(&self, html: &str, offset: usize) -> usize {
-        let through = self.ends.partition_point(|&(decoded, _)| decoded <= offset);
-        let (decoded, raw) = through.checked_sub(1).map_or((0, 0), |i| self.ends[i]);
-        super::offset(html, self.raw) + raw + (offset - decoded)
+    fn source_span(&self, html: &str, span: std::ops::Range<usize>) -> std::ops::Range<usize> {
+        let base = super::offset(html, self.raw);
+        let original = |offset, end| {
+            let through = self.entities.partition_point(|e| e.decoded.end <= offset);
+            if let Some(e) = self.entities.get(through) && e.decoded.start < offset {
+                // A named reference can expand to two Unicode scalars.
+                return if end { e.raw.end } else { e.raw.start };
+            }
+            through.checked_sub(1).map_or(offset, |i| {
+                let e = &self.entities[i];
+                e.raw.end + (offset - e.decoded.end)
+            })
+        };
+        base + original(span.start, false)..base + original(span.end, true)
     }
 }
 fn character_refs(s: &str) -> Option<Attribute<'_>> {
     if !s.contains('&') {
-        return Some(Attribute { raw: s, value: Cow::Borrowed(s), ends: Vec::new() });
+        return Some(Attribute { raw: s, value: Cow::Borrowed(s), entities: Vec::new() });
     }
-    let mut ends = Vec::new();
+    let mut entities = Vec::new();
     let mut out = String::with_capacity(s.len());
     let mut tail = s;
     while let Some((before, after)) = tail.split_once('&') {
         out.push_str(before);
-        let count = after
+        let decoded_start = out.len();
+        let raw_start = s.len() - after.len() - 1;
+        let prefix = usize::from(after.starts_with('#'));
+        let count = prefix + after[prefix..]
             .bytes()
-            .take_while(|b| b.is_ascii_alphanumeric() || *b == b'#')
+            .take_while(u8::is_ascii_alphanumeric)
             .count();
         let (name, rest) = after.split_at(count);
-        if !name.is_empty() && rest.starts_with(';') {
-            let c = match name {
-                "amp" | "AMP" => '&',
-                "lt" | "LT" => '<',
-                "gt" | "GT" => '>',
-                "quot" | "QUOT" => '"',
-                "apos" => '\'',
-                "nbsp" => '\u{a0}',
-                "sol" => '/',
-                "colon" => ':',
-                "period" => '.',
-                "num" => '#',
-                "percnt" => '%',
-                "comma" => ',',
-                _ => {
-                    let n = name.strip_prefix('#')?;
-                    let n = if let Some(hex) = n.strip_prefix(['x', 'X']) {
-                        u32::from_str_radix(hex, 16).ok()?
-                    } else {
-                        n.parse().ok()?
-                    };
-                    char::from_u32(n)?
-                }
+        if let Some(number) = name.strip_prefix('#') && rest.starts_with(';') {
+            let n = if let Some(hex) = number.strip_prefix(['x', 'X']) {
+                u32::from_str_radix(hex, 16).ok()?
+            } else {
+                number.parse().ok()?
             };
-            out.push(c);
+            out.push(char::from_u32(n)?);
             tail = &rest[1..];
-            ends.push((out.len(), s.len() - tail.len()));
         } else {
-            out.push('&');
-            tail = after;
+            let end = count + usize::from(rest.starts_with(';'));
+            let spelling = &after[..end];
+            let table = super::named_entities::NAMED;
+            // In an attribute, a legacy semicolonless name followed by '=' or
+            // another alphanumeric is literal. The scan already includes all alphanumerics.
+            if !rest.starts_with('=')
+                && let Ok(i) = table.binary_search_by_key(&spelling, |&(key, _)| key)
+            {
+                out.push_str(table[i].1);
+                tail = &after[end..];
+            } else {
+                out.push('&');
+                tail = after;
+                continue;
+            }
         }
+        entities.push(EntitySpan { decoded: decoded_start..out.len(), raw: raw_start..s.len() - tail.len() });
     }
     out.push_str(tail);
-    Some(Attribute { raw: s, value: Cow::Owned(out), ends })
+    Some(Attribute { raw: s, value: Cow::Owned(out), entities })
 }
 
 /// Look for the first explicit base before emitting any edges. It can appear
@@ -345,7 +356,7 @@ fn srcset(input: &str, cancel: &CancellationToken, emit: &mut impl FnMut(&'stati
 pub(super) fn read(
     s: &str,
     cancel: &CancellationToken,
-    emit: &mut impl FnMut(&'static str, &str, usize) -> bool,
+    emit: &mut impl FnMut(&'static str, &str, std::ops::Range<usize>) -> bool,
 ) -> Result<bool> {
     let mut tags = Tags::new(s);
     while let Some(tag) = tags.next(cancel)? {
@@ -388,22 +399,25 @@ pub(super) fn read(
         {
             single = attr("src").map(|s| ("image", s));
         }
-        if let Some((kind, url)) = single
-            && !emit(kind, &url, url.source_offset(s, url.len() - url.trim_start_matches(ws).len()))
-        {
-            return Ok(false);
+        if let Some((kind, url)) = single {
+            let trimmed = url.trim_matches(ws);
+            let start = super::offset(&url, trimmed);
+            if !emit(kind, trimmed, url.source_span(s, start..start + trimmed.len())) { return Ok(false); }
         }
         if let Some(set) = candidates
-            && !srcset(&set, cancel, &mut |k, url, at| emit(k, url, set.source_offset(s, at)))?
+            && !srcset(&set, cancel, &mut |k, url, at| emit(k, url, set.source_span(s, at..at + url.len())))?
         {
             return Ok(false);
         }
         if let Some(style) = attr("style")
-            && !css::read(&style, cancel, &mut |k, url, at| emit(k, url, style.source_offset(s, at)))?
+            && !css::read(&style, cancel, &mut |k, url, span| emit(k, url, style.source_span(s, span)))?
         {
             return Ok(false);
         }
-        if tag.name.eq_ignore_ascii_case("style") && !css::read(tag.body, cancel, &mut |k, url, at| emit(k, url, super::offset(s, tag.body) + at))? {
+        if tag.name.eq_ignore_ascii_case("style") && !css::read(tag.body, cancel, &mut |k, url, span| {
+            let base = super::offset(s, tag.body);
+            emit(k, url, base + span.start..base + span.end)
+        })? {
             return Ok(false);
         }
     }

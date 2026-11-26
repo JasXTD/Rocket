@@ -223,8 +223,11 @@ impl Repository {
             &args(&[
                 "config",
                 "--null",
+                // Git canonicalizes implicit, numeric and spelled booleans, while
+                // retaining the non-boolean modes "input", "warn", "lf" and "crlf".
+                "--type=bool-or-str",
                 "--get-regexp",
-                "^core\\.(autocrlf|eol|filemode)$",
+                "^core\\.(autocrlf|eol|filemode|safecrlf)$",
             ]),
             Vec::new(),
             cancel,
@@ -606,9 +609,10 @@ pub(crate) fn conversion_attributes<'a>(attrs: &'a [u8]) -> Result<impl Fn(&[u8]
 }
 
 pub(crate) struct LineEndings {
-    pub normalize: bool,
+    normalize: bool,
     auto_detect: bool,
     checkout_crlf: bool,
+    safe_crlf: bool,
 }
 
 pub(crate) fn line_endings(attrs: &[u8], config: &[u8]) -> Result<LineEndings> {
@@ -624,15 +628,13 @@ pub(crate) fn line_endings(attrs: &[u8], config: &[u8]) -> Result<LineEndings> {
         text => text,
     };
     let eol = attr(b"eol");
-    let auto_value = config_value(config, b"core.autocrlf").to_ascii_lowercase();
-    let auto = match auto_value.as_slice() {
-        b"yes" | b"on" | b"1" => b"true".as_slice(),
-        b"no" | b"off" | b"0" => b"false",
-        other => other,
-    };
+    let auto = config_value(config, b"core.autocrlf").to_ascii_lowercase();
+    let auto = auto.as_slice();
     let core_eol = config_value(config, b"core.eol").to_ascii_lowercase();
+    let safe = config_value(config, b"core.safecrlf").to_ascii_lowercase();
     if !matches!(auto, b"" | b"true" | b"false" | b"input")
         || !matches!(core_eol.as_slice(), b"" | b"lf" | b"crlf" | b"native")
+        || !matches!(safe.as_slice(), b"" | b"true" | b"false" | b"warn")
     {
         return fail(FileEditFailure::Unsupported);
     }
@@ -653,9 +655,66 @@ pub(crate) fn line_endings(attrs: &[u8], config: &[u8]) -> Result<LineEndings> {
                     && (core_eol == b"crlf" || (core_eol != b"lf" && cfg!(windows))))));
     Ok(LineEndings {
         normalize: enabled,
-        auto_detect: matches!(text, b"auto" | b"unspecified"),
+        auto_detect: text == b"auto" || (text == b"unspecified" && !matches!(eol, b"lf" | b"crlf")),
         checkout_crlf: crlf,
+        safe_crlf: safe == b"true",
     })
+}
+
+/// Git's automatic EOL detection counts control bytes separately from line
+/// endings. One trailing DOS end-of-file marker is discounted.
+#[derive(Default)]
+struct TextStats {
+    lf: bool,
+    crlf: bool,
+    bare_cr: bool,
+    binary: bool,
+}
+
+impl TextStats {
+    fn read(bytes: &[u8]) -> Self {
+        let mut stats = Self::default();
+        let (mut printable, mut controls) = (0usize, 0usize);
+        let mut input = bytes.strip_suffix(&[0x1a]).unwrap_or(bytes).iter().copied().peekable();
+        while let Some(byte) = input.next() {
+            match byte {
+                b'\r' if input.next_if_eq(&b'\n').is_some() => stats.crlf = true,
+                b'\r' => stats.bare_cr = true,
+                b'\n' => stats.lf = true,
+                0 => stats.binary = true,
+                8 | 9 | 12 | 27 => printable += 1,
+                1..=31 | 127 => controls += 1,
+                _ => printable += 1,
+            }
+        }
+        stats.binary |= stats.bare_cr || controls > printable / 128;
+        stats
+    }
+}
+
+impl LineEndings {
+    pub(crate) fn clean_untracked(&self, bytes: &mut Vec<u8>) -> std::result::Result<(), &'static str> {
+        if !self.normalize { return Ok(()); }
+        let stats = TextStats::read(bytes);
+        if stats.bare_cr {
+            return Err("Mixed or bare CR line endings require whole-file staging.");
+        }
+        if self.auto_detect && stats.binary { return Ok(()); }
+        let changes_on_checkout = if self.checkout_crlf { stats.lf } else { stats.crlf };
+        if self.safe_crlf && changes_on_checkout {
+            return Err("Partial staging would change this file's line endings on checkout (core.safecrlf).");
+        }
+        if stats.crlf {
+            let mut write = 0;
+            for read in 0..bytes.len() {
+                if bytes[read] == b'\r' && bytes.get(read + 1) == Some(&b'\n') { continue; }
+                bytes[write] = bytes[read];
+                write += 1;
+            }
+            bytes.truncate(write);
+        }
+        Ok(())
+    }
 }
 
 /// Git blob bytes as a checkout would write them, from `conversion_settings`.
@@ -669,9 +728,11 @@ pub(crate) fn checkout_bytes(
     if !rules.normalize || !rules.checkout_crlf {
         return Ok((bytes, "Git blob bytes (no working-tree filter)"));
     }
-    if rules.auto_detect && (bytes.contains(&0) || bytes.contains(&b'\r'))
-    {
-        return Ok((bytes, "Binary/existing CR bytes preserved"));
+    if rules.auto_detect {
+        let stats = TextStats::read(&bytes);
+        if stats.binary || stats.crlf {
+            return Ok((bytes, "Binary/existing CR bytes preserved"));
+        }
     }
     if std::str::from_utf8(&bytes).is_err() {
         return fail(FileEditFailure::Unsupported);
@@ -689,21 +750,7 @@ pub(crate) fn checkout_bytes(
     Ok((result, "LF converted to CRLF for this working folder"))
 }
 fn config_value<'a>(config: &'a [u8], key: &[u8]) -> &'a [u8] {
-    config
-        .split(|b| *b == 0)
-        .filter_map(|r| r.split_once_byte(b'\n'))
-        .filter(|(name, _)| *name == key)
-        .map(|(_, value)| value)
-        .next_back()
-        .unwrap_or(b"")
-}
-trait SplitByte {
-    fn split_once_byte(&self, b: u8) -> Option<(&[u8], &[u8])>;
-}
-impl SplitByte for [u8] {
-    fn split_once_byte(&self, b: u8) -> Option<(&[u8], &[u8])> {
-        self.iter()
-            .position(|v| *v == b)
-            .map(|i| (&self[..i], &self[i + 1..]))
-    }
+    config.rsplit(|&b| b == 0)
+        .find_map(|record| record.strip_prefix(key)?.strip_prefix(b"\n"))
+        .unwrap_or_default()
 }

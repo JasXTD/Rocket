@@ -331,7 +331,7 @@ pub(super) struct Links {
 }
 pub(super) fn links(
     modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, known: &dyn Fn(&[u8]) -> bool, cancel: &CancellationToken,
-    mut reference: impl FnMut(usize, usize, u32, &'static str),
+    mut reference: impl FnMut(usize, usize, super::references::SourceLocation, &'static str),
 ) -> Result<Links> {
     let index = Index::new(modules, facts);
     let by_file: HashMap<&[u8], usize> = modules.iter().enumerate().map(|(i, m)| (m.file.as_slice(), i)).collect();
@@ -372,14 +372,14 @@ pub(super) fn links(
             if let Some((path, _)) = present.next() && present.next().is_none()
                 && let Some(&to) = by_file.get(path.as_slice()) && m != to
             {
-                reference(m, to, d.line, "mod");
+                reference(m, to, d.site, "mod");
             }
         }
         for u in f.uses.iter().filter(|u| !u.glob) {
             if let Some(found) = index.resolve(&u.segments, &within(&u.chain), 0)
                 && let Some(to) = add(m, found, &mut out)
             {
-                reference(m, to, u.line, u.kind);
+                reference(m, to, u.site, u.kind);
             }
         }
         // `use std::…`, `use egui::…`: a first name that is no module or item here is a crate.
@@ -419,7 +419,7 @@ pub(super) fn links(
                 continue;
             }
             if let Some(to) = index.owner(&glob) && m != to {
-                reference(m, to, u.line, u.kind);
+                reference(m, to, u.site, u.kind);
             }
             let mut seen = HashSet::new();
             for (chain, name) in f.names.iter().filter(|(chain, _)| chain.starts_with(&u.chain)) {

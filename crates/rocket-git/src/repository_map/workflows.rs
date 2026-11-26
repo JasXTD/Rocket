@@ -21,6 +21,7 @@ struct Step {
     uses: Option<String>,
     checkout_override: bool,
     checkout_path: Option<String>,
+    conditional: bool,
 }
 #[derive(Default)]
 struct Job {
@@ -274,6 +275,7 @@ fn parse(source: &str, cancel: &CancellationToken) -> Result<Option<Workflow>> {
                     "run" => step.run = value,
                     "shell" => step.settings.shell = Some(value.unwrap_or_default()),
                     "working-directory" => step.settings.directory = Some(value.unwrap_or_default()),
+                    "if" => step.conditional = value.as_deref() != Some("true"),
                     "with" => step.checkout_override = true,
                     "<<" => return Ok(None),
                     _ => {}
@@ -363,13 +365,14 @@ pub(super) fn read(
                     .split_once('@')
                     .is_some_and(|(name, _)| name.eq_ignore_ascii_case("actions/checkout"))
                 {
-                    if step.checkout_override || step.checkout_path.is_some() {
-                        let dir = step
-                            .checkout_path
-                            .as_deref()
-                            .and_then(|p| literal_path(b"", p))
-                            .unwrap_or_default();
-                        checkouts.insert(dir);
+                    let dir = step.checkout_path.as_deref().map_or_else(|| Some(Vec::new()), |p| literal_path(b"", p));
+                    if !step.checkout_override && dir.as_ref().is_some_and(Vec::is_empty) {
+                        if !step.conditional {
+                            // A default checkout restores the event revision at the workspace root.
+                            checkouts.remove(b"".as_slice());
+                        }
+                    } else {
+                        checkouts.insert(dir.unwrap_or_default());
                     }
                 } else if let Some(dir) = local_reference(uses) {
                     if (uses.starts_with("$/") || !shadowed(&dir, &checkouts))
@@ -504,6 +507,30 @@ jobs:
                 "run scripts/test.cjs"
             ]
         );
+    }
+
+    #[test]
+    fn default_checkout_restores_script_and_local_action_links() {
+        let source = r#"
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: previous
+      - run: bash old.sh
+      - uses: ./old
+      - uses: actions/checkout@v4
+        if: github.event_name == 'release'
+      - run: bash old.sh
+      - uses: actions/checkout@v4
+      - run: bash scripts/build.sh
+      - uses: ./local
+"#;
+        let (complete, paths) = links(source, &["old.sh", "old/action.yml", "scripts/build.sh", "local/action.yml"]);
+        assert!(complete);
+        assert_eq!(paths, ["run scripts/build.sh", "uses local/action.yml"]);
     }
 
     #[test]

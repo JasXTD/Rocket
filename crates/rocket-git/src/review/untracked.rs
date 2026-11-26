@@ -38,45 +38,24 @@ impl Repository {
         let preview = self.preview_untracked(path, cancel)?;
         let (attrs, config) = self.conversion_settings(path, cancel)?;
         let rules = crate::file_actions::line_endings(&attrs, &config);
+        let raw = preview.bytes;
+        let mut bytes = raw.clone();
         let reason = if preview.truncated {
             Some("This new file is too large for partial staging. Stage the whole file.")
         } else if preview.binary
-            || std::str::from_utf8(&preview.bytes).is_err()
-            || preview
-                .bytes
+            || std::str::from_utf8(&bytes).is_err()
+            || bytes
                 .iter()
                 .any(|b| *b < 32 && !matches!(b, b'\t' | b'\r' | b'\n'))
         {
             Some("Partial staging of new files requires plain UTF-8 text. Stage the whole file.")
-        } else if rules.is_err() {
+        } else if let Ok(rules) = rules {
+            rules.clean_untracked(&mut bytes).err()
+        } else {
             Some(
                 "Partial staging cannot safely run this file's filter, encoding or ident conversion. Stage the whole file.",
             )
-        } else {
-            None
         };
-        let raw = preview.bytes;
-        let mut bytes = raw.clone();
-        let normalize = rules.is_ok_and(|rules| rules.normalize);
-        // Git's automatic text detection preserves files containing bare CRs.
-        // Refuse that ambiguous new-file case rather than inventing blob bytes.
-        let reason = reason.or_else(|| {
-            (normalize
-                && bytes
-                    .iter()
-                    .enumerate()
-                    .any(|(i, b)| *b == b'\r' && bytes.get(i + 1) != Some(&b'\n')))
-            .then_some("Mixed or bare CR line endings require whole-file staging.")
-        });
-        if normalize && reason.is_none() {
-            bytes = bytes
-                .iter()
-                .enumerate()
-                .filter_map(|(i, b)| {
-                    (*b != b'\r' || bytes.get(i + 1) != Some(&b'\n')).then_some(*b)
-                })
-                .collect();
-        }
         let mode = {
             #[cfg(unix)]
             {

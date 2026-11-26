@@ -20,6 +20,34 @@ fn pairs(links: &CodeLinks) -> Vec<String> {
 }
 
 #[test]
+fn same_line_asset_occurrences_remain_distinct_in_both_maps() {
+    let f = Fixture::new();
+    let html = "\t雪<link rel=stylesheet href='light/theme.css'><link rel=stylesheet href='dark/theme.css'><link rel=stylesheet href='dark/theme.css'>";
+    f.write("index.html", html);
+    f.write("light/theme.css", "");
+    f.write("dark/theme.css", "");
+    f.commit("same basename and repeated URL");
+    let repo = f.repo();
+    let folders = repo.code_links(&head(&f), None, &token()).unwrap();
+    let map = repo.repository_map(&MapOptions { kind: MapKind::Modules, package: Some(PackageRef {
+        folder: Vec::new(), language: ModuleLanguage::HtmlCss,
+    }), ..Default::default() }, &token()).unwrap();
+    for index in [&folders.references, &map.modules.as_ref().unwrap().references] {
+        let sites = index.for_file(b"index.html").unwrap();
+        assert_eq!(sites.len(), 3, "each URL must keep its position on the source line");
+        let mut by_column: Vec<_> = sites.iter().map(|site| {
+            let (start, end) = site.columns;
+            assert_eq!(site.line, 1);
+            let url = &html[start as usize..end as usize];
+            assert_eq!(url.as_bytes(), site.target.as_ref());
+            (start, url)
+        }).collect();
+        by_column.sort_unstable();
+        assert_eq!(by_column.iter().map(|(_, url)| *url).collect::<Vec<_>>(), ["light/theme.css", "dark/theme.css", "dark/theme.css"]);
+    }
+}
+
+#[test]
 fn rust_module_and_import_sites_follow_the_selected_commit_in_both_maps() {
     isolated("ROCKET_CODE_MAP_TEST", "rust_module_and_import_sites_follow_the_selected_commit_in_both_maps", || {
         let f = Fixture::new();
@@ -88,9 +116,14 @@ fn rust_module_and_import_sites_follow_the_selected_commit_in_both_maps() {
                 (b"src/lib.rs", 8 + root_move, "pub(crate) use"),
                 (b"src/lib.rs", 11 + root_move, "mod"),
             ]);
+            let mut spellings = Vec::new();
             for site in sites {
                 assert!(module_refs.for_file(&site.source).unwrap().contains(site));
+                let (text, shift) = if site.source.as_ref() == b"src/client.rs" { (&client, client_move) } else { (&root, root_move) };
+                let line = text.lines().nth((site.line - shift - 1) as usize).unwrap();
+                spellings.push(&line[site.columns.0 as usize..site.columns.1 as usize]);
             }
+            assert_eq!(spellings, ["Renamed", "B", "*", "A", "self", "model", "A", "B", "second_name"]);
         }
     });
 }

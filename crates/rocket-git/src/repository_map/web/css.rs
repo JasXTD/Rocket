@@ -172,7 +172,7 @@ fn keyword(s: &str, word: &str) -> bool {
 pub(super) fn read(
     source: &str,
     cancel: &CancellationToken,
-    emit: &mut impl FnMut(&'static str, &str, usize) -> bool,
+    emit: &mut impl FnMut(&'static str, &str, std::ops::Range<usize>) -> bool,
 ) -> Result<bool> {
     let mut t = Tokens {
         s: source.trim_start_matches('\u{feff}'),
@@ -224,9 +224,9 @@ pub(super) fn read(
         };
         if let Some(raw) = raw
             && let Some(value) = decoded(raw)
-            && !emit(kind, &value, super::offset(source, raw))
         {
-            return Ok(false);
+            let start = super::offset(source, raw);
+            if !emit(kind, &value, start..start + raw.len()) { return Ok(false); }
         }
     }
     cancel.check()?;

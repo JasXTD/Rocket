@@ -1,5 +1,5 @@
 use super::super::{LABEL_BYTES, MAP_LINKS, ObjectId, packages};
-use super::{Facts, Token, TokenLines, after_group, close};
+use super::{Facts, SourceLocation, Token, after_group, close};
 use crate::{CancellationToken, Result};
 use std::collections::BTreeMap;
 use std::ops::Bound;
@@ -80,17 +80,59 @@ fn builtin(prefix: &[Token], shadowed: bool) -> bool {
     }
 }
 
-pub(super) fn calls(tokens: &[Token], lines: &TokenLines, used: &mut usize, facts: &mut Facts) {
-    use Token::{Ident, Punct, Str};
-    let shadows =
-        |name: &str| {
-            tokens.windows(3).any(|t| matches!(t, [Ident(m), Punct("!"), Ident(n)] if m == "macro_rules" && n == name))
-            || facts.uses.iter().any(|u| !u.glob && u.alias.as_ref().or(u.segments.last()).is_some_and(|n| n == name)
-                && !matches!(u.segments.as_slice(), [ns, n] if matches!(ns.as_str(), "std" | "core") && n == name))
+fn embed_bit(name: &str) -> u8 {
+    match name { "include_str" => 1, "include_bytes" => 2, _ => 0 }
+}
+
+#[derive(Clone, Copy, Default)]
+pub(super) struct Scope {
+    pub imports: u8,
+    pub export_macros: bool,
+}
+
+pub(super) fn import_shadows(imports: &[super::Use]) -> u8 {
+    let mut mask = 0;
+    for u in imports.iter().filter(|u| !u.glob) {
+        let Some(name) = u.alias.as_ref().or(u.segments.last()) else { continue };
+        let path = match u.segments.as_slice() {
+            [root, path @ ..] if root.is_empty() => path,
+            path => path,
         };
-    let shadowed = [shadows("include_str"), shadows("include_bytes")];
+        if !matches!(path, [ns, item] if matches!(ns.as_str(), "std" | "core") && item == name) {
+            mask |= embed_bit(name);
+        }
+    }
+    mask
+}
+
+pub(super) fn calls(tokens: &[Token], sites: &[SourceLocation], bindings: &std::collections::HashMap<Option<usize>, Scope>, used: &mut usize, facts: &mut Facts) {
+    use Token::{Ident, Punct, Str};
+    // Imports apply throughout their block. macro_rules! starts at the definition
+    // and flows into subsequent nested scopes, including inline modules.
+    let mut imported = bindings.get(&None).copied().unwrap_or_default().imports;
+    let mut textual = 0;
+    let mut scopes = Vec::new();
     let mut i = 0;
     while i < tokens.len() {
+        match tokens[i] {
+            Punct("{") => {
+                if scopes.len() == super::MAX_NESTING {
+                    facts.limited = true;
+                    break;
+                }
+                let scope = bindings.get(&Some(i)).copied().unwrap_or_default();
+                scopes.push((textual, imported, scope.export_macros));
+                let module = matches!(&tokens[..i], [.., Ident(m), Ident(_) | Token::Raw(_)] if m == "mod");
+                imported = scope.imports | if module { 0 } else { imported };
+            }
+            Punct("}") => {
+                if let Some((outer_macros, outer_imports, export)) = scopes.pop() {
+                    if !export { textual = outer_macros; }
+                    imported = outer_imports;
+                }
+            }
+            _ => {}
+        }
         if tokens[i] == Punct("#") {
             let open = if tokens.get(i + 1) == Some(&Punct("!")) {
                 i + 2
@@ -115,13 +157,16 @@ pub(super) fn calls(tokens: &[Token], lines: &TokenLines, used: &mut usize, fact
             i += 1;
             continue;
         };
+        if name == "macro_rules" && let [Ident(binding) | Token::Raw(binding), ..] = tail {
+            textual |= embed_bit(binding);
+        }
         let kind = match name.as_str() {
-            "include_str" => Some(("include_str!", 0)),
-            "include_bytes" => Some(("include_bytes!", 1)),
+            "include_str" => Some("include_str!"),
+            "include_bytes" => Some("include_bytes!"),
             _ => None,
         };
-        if let Some((kind, n)) = kind {
-            if builtin(&tokens[..i], shadowed[n])
+        if let Some(kind) = kind {
+            if builtin(&tokens[..i], (textual | imported) & embed_bit(name) != 0)
                 && let [_, Str(path), rest @ ..] = tail
             {
                 let rest = rest.strip_prefix(&[Punct(",")]).unwrap_or(rest);
@@ -132,7 +177,9 @@ pub(super) fn calls(tokens: &[Token], lines: &TokenLines, used: &mut usize, fact
                     }
                     *used += 1;
                     if !path.is_empty() && path.len() <= LABEL_BYTES {
-                        facts.embeds.push((kind, path.clone(), lines.at(i)));
+                        let literal = sites[open + 1];
+                        let site = if literal.line == sites[i].line { literal } else { sites[i] };
+                        facts.embeds.push((kind, path.clone(), site));
                     }
                 }
             }
@@ -193,7 +240,7 @@ impl Facts {
         source: &'a [u8],
         blobs: &'a BTreeMap<&[u8], (ObjectId, usize)>,
         cancel: &'a CancellationToken,
-    ) -> impl Iterator<Item = Result<(&'static str, Vec<u8>, u32)>> + 'a {
+    ) -> impl Iterator<Item = Result<(&'static str, Vec<u8>, SourceLocation)>> + 'a {
         self.embeds.iter().filter_map(move |(kind, path, line)| {
             cancel
                 .check()
@@ -208,6 +255,10 @@ mod tests {
     use super::super::{ReadBudget, read, read_with_budget};
     use super::*;
 
+    fn embed_lines(source: &str) -> Vec<(&'static str, String, u32)> {
+        read(source).embeds.into_iter().map(|(kind, path, site)| (kind, path, site.line)).collect()
+    }
+
     #[test]
     fn literal_embeds_read_escapes_raw_paths_and_doc_values() {
         let source = r###"
@@ -218,13 +269,44 @@ mod tests {
             #[custom(include_str!("not a read"))] struct Marker;
         "###;
         assert_eq!(
-            read(source).embeds,
+            embed_lines(source),
             [
                 ("include_str!", "readme 雪.md".into(), 2),
                 ("include_bytes!", "pictures/#1 \"snow\".bin".into(), 3),
                 ("include_str!", "a/example.md".into(), 4)
             ]
         );
+    }
+
+    #[test]
+    fn embed_shadowing_follows_the_definitions_scope_and_order() {
+        let source = r#"
+            const ROOT: &str = include_str!("root");
+            mod inner {
+                const EARLY: &str = include_str!("early");
+                macro_rules! include_str { ($p:literal) => { "local" } }
+                const LATE: &str = include_str!("shadowed");
+                const BUILTIN: &str = std::include_str!("explicit");
+            }
+            fn local() {
+                include_bytes!("before-import");
+                use other::file as include_bytes;
+                mod nested { const ASSET: &[u8] = include_bytes!("nested"); }
+            }
+            const AFTER: &[u8] = include_bytes!("outside");
+            #[macro_use] mod exported {
+                macro_rules! include_bytes { ($p:literal) => { b"local" } }
+            }
+            const LATE: &[u8] = include_bytes!("exported-shadow");
+        "#;
+        let facts = read(source);
+        let paths: Vec<_> = facts.embeds.iter().map(|(_, path, _)| path.as_str()).collect();
+        assert_eq!(paths, ["root", "early", "explicit", "nested", "outside"]);
+
+        let depth = super::super::MAX_NESTING + 1;
+        let nested = format!("{}include_str!(\"too-deep\");{}", "{".repeat(depth), "}".repeat(depth));
+        let facts = read(&nested);
+        assert!(facts.limited && facts.embeds.is_empty());
     }
 
     #[test]
@@ -245,7 +327,7 @@ mod tests {
                 ::std::include_str!("actual");
             }
         "###;
-        assert_eq!(read(source).embeds, [("include_str!", "actual".into(), 14)]);
+        assert_eq!(embed_lines(source), [("include_str!", "actual".into(), 14)]);
     }
 
     #[test]

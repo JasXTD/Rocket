@@ -135,12 +135,23 @@ impl Repository {
                 }
                 let gitfile = local_files::read_config(&path.join(".git"))?;
                 if !link_resolves_to(&path, &gitfile, "gitdir: ", &admin) {
-                    return refused(WorktreeFailure::StalePreview);
+                    // A moved relative link still describes its registered location.
+                    // Never claim a checkout whose link resolves to another registration.
+                    let relative = link_path(&gitfile, "gitdir: ").filter(|p| p.is_relative());
+                    if !relative.is_some_and(|link| path_missing(&path.join(link)))
+                        || !link_matches(&e.path, &gitfile, "gitdir: ", &admin)
+                    {
+                        return refused(WorktreeFailure::StalePreview);
+                    }
+                    if relative_link(&path, &admin).is_none() {
+                        return refused(WorktreeFailure::InvalidDestination);
+                    }
                 }
-                let mut moved = e.clone();
-                moved.path = path.clone();
-                let repo = self.linked_repository(&moved, cancel)?;
-                if !repo.operation_state(cancel)?.is_idle() {
+                // The checkout cannot discover Git until both links are repaired.
+                // Read its operation refs from the identified registration (including reftable).
+                if self.operation_refs_at(&admin, cancel)?.contains(&true)
+                    || !path_missing(&admin.join(crate::bisect::JOURNAL))
+                {
                     return refused(WorktreeFailure::ActiveOperation);
                 }
                 (path, Some(gitfile))

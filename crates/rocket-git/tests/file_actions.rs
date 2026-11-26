@@ -247,6 +247,29 @@ fn unsupported_inputs_and_cancel_preserve_data() {
     );
 }
 #[test]
+fn automatic_checkout_preserves_git_binary_bytes_on_restore() {
+    let f = setup();
+    f.write(".gitattributes", "*.dat text=auto eol=crlf\n");
+    let name = "payload.dat";
+    f.write(name, b"\x01\x02\x03\x04\x05\x06\n\x01\x02\x03\x04\x05\x06\n");
+    f.commit("binary without NULs");
+    let file = f.repository.join(name);
+    fs::remove_file(&file).unwrap();
+    f.run(&["restore", "--", name]);
+    let expected = fs::read(&file).unwrap();
+    assert_eq!(expected, f.run(&["show", ":payload.dat"]));
+    let repo = f.repo();
+    for source in [FileEditSource::Index, FileEditSource::Commit("HEAD".into())] {
+        f.write(name, "edited\n");
+        let preview = repo.preview_file_edit(&RepoPath::new(name).unwrap(), source, &token()).unwrap();
+        assert_eq!(preview.after(), Some(expected.as_slice()));
+        apply(&repo, &preview);
+        assert_eq!(fs::read(&file).unwrap(), expected);
+        assert!(f.run(&["status", "--short", "--", name]).is_empty());
+    }
+}
+
+#[test]
 fn checkout_line_endings_match_git_without_running_filters() {
     isolated(
         "ROCKET_FILE_CASE",

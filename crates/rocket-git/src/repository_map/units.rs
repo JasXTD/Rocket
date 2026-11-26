@@ -31,7 +31,7 @@ pub(super) struct Built {
     pub units: Vec<Unit>,
     pub root: Option<usize>,
     pub links: BTreeMap<(usize, usize), BTreeSet<String>>,
-    pub(super) sites: BTreeMap<(usize, usize), Vec<(u32, &'static str)>>,
+    pub(super) sites: BTreeMap<(usize, usize), Vec<(super::references::SourceLocation, &'static str)>>,
     pub outline: BTreeMap<usize, Vec<OutlineItem>>,
     pub outside: BTreeMap<usize, BTreeSet<String>>,
     pub unlinked: Vec<(Vec<u8>, UnlinkedReason)>,
@@ -278,7 +278,7 @@ pub(super) fn file_dependencies(group: &packages::Found, texts: &BTreeMap<Vec<u8
     let mut remaining = MAP_LINKS;
     for (path, source) in texts {
         let from = files[path.as_slice()];
-        let mut link = |kind: &'static str, path: Vec<u8>, line: Option<u32>| {
+        let mut link = |kind: &'static str, path: Vec<u8>, line: Option<super::references::SourceLocation>| {
             if built.followed >= MAP_LINKS { built.limited = true; return; }
             built.followed += 1;
             let to = if let Some(&id) = targets.get(&path) { id } else {

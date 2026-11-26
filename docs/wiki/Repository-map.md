@@ -47,7 +47,8 @@ For Rust, the **mod** label marks a file-backed module declaration. **use** and
 opens on the selected member, and a glob opens on the `*`. For a local re-export,
 you can select the file that defines the item to find its callers. These jumps
 require a target that the map can resolve within the crate. Rust embeds and
-HTML/CSS assets open on the macro or URL that names the file.
+HTML/CSS assets open on the macro or URL that names the file. Each occurrence
+has its own position, even when several references share a line.
 
 To trace a Rust native call, expand the crate in **Folders**. Select the Rust file
 and follow its arrow to the C-family source. The arrow lists matching linker names.
