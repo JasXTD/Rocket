@@ -46,14 +46,13 @@ jobs:
         if: ${{ inputs.checks == 'spelling' }}
         run: bash tools/macos/test-intel-spelling.sh
       - name: Check fresh text across native spelling service restarts
-        if: ${{ inputs.checks == 'spelling-service' }}
         env:
           ROCKET_MACOS_SANDBOX_DISPOSABLE_USER: '1'
         run: |
           set -euo pipefail
           [[ "$(uname -m)" == x86_64 ]]
           out="$RUNNER_TEMP/rocket-spelling"
-          mkdir -m 700 "$out"
+          mkdir -p -m 700 "$out"
           xcrun clang -arch x86_64 -mmacosx-version-min=15.0 -fobjc-arc -fblocks -Wall -Wextra -Werror \
             -framework AppKit tools/tests/macos-spelling-service.m crates/rocket-spell/src/macos.m -o "$out/service"
           "$out/service" > "$out/service.json"
@@ -65,6 +64,7 @@ jobs:
           path: |
             ${{ runner.temp }}/rocket-spelling/*.json
             ${{ runner.temp }}/rocket-spelling/mcp/*/result.json
+            ${{ runner.temp }}/rocket-spelling/mcp/*/confirmed-*.png
           retention-days: 1
           if-no-files-found: warn
 

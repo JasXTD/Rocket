@@ -19,9 +19,11 @@ impl crate::app::Rocket {
     pub(crate) fn spelling_problem(&self) -> Option<&str> {
         self.spelling.problem.as_deref().or_else(|| {
             let (summary, description) = crate::views::split_draft(&self.tab()?.draft);
-            self.spelling.checks.iter()
-                .filter(|c| c.found.is_err() && (c.text == summary || c.text == description))
-                .find_map(|c| c.found.as_ref().err().map(String::as_str))
+            self.spelling.checks.iter().find_map(|c| {
+                let error = c.found.as_ref().err()?;
+                (c.pending.is_none() && (c.text == summary || c.text == description))
+                    .then_some(error.as_str())
+            })
         })
     }
 

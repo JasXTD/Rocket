@@ -58,9 +58,12 @@ async function check(text,expected,iteration){
 }
 async function availability(){
  const typo='Ths sentnce has misspelled wrds', partial='wrngg phrase with anothrrr typo', interrupted='Mispellling this field';
- const legacy=text=>nativeCalls().filter(c=>c.event==='spell_native_return'&&c.text_units===text.length);
- const confirmation=text=>nativeCalls().filter(c=>c.event==='spell_confirmation'&&c.text_units===text.length&&c.spelling_only&&c.same_document);
- await enabled(true);await type(typo);
+ let firstCall=0;
+ async function enter(text){firstCall=nativeCalls().length;await type(text)}
+ const replies=text=>nativeCalls().slice(firstCall).filter(c=>c.text_units===text.length);
+ const legacy=text=>replies(text).filter(c=>c.event==='spell_native_return');
+ const confirmation=text=>replies(text).filter(c=>c.event==='spell_confirmation'&&c.spelling_only&&c.same_document);
+ await enabled(true);await enter(typo);
  await until(s=>s.spelling.ready&&!s.spelling.waiting&&s.tabs.some(t=>t.draft_present)&&legacy(typo).some(c=>c.simulated_failure),'failed first native reply');
  if(startup==='released-failure'){
   assert.equal(state.spelling.failed,false);assert.equal(state.spelling.misspellings,0);
@@ -76,10 +79,13 @@ async function availability(){
  await verdict(typo,'checked',3);
  assert(legacy(typo).some(c=>c.simulated_failure&&c.words===-1));
  assert(confirmation(typo).some(c=>c.start===0&&c.answered&&c.matches===3&&c.language.startsWith('en')));
+ report.summary_rect=control('commit-message').rect;
+ await capture('confirmed-typos');
  report.cases.push('One interrupted native reply recovered all three real English spellings in the same draft');
- await type('hello world');await verdict('hello world','checked',0);
- assert(confirmation('hello world').some(c=>c.answered&&c.matches===0));
- assert(state.spelling.misspellings>0,'Prior text stays cached while the current clean text reports zero');
+ await enter('hello world');await verdict('hello world','checked',0);
+ assert(confirmation('hello world').some(c=>c.answered&&c.matches===0&&c.words===-1&&c.used_language));
+ await capture('confirmed-clean');
+ report.aggregate_after_clean=state.spelling.misspellings;
  report.cases.push('A dictionary without word counts confirmed clean text independently of stale cached results');
  const body='資料 🚀 cafe\u0301 mispellling';
  await type(body,'commit-description');
@@ -87,12 +93,17 @@ async function availability(){
  assert.equal(field().misspellings,0);
  await type('','commit-description');
  report.cases.push('Summary and description reported independent results across UTF-8 and UTF-16 text');
- await type(partial);
+ await enter(partial);
  await until(s=>!s.spelling.waiting&&field().bytes===Buffer.byteLength(partial)&&field().state==='checked'&&field().misspellings>=2,'partly checked sentence');
  const interruptedAt=legacy(partial).find(c=>c.simulated_failure)?.start;
  assert(interruptedAt>0&&confirmation(partial).some(c=>c.start===interruptedAt&&c.matches>0));
  report.cases.push('A partial native failure preserved earlier ranges and checked the remaining suffix');
- await type(interrupted);await verdict(interrupted,'unavailable',null);
+ const zeroed='Anotherrr unverified field';
+ await enter(zeroed);await verdict(zeroed,'unavailable',null);
+ assert(legacy(zeroed).some(c=>c.simulated_failure&&c.words===0));
+ assert(confirmation(zeroed).some(c=>c.answered&&c.matches===0&&c.words===0&&!c.used_language));
+ report.cases.push('An empty response without evaluated words or a dictionary stayed unavailable');
+ await enter(interrupted);await verdict(interrupted,'unavailable',null);
  assert(state.spelling.failed);assert(confirmation(interrupted).some(c=>!c.answered));
  const beforeRetry=legacy(interrupted).length;
  await click('commit-description');await click('commit-message');

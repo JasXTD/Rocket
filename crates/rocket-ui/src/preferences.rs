@@ -1204,7 +1204,8 @@ impl Rocket {
                 }
             } else {
                 match (self.spelling_problem(), self.spelling.language()) {
-                    (Some(problem), _) => trf!("Off: {problem}", problem),
+                    (Some(problem), Some(_)) => problem.to_owned(),
+                    (Some(problem), None) => trf!("Off: {problem}", problem),
                     (None, Some(language)) if cfg!(windows) => trf!("Windows spell checker · {language}", language),
                     (None, Some(language)) if cfg!(target_os = "macos") => trf!("macOS spell checker · {language}", language),
                     (None, Some(language)) => trf!("Hunspell dictionary · {language}", language),

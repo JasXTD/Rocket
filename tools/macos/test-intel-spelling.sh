@@ -64,6 +64,9 @@ fs.writeFileSync(path.join(out,'build-errors.json'),JSON.stringify({errors}));
 JS
   exit 1
 fi
+rustup run 1.99.1 cargo test --offline --locked -p rocket-spell --lib tests::utf16_ranges_map_to_byte_ranges -- --exact > "$out/utf16.log"
+grep -Fqx 'test tests::utf16_ranges_map_to_byte_ranges ... ok' "$out/utf16.log"
+printf '%s\n' '{"utf16_ranges_map_to_byte_ranges":true}' > "$out/utf16.json"
 export ROCKET_MCP_EXE="$PWD/target/debug/rocket-mcp"
 result=0
 for layout in service-recovery release-layout immediate ready-first before-enable; do

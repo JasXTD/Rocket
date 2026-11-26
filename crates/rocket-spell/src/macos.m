@@ -58,9 +58,10 @@ int rocket_spell_check(void *handle, const uint8_t *bytes, size_t length, RSRang
             // AppKit also returns an empty range when the service cannot check.
             // A negative word count can mean failure or an uncounted dictionary.
             // Ask for the actual spelling results before caching this as clean.
+            if (words > 0) break;
             NSRange remaining = NSMakeRange(start, text.length - start);
-            if (words > 0 || (words == 0 && [text rangeOfCharacterFromSet:NSCharacterSet.letterCharacterSet
-                                      options:0 range:remaining].location == NSNotFound)) break;
+            if ([text rangeOfCharacterFromSet:NSCharacterSet.letterCharacterSet
+                                      options:0 range:remaining].location == NSNotFound) break;
             NSOrthography *language = [NSOrthography defaultOrthographyForLanguage:
                 [context.language stringByReplacingOccurrencesOfString:@"_" withString:@"-"]];
             if (!language) return;
@@ -69,7 +70,7 @@ int rocket_spell_check(void *handle, const uint8_t *bytes, size_t length, RSRang
             NSArray<NSTextCheckingResult *> *matches = [context.checker checkString:text range:remaining
                 types:NSTextCheckingTypeSpelling options:@{NSTextCheckingOrthographyKey:language}
                 inSpellDocumentWithTag:context.tag orthography:&used wordCount:&confirmedWords];
-            if (!matches || (!matches.count && confirmedWords < 0 && !used)) return;
+            if (!matches || (!matches.count && confirmedWords <= 0 && !used)) return;
             for (NSTextCheckingResult *match in matches) {
                 if (match.resultType == NSTextCheckingTypeSpelling &&
                     !appendRange(match.range, text.length, &start, ranges, capacity, &count)) return;

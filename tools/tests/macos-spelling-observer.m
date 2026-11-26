@@ -17,7 +17,8 @@ static void record(NSDictionary *event) {
 static NSRange observed(id self, SEL selector, NSString *text, NSInteger start,
                         NSString *language, BOOL wrap, NSInteger tag, NSInteger *words) {
     double begin = CFAbsoluteTimeGetCurrent();
-    BOOL skip = NO;
+    BOOL zeroed = inject && !start && [text isEqualToString:@"Anotherrr unverified field"];
+    BOOL skip = zeroed;
     if (inject && !start && !firstFailed && [text isEqualToString:@"Ths sentnce has misspelled wrds"]) {
         skip = firstFailed = YES;
     } else if (inject && start > 0 && !partialFailed && [text isEqualToString:@"wrngg phrase with anothrrr typo"]) {
@@ -27,7 +28,7 @@ static NSRange observed(id self, SEL selector, NSString *text, NSInteger start,
     }
     NSRange result;
     if (skip) {
-        if (words) *words = -1;
+        if (words) *words = zeroed ? 0 : -1;
         result = NSMakeRange(NSNotFound, 0);
     } else {
         result = original(self, selector, text, start, language, wrap, tag, words);
@@ -52,12 +53,25 @@ static NSRange observed(id self, SEL selector, NSString *text, NSInteger start,
 static NSArray *observedFull(id self, SEL selector, NSString *text, NSRange range, NSTextCheckingTypes types,
                              NSDictionary *options, NSInteger tag, NSOrthography *__autoreleasing *orthography, NSInteger *words) {
     BOOL unavailable = inject && failConfirmation && [text isEqualToString:@"Mispellling this field"];
-    if (unavailable) failConfirmation = NO;
-    NSArray *results = unavailable ? nil : originalFull(self, selector, text, range, types, options, tag, orthography, words);
+    BOOL zeroed = inject && [text isEqualToString:@"Anotherrr unverified field"];
+    NSArray *results;
+    if (unavailable || zeroed) {
+        if (unavailable) failConfirmation = NO;
+        results = zeroed ? @[] : nil;
+        if (words) *words = zeroed ? 0 : -1;
+        if (orthography) *orthography = nil;
+    } else {
+        results = unavailable ? nil : originalFull(self, selector, text, range, types, options, tag, orthography, words);
+        if (inject && [text isEqualToString:@"hello world"] && results) {
+            if (words) *words = -1;
+            if (orthography) *orthography = options[NSTextCheckingOrthographyKey];
+        }
+    }
     if (inject) record(@{@"event":@"spell_confirmation", @"text_units":@(text.length), @"start":@(range.location),
         @"same_document":@(tag == lastTag), @"spelling_only":@(types == NSTextCheckingTypeSpelling),
         @"language": [options[NSTextCheckingOrthographyKey] dominantLanguage] ?: @"",
-        @"answered":@(results != nil), @"matches":@(results.count)});
+        @"answered":@(results != nil), @"matches":@(results.count),
+        @"words": words ? @(*words) : NSNull.null, @"used_language":@(orthography && *orthography)});
     return results;
 }
 __attribute__((constructor)) static void install(void) {
