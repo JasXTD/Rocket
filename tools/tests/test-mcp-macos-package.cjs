@@ -102,7 +102,12 @@ async function run(){try{
  await capture('compact-update');await click('update-later');mode='error';await native('help-updates');await until(s=>!s.updates.running&&s.updates.status==='error','update error');assert(state.updates.error);await capture('compact-update-error');await click('update-later');
  mode='slow';await native('help-updates');await until(s=>s.updates.running&&control('update-stop')?.enabled,'pending check');const stop=performance.now();await click('update-stop',false);await until(s=>!s.updates.running,'cancelled check',5000);report.timings.update_cancel_ms=Math.round(performance.now()-stop);await until(()=>closed>0,'cancelled request closed',5000);await click('update-later');
  pass('Packaged updater: one launch check, native Help recheck, compact available/error states and cancellation close the loopback request');
- await resize(1180,620);await native('preferences');await until(()=>control('pref-page-commit')?.enabled);await click('pref-page-commit');await click('pref-spell-check');await click('dialog-submit');await native('shortcut-changes');await type('commit-message','Ths sentnce has misspelled wrds');await until(s=>s.spelling.ready&&!s.spelling.waiting&&s.spelling.checked_texts>0&&s.spelling.misspellings>0,'native spelling results');assert(!state.spelling.failed);await capture('native-spelling');
+ await resize(1180,620);await native('preferences');await until(()=>control('pref-page-commit')?.enabled);await click('pref-page-commit');await click('pref-spell-check');await click('dialog-submit');await native('shortcut-changes');
+ const typo='Ths sentnce has misspelled wrds';await type('commit-message',typo);
+ await until(s=>{
+  const field=s.spelling.fields?.summary;
+  return s.spelling.ready&&!s.spelling.waiting&&field?.state==='checked'&&field.bytes===Buffer.byteLength(typo)&&field.misspellings>0;
+ },'native spelling results');assert(!state.spelling.failed);await capture('native-spelling');
  await type('commit-message','');await native('preferences');await click('pref-page-commit');await click('pref-spell-check');await click('dialog-submit');await until(s=>!s.spelling.ready&&!s.spelling.waiting,'spelling stopped');
  pass('Cocoa spelling checks actual commit input and stops cleanly without learning dictionary words');
  await native('repository-playground');await until(()=>play()?.loaded&&control('int-play-run')?.enabled,'Lua scratch editor');await click('int-play-run');await until(()=>!play().busy&&play().has_preview,'bound Lua preview');assert.equal(play().error,null);assert(play().widget_ids.includes('increment'));await click('int-play-ui-increment');await until(()=>!play().busy&&play().text?.labels?.some(t=>t.includes('updated 1 times')),'Lua interaction');await capture('bound-lua-preview');

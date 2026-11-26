@@ -10,6 +10,10 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
+## Unreleased
+
+- macOS checks again when its spelling service cannot confirm a commit message. Returning to a field retries an unavailable check and preserves the draft.
+
 ## 0.92.7 — Code Map references and safer Git workflows
 
 See the [release notes](docs/releases/0.92.7.md) for downloads and platform requirements.

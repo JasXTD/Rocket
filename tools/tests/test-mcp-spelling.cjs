@@ -6,7 +6,8 @@ assert.equal(process.platform,'darwin');
 assert.equal(process.env.GITHUB_ACTIONS,'true');
 const exe=fs.realpathSync(process.env.ROCKET_MCP_EXE),out=process.env.ROCKET_MCP_RESULTS;
 const startup=process.argv[2]||'immediate';
-assert(['before-enable','immediate','ready-first','release-layout'].includes(startup));
+assert(['before-enable','immediate','ready-first','release-layout','released-failure','service-recovery'].includes(startup));
+const availabilityTest = startup==='released-failure' || startup==='service-recovery';
 fs.mkdirSync(out,{recursive:true});
 const root=fs.realpathSync(fs.mkdtempSync(path.join(out,'spelling-'))),repo=path.join(root,'資料 repo'),profile=path.join(root,'profile'),home=path.join(root,'home');
 for(const p of [repo,home,path.join(root,'template')])fs.mkdirSync(p,{recursive:true});
@@ -19,7 +20,7 @@ const git=args=>cp.execFileSync('/usr/bin/git',['-C',repo,...args],{env,encoding
 const branch='rocket-ui-test/spelling';
 git(['init','-b',branch]);git(['config','user.name','Spelling Fixture']);git(['config','user.email','fixture@example.invalid']);git(['config','commit.gpgsign','false']);
 fs.writeFileSync(path.join(repo,'資料.rs'),'// unchanged synthetic source\n');git(['add','.']);git(['commit','-m','Spelling fixture']);fs.writeFileSync(path.join(repo,'.git/rocket-ui-fixture'),branch);
-if(startup==='release-layout'){
+if(startup==='release-layout'||availabilityTest){
  fs.appendFileSync(path.join(repo,'資料.rs'),'// staged fixture\n');git(['add','.']);fs.appendFileSync(path.join(repo,'資料.rs'),'// unstaged fixture\n');
  fs.writeFileSync(path.join(repo,'untracked fixture'),'unchanged');
 }
@@ -35,13 +36,18 @@ async function settle(){await until(s=>!s.busy&&!s.input_pending&&!s.tabs?.some(
 async function stable(){let prev='',n=0;await until(s=>{const next=JSON.stringify(s.controls);n=prev===next?n+1:0;prev=next;return n>=2&&!s.input_pending},'layout')}
 async function click(id){await stable();assert(control(id)?.enabled,id);await client.tool('rocket_click',{target:id,expected_tab:state.active_tab});await settle()}
 async function menu(id){await settle();await client.tool('rocket_menu',{target:id,expected_tab:state.active_tab});await settle()}
-async function type(text){await stable();event('type_before',{units:text.length});await client.tool('rocket_type',{target:'commit-message',text,expected_tab:state.active_tab});await settle();event('type_after',{units:text.length})}
+async function type(text,target='commit-message'){await stable();event('type_before',{units:text.length});await client.tool('rocket_type',{target,text,expected_tab:state.active_tab});await settle();event('type_after',{units:text.length})}
 async function enabled(on){await menu('preferences');await until(()=>control('pref-page-commit')?.enabled,'preferences');await click('pref-page-commit');if(state.spelling.enabled!==on)await click('pref-spell-check');await click('dialog-submit');event('toggle_saved',{on});if(!on||startup==='ready-first')await until(s=>on?s.spelling.ready&&!s.spelling.waiting:!s.spelling.ready&&!s.spelling.waiting,'checker toggle');await menu('shortcut-changes')}
 async function capture(name){const r=await client.request('tools/call',{name:'rocket_capture',arguments:{}});assert(!r.isError);fs.writeFileSync(path.join(root,name+'.png'),Buffer.from(r.content.find(c=>c.type==='image').data,'base64'))}
 async function check(text,expected,iteration){
  const offset=nativeCalls().length;
  if(startup==='before-enable'){await menu('shortcut-changes');await type(text);await enabled(true)}else{await enabled(true);await type(text)}
- await until(s=>s.spelling.ready&&!s.spelling.waiting&&s.spelling.checked_texts>0&&(expected?s.spelling.misspellings>0:s.spelling.misspellings===0)&&nativeCalls().slice(offset).some(c=>c.text_units===text.length&&c.start===0),'spell result',12000);
+ await until(s=>{
+  const field=s.spelling.fields?.summary;
+  if(field&&(field.state!=='checked'||field.bytes!==Buffer.byteLength(text)))return false;
+  const count=field?field.misspellings:s.spelling.misspellings;
+  return s.spelling.ready&&!s.spelling.waiting&&(expected?count>0:count===0)&&nativeCalls().slice(offset).some(c=>c.text_units===text.length&&c.start===0);
+ },'spell result',12000);
  assert(!state.spelling.failed);
  const calls=nativeCalls().slice(offset).filter(c=>c.text_units===text.length);
  // The aggregate UI count alone can belong to an older text. Require a native
@@ -50,11 +56,56 @@ async function check(text,expected,iteration){
  assert.equal(calls.some(c=>!c.not_found&&c.length>0),expected,'Native result differs from input expectation');
  report.checks.push({iteration,units:text.length,expected,observed:state.spelling.misspellings,native_calls:calls.length});event('checked',{iteration});
 }
+async function availability(){
+ const typo='Ths sentnce has misspelled wrds', partial='wrngg phrase with anothrrr typo', interrupted='Mispellling this field';
+ const legacy=text=>nativeCalls().filter(c=>c.event==='spell_native_return'&&c.text_units===text.length);
+ const confirmation=text=>nativeCalls().filter(c=>c.event==='spell_confirmation'&&c.text_units===text.length&&c.spelling_only&&c.same_document);
+ await enabled(true);await type(typo);
+ await until(s=>s.spelling.ready&&!s.spelling.waiting&&s.tabs.some(t=>t.draft_present)&&legacy(typo).some(c=>c.simulated_failure),'failed first native reply');
+ if(startup==='released-failure'){
+  assert.equal(state.spelling.failed,false);assert.equal(state.spelling.misspellings,0);
+  assert(!legacy(typo)[0].word_count_requested);assert.equal(confirmation(typo).length,0);
+  report.cases.push('Released app accepted an unavailable native reply as zero typos in the entered draft');
+  return;
+ }
+ const field=()=>state.spelling.fields.summary;
+ async function verdict(text,wanted,count){
+  await until(s=>!s.spelling.waiting&&field().bytes===Buffer.byteLength(text)&&field().state===wanted,'current summary '+wanted);
+  assert.equal(field().misspellings,count);
+ }
+ await verdict(typo,'checked',3);
+ assert(legacy(typo).some(c=>c.simulated_failure&&c.words===-1));
+ assert(confirmation(typo).some(c=>c.start===0&&c.answered&&c.matches===3&&c.language.startsWith('en')));
+ report.cases.push('One interrupted native reply recovered all three real English spellings in the same draft');
+ await type('hello world');await verdict('hello world','checked',0);
+ assert(confirmation('hello world').some(c=>c.answered&&c.matches===0));
+ assert(state.spelling.misspellings>0,'Prior text stays cached while the current clean text reports zero');
+ report.cases.push('A dictionary without word counts confirmed clean text independently of stale cached results');
+ const body='資料 🚀 cafe\u0301 mispellling';
+ await type(body,'commit-description');
+ await until(s=>!s.spelling.waiting&&s.spelling.fields.description.state==='checked'&&s.spelling.fields.description.bytes===Buffer.byteLength(body)&&s.spelling.fields.description.misspellings>0,'independent Unicode description');
+ assert.equal(field().misspellings,0);
+ await type('','commit-description');
+ report.cases.push('Summary and description reported independent results across UTF-8 and UTF-16 text');
+ await type(partial);
+ await until(s=>!s.spelling.waiting&&field().bytes===Buffer.byteLength(partial)&&field().state==='checked'&&field().misspellings>=2,'partly checked sentence');
+ const interruptedAt=legacy(partial).find(c=>c.simulated_failure)?.start;
+ assert(interruptedAt>0&&confirmation(partial).some(c=>c.start===interruptedAt&&c.matches>0));
+ report.cases.push('A partial native failure preserved earlier ranges and checked the remaining suffix');
+ await type(interrupted);await verdict(interrupted,'unavailable',null);
+ assert(state.spelling.failed);assert(confirmation(interrupted).some(c=>!c.answered));
+ const beforeRetry=legacy(interrupted).length;
+ await click('commit-description');await click('commit-message');
+ await until(s=>!s.spelling.waiting&&!s.spelling.failed&&field().bytes===Buffer.byteLength(interrupted)&&field().state==='checked'&&field().misspellings>0,'refocus on the unchanged draft');
+ assert(legacy(interrupted).slice(beforeRetry).some(c=>!c.simulated_failure&&c.length>0));
+ report.cases.push('Two unavailable replies stayed visible as an error until refocus recovered the unchanged draft');
+}
 async function run(){try{
  cp.execFileSync(exe,['--init-http',profile,root],{env,stdio:'pipe'});
  const port=net.createServer();await new Promise(r=>port.listen(0,'127.0.0.1',r));const number=port.address().port;await new Promise(r=>port.close(r));
  fs.writeFileSync(path.join(profile,'settings'),'ROCKET-MCP-1\n'+number+'\n'+root+'\n');
  const runEnv={...env};if(process.env.ROCKET_SPELL_OBSERVER){runEnv.DYLD_INSERT_LIBRARIES=fs.realpathSync(process.env.ROCKET_SPELL_OBSERVER);runEnv.ROCKET_SPELL_OBSERVE='1'}
+ if(availabilityTest)runEnv.ROCKET_SPELL_TEST_MODE='availability-fixtures';
  const fd=fs.openSync(path.join(root,'service.log'),'w');service=cp.spawn(exe,['--http-profile',profile],{env:runEnv,stdio:['ignore','ignore',fd]});fs.closeSync(fd);client=new RocketHttpClient(profile);
  for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break}catch(e){if(i>=100)throw e;await delay(100)}}
  await client.initialize();await client.tool('rocket_open',{path:repo});await settle();
@@ -65,13 +116,15 @@ async function run(){try{
  }
  // Each mode starts a fresh app. Keep the original failed sentence first; vary
  // later texts so repeating a cached Cocoa answer is not our only evidence.
- for(let i=0;i<3;i++)for(const [base,expected] of [['Ths sentnce has misspelled wrds',true],['hello world',false],['資料 🚀 cafe\u0301 mispellling',true]]){
+ if(availabilityTest)await availability();
+ else for(let i=0;i<3;i++)for(const [base,expected] of [['Ths sentnce has misspelled wrds',true],['hello world',false],['資料 🚀 cafe\u0301 mispellling',true]]){
   const text=i===0?base:base+' '+(1000+i);
   await check(text,expected,i);
   if(i===0&&text.startsWith('Ths'))await capture('first-result');
   await type('');await enabled(false);
  }
- report.cases.push('Fresh process '+startup+': checker startup, native results, clean text, Unicode and stop');
+ if(!availabilityTest)report.cases.push('Fresh process '+startup+': checker startup, native results, clean text, Unicode and stop');
+ else {await type('');await enabled(false)}
  await capture('final');
  assert.deepEqual({head:git(['rev-parse','HEAD']),index:hash(path.join(repo,'.git/index')),file:hash(path.join(repo,'資料.rs')),config:hash(path.join(repo,'.git/config'))},before);
  report.passed=true;

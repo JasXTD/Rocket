@@ -35,7 +35,8 @@ make -C "$out/git-2.56.1" -j3 prefix="$out/git" NO_GETTEXT=YesPlease NO_TCLTK=Ye
 export PATH="$out/git/bin:$PATH"
 [[ $(git --version) == 'git version 2.56.1' ]]
 
-# Observe the signed, published binary first. Installing Rocket is unnecessary.
+# Establish the original packaged behavior before running the same fixture
+# against the current source. Neither run installs Rocket on the runner.
 archive=Rocket-0.92.7-macos-x64-preview.zip
 curl --proto '=https' --proto-redir '=https' -fsSL --max-time 180 \
   "https://github.com/JasXTD/Rocket/releases/download/v0.92.7/$archive" -o "$out/$archive"
@@ -49,8 +50,23 @@ xcrun clang -arch x86_64 -fobjc-arc -fblocks -Wall -Wextra -Werror -dynamiclib -
   tools/tests/macos-spelling-observer.m -o "$ROCKET_SPELL_OBSERVER"
 codesign --force --sign - "$ROCKET_SPELL_OBSERVER"
 
+node tools/tests/test-mcp-spelling.cjs released-failure
+
+# Use the same pinned toolchain as the native workflow. Only build the MCP
+# executable which hosts the real editor; spelling needs no Lua worker or ZIP.
+rustup toolchain install 1.99.1 --profile minimal --no-self-update
+export CARGO_BUILD_JOBS=3
+if ! rustup run 1.99.1 cargo build --locked -p rocket-mcp --bin rocket-mcp 2>&1 | tee "$out/build.log"; then
+  node - "$out" <<'JS'
+const fs=require('node:fs'),path=require('node:path'),out=process.argv[2];
+const errors=fs.readFileSync(path.join(out,'build.log'),'utf8').split('\n').filter(l=>/error[:\[]|^\s*-->/i.test(l)).slice(-20).map(l=>l.slice(0,400));
+fs.writeFileSync(path.join(out,'build-errors.json'),JSON.stringify({errors}));
+JS
+  exit 1
+fi
+export ROCKET_MCP_EXE="$PWD/target/debug/rocket-mcp"
 result=0
-for layout in release-layout immediate before-enable; do
+for layout in service-recovery release-layout immediate ready-first before-enable; do
   node tools/tests/test-mcp-spelling.cjs "$layout" || result=1
 done
 exit "$result"

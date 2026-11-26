@@ -16,19 +16,38 @@ const SUGGESTIONS: usize = 8;
 const KEPT: usize = 3;
 
 impl crate::app::Rocket {
+    pub(crate) fn spelling_problem(&self) -> Option<&str> {
+        self.spelling.problem.as_deref().or_else(|| {
+            let (summary, description) = crate::views::split_draft(&self.tab()?.draft);
+            self.spelling.checks.iter()
+                .filter(|c| c.found.is_err() && (c.text == summary || c.text == description))
+                .find_map(|c| c.found.as_ref().err().map(String::as_str))
+        })
+    }
+
     /// Diagnostic counters only: never expose commit text, words or dictionary contents.
     pub fn spelling_status(&self) -> serde_json::Value {
         let s = &self.spelling;
+        let fields = self.tab().map(|tab| {
+            let (summary, description) = crate::views::split_draft(&tab.draft);
+            serde_json::json!({"summary":s.field_status(summary),"description":s.field_status(description)})
+        });
         serde_json::json!({"enabled":s.enabled,"ready":s.checker.is_some(),"waiting":s.waiting(),
-            "failed":s.problem.is_some(),"checked_texts":s.checks.len(),
-            "misspellings":s.checks.iter().map(|c|c.found.len()).sum::<usize>()})
+            "failed":self.spelling_problem().is_some(),"checked_texts":s.checks.len(),"fields":fields,
+            "misspellings":s.checks.iter().map(|c|c.misspellings().len()).sum::<usize>()})
     }
 }
 
 struct Check {
     text: String,
     pending: Option<Pending<Vec<Misspelling>>>,
-    found: Vec<Misspelling>,
+    found: Result<Vec<Misspelling>, String>,
+}
+
+impl Check {
+    fn misspellings(&self) -> &[Misspelling] {
+        self.found.as_deref().unwrap_or_default()
+    }
 }
 
 /// The word a context menu was opened on, with the suggestions for it.
@@ -57,6 +76,18 @@ pub struct Spelling {
 }
 
 impl Spelling {
+    fn field_status(&self, text: &str) -> serde_json::Value {
+        let (state, count) = match self.checks.iter().find(|c| c.text == text) {
+            None => ("unchecked", None),
+            Some(c) if c.pending.is_some() => ("pending", None),
+            Some(c) => match &c.found {
+                Ok(found) => ("checked", Some(found.len())),
+                Err(_) => ("unavailable", None),
+            },
+        };
+        serde_json::json!({"bytes":text.len(),"state":state,"misspellings":count})
+    }
+
     /// Whether this platform has a spell checker Rocket can use.
     pub fn supported() -> bool {
         cfg!(any(windows, target_os = "linux", target_os = "macos"))
@@ -124,11 +155,7 @@ impl Spelling {
         for check in &mut self.checks {
             if let Some(result) = check.pending.as_ref().and_then(Pending::poll) {
                 check.pending = None;
-                // A failed check shows no underlines; the problem is reported once.
-                match result {
-                    Ok(found) => check.found = found,
-                    Err(e) => self.problem = Some(e.to_string()),
-                }
+                check.found = result.map_err(|e| e.to_string());
                 changed = true;
             }
         }
@@ -175,12 +202,12 @@ impl Spelling {
                 self.checks.push(Check {
                     text: text.to_owned(),
                     pending: Some(checker.check(text)),
-                    found: Vec::new(),
+                    found: Ok(Vec::new()),
                 });
                 self.checks.len() - 1
             }
         };
-        &self.checks[index].found
+        self.checks[index].misspellings()
     }
 
     /// Open the suggestions for the flagged word at byte `at` of `text` in `field`.
@@ -192,7 +219,7 @@ impl Spelling {
             .checks
             .iter()
             .find(|c| c.text == text)
-            .and_then(|c| c.found.iter().find(|m| m.range.contains(&at)))
+            .and_then(|c| c.misspellings().iter().find(|m| m.range.contains(&at)))
             .map(|m| m.range.clone());
         self.target = range.map(|range| {
             let word = text[range.clone()].to_owned();
@@ -259,6 +286,15 @@ pub fn show(
         build(text).layouter(&mut layouter).show(ui)
     };
     let mut response = output.response.response;
+    // Returning to a field retries an unavailable service without changing the draft.
+    if response.gained_focus()
+        && let Some(checker) = &spelling.checker
+        && let Some(c) = spelling.checks.iter_mut().find(|c| c.found.is_err() && c.text == *text)
+        && c.pending.is_none()
+    {
+        c.pending = Some(checker.check(text));
+        ui.ctx().request_repaint();
+    }
     if response.secondary_clicked()
         && let Some(pos) = response.interact_pointer_pos()
     {

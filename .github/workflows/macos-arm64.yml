@@ -34,7 +34,7 @@ jobs:
   spelling:
     if: ${{ inputs.checks == 'spelling' && inputs.architecture == 'x64' && github.event.repository.private == false }}
     runs-on: macos-15-intel
-    timeout-minutes: 32
+    timeout-minutes: 38
     env:
       CARGO_TERM_COLOR: never
     steps:

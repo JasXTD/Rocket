@@ -16,6 +16,14 @@ static void onMain(void (^work)(void)) {
 static NSString *string(const uint8_t *bytes, size_t length) {
     return [[NSString alloc] initWithBytes:bytes length:length encoding:NSUTF8StringEncoding];
 }
+static BOOL appendRange(NSRange range, NSUInteger limit, NSUInteger *start,
+                        RSRange *ranges, size_t capacity, size_t *count) {
+    if (!range.length || range.location < *start || range.location > limit ||
+        range.length > limit - range.location || *count >= capacity) return NO;
+    ranges[(*count)++] = (RSRange){range.location, range.length};
+    *start = NSMaxRange(range);
+    return YES;
+}
 void *rocket_spell_create(const uint8_t *requested, size_t length, char *language, size_t capacity) {
     __block void *result = NULL;
     onMain(^{ @autoreleasepool { @try {
@@ -41,10 +49,32 @@ int rocket_spell_check(void *handle, const uint8_t *bytes, size_t length, RSRang
         NSString *text = string(bytes, length); if (!text) return;
         NSUInteger start = 0; size_t count = 0;
         while (start < text.length) {
-            NSRange range = [context.checker checkSpellingOfString:text startingAt:start language:context.language wrap:NO inSpellDocumentWithTag:context.tag wordCount:NULL];
-            if (!range.length || range.location == NSNotFound) break;
-            if (range.location < start || NSMaxRange(range) > text.length || count == capacity) return;
-            ranges[count++] = (RSRange){range.location, range.length}; start = NSMaxRange(range);
+            NSInteger words = -1;
+            NSRange range = [context.checker checkSpellingOfString:text startingAt:start language:context.language wrap:NO inSpellDocumentWithTag:context.tag wordCount:&words];
+            if (range.length) {
+                if (!appendRange(range, text.length, &start, ranges, capacity, &count)) return;
+                continue;
+            }
+            // AppKit also returns an empty range when the service cannot check.
+            // A negative word count can mean failure or an uncounted dictionary.
+            // Ask for the actual spelling results before caching this as clean.
+            NSRange remaining = NSMakeRange(start, text.length - start);
+            if (words > 0 || (words == 0 && [text rangeOfCharacterFromSet:NSCharacterSet.letterCharacterSet
+                                      options:0 range:remaining].location == NSNotFound)) break;
+            NSOrthography *language = [NSOrthography defaultOrthographyForLanguage:
+                [context.language stringByReplacingOccurrencesOfString:@"_" withString:@"-"]];
+            if (!language) return;
+            NSOrthography *used = nil;
+            NSInteger confirmedWords = -1;
+            NSArray<NSTextCheckingResult *> *matches = [context.checker checkString:text range:remaining
+                types:NSTextCheckingTypeSpelling options:@{NSTextCheckingOrthographyKey:language}
+                inSpellDocumentWithTag:context.tag orthography:&used wordCount:&confirmedWords];
+            if (!matches || (!matches.count && confirmedWords < 0 && !used)) return;
+            for (NSTextCheckingResult *match in matches) {
+                if (match.resultType == NSTextCheckingTypeSpelling &&
+                    !appendRange(match.range, text.length, &start, ranges, capacity, &count)) return;
+            }
+            break;
         }
         result = (int)count;
     } @catch (NSException *exception) { (void)exception; } } });

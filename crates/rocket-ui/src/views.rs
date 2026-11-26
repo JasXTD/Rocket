@@ -2571,15 +2571,14 @@ fn status_letter(entry: &StatusEntry, staged: bool) -> char {
 }
 /// Split a commit draft into its summary line and description.
 /// The blank separator line belongs to neither field.
-fn split_draft(draft: &str) -> (String, String) {
+pub(crate) fn split_draft(draft: &str) -> (&str, &str) {
     match draft.split_once('\n') {
-        None => (draft.to_owned(), String::new()),
+        None => (draft, ""),
         Some((summary, rest)) => (
-            summary.trim_end_matches('\r').to_owned(),
+            summary.trim_end_matches('\r'),
             rest.strip_prefix("\r\n")
                 .or_else(|| rest.strip_prefix('\n'))
-                .unwrap_or(rest)
-                .to_owned(),
+                .unwrap_or(rest),
         ),
     }
 }
@@ -2614,7 +2613,7 @@ fn commit_area(ui: &Ui, tab: &Tab, pane: f32, saved: Option<f32>) -> CommitArea 
     let (_, description) = split_draft(&tab.draft);
     // The description wraps inside the area's margins, its frame and a scroll bar.
     let wrap = (ui.available_width() - 46.0).max(40.0);
-    let rows = ui.painter().layout(description, TextStyle::Body.resolve(ui.style()), Color32::PLACEHOLDER, wrap).rows.len() as f32;
+    let rows = ui.painter().layout(description.to_owned(), TextStyle::Body.resolve(ui.style()), Color32::PLACEHOLDER, wrap).rows.len() as f32;
     let open = if pane < 600.0 { 4.0 } else { 7.0 };
     let min = fixed + 2.0 * row;
     // The file list keeps room for its header and a few rows.
@@ -2697,7 +2696,8 @@ fn commit_editor(
                 && !matches!(e.kind, EntryKind::Untracked | EntryKind::Unmerged)
         })
         .count();
-    let (mut summary, mut description) = split_draft(&tab.draft);
+    let (summary, description) = split_draft(&tab.draft);
+    let (mut summary, mut description) = (summary.to_owned(), description.to_owned());
     // Summary: one line, counted against the conventional 72 characters.
     let field = |ui: &mut Ui, add: &mut dyn FnMut(&mut Ui) -> Response| {
         Frame::new()
@@ -3867,10 +3867,10 @@ mod tests {
         ] {
             let (summary, description) = split_draft(draft);
             assert!(!summary.contains('\n'));
-            assert_eq!(join_draft(&summary, &description), draft);
+            assert_eq!(join_draft(summary, description), draft);
         }
-        assert_eq!(split_draft("A\nB"), ("A".into(), "B".into()));
-        assert_eq!(split_draft("A\r\n\r\nB"), ("A".into(), "B".into()));
+        assert_eq!(split_draft("A\nB"), ("A", "B"));
+        assert_eq!(split_draft("A\r\n\r\nB"), ("A", "B"));
         assert_eq!(join_draft("A", ""), "A");
     }
 }
