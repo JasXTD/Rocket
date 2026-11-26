@@ -241,7 +241,7 @@ impl Repository {
         // CHERRY_PICK_HEAD etc., incorrectly reporting an active operation.
         let output = self.runner.run(
             git_dir,
-            &args(&["--git-dir=.", "show-ref", "--exists", "--", name]),
+            &args(&["--git-dir", ".", "show-ref", "--exists", "--", name]),
             Vec::new(),
             cancel,
         )?;

@@ -46,6 +46,7 @@ See the [release notes](docs/releases/0.92.7.md) for downloads and platform requ
 - Branch Review keeps the selected branch when a tag has the same name.
 - Line staging respects legacy CRLF attributes and works with blank context lines when Git hides their leading spaces.
 - Moving a linked worktree preserves relative Git links at the new location.
+- Localhost MCP reads operation markers in the correct worktree, so guarded review commands such as Rebase stay available in an idle checkout.
 - Discard restores executable-bit-only changes on Linux and macOS. Windows reports when the requested mode cannot be represented.
 - Staging new files and restoring binary data now follow Git’s conversion settings. Rocket can repair an externally moved worktree that uses relative links.
 - Code Map follows the selected occurrence when a source line contains multiple references. It recognizes the default GitHub Actions checkout, keeps Rust macro input out of import results and decodes named HTML entities in asset references.

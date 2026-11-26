@@ -4,6 +4,30 @@ use common::{Fixture, isolated};
 use rocket_git::*;
 
 #[test]
+fn scoped_operation_state_reads_each_worktrees_own_refs() {
+    isolated(
+        "ROCKET_TRANSPORT_SCOPE_CASE",
+        "scoped_operation_state_reads_each_worktrees_own_refs",
+        || {
+            let f = Fixture::new();
+            f.write("file", "fixture");
+            f.commit("fixture");
+            let linked = f.root.join("linked 資料");
+            f.run(&["worktree", "add", "-b", "topic", linked.to_str().unwrap()]);
+            let scope = TransportScope::new(&f.root, vec![]).unwrap();
+            let client = f.git.clone().with_transport_scope(Some(scope));
+            let cancel = CancellationToken::new();
+            let main = client.open(&f.repository, &cancel).unwrap();
+            let topic = client.open(&linked, &cancel).unwrap();
+            assert!(topic.operation_state(&cancel).unwrap().is_idle());
+            f.run_at(&linked, &["update-ref", "CHERRY_PICK_HEAD", "HEAD"]);
+            assert!(topic.operation_state(&cancel).unwrap().cherry_pick);
+            assert!(main.operation_state(&cancel).unwrap().is_idle());
+        },
+    );
+}
+
+#[test]
 #[cfg(windows)]
 fn trusted_agent_profile_keeps_repository_command_and_proxy_refusals() {
     isolated(

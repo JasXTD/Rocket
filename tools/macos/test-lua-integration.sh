@@ -11,8 +11,8 @@ root_cargo=${3:?Separate root Cargo home required}
 mode=${4:-integration}
 case "$mode" in integration|complete-package|release-package) ;; *) exit 2 ;; esac
 profile=debug
-cargo_profile=()
-if [ "$mode" = release-package ]; then profile=release; cargo_profile=(--release); fi
+cargo_flags=(--locked)
+if [ "$mode" = release-package ]; then profile=release; cargo_flags+=(--release); fi
 test "$(id -u)" != 0
 test "${ROCKET_MACOS_SANDBOX_DISPOSABLE_USER:-}" = 1
 case "$guest:$out:$root_cargo" in /*:/*:/*) ;; *) exit 2 ;; esac
@@ -35,8 +35,8 @@ if [ "$mode" = integration ]; then
   cargo test --locked -p rocket-integrations --features runtime --test unsupported_worker
 fi
 # Build the actual app and helper consumers with the final signed digest.
-cargo build --locked "${cargo_profile[@]}" -p rocket-ui -p rocket-cli -p rocket-mcp -p rocket-git --bins
-cargo build --locked "${cargo_profile[@]}" -p rocket-ui --example macos_icon
+cargo build "${cargo_flags[@]}" -p rocket-ui -p rocket-cli -p rocket-mcp -p rocket-git --bins
+cargo build "${cargo_flags[@]}" -p rocket-ui --example macos_icon
 export ROCKET_MACOS_ICON_TOOL="$CARGO_TARGET_DIR/$profile/examples/macos_icon"
 node --test tools/tests/test-macos-bundle.cjs
 "$ROCKET_MACOS_ICON_TOOL" "$out/Rocket.iconset"
@@ -46,7 +46,7 @@ node tools/macos/bundle.cjs stage "$CARGO_TARGET_DIR/$profile" "$out/Rocket.icns
 node tools/macos/bundle.cjs finalize "$out/package"
 export ROCKET_TEST_MAC_HOST="$out/package/Rocket.app/Contents/MacOS/rocket"
 if [ "$mode" = integration ] || [ "$mode" = release-package ]; then
-  cargo test --locked "${cargo_profile[@]}" -p rocket-integrations --test macos_worker -- --test-threads=1
+  cargo test "${cargo_flags[@]}" -p rocket-integrations --test macos_worker -- --test-threads=1
   if [ "$mode" = release-package ]; then
     cargo test --locked --release -p rocket-git --lib runner::scope_tests::system_curl_ignores_environment_and_git_adjacent_helpers -- --exact --test-threads=1
   fi
