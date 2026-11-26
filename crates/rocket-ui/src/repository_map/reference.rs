@@ -180,7 +180,7 @@ impl ReferenceView {
         if asked.copy
             && let Some(site) = self.selected.and_then(|i| self.sites.get(i))
         {
-            ui.ctx().copy_text(format!("{}:{}", String::from_utf8_lossy(&site.source), site.line));
+            ui.ctx().copy_text(format!("{}:{}", crate::text::raw_path_label(&site.source), site.line));
             self.copied = Some(Instant::now());
             ui.ctx().request_repaint_after(COPIED_FOR);
         }
@@ -689,5 +689,19 @@ mod tests {
         let shown = settle(&ctx, &mut view, narrow);
         assert!(shown.painted.iter().any(|t| t == "This reference line is unavailable in the selected commit."));
         assert!(!shown.controls.contains_key("map-reference-source"));
+    }
+
+    #[test]
+    fn copy_location_keeps_the_full_path_on_one_line() {
+        let ctx = Context::default();
+        crate::style::install(&ctx);
+        let prefix = "folder/".repeat(600);
+        let source = format!("{prefix}頁\t\r\n\u{1b}\u{85}\u{2028}\u{2029}.html");
+        let commit = ObjectId::parse(&"1".repeat(40)).unwrap();
+        let mut view = ReferenceView::new(commit, vec![site(&source, 7, "theme.css", "stylesheet")], b"theme.css".to_vec(), "main".into());
+        opened(&mut view, 0, text(vec!["theme.css".into()], 7, false));
+        let shown = click(&ctx, &mut view, vec2(1200., 800.), "map-reference-copy");
+        assert_eq!(shown.copied.len(), 1);
+        assert_eq!(shown.copied[0].strip_prefix(&prefix), Some(r"頁\t\r\n\u{1b}\u{85}\u{2028}\u{2029}.html:7"));
     }
 }

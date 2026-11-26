@@ -469,14 +469,7 @@ pub(crate) fn prepare_search(
 /// Display-only, bounded and escaped. Exact original bytes remain in TreeEntry.
 pub fn path_label(bytes: &[u8]) -> String {
     let prefix = crate::text::prefix(bytes, 4096);
-    let mut label = String::new();
-    for c in String::from_utf8_lossy(prefix).chars() {
-        if c.is_control() {
-            label.extend(c.escape_default());
-        } else {
-            label.push(c);
-        }
-    }
+    let mut label = crate::text::raw_path_label(prefix);
     if prefix.len() != bytes.len() {
         label.push_str("… [display limited]");
     }

@@ -305,7 +305,7 @@
   "Read who changed the code": "코드를 변경한 사람 읽기",
   "Read code changes": "코드 변경 사항 읽기",
   "Stopped. Refresh reads the code again": "중지되었습니다. '새로 고침'을 누르면 코드를 다시 읽습니다",
-  "Some folders stay closed: the map shows up to {count} cards and boxes": "일부 폴더는 닫힌 상태로 남습니다. 맵에는 카드와 상자를 최대 {count}개까지 표시합니다",
+  "Partial map · up to {items} cards and boxes and {arrows} arrows": "맵 일부 표시 · 카드와 상자는 합계 {items}개까지, 화살표는 {arrows}개까지 표시합니다",
   "Some packages hold more code than one read takes, so they have no arrows": "일부 패키지는 한 번에 읽을 수 있는 양보다 코드가 많아 화살표가 없습니다",
   "CODEOWNERS is too large to read · most commits": "CODEOWNERS가 너무 커서 읽을 수 없음 · 커밋이 가장 많은 사람",
   "{n} lines skipped": "{n}줄 건너뜀",

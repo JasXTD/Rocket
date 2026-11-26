@@ -413,7 +413,7 @@
   "Read who changed the code": "Läs vem som ändrade koden",
   "Read code changes": "Läs kodändringar",
   "Stopped. Refresh reads the code again": "Stoppad. ”Uppdatera” läser koden igen",
-  "Some folders stay closed: the map shows up to {count} cards and boxes": "Vissa mappar förblir stängda: kartan visar högst {count} kort och rutor",
+  "Partial map · up to {items} cards and boxes and {arrows} arrows": "Del av kartan · högst {items} kort och rutor samt {arrows} pilar",
   "Some packages hold more code than one read takes, so they have no arrows": "Vissa paket innehåller mer kod än en läsning tar, så de har inga pilar",
   "CODEOWNERS is too large to read · most commits": "CODEOWNERS är för stor för att läsas · flest commits",
   "{n} lines skipped": {

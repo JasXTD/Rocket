@@ -104,99 +104,82 @@ fn packages(data: &RepositoryMap, nodes: &[usize], positions: &mut [Pos2]) {
     layers(data, nodes, &edges, positions);
 }
 
-/// Connections that close a circle (modules can use each other; packages cannot) are
-/// left out of the layering. Depth first from the biggest users, a connection back to
-/// a card still being walked closes one.
-fn without_circles(data: &RepositoryMap, nodes: &[usize], edges: &[(usize, usize)]) -> Vec<(usize, usize)> {
-    let mut out: HashMap<usize, Vec<usize>> = HashMap::new();
-    let mut net: HashMap<usize, i64> = HashMap::new();
-    for &(a, b) in edges {
-        out.entry(a).or_default().push(b);
-        *net.entry(a).or_default() += 1;
-        *net.entry(b).or_default() -= 1;
+/// Layers for package, module and folder layouts. A row's first slot is zero in a
+/// folder box; the other layouts center the row around zero.
+pub(super) fn layered_rows(
+    nodes: &[usize],
+    edges: &[(usize, usize)],
+    name: impl Fn(usize) -> String,
+    first_slot: impl Fn(usize) -> f32,
+) -> BTreeMap<usize, Vec<usize>> {
+    let names: HashMap<_, _> = nodes.iter().map(|&i| (i, name(i))).collect();
+    let mut uses: HashMap<usize, Vec<usize>> = HashMap::new();
+    let mut users: HashMap<usize, Vec<usize>> = HashMap::new();
+    for &(from, to) in edges {
+        uses.entry(from).or_default().push(to);
+        users.entry(to).or_default().push(from);
     }
-    let name = |i: usize| label(&data.nodes[i].label).to_lowercase();
+    // Walk from the biggest users first, breaking ties by name as on the canvas.
     let mut order = nodes.to_vec();
-    order.sort_by(|a, b| net.get(b).copied().unwrap_or(0).cmp(&net.get(a).copied().unwrap_or(0)).then_with(|| name(*a).cmp(&name(*b))));
-    for list in out.values_mut() {
-        list.sort_by_key(|&i| name(i));
+    order.sort_by_key(|i| (users.get(i).map_or(0, Vec::len) as isize - uses.get(i).map_or(0, Vec::len) as isize, &names[i]));
+    for list in uses.values_mut() {
+        list.sort_by_key(|i| &names[i]);
     }
-    // 0: not reached, 1: on the walk, 2: done.
-    let mut state: HashMap<usize, u8> = HashMap::new();
-    let mut kept = Vec::new();
-    for &start in &order {
-        if state.contains_key(&start) {
+    let mut seen = HashSet::new();
+    let mut finished = Vec::with_capacity(nodes.len());
+    for start in order {
+        if !seen.insert(start) {
             continue;
         }
         let mut stack = vec![(start, 0usize)];
-        state.insert(start, 1);
         while let Some(&mut (node, ref mut next)) = stack.last_mut() {
-            let targets = out.get(&node).map(Vec::as_slice).unwrap_or_default();
-            if let Some(&to) = targets.get(*next) {
+            if let Some(&to) = uses.get(&node).and_then(|targets| targets.get(*next)) {
                 *next += 1;
-                match state.get(&to) {
-                    Some(1) => {}
-                    Some(_) => kept.push((node, to)),
-                    None => {
-                        kept.push((node, to));
-                        state.insert(to, 1);
-                        stack.push((to, 0));
-                    }
+                if seen.insert(to) {
+                    stack.push((to, 0));
                 }
             } else {
-                state.insert(node, 2);
+                finished.push(node);
                 stack.pop();
             }
         }
     }
-    kept
-}
-
-/// Layers so that what a card uses sits below it: longest path from cards nothing
-/// uses. Within a layer, cards sit under the ones that use them.
-pub(super) fn layers(data: &RepositoryMap, nodes: &[usize], edges: &[(usize, usize)], positions: &mut [Pos2]) {
-    let all = edges;
-    let edges = without_circles(data, nodes, edges);
-    let mut layer: HashMap<usize, usize> = nodes.iter().map(|&i| (i, 0)).collect();
-    // Bounded relaxation over what is left, which no longer closes a circle.
-    for _ in 0..nodes.len().min(64) {
-        let mut changed = false;
-        for &(user, used) in &edges {
-            let next = layer[&user] + 1;
-            if layer[&used] < next && next <= nodes.len() {
-                layer.insert(used, next);
-                changed = true;
-            }
-        }
-        if !changed {
-            break;
-        }
+    // In reverse finish order every user already has a depth, except for back
+    // edges that close a cycle. The longest remaining path takes one pass.
+    let mut depth = HashMap::new();
+    for node in finished.into_iter().rev() {
+        let level = users.get(&node).into_iter().flatten().filter_map(|user| depth.get(user)).max().map_or(0, |d| d + 1);
+        depth.insert(node, level);
     }
     let mut layers: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for &i in nodes {
-        layers.entry(layer[&i]).or_default().push(i);
+        layers.entry(depth[&i]).or_default().push(i);
     }
-    let name = |i: usize| label(&data.nodes[i].label).to_lowercase();
-    let mut order: HashMap<usize, f32> = HashMap::new();
+    let mut slots: HashMap<usize, f32> = HashMap::new();
     for row in layers.values_mut() {
-        row.sort_by_key(|&i| name(i));
-        // Barycenter of the cards that use each one, from layers above.
+        // Average the slots of the users in preceding rows. Each incoming edge
+        // is visited only for its target.
         let weight = |i: usize| {
-            let users: Vec<f32> = all.iter().filter(|(_, used)| *used == i).filter_map(|(user, _)| order.get(user).copied()).collect();
-            if users.is_empty() {
-                f32::MAX
-            } else {
-                users.iter().sum::<f32>() / users.len() as f32
+            let (mut sum, mut count) = (0., 0);
+            for slot in users.get(&i).into_iter().flatten().filter_map(|user| slots.get(user)) {
+                sum += slot;
+                count += 1;
             }
+            if count == 0 { f32::MAX } else { sum / count as f32 }
         };
         let mut keyed: Vec<(f32, usize)> = row.iter().map(|&i| (weight(i), i)).collect();
-        keyed.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| name(a.1).cmp(&name(b.1))));
+        keyed.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| names[&a.1].cmp(&names[&b.1])));
         *row = keyed.into_iter().map(|(_, i)| i).collect();
-        let count = row.len() as f32;
+        let first = first_slot(row.len());
         for (k, &i) in row.iter().enumerate() {
-            order.insert(i, k as f32 - (count - 1.) / 2.);
+            slots.insert(i, first + k as f32);
         }
     }
+    layers
+}
+
+pub(super) fn layers(data: &RepositoryMap, nodes: &[usize], edges: &[(usize, usize)], positions: &mut [Pos2]) {
+    let layers = layered_rows(nodes, edges, |i| label(&data.nodes[i].label).to_lowercase(), |count| -(count as f32 - 1.) / 2.);
     let widest = layers.values().map(Vec::len).max().unwrap_or(1) as f32;
     let step = CARD.x + PACKAGE_GAP.x;
     for (depth, row) in &layers {
@@ -421,13 +404,21 @@ fn arrow(painter: &Painter, end: Pos2, direction: Vec2, color: Color32) {
     ));
 }
 fn curve(painter: &Painter, points: [Pos2; 4], stroke: Stroke, dashed: bool) {
+    let curve = epaint::CubicBezierShape::from_points_stroke(points, false, Color32::TRANSPARENT, stroke);
     if dashed {
-        let shape = epaint::CubicBezierShape::from_points_stroke(points, false, Color32::TRANSPARENT, stroke);
-        let samples: Vec<Pos2> = (0..=24).map(|k| shape.sample(k as f32 / 24.)).collect();
-        painter.extend(Shape::dashed_line(&samples, stroke, 5., 4.));
+        painter.extend(dashed_curve(&curve, stroke));
     } else {
-        painter.add(epaint::CubicBezierShape::from_points_stroke(points, false, Color32::TRANSPARENT, stroke));
+        painter.add(curve);
     }
+}
+
+/// A long edge can stretch far off-screen. Keep the usual 5:4 dash pattern and
+/// allow at most 128 periods per arrow before clipping and tessellation.
+pub(super) fn dashed_curve(curve: &epaint::CubicBezierShape, stroke: Stroke) -> Vec<Shape> {
+    let samples: [Pos2; 25] = std::array::from_fn(|i| curve.sample(i as f32 / 24.));
+    let length: f32 = samples.windows(2).map(|p| p[0].distance(p[1])).sum();
+    let scale = (length / (128. * 9.)).max(1.);
+    Shape::dashed_line(&samples, stroke, 5. * scale, 4. * scale)
 }
 
 pub(super) fn canvas(

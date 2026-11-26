@@ -17,8 +17,10 @@ const BOX_MIN: f32 = 236.;
 const ROW_ITEMS: usize = 4;
 /// A folder's own files show one by one up to this many; more share one card.
 const FILE_CARDS: usize = 8;
-/// Cards and boxes laid out at most; past this, folders stay closed.
+/// Maximum number of cards and boxes placed in one view.
 const ITEMS: usize = 400;
+/// Leaves room for both directions between a focused card and every other card.
+const ARROWS: usize = 2 * ITEMS;
 const CAPTION: f32 = 24.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -485,6 +487,8 @@ pub struct Arrow {
     pub links: usize,
     /// Points up: the two use each other.
     pub up: bool,
+    /// Horizontal attachment points in map coordinates, spread along each card's edge.
+    ports: [f32; 2],
     pub names: Vec<String>,
 }
 #[derive(Clone, Debug, Default)]
@@ -512,7 +516,7 @@ pub struct Picture {
     pub captions: Vec<Pos2>,
     pub bounds: Rect,
     pub at: HashMap<Item, usize>,
-    /// Some folders stay closed: too many cards.
+    /// Some items or connections were omitted from this view.
     pub cut: bool,
     pub legend: Legend,
 }
@@ -532,16 +536,6 @@ impl Picture {
         uses.sort_by_key(|a| std::cmp::Reverse(a.files));
         used.sort_by_key(|a| std::cmp::Reverse(a.files));
         (uses, used)
-    }
-    fn inside(&self, outer: usize, mut i: usize) -> bool {
-        for _ in 0..128 {
-            match self.placed[i].parent {
-                Some(p) if p == outer => return true,
-                Some(p) => i = p,
-                None => return false,
-            }
-        }
-        false
     }
 }
 
@@ -642,24 +636,28 @@ pub(super) fn rebuild(s: &mut MapPage) {
         (Some(c), Colour::Changes) => change_marks(s, &data, &f, c),
         _ => HashMap::new(),
     };
-    let mut layout = build(s, &data, &f, key.changed_only.then_some(&marks), None);
+    let changed_only = key.changed_only.then_some(&marks);
+    let mut layout = place_items(s, &data, &f, changed_only, None);
+    let anchor_node = anchor.as_ref().and_then(|key| data.nodes.iter().position(|n| &n.key == key));
     // Connected only: the selection, what it connects to, and the boxes around them.
-    if let Some(anchor) = &anchor
-        && let Some(node) = data.nodes.iter().position(|n| &n.key == anchor)
-        && let Some(sel) = layout.index(Item::Node(node))
-    {
-        let mut keep: HashSet<Item> = HashSet::new();
-        keep.insert(layout.placed[sel].item);
-        for a in &layout.arrows {
-            if a.from == sel {
-                keep.insert(layout.placed[a.to].item);
-            }
-            if a.to == sel {
-                keep.insert(layout.placed[a.from].item);
-            }
+    if let Some(sel) = anchor_node.and_then(|n| layout.index(Item::Node(n))) {
+        let mut keep = HashSet::from([layout.placed[sel].item]);
+        if let Some(links) = &s.code.links {
+            visit_links(links, &data, &f, &layout, |a, b, _, _| {
+                if a == sel { keep.insert(layout.placed[b].item); }
+                if b == sel { keep.insert(layout.placed[a].item); }
+            });
         }
-        layout = build(s, &data, &f, key.changed_only.then_some(&marks), Some(&keep));
+        // A card omitted before filtering may have been another neighbor.
+        let partial = layout.cut;
+        layout = place_items(s, &data, &f, changed_only, Some(&keep));
+        layout.cut |= partial;
     }
+    if let Some(links) = &s.code.links {
+        let focus = anchor_node.and_then(|n| layout.index(Item::Node(n)));
+        arrows(links, &data, &f, &mut layout, focus);
+    }
+    arrange(&mut layout, &data);
     paint(s, &data, &f, &mut layout, &marks);
     // What the rest of the Map works from: the cards shown and the arrows between
     // them, for search, MCP and Export.
@@ -692,7 +690,7 @@ pub(super) fn rebuild(s: &mut MapPage) {
     // A selection without a card of its own (a file inside a closed folder, chosen in
     // Details) goes to the card that shows it.
     if s.code.group.is_none() && !s.selected.is_some_and(|i| s.visible.contains(&i)) {
-        let shown = s.selected.and_then(|i| represent(&layout, &f, &data, data.nodes[i].path.as_deref()?, is_folder(&data.nodes[i])));
+        let shown = s.selected.and_then(|i| represent(&layout, &f, &data, i, is_folder(&data.nodes[i])));
         match shown.map(|at| layout.placed[at].item) {
             Some(Item::Node(n)) => s.selected = Some(n),
             Some(Item::Files(c)) => s.code.group = Some(c),
@@ -710,7 +708,7 @@ pub(super) fn rebuild(s: &mut MapPage) {
                 .iter()
                 .enumerate()
                 .filter(|(_, n)| (is_file(n) || is_folder(n)) && hit(n))
-                .find_map(|(_, n)| represent(&layout, &f, &data, n.path.as_deref()?, is_folder(n)))
+                .find_map(|(i, n)| represent(&layout, &f, &data, i, is_folder(n)))
         {
             match layout.placed[at].item {
                 Item::Node(n) => {
@@ -757,33 +755,7 @@ impl Build<'_> {
         !self.collapsed.contains(&self.data.nodes[n].key)
     }
     fn shown_folder(&self, n: usize) -> bool {
-        if self.keep_files.is_some() {
-            return self.keep_folders.contains(&n);
-        }
-        match self.keep_items {
-            Some(keep) => keep.contains(&Item::Node(n)) || self.keeps_inside(n),
-            None => true,
-        }
-    }
-    /// Connected only: a folder stays when it holds a kept card.
-    fn keeps_inside(&self, n: usize) -> bool {
-        let Some(keep) = self.keep_items else { return true };
-        keep.iter().any(|item| match item {
-            Item::Node(i) => self.ancestor(n, *i),
-            // A folder's own "N files" card sits in its box.
-            Item::Files(Some(i)) => *i == n || self.ancestor(n, *i),
-            Item::Files(None) => false,
-        })
-    }
-    fn ancestor(&self, folder: usize, mut i: usize) -> bool {
-        for _ in 0..64 {
-            match self.f.parent[i] {
-                Some(p) if p == folder => return true,
-                Some(p) => i = p,
-                None => return false,
-            }
-        }
-        false
+        (self.keep_files.is_none() && self.keep_items.is_none()) || self.keep_folders.contains(&n)
     }
     fn shown_file(&self, n: usize) -> bool {
         if let Some(keep) = &self.keep_files {
@@ -791,14 +763,18 @@ impl Build<'_> {
         }
         self.keep_items.is_none_or(|keep| keep.contains(&Item::Node(n)))
     }
-    fn push(&mut self, item: Item, open: bool, parent: Option<usize>, chain: Vec<usize>) -> usize {
+    fn push(&mut self, item: Item, open: bool, parent: Option<usize>, chain: Vec<usize>) -> Option<usize> {
         let i = self.layout.placed.len();
-        self.layout.placed.push(Placed { item, rect: Rect::ZERO, open, parent, chain: chain.clone(), paint: Paint::default() });
+        if i >= ITEMS {
+            self.layout.cut = true;
+            return None;
+        }
         self.layout.at.insert(item, i);
-        for c in chain {
+        for &c in &chain {
             self.layout.at.insert(Item::Node(c), i);
         }
-        i
+        self.layout.placed.push(Placed { item, rect: Rect::ZERO, open, parent, chain, paint: Paint::default() });
+        Some(i)
     }
     fn place(&mut self, container: Option<usize>, parent: Option<usize>) {
         let (folders, files) = match container {
@@ -809,7 +785,7 @@ impl Build<'_> {
             if !self.shown_folder(folder) {
                 continue;
             }
-            if self.open(folder) && self.layout.placed.len() < ITEMS {
+            if self.open(folder) {
                 // A chain of open folders holding one folder each shares one box.
                 let mut chain = Vec::new();
                 let mut inner = folder;
@@ -823,13 +799,10 @@ impl Build<'_> {
                         break;
                     }
                 }
-                let at = self.push(Item::Node(inner), true, parent, chain);
+                let Some(at) = self.push(Item::Node(inner), true, parent, chain) else { return };
                 self.place(Some(inner), Some(at));
-            } else {
-                if self.layout.placed.len() >= ITEMS {
-                    self.layout.cut = true;
-                }
-                self.push(Item::Node(folder), false, parent, Vec::new());
+            } else if self.push(Item::Node(folder), false, parent, Vec::new()).is_none() {
+                return;
             }
         }
         // Connected only kept the "N files" card itself: it stays, standing for its files.
@@ -844,7 +817,9 @@ impl Build<'_> {
         let path = container.and_then(|c| self.data.nodes[c].path.clone()).unwrap_or_default();
         if files.len() <= FILE_CARDS || self.files_open.contains(&path) || self.keep_files.is_some() || self.keep_items.is_some() {
             for k in files {
-                self.push(Item::Node(k), false, parent, Vec::new());
+                if self.push(Item::Node(k), false, parent, Vec::new()).is_none() {
+                    break;
+                }
             }
         } else {
             self.push(Item::Files(container), false, parent, Vec::new());
@@ -853,7 +828,7 @@ impl Build<'_> {
 }
 
 /// `changed_only`: the Changes marks, to keep only the files they mark.
-fn build(s: &MapPage, data: &RepositoryMap, f: &Facts, changed_only: Option<&HashMap<usize, char>>, keep_items: Option<&HashSet<Item>>) -> Picture {
+fn place_items(s: &MapPage, data: &RepositoryMap, f: &Facts, changed_only: Option<&HashMap<usize, char>>, keep_items: Option<&HashSet<Item>>) -> Picture {
     let mut b = Build {
         data,
         f,
@@ -864,60 +839,84 @@ fn build(s: &MapPage, data: &RepositoryMap, f: &Facts, changed_only: Option<&Has
         keep_items,
         layout: Picture::default(),
     };
-    if let Some(marks) = changed_only
-        && s.code.changes.is_some()
-    {
-        let keep: HashSet<usize> = marks.keys().copied().collect();
-        for &k in &keep {
-            let mut up = f.parent[k];
-            for _ in 0..64 {
-                let Some(p) = up else { break };
-                b.keep_folders.insert(p);
-                up = f.parent[p];
+    let mut keep_branch = |mut up: Option<usize>| {
+        while let Some(p) = up {
+            if !b.keep_folders.insert(p) { break; }
+            up = f.parent[p];
+        }
+    };
+    if let Some(marks) = changed_only.filter(|_| s.code.changes.is_some()) {
+        for &file in marks.keys() { keep_branch(f.parent[file]); }
+        b.keep_files = Some(marks.keys().copied().collect());
+    } else if let Some(keep) = keep_items {
+        for &item in keep {
+            if let Item::Node(i) | Item::Files(Some(i)) = item {
+                keep_branch(Some(i));
             }
         }
-        b.keep_files = Some(keep);
     }
     b.place(None, None);
-    let mut layout = b.layout;
-    arrows(s, data, f, &mut layout);
-    arrange(&mut layout, data);
-    layout
+    b.layout
 }
 
 /// Each link of the read, from the card or box that shows its ends.
-fn arrows(s: &MapPage, data: &RepositoryMap, f: &Facts, layout: &mut Picture) {
-    let Some(links) = &s.code.links else { return };
-    let mut rep: Vec<Option<usize>> = Vec::with_capacity(links.ends.len());
-    for end in &links.ends {
-        rep.push(represent(layout, f, data, &end.path, end.folder));
-    }
-    // By the two cards: the using files, the links and a few names.
-    type Gathered<'a> = HashMap<(usize, usize), (HashSet<&'a [u8]>, usize, Vec<String>)>;
-    let mut gathered: Gathered = HashMap::new();
-    for l in &links.links {
-        let (Some(a), Some(b)) = (rep[l.from], rep[l.to]) else { continue };
-        if a == b || layout.inside(a, b) || layout.inside(b, a) {
-            continue;
+fn visit_links(links: &CodeLinks, data: &RepositoryMap, f: &Facts, layout: &Picture, mut visit: impl FnMut(usize, usize, usize, &CodeLink)) {
+    let rep: Vec<_> = links.ends.iter().map(|end| {
+        let &node = f.by_path.get(&end.path)?;
+        Some((represent(layout, f, data, node, end.folder)?, node))
+    }).collect();
+    // place() visits a whole subtree before its next sibling. One interval test
+    // skips links inside the same card/box without walking parents per source link.
+    let mut subtree_end: Vec<_> = (1..=layout.placed.len()).collect();
+    for (i, placed) in layout.placed.iter().enumerate().rev() {
+        if let Some(parent) = placed.parent {
+            subtree_end[parent] = subtree_end[parent].max(subtree_end[i]);
         }
-        let e = gathered.entry((a, b)).or_insert_with(|| (HashSet::new(), 0, Vec::new()));
-        e.0.insert(&links.ends[l.from].path);
+    }
+    for l in &links.links {
+        let (Some((a, source)), Some((b, _))) = (rep[l.from], rep[l.to]) else { continue };
+        if a.max(b) >= subtree_end[a.min(b)] {
+            visit(a, b, source, l);
+        }
+    }
+}
+
+fn arrows(links: &CodeLinks, data: &RepositoryMap, f: &Facts, layout: &mut Picture, focus: Option<usize>) {
+    // Keep the first pairs in card order, independent of source-read order. In
+    // Connected only, all arrows touching the selection fit before the others.
+    let mut gathered: BTreeMap<_, (HashSet<usize>, usize, Vec<String>)> = BTreeMap::new();
+    let mut cut = false;
+    visit_links(links, data, f, layout, |a, b, source, l| {
+        let key = (focus.is_some_and(|i| a != i && b != i), a, b);
+        if gathered.len() == ARROWS {
+            let last = *gathered.last_key_value().expect("full arrow budget").0;
+            if key > last {
+                cut = true;
+                return;
+            }
+            if key < last && !gathered.contains_key(&key) {
+                gathered.pop_last();
+                cut = true;
+            }
+        }
+        let e = gathered.entry(key).or_default();
+        e.0.insert(source);
         e.1 += 1;
         for n in &l.names {
             if e.2.len() < 6 && !e.2.contains(n) {
                 e.2.push(n.clone());
             }
         }
-    }
-    let mut list: Vec<Arrow> = gathered.into_iter().map(|((from, to), (files, links, names))| Arrow { from, to, files: files.len(), links, up: false, names }).collect();
+    });
+    layout.cut |= cut;
+    let mut list: Vec<Arrow> = gathered.into_iter().map(|((_, from, to), (files, links, names))| Arrow { from, to, files: files.len(), links, up: false, ports: [0.; 2], names }).collect();
     list.sort_by_key(|a| (a.from, a.to));
     layout.arrows = list;
 }
 /// The card or box an end shows on: its own card, its folder's "N files" card, or the
 /// nearest closed folder around it. An end a filter hides inside an open box (Changed
 /// only, Connected only) shows nowhere, however deep it sits.
-fn represent(layout: &Picture, f: &Facts, data: &RepositoryMap, path: &[u8], folder: bool) -> Option<usize> {
-    let mut n = *f.by_path.get(path)?;
+fn represent(layout: &Picture, f: &Facts, data: &RepositoryMap, mut n: usize, folder: bool) -> Option<usize> {
     if !folder && is_file(&data.nodes[n]) {
         if let Some(i) = layout.index(Item::Node(n)) {
             return Some(i);
@@ -1004,9 +1003,8 @@ fn arrange(layout: &mut Picture, data: &RepositoryMap) {
         let edges: &[(usize, usize)] = edges_by.get(&container).map(Vec::as_slice).unwrap_or_default();
         let connected: HashSet<usize> = edges.iter().flat_map(|(x, y)| [*x, *y]).collect();
         let mut lonely: Vec<usize> = members.iter().copied().filter(|m| !connected.contains(m)).collect();
-        lonely.sort_by_key(|m| name(layout, data, *m));
-        let mut joined: Vec<usize> = members.iter().copied().filter(|m| connected.contains(m)).collect();
-        joined.sort_by_key(|m| name(layout, data, *m));
+        lonely.sort_by_cached_key(|m| name(layout, data, *m));
+        let joined: Vec<usize> = members.iter().copied().filter(|m| connected.contains(m)).collect();
         let rows_of = |list: &[usize], sizes: &Vec<Vec2>| -> Vec<Vec<usize>> {
             let widest = list.iter().map(|i| sizes[*i].x).fold(0., f32::max);
             let limit = (ROW_ITEMS as f32 * (drawing::CARD.x + GAP_X) - GAP_X).max(widest);
@@ -1029,38 +1027,8 @@ fn arrange(layout: &mut Picture, data: &RepositoryMap) {
         };
         let mut rows: Vec<Vec<usize>> = Vec::new();
         if !joined.is_empty() {
-            // Layers: what a card uses sits below it; circles are broken first.
-            let kept = without_circles(&joined, edges, |i| name(layout, data, i));
-            let mut layer: HashMap<usize, usize> = joined.iter().map(|&i| (i, 0)).collect();
-            for _ in 0..joined.len().min(64) {
-                let mut changed = false;
-                for &(user, used) in &kept {
-                    let next = layer[&user] + 1;
-                    if layer[&used] < next && next <= joined.len() {
-                        layer.insert(used, next);
-                        changed = true;
-                    }
-                }
-                if !changed {
-                    break;
-                }
-            }
-            let mut layers: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-            for &i in &joined {
-                layers.entry(layer[&i]).or_default().push(i);
-            }
-            let mut slot: HashMap<usize, f32> = HashMap::new();
-            for list in layers.values_mut() {
-                let weight = |i: usize| {
-                    let users: Vec<f32> = edges.iter().filter(|(_, used)| *used == i).filter_map(|(user, _)| slot.get(user).copied()).collect();
-                    if users.is_empty() { f32::MAX } else { users.iter().sum::<f32>() / users.len() as f32 }
-                };
-                let mut keyed: Vec<(f32, usize)> = list.iter().map(|&i| (weight(i), i)).collect();
-                keyed.sort_by(|a, b| a.0.total_cmp(&b.0).then_with(|| name(layout, data, a.1).cmp(&name(layout, data, b.1))));
-                *list = keyed.into_iter().map(|(_, i)| i).collect();
-                for (k, &i) in list.iter().enumerate() {
-                    slot.insert(i, k as f32);
-                }
+            let layers = drawing::layered_rows(&joined, edges, |i| name(layout, data, i), |_| 0.);
+            for list in layers.values() {
                 rows.extend(rows_of(list, sizes));
             }
         }
@@ -1124,51 +1092,22 @@ fn arrange(layout: &mut Picture, data: &RepositoryMap) {
     for a in &mut layout.arrows {
         a.up = rects[a.to].bottom() <= rects[a.from].top() + 1.;
     }
-}
-
-/// Connections that close a circle are left out of the layering: depth first from the
-/// biggest users, a connection back to a card still being walked closes one.
-fn without_circles(nodes: &[usize], edges: &[(usize, usize)], name: impl Fn(usize) -> String) -> Vec<(usize, usize)> {
-    let mut out: HashMap<usize, Vec<usize>> = HashMap::new();
-    let mut net: HashMap<usize, i64> = HashMap::new();
-    for &(a, b) in edges {
-        out.entry(a).or_default().push(b);
-        *net.entry(a).or_default() += 1;
-        *net.entry(b).or_default() -= 1;
-    }
-    let mut order = nodes.to_vec();
-    order.sort_by(|a, b| net.get(b).copied().unwrap_or(0).cmp(&net.get(a).copied().unwrap_or(0)).then_with(|| name(*a).cmp(&name(*b))));
-    for list in out.values_mut() {
-        list.sort_by_key(|&i| name(i));
-    }
-    let mut state: HashMap<usize, u8> = HashMap::new();
-    let mut kept = Vec::new();
-    for &start in &order {
-        if state.contains_key(&start) {
-            continue;
+    // Port order depends only on layout. Assign each port once, including for
+    // cards with many connections; panning and repainting reuse its coordinate.
+    for side in 0..2 {
+        let mut ports = vec![Vec::new(); count];
+        for (i, arrow) in layout.arrows.iter().enumerate() {
+            let (card, other) = if side == 0 { (arrow.from, arrow.to) } else { (arrow.to, arrow.from) };
+            ports[card].push((rects[other].center().x, i));
         }
-        let mut stack = vec![(start, 0usize)];
-        state.insert(start, 1);
-        while let Some(&mut (node, ref mut next)) = stack.last_mut() {
-            let targets = out.get(&node).map(Vec::as_slice).unwrap_or_default();
-            if let Some(&to) = targets.get(*next) {
-                *next += 1;
-                match state.get(&to) {
-                    Some(1) => {}
-                    Some(_) => kept.push((node, to)),
-                    None => {
-                        kept.push((node, to));
-                        state.insert(to, 1);
-                        stack.push((to, 0));
-                    }
-                }
-            } else {
-                state.insert(node, 2);
-                stack.pop();
+        for (rect, list) in rects.iter().zip(&mut ports) {
+            list.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let step = rect.width() / (list.len() + 1) as f32;
+            for (k, &(_, arrow)) in list.iter().enumerate() {
+                layout.arrows[arrow].ports[side] = rect.left() + step * (k + 1) as f32;
             }
         }
     }
-    kept
 }
 
 /// Changes: A, M, R and so on by file node, and `u` for a file that uses a changed one.
@@ -1200,12 +1139,15 @@ pub fn change_marks(s: &MapPage, data: &RepositoryMap, f: &Facts, changes: &Code
                 }
             }
         }
-        let hit = |end: &CodeEnd| if end.folder { holding.contains(end.path.as_slice()) } else { changed.contains(end.path.as_slice()) };
+        let hit: Vec<_> = links.ends.iter().map(|end| if end.folder { holding.contains(end.path.as_slice()) } else { changed.contains(end.path.as_slice()) }).collect();
+        let mut uses_change = vec![false; links.ends.len()];
         for l in &links.links {
-            if !hit(&links.ends[l.to]) {
+            uses_change[l.from] |= hit[l.to];
+        }
+        for (from, uses) in links.ends.iter().zip(uses_change) {
+            if !uses {
                 continue;
             }
-            let from = &links.ends[l.from];
             if from.folder {
                 // A Go or Java package and a C# namespace use as a whole: each of their own
                 // files in the folder uses the change.
@@ -1749,34 +1691,16 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
         }
     }
     // Arrows: from the user's bottom to the top of what it uses, spread along both edges.
-    let mut out_ports: HashMap<usize, Vec<usize>> = HashMap::new();
-    let mut in_ports: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (k, a) in layout.arrows.iter().enumerate() {
-        out_ports.entry(a.from).or_default().push(k);
-        in_ports.entry(a.to).or_default().push(k);
-    }
-    let centre_x = |i: usize| layout.placed[i].rect.center().x;
-    for list in out_ports.values_mut() {
-        list.sort_by(|x, y| centre_x(layout.arrows[*x].to).total_cmp(&centre_x(layout.arrows[*y].to)));
-    }
-    for list in in_ports.values_mut() {
-        list.sort_by(|x, y| centre_x(layout.arrows[*x].from).total_cmp(&centre_x(layout.arrows[*y].from)));
-    }
-    let port = |list: &[usize], k: usize, r: Rect| {
-        let at = list.iter().position(|x| *x == k).unwrap_or(0) as f32;
-        let n = list.len() as f32;
-        r.left() + r.width() * (at + 1.) / (n + 1.)
-    };
     let mut pills = Vec::new();
-    for (k, a) in layout.arrows.iter().enumerate() {
+    for a in &layout.arrows {
         let (from, to) = (layout.placed[a.from].rect, layout.placed[a.to].rect);
         let active = selected.is_some_and(|sel| a.from == sel || a.to == sel);
         let faded = selected.is_some() && !active;
         let color = if active { BLUE() } else { HINT().gamma_multiply(if faded { 0.35 } else { 0.8 }) };
         let (start, end) = if a.up {
-            (pos2(port(&out_ports[&a.from], k, from), from.top()), pos2(port(&in_ports[&a.to], k, to), to.bottom()))
+            (pos2(a.ports[0], from.top()), pos2(a.ports[1], to.bottom()))
         } else {
-            (pos2(port(&out_ports[&a.from], k, from), from.bottom()), pos2(port(&in_ports[&a.to], k, to), to.top()))
+            (pos2(a.ports[0], from.bottom()), pos2(a.ports[1], to.top()))
         };
         let (s0, e0) = (to_screen(start), to_screen(end));
         if !Rect::from_two_pos(s0, e0).intersects(rect) {
@@ -1788,8 +1712,7 @@ pub(super) fn canvas(ui: &mut Ui, s: &mut MapPage, rect: Rect, covered: bool, in
         let stroke = Stroke::new(if active { 1.8 } else { 1.2 }, color);
         let shape = epaint::CubicBezierShape::from_points_stroke(points, false, Color32::TRANSPARENT, stroke);
         if a.up {
-            let samples: Vec<Pos2> = (0..=24).map(|t| shape.sample(t as f32 / 24.)).collect();
-            painter.extend(Shape::dashed_line(&samples, stroke, 5., 4.));
+            painter.extend(drawing::dashed_curve(&shape, stroke));
         } else {
             painter.add(shape.clone());
         }
@@ -1940,10 +1863,10 @@ fn strips(ui: &mut Ui, s: &mut MapPage, data: &RepositoryMap, rect: Rect, intent
         (e.clone(), RED(), false)
     } else if s.code.stopped && !s.code.running() {
         (tr("Stopped. Refresh reads the code again").into(), MUTED(), false)
+    } else if cut {
+        (trf!("Partial map · up to {items} cards and boxes and {arrows} arrows", items = pages::number_text(ITEMS), arrows = pages::number_text(ARROWS)), AMBER(), false)
     } else if let Some(links) = &s.code.links {
-        if cut {
-            (trf!("Some folders stay closed: the map shows up to {count} cards and boxes", count = pages::number_text(ITEMS)), AMBER(), false)
-        } else if !s.code.too_large.is_empty() {
+        if !s.code.too_large.is_empty() {
             (tr("Some packages hold more code than one read takes, so they have no arrows").into(), AMBER(), false)
         } else if !links.unread.is_empty() {
             (trf!("Arrows cover the first {count} code files. Open a folder to read the code in it.", count = pages::number_text(CODE_MAP_FILES)), AMBER(), false)

@@ -413,7 +413,7 @@
   "Read who changed the code": "Lesen, wer den Code geändert hat",
   "Read code changes": "Codeänderungen lesen",
   "Stopped. Refresh reads the code again": "Angehalten. „Aktualisieren“ liest den Code erneut",
-  "Some folders stay closed: the map shows up to {count} cards and boxes": "Einige Ordner bleiben geschlossen: Die Karte zeigt höchstens {count} Karten und Kästen",
+  "Partial map · up to {items} cards and boxes and {arrows} arrows": "Teilansicht · bis zu {items} Karten und Kästen sowie {arrows} Pfeile",
   "Some packages hold more code than one read takes, so they have no arrows": "Einige Pakete enthalten mehr Code, als ein Lesevorgang erfasst, und haben daher keine Pfeile",
   "CODEOWNERS is too large to read · most commits": "CODEOWNERS ist zu groß zum Lesen · meiste Commits",
   "{n} lines skipped": {

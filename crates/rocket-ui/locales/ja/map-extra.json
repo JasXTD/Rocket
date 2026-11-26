@@ -305,7 +305,7 @@
   "Read who changed the code": "誰がコードを変更したかを読み込む",
   "Read code changes": "コードの変更を読み込む",
   "Stopped. Refresh reads the code again": "停止しました。「再読み込み」でコードを読み直します",
-  "Some folders stay closed: the map shows up to {count} cards and boxes": "一部のフォルダーは閉じたままです。マップに表示できるカードと枠は最大 {count} 個です",
+  "Partial map · up to {items} cards and boxes and {arrows} arrows": "マップの一部を表示中 · カードと枠は合計 {items} 個まで、矢印は {arrows} 本まで",
   "Some packages hold more code than one read takes, so they have no arrows": "一部のパッケージは 1 回で読み込める量を超えるコードを含むため、矢印がありません",
   "CODEOWNERS is too large to read · most commits": "CODEOWNERS が大きすぎて読み込めません · コミット数が最多の人",
   "{n} lines skipped": "{n} 行をスキップ",

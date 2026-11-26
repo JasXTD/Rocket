@@ -305,7 +305,7 @@
   "Read who changed the code": "读取代码的更改者",
   "Read code changes": "读取代码更改",
   "Stopped. Refresh reads the code again": "已停止。点“刷新”可重新读取代码",
-  "Some folders stay closed: the map shows up to {count} cards and boxes": "部分文件夹保持关闭：地图最多显示 {count} 个卡片和方框",
+  "Partial map · up to {items} cards and boxes and {arrows} arrows": "仅显示部分地图 · 卡片和方框合计最多 {items} 个，箭头最多 {arrows} 个",
   "Some packages hold more code than one read takes, so they have no arrows": "部分包的代码超出单次读取的上限，因此没有箭头",
   "CODEOWNERS is too large to read · most commits": "CODEOWNERS 太大，无法读取 · 按提交最多者",
   "{n} lines skipped": "跳过了 {n} 行",

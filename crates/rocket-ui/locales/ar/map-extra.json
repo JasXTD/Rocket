@@ -557,7 +557,7 @@
   "Read who changed the code": "قراءة من غيّر الشيفرة",
   "Read code changes": "قراءة تغييرات الشيفرة",
   "Stopped. Refresh reads the code again": "توقّف. «تحديث» يقرأ الكود مجددًا",
-  "Some folders stay closed: the map shows up to {count} cards and boxes": "تبقى بعض المجلدات مغلقة: تعرض الخريطة {count} من البطاقات والإطارات على الأكثر",
+  "Partial map · up to {items} cards and boxes and {arrows} arrows": "خريطة جزئية · تعرض حتى {items} من البطاقات والإطارات وحتى {arrows} من الأسهم",
   "Some packages hold more code than one read takes, so they have no arrows": "تحتوي بعض الحزم على كود أكثر مما تأخذه قراءة واحدة، لذا لا أسهم لها",
   "CODEOWNERS is too large to read · most commits": "ملف CODEOWNERS أكبر من أن يُقرأ · الأكثر إيداعًا",
   "{n} lines skipped": {

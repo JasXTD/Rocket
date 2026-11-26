@@ -19,6 +19,7 @@ const BATCH_BYTES: usize = 16 * 1024 * 1024;
 /// Manifests: each file, and all of them together.
 const MANIFEST_FILE: usize = 128 * 1024;
 const MANIFEST_BYTES: usize = 16 * 1024 * 1024;
+/// Distinct source links in a snapshot, including later folder reads.
 const LINKS: usize = 200_000;
 /// Names kept on a link, for Details and hover.
 const LINK_NAMES: usize = 8;
@@ -118,6 +119,21 @@ pub struct CodeEnd {
     pub path: Vec<u8>,
     pub folder: bool,
 }
+
+fn intern_end(ends: &mut Vec<CodeEnd>, indices: &mut HashMap<CodeEnd, usize>, end: CodeEnd, full: bool) -> Option<usize> {
+    use std::collections::hash_map::Entry;
+    match indices.entry(end) {
+        Entry::Occupied(slot) => Some(*slot.get()),
+        Entry::Vacant(_) if full => None,
+        Entry::Vacant(slot) => {
+            let i = ends.len();
+            ends.push(slot.key().clone());
+            slot.insert(i);
+            Some(i)
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodeLink {
     pub from: usize,
@@ -155,7 +171,7 @@ pub struct CodeLinks {
     /// Code files read.
     pub files: usize,
     pub limited: bool,
-    /// Reading sources or following imports reached a limit inside a selected package.
+    /// Source or link data were omitted and a later folder read cannot clear that limit.
     pub sources_limited: bool,
     /// Absent without a CODEOWNERS file, or when this read was for one folder.
     pub owners: Option<OwnerRules>,
@@ -168,17 +184,20 @@ impl CodeLinks {
     /// Adds a later read of more packages (a folder read past the limit).
     pub fn merge(&mut self, other: CodeLinks) {
         let mut at: HashMap<CodeEnd, usize> = self.ends.iter().cloned().enumerate().map(|(i, e)| (e, i)).collect();
-        let mut map = Vec::with_capacity(other.ends.len());
-        for end in other.ends {
-            let i = *at.entry(end.clone()).or_insert_with(|| {
-                self.ends.push(end);
-                self.ends.len() - 1
-            });
-            map.push(i);
-        }
+        let mut map = vec![None; other.ends.len()];
+        // Intern only ends of retained links. A full snapshot can still gain names
+        // on existing links without growing a list of unused endpoints.
+        let mut resolve = |i: usize, full: bool| {
+            *map[i].get_or_insert_with(|| intern_end(&mut self.ends, &mut at, other.ends[i].clone(), full))
+        };
         let mut known: HashMap<(usize, usize), usize> = self.links.iter().enumerate().map(|(i, l)| ((l.from, l.to), i)).collect();
         for l in other.links {
-            let key = (map[l.from], map[l.to]);
+            let full = self.links.len() >= LINKS;
+            let (Some(from), Some(to)) = (resolve(l.from, full), resolve(l.to, full)) else {
+                self.sources_limited = true;
+                continue;
+            };
+            let key = (from, to);
             match known.get(&key) {
                 Some(&i) => {
                     for n in l.names {
@@ -187,6 +206,7 @@ impl CodeLinks {
                         }
                     }
                 }
+                None if full => self.sources_limited = true,
                 None => {
                     known.insert(key, self.links.len());
                     self.links.push(CodeLink { from: key.0, to: key.1, names: l.names });
@@ -214,21 +234,17 @@ struct Builder {
     limited: bool,
 }
 impl Builder {
-    fn end(&mut self, path: &[u8], folder: bool) -> usize {
-        let key = CodeEnd { path: path.to_vec(), folder };
-        if let Some(&i) = self.at.get(&key) {
-            return i;
-        }
-        self.ends.push(key.clone());
-        self.at.insert(key, self.ends.len() - 1);
-        self.ends.len() - 1
-    }
     fn link(&mut self, from: &[u8], from_folder: bool, to: &[u8], to_folder: bool, names: impl IntoIterator<Item = String>) -> bool {
         if from == to && from_folder == to_folder {
             return false;
         }
-        let (a, b) = (self.end(from, from_folder), self.end(to, to_folder));
-        if !self.links.contains_key(&(a, b)) && self.links.len() >= LINKS {
+        let full = self.links.len() >= LINKS;
+        let mut end = |path: &[u8], folder| intern_end(&mut self.ends, &mut self.at, CodeEnd { path: path.to_vec(), folder }, full);
+        let (Some(a), Some(b)) = (end(from, from_folder), end(to, to_folder)) else {
+            self.limited = true;
+            return false;
+        };
+        if full && !self.links.contains_key(&(a, b)) {
             self.limited = true;
             return false;
         }
@@ -551,7 +567,8 @@ impl Repository {
             out.packages.push(reference);
         }
         out.files = budget.files;
-        out.limited = !out.unread.is_empty() || budget.limited || b.limited || manifest_limited || out.sources_limited || out.owners_limited;
+        out.sources_limited |= b.limited;
+        out.limited = !out.unread.is_empty() || budget.limited || manifest_limited || out.sources_limited || out.owners_limited;
         out.limited |= b.references.limited;
         out.references = b.references;
         out.ends = b.ends;
@@ -1381,6 +1398,33 @@ mod tests {
         assert_eq!(first.files, 5);
         assert!(first.unread.is_empty());
         assert!(!first.limited);
+    }
+
+    #[test]
+    fn folder_reads_share_the_snapshot_link_limit() {
+        let mut pairs = (0..450).flat_map(|from| (0..450).filter(move |&to| to != from).map(move |to| CodeLink { from, to, names: vec![] }));
+        let mut first = CodeLinks {
+            ends: (0..450).map(|i| CodeEnd { path: format!("file{i}.rs").into_bytes(), folder: false }).collect(),
+            links: pairs.by_ref().take(LINKS - 1).collect(),
+            ..Default::default()
+        };
+        let mut next = CodeLinks { ends: first.ends.clone(), ..Default::default() };
+        next.ends.push(CodeEnd { path: b"extra.rs".to_vec(), folder: false });
+        next.links.push(pairs.next().unwrap()); // Exactly fills the last slot.
+        first.merge(next.clone());
+        assert_eq!(first.links.len(), LINKS);
+        assert!(!first.limited);
+        next.links = vec![
+            pairs.next().unwrap(), // A new pair between already known ends.
+            CodeLink { from: 0, to: 450, names: vec![] },
+            CodeLink { from: 0, to: 1, names: vec!["later".into()] },
+        ];
+        first.merge(next);
+        assert_eq!(first.links.len(), LINKS);
+        assert_eq!(first.ends.len(), 450);
+        assert_eq!(first.links[0].names, ["later"]);
+        first.merge(CodeLinks::default());
+        assert!(first.limited, "a later read must not hide omitted links");
     }
 
     #[test]

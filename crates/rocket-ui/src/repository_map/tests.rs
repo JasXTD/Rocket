@@ -1690,6 +1690,118 @@ const USES: [(&str, &str); 4] = [
 ];
 
 #[test]
+fn code_map_limits_visible_cards_for_closed_folders_and_expanded_files() {
+    let folders: Vec<String> = (0..401).map(|i| format!("folder{i:03}/main.rs")).collect();
+    let paths: Vec<&str> = folders.iter().map(String::as_str).collect();
+    for (count, partial) in [(400, false), (401, true)] {
+        let mut s = code_page(&paths[..count], &[]);
+        s.rebuild();
+        let p = picture(&s);
+        assert_eq!(p.placed.len(), 400);
+        assert_eq!(s.visible.len(), 400);
+        assert_eq!(p.cut, partial);
+    }
+
+    let files: Vec<String> = (0..400).map(|i| format!("src/file{i:03}.rs")).collect();
+    let paths: Vec<&str> = files.iter().map(String::as_str).collect();
+    let mut s = code_page(&paths, &[]);
+    open(&mut s, "src");
+    s.code.files_open.insert(b"src".to_vec());
+    s.rebuild();
+    assert_eq!(picture(&s).placed.len(), 400, "the open folder also needs a slot");
+    assert!(picture(&s).cut);
+    s.code.files_open.clear();
+    s.rebuild();
+    assert_eq!(picture(&s).placed.len(), 2);
+    assert!(!picture(&s).cut, "grouping the files again fits the whole view");
+}
+
+#[test]
+fn code_map_limits_displayed_arrows_and_keeps_their_counts() {
+    let files: Vec<String> = (0..30).map(|i| format!("folder{i:02}/main.rs")).collect();
+    let mut paths: Vec<&str> = files.iter().map(String::as_str).collect();
+    let mut pairs = Vec::new();
+    for &from in &paths {
+        for &to in &paths {
+            if from != to {
+                pairs.push((from, to));
+            }
+        }
+    }
+    paths.push("folder00/other.rs");
+    let mut s = code_page(&paths, &pairs[..800]);
+    s.rebuild();
+    assert_eq!(picture(&s).arrows.len(), 800);
+    assert!(!picture(&s).cut);
+
+    pairs.push(("folder00/other.rs", "folder01/main.rs"));
+    s.code.links = Some(Arc::new(code_links(&pairs)));
+    s.rebuild();
+    let p = picture(&s);
+    assert_eq!(p.arrows.len(), 800);
+    assert!(p.cut);
+    let from = p.index(code_map::Item::Node(node(&s, "folder00"))).unwrap();
+    let to = p.index(code_map::Item::Node(node(&s, "folder01"))).unwrap();
+    let arrow = p.arrows.iter().find(|a| (a.from, a.to) == (from, to)).unwrap();
+    assert_eq!((arrow.files, arrow.links), (2, 2), "later links still count on a retained arrow");
+    assert_eq!(s.projected_links.iter().filter(|l| l.kind == MapLinkKind::DependsOn).count(), 800);
+    let shown = arrows_of(&s);
+    pairs.reverse();
+    s.code.links = Some(Arc::new(code_links(&pairs)));
+    s.rebuild();
+    assert_eq!(arrows_of(&s), shown, "source-read order must not change which arrows survive");
+}
+
+#[test]
+fn code_map_renders_a_partial_view_at_the_source_link_limit() {
+    let files: Vec<String> = (0..450).map(|i| format!("folder{i:03}/main.rs")).collect();
+    let paths: Vec<&str> = files.iter().map(String::as_str).collect();
+    let mut s = code_page(&paths, &[]);
+    let read = Arc::make_mut(s.code.links.as_mut().unwrap());
+    read.ends = paths.iter().map(|p| CodeEnd { path: p.as_bytes().to_vec(), folder: false }).collect();
+    read.links = (0..paths.len())
+        .flat_map(|from| (0..paths.len()).filter(move |&to| from != to).map(move |to| CodeLink { from, to, names: vec![] }))
+        .take(200_000)
+        .collect();
+    s.rebuild();
+    let p = picture(&s);
+    assert_eq!((p.placed.len(), p.arrows.len()), (400, 800));
+    assert!(p.cut);
+
+    crate::i18n::scoped(crate::i18n::Language::English, || {
+        let ctx = Context::default();
+        crate::style::install(&ctx);
+        let rect = Rect::from_min_size(Pos2::ZERO, vec2(1100., 700.));
+        let mut output = ctx.run_ui(RawInput { screen_rect: Some(rect), ..Default::default() }, |ui| {
+            code_map::canvas(ui, &mut s, rect, false, &mut Vec::new(), &mut HashMap::new());
+        });
+        output.textures_delta.clear();
+        assert!(output.shapes.iter().any(|s| matches!(&s.shape, Shape::Text(t) if t.galley.text() == "Partial map · up to 400 cards and boxes and 800 arrows")));
+    });
+
+    s.selected = Some(node(&s, "folder399"));
+    s.neighbors();
+    s.rebuild();
+    let p = picture(&s);
+    let at = p.index(code_map::Item::Node(node(&s, "folder399"))).unwrap();
+    let (uses, used_by) = p.connections(at);
+    assert_eq!((uses.len(), used_by.len()), (399, 399), "direct connections have priority in the filtered view");
+    assert!(p.cut);
+}
+
+#[test]
+fn dashed_map_arrows_bound_geometry_independently_of_their_length() {
+    let stroke = Stroke::new(1., Color32::WHITE);
+    for length in [90., 90_000.] {
+        let points = [pos2(0., 0.), pos2(0., length / 2.), pos2(4., length / 2.), pos2(4., length)];
+        let curve = epaint::CubicBezierShape::from_points_stroke(points, false, Color32::TRANSPARENT, stroke);
+        let dashes = drawing::dashed_curve(&curve, stroke);
+        // A dash may be split where two of the 24 sampled segments meet.
+        assert!((2..=128 + 24).contains(&dashes.len()));
+    }
+}
+
+#[test]
 fn code_map_gathers_links_between_closed_folders_and_splits_them_when_opened() {
     let mut s = code_page(&CODE, &USES);
     s.rebuild();

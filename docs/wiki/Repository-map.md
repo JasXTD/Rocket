@@ -37,7 +37,9 @@ reference, the file it points to, the kind (such as `include_str!`, `stylesheet`
 `@import`), the line and the map’s snapshot. With several, the list stays on the left;
 choose another there or step with the arrows. In a narrow window, **← References**
 returns to the list. **Copy location** copies the path and line, such as
-`src/guide.rs:42`. A large file shows only the lines around the reference and says so.
+`src/guide.rs:42`. The copy includes the full path, with control characters and
+line separators escaped so the location stays on one line. A large file shows
+only the lines around the reference and says so.
 The viewer reads the map’s selected commit, even if you have since edited, staged or
 deleted the source locally. Choose **← Map** or press Esc to return to your map
 selection.
@@ -335,7 +337,8 @@ Cancellation interrupts matching and follow-up reads.
   map focused, arrow keys pan and **F** fits.
 - **Connected only** keeps the selection and what it directly connects to.
   Choosing a connection in Details follows it. Filtering keeps cards in place, except
-  in Folders, which lays the kept cards out again.
+  in Folders, which lays the kept cards out again. When Folders reaches its arrow
+  limit, this filter gives the selected card’s own connections priority.
 - **Stop** cancels the current read. Previously completed results remain visible.
   A failed refresh also keeps the last result and shows the error with **Retry**.
 - Results are pinned to Git object IDs. When the repository changes, the map says
@@ -344,10 +347,11 @@ Cancellation interrupts matching and follow-up reads.
 - Reads are bounded: 500 commits at a time up to 2,000, 4,096 file/folder/people
   nodes, 100,000 changed paths, 64 Cargo manifests (128 KiB each, 4 MiB total), and
   shared-file connections for up to 128 authors. History snapshots allow at most
-  12,000 parent links, and at most 240 cards draw at once (400 cards and boxes in
-  Folders, which reads up to 10,000 code files and 64 MiB at a time, every manifest
-  up to 128 KiB and 16 MiB together, and the newest 10,000 commits). A partial map
-  says so; a refused read keeps the previous result and shows an error.
+  12,000 parent links, and at most 240 cards draw at once (400 cards and boxes
+  and 800 arrows in Folders). Folders retains up to 200,000 distinct source links
+  across reads. It reads up to 10,000 code files and 64 MiB at a time, up to 128 KiB
+  per manifest and 16 MiB across manifests, and the newest 10,000 commits. A partial
+  map says so; a refused read keeps the previous result and shows an error.
 - Labels over 4 KiB are shortened before drawing. Full paths and object IDs remain
   intact. Details lists up to 100 rows per section and says how many more there are.
 - Diagnostics record operation names, steps, durations, cancellation and errors.

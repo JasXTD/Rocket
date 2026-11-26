@@ -102,7 +102,7 @@ pub(crate) fn raw_path_label(path: &[u8]) -> String {
     let mut label = String::with_capacity(path.len());
     for c in String::from_utf8_lossy(path).chars() {
         // Keep tabs/newlines visible rather than letting a path alter the UI layout.
-        if c.is_control() {
+        if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}') {
             label.extend(c.escape_default());
         } else {
             label.push(c);

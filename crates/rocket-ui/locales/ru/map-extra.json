@@ -481,7 +481,7 @@
   "Read who changed the code": "Прочитать, кто менял код",
   "Read code changes": "Прочитать изменения кода",
   "Stopped. Refresh reads the code again": "Остановлено. «Обновить» снова прочитает код",
-  "Some folders stay closed: the map shows up to {count} cards and boxes": "Некоторые папки остаются закрытыми: карта показывает не более {count} карточек и рамок",
+  "Partial map · up to {items} cards and boxes and {arrows} arrows": "Показана часть карты · до {items} карточек и рамок и до {arrows} стрелок",
   "Some packages hold more code than one read takes, so they have no arrows": "В некоторых пакетах больше кода, чем охватывает одно чтение, поэтому у них нет стрелок",
   "CODEOWNERS is too large to read · most commits": "CODEOWNERS слишком велик для чтения · больше всего коммитов",
   "{n} lines skipped": {
