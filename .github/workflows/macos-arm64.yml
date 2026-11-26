@@ -21,6 +21,7 @@ on:
           - agent-security
           - agent-mcp
           - security-followups
+          - spelling
 
 permissions:
   contents: read
@@ -30,9 +31,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  spelling:
+    if: ${{ inputs.checks == 'spelling' && inputs.architecture == 'x64' && github.event.repository.private == false }}
+    runs-on: macos-15-intel
+    timeout-minutes: 32
+    env:
+      CARGO_TERM_COLOR: never
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Trace native spelling in the Intel commit editor
+        run: bash tools/macos/test-intel-spelling.sh
+      - name: Retain spelling results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: intel-spelling-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/rocket-spelling/*.json
+            ${{ runner.temp }}/rocket-spelling/mcp/*/result.json
+          retention-days: 1
+          if-no-files-found: warn
+
   build:
     # This qualification is authorized only on free public-repository runners.
-    if: ${{ (inputs.checks != 'agent-security' && inputs.checks != 'agent-mcp' && inputs.checks != 'security-followups') || github.event.repository.private == false }}
+    if: ${{ inputs.checks != 'spelling' && ((inputs.checks != 'agent-security' && inputs.checks != 'agent-mcp' && inputs.checks != 'security-followups') || github.event.repository.private == false) }}
     runs-on: ${{ inputs.architecture == 'x64' && 'macos-15-intel' || 'macos-15' }}
     # Native Intel cold compilation needs room for both tests and the MCP binary.
     timeout-minutes: ${{ inputs.checks == 'agent-mcp' && 40 || (inputs.checks == 'agent-security' || inputs.checks == 'security-followups') && 30 || 15 }}

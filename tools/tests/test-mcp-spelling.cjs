@@ -6,7 +6,7 @@ assert.equal(process.platform,'darwin');
 assert.equal(process.env.GITHUB_ACTIONS,'true');
 const exe=fs.realpathSync(process.env.ROCKET_MCP_EXE),out=process.env.ROCKET_MCP_RESULTS;
 const startup=process.argv[2]||'immediate';
-assert(['before-enable','immediate','ready-first'].includes(startup));
+assert(['before-enable','immediate','ready-first','release-layout'].includes(startup));
 fs.mkdirSync(out,{recursive:true});
 const root=fs.realpathSync(fs.mkdtempSync(path.join(out,'spelling-'))),repo=path.join(root,'資料 repo'),profile=path.join(root,'profile'),home=path.join(root,'home');
 for(const p of [repo,home,path.join(root,'template')])fs.mkdirSync(p,{recursive:true});
@@ -19,12 +19,16 @@ const git=args=>cp.execFileSync('/usr/bin/git',['-C',repo,...args],{env,encoding
 const branch='rocket-ui-test/spelling';
 git(['init','-b',branch]);git(['config','user.name','Spelling Fixture']);git(['config','user.email','fixture@example.invalid']);git(['config','commit.gpgsign','false']);
 fs.writeFileSync(path.join(repo,'資料.rs'),'// unchanged synthetic source\n');git(['add','.']);git(['commit','-m','Spelling fixture']);fs.writeFileSync(path.join(repo,'.git/rocket-ui-fixture'),branch);
+if(startup==='release-layout'){
+ fs.appendFileSync(path.join(repo,'資料.rs'),'// staged fixture\n');git(['add','.']);fs.appendFileSync(path.join(repo,'資料.rs'),'// unstaged fixture\n');
+ fs.writeFileSync(path.join(repo,'untracked fixture'),'unchanged');
+}
 const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const before={head:git(['rev-parse','HEAD']),index:hash(path.join(repo,'.git/index')),file:hash(path.join(repo,'資料.rs')),config:hash(path.join(repo,'.git/config'))};
 const report={passed:false,startup,cases:[],checks:[],events:[],binary_sha256:hash(exe)},delay=ms=>new Promise(r=>setTimeout(r,ms));
 let service,client,state;
 const nativeCalls=()=>fs.existsSync(path.join(root,'service.log'))?fs.readFileSync(path.join(root,'service.log'),'utf8').split(/\r?\n/).slice(0,-1).filter(l=>l.startsWith('ROCKET_SPELL_TRACE ')).map(l=>JSON.parse(l.slice(19))):[];
-function event(name,extra={}){report.events.push({name,at_ms:Date.now(),spelling:state?.spelling,...extra})}
+function event(name,extra={}){report.events.push({name,at_ms:Date.now(),spelling:state?.spelling,draft_present:state?.tabs?.find(t=>t.id===state.active_tab)?.draft_present??state?.tabs?.[0]?.draft_present,...extra})}
 const control=id=>state.controls?.find(c=>c.id===id);
 async function until(fn,label,ms=20000){const begin=performance.now();do{state=await client.tool('rocket_state');if(fn(state))return;await delay(35)}while(performance.now()-begin<ms);throw Error(label+': '+JSON.stringify(state.spelling))}
 async function settle(){await until(s=>!s.busy&&!s.input_pending&&!s.tabs?.some(t=>t.loading),'settle')}
@@ -55,6 +59,10 @@ async function run(){try{
  for(let i=0;;i++){try{assert.equal((await client.raw('GET','/health')).status,200);break}catch(e){if(i>=100)throw e;await delay(100)}}
  await client.initialize();await client.tool('rocket_open',{path:repo});await settle();
  await client.tool('rocket_resize',{width:1180,height:620});await until(s=>s.viewport[0]===1180&&s.viewport[1]===620,'viewport');
+ if(startup==='release-layout'){
+  await client.tool('rocket_resize',{width:780,height:620});await until(s=>s.viewport[0]===780,'compact viewport');await stable();
+  await client.tool('rocket_resize',{width:1180,height:620});await until(s=>s.viewport[0]===1180,'restored viewport');
+ }
  // Each mode starts a fresh app. Keep the original failed sentence first; vary
  // later texts so repeating a cached Cocoa answer is not our only evidence.
  for(let i=0;i<3;i++)for(const [base,expected] of [['Ths sentnce has misspelled wrds',true],['hello world',false],['資料 🚀 cafe\u0301 mispellling',true]]){
