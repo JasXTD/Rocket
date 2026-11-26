@@ -572,5 +572,17 @@
   "Export as Mermaid, once the map shows something": "تصدير بصيغة Mermaid عندما تعرض الخريطة شيئًا",
   "Export as Mermaid, once this read finishes": "تصدير بصيغة Mermaid بعد انتهاء هذه القراءة",
   "CODEOWNERS matching limit reached · most commits": "تم بلوغ حد مطابقة CODEOWNERS · بحسب عدد الإيداعات",
-  "Code map read limit reached. Some connections or ownership data are unavailable.": "تم بلوغ حد قراءة خريطة الشفرة. بعض الروابط أو بيانات الملكية غير متاحة."
+  "Code map read limit reached. Some connections or ownership data are unavailable.": "تم بلوغ حد قراءة خريطة الشفرة. بعض الروابط أو بيانات الملكية غير متاحة.",
+  "Copy location": "نسخ الموقع",
+  "{number} of {total}": "{number} من {total}",
+  "{n} references": {
+    "zero": "لا مراجع",
+    "one": "مرجع واحد",
+    "two": "مرجعان",
+    "few": "{n} مراجع",
+    "many": "{n} مرجعًا",
+    "other": "{n} مرجع"
+  },
+  "Previous reference": "المرجع السابق",
+  "Next reference": "المرجع التالي"
 }

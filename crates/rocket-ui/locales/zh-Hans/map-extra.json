@@ -313,5 +313,10 @@
   "Export as Mermaid, once the map shows something": "导出为 Mermaid（地图显示内容后可用）",
   "Export as Mermaid, once this read finishes": "导出为 Mermaid（本次读取完成后可用）",
   "CODEOWNERS matching limit reached · most commits": "已达到 CODEOWNERS 匹配上限 · 按提交次数确定",
-  "Code map read limit reached. Some connections or ownership data are unavailable.": "代码地图已达到读取上限。部分连接或归属数据不可用。"
+  "Code map read limit reached. Some connections or ownership data are unavailable.": "代码地图已达到读取上限。部分连接或归属数据不可用。",
+  "Copy location": "复制位置",
+  "{number} of {total}": "{number} / {total}",
+  "{n} references": "{n} 个引用位置",
+  "Previous reference": "上一个引用位置",
+  "Next reference": "下一个引用位置"
 }

@@ -31,11 +31,15 @@ it includes. In **Modules**, select the script to see **Used by**, then select a
 caller to trace the connection back. A shared file lists each calling module.
 
 In **Folders** or **Modules**, select either the source file or its asset, then choose
-**Go to reference** in Details. A single reference opens immediately. With several,
-choose a source path and line from the list. The highlighted line shows the Rust
-macro call or the HTML/CSS asset URL as it appeared in the map’s selected commit.
-You can keep local edits open while reading it. Choose **Close** to return to your
-map selection.
+**Go to reference** in Details. The first reference opens at once, with its line
+banded and the referenced name marked. The header shows the file that makes the
+reference, the file it points to, the kind (such as `include_str!`, `stylesheet` or
+`@import`), the line and the map’s snapshot. With several, the list stays on the left;
+choose another there or step with the arrows. In a narrow window, **← References**
+returns to the list. **Copy location** copies the path and line, such as
+`src/guide.rs:42`. A large file shows only the lines around the reference and says so.
+The viewer reads the map’s selected commit as it appeared there, even with local edits
+open. Choose **← Map** or press Esc to return to your map selection.
 
 To trace a Rust native call, expand the crate in **Folders**. Select the Rust file
 and follow its arrow to the C-family source. The arrow lists matching linker names.

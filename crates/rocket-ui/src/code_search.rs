@@ -816,7 +816,6 @@ pub(crate) fn viewer(ui: &mut Ui, s: &mut State, narrow: bool, intents: &mut Vec
         return;
     };
     let label = crate::tree::path_label(&opened.path);
-    let (dir, name) = label.rsplit_once('/').map_or(("", label.as_str()), |(d, n)| (d, n));
     pages::strip(ui, |ui| {
         if narrow {
             let r = ui.button(crate::i18n::tr("Show results"));
@@ -826,10 +825,7 @@ pub(crate) fn viewer(ui: &mut Ui, s: &mut State, narrow: bool, intents: &mut Vec
             }
         }
         let mut job = text::LayoutJob::default();
-        if !dir.is_empty() {
-            job.append(&format!("{dir}/"), 0.0, TextFormat::simple(FontId::proportional(13.0), FAINT()));
-        }
-        job.append(name, 0.0, TextFormat::simple(semibold(13.0), TEXT()));
+        crate::tree::append_path(&mut job, &label, 13.0);
         let r = ui.add(Label::new(job).truncate()).on_hover_text(&label);
         widgets.insert("files-open-label".into(), (&r).into());
         match &opened.source {
@@ -878,34 +874,14 @@ pub(crate) fn viewer(ui: &mut Ui, s: &mut State, narrow: bool, intents: &mut Vec
     };
     let notes = Frame::new().inner_margin(Margin::symmetric(12, 6)).show(ui, |ui| {
         ui.set_width(ui.available_width());
-        if lfs {
-            pages::callout(ui, BLUE(), crate::i18n::tr("Git LFS pointer. The file's content is stored outside Git, so only this pointer was searched."));
-        }
-        if content.window {
-            let last = content.first + content.lines.len().saturating_sub(1);
-            pages::callout(
-                ui,
-                BLUE(),
-                &crate::i18n::trf!("Large file: showing lines {first} to {last}, around line {line}", first = pages::number_text(content.first), last = pages::number_text(last), line = pages::number_text(opened.number as usize)),
-            );
-        }
-        if content.lossy {
-            pages::callout(ui, MUTED(), crate::i18n::tr("Not UTF-8: invalid bytes are shown as �."));
-        }
-        if content.limited {
-            pages::callout(ui, AMBER(), crate::i18n::tr("Preview limited to 50,000 lines and 8 KiB per line."));
-        }
-        if content.kind == HistoricalFileKind::Binary {
-            pages::note(ui, crate::i18n::tr("This file is binary now, so its text can't be shown."));
-            return false;
-        }
-        true
+        crate::tree::line_notes(ui, content, opened.number as usize, lfs)
     }).inner;
     if !notes {
         return;
     }
     let focus = (opened.number as usize).checked_sub(content.first);
     let scroll = std::mem::take(&mut opened.scroll).then_some(()).and(focus);
+    pages::divider(ui);
     crate::tree::source_rows(
         ui,
         content,

@@ -424,5 +424,13 @@
   "Export as Mermaid, once the map shows something": "Exportera som Mermaid när kartan visar något",
   "Export as Mermaid, once this read finishes": "Exportera som Mermaid när läsningen är klar",
   "CODEOWNERS matching limit reached · most commits": "Gränsen för CODEOWNERS-matchning nådd · flest incheckningar",
-  "Code map read limit reached. Some connections or ownership data are unavailable.": "Kodkartans läsgräns har nåtts. Vissa kopplingar eller ägaruppgifter är inte tillgängliga."
+  "Code map read limit reached. Some connections or ownership data are unavailable.": "Kodkartans läsgräns har nåtts. Vissa kopplingar eller ägaruppgifter är inte tillgängliga.",
+  "Copy location": "Kopiera plats",
+  "{number} of {total}": "{number} av {total}",
+  "{n} references": {
+    "one": "{n} referens",
+    "other": "{n} referenser"
+  },
+  "Previous reference": "Föregående referens",
+  "Next reference": "Nästa referens"
 }

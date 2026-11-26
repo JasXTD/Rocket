@@ -313,5 +313,10 @@
   "Export as Mermaid, once the map shows something": "Mermaid로 내보내기 (맵에 무언가 표시되면 사용할 수 있습니다)",
   "Export as Mermaid, once this read finishes": "Mermaid로 내보내기 (읽기가 끝나면 사용할 수 있습니다)",
   "CODEOWNERS matching limit reached · most commits": "CODEOWNERS 일치 검사 한도 도달 · 커밋 수 기준",
-  "Code map read limit reached. Some connections or ownership data are unavailable.": "코드 맵 읽기 한도에 도달했습니다. 일부 연결 또는 소유자 데이터를 사용할 수 없습니다."
+  "Code map read limit reached. Some connections or ownership data are unavailable.": "코드 맵 읽기 한도에 도달했습니다. 일부 연결 또는 소유자 데이터를 사용할 수 없습니다.",
+  "Copy location": "위치 복사",
+  "{number} of {total}": "{number} / {total}",
+  "{n} references": "참조 위치 {n}개",
+  "Previous reference": "이전 참조 위치",
+  "Next reference": "다음 참조 위치"
 }

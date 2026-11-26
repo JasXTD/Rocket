@@ -493,5 +493,15 @@
   "Export as Mermaid, once the map shows something": "Экспортировать как Mermaid, когда карта что-нибудь покажет",
   "Export as Mermaid, once this read finishes": "Экспортировать как Mermaid после завершения чтения",
   "CODEOWNERS matching limit reached · most commits": "Достигнут предел сопоставления CODEOWNERS · по числу коммитов",
-  "Code map read limit reached. Some connections or ownership data are unavailable.": "Достигнут предел чтения карты кода. Некоторые связи или сведения о владельцах недоступны."
+  "Code map read limit reached. Some connections or ownership data are unavailable.": "Достигнут предел чтения карты кода. Некоторые связи или сведения о владельцах недоступны.",
+  "Copy location": "Копировать место",
+  "{number} of {total}": "{number} из {total}",
+  "{n} references": {
+    "one": "{n} место ссылки",
+    "few": "{n} места ссылок",
+    "many": "{n} мест ссылок",
+    "other": "{n} места ссылок"
+  },
+  "Previous reference": "Предыдущее место ссылки",
+  "Next reference": "Следующее место ссылки"
 }

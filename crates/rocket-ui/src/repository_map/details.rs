@@ -298,7 +298,7 @@ fn node_heading(s: &MapPage, data: &RepositoryMap, i: usize) -> (Mark, String, S
         }
     }
 }
-fn single(text: &str, font: FontId, color: Color32, width: f32) -> text::LayoutJob {
+pub(super) fn single(text: &str, font: FontId, color: Color32, width: f32) -> text::LayoutJob {
     let mut job = text::LayoutJob::simple_singleline(text.to_owned(), font, color);
     job.wrap = text::TextWrapping::truncate_at_width(width.max(1.));
     job

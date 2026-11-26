@@ -2163,15 +2163,16 @@ pub(crate) fn list_pane(
     );
 }
 
-/// Line-number gutter cell for source viewers: right-aligned, dimmed monospace.
-pub(crate) fn gutter(ui: &mut Ui, number: &str, width: f32, height: f32) {
+/// Line-number gutter cell for source viewers: right-aligned monospace, FAINT except
+/// on a line a viewer points at.
+pub(crate) fn gutter(ui: &mut Ui, number: &str, width: f32, height: f32, color: Color32) {
     let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     ui.painter().text(
         pos2(rect.right() - 10.0, rect.center().y),
         Align2::RIGHT_CENTER,
         number,
         FontId::monospace(12.0),
-        FAINT(),
+        color,
     );
 }
 

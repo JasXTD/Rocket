@@ -424,5 +424,13 @@
   "Export as Mermaid, once the map shows something": "Exporter en Mermaid, dès que la carte montre quelque chose",
   "Export as Mermaid, once this read finishes": "Exporter en Mermaid, une fois cette lecture terminée",
   "CODEOWNERS matching limit reached · most commits": "Limite de correspondance CODEOWNERS atteinte · selon le nombre de commits",
-  "Code map read limit reached. Some connections or ownership data are unavailable.": "Limite de lecture de la carte du code atteinte. Certaines connexions ou données de responsabilité sont indisponibles."
+  "Code map read limit reached. Some connections or ownership data are unavailable.": "Limite de lecture de la carte du code atteinte. Certaines connexions ou données de responsabilité sont indisponibles.",
+  "Copy location": "Copier l’emplacement",
+  "{number} of {total}": "{number} sur {total}",
+  "{n} references": {
+    "one": "{n} référence",
+    "other": "{n} références"
+  },
+  "Previous reference": "Référence précédente",
+  "Next reference": "Référence suivante"
 }

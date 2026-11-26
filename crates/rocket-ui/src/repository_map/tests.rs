@@ -2232,3 +2232,19 @@ fn export_is_a_worded_button_that_says_why_it_is_greyed_out() {
     let why = tr("Export as Mermaid, once the map shows something");
     assert!(painted.iter().any(|(text, _)| text == why), "no {why:?} in {painted:?}");
 }
+
+#[test]
+fn a_snapshot_read_at_a_commit_names_it_once() {
+    let tip = ObjectId::parse("2916eea856fcb3e69b565c0f4226bd30dbd09174").unwrap();
+    let mut page = MapPage::default();
+    page.data = Some(Arc::new(RepositoryMap { tip: Some(tip.clone()), ..data(1) }));
+    page.revision = "main".into();
+    assert_eq!(snapshot_of(&page, MapKind::Code).as_deref(), Some("Snapshot of main · 2916eea8"));
+    for revision in [tip.as_str(), "2916EEA856FC", "2916eea"] {
+        page.revision = revision.into();
+        assert_eq!(snapshot_of(&page, MapKind::Code).as_deref(), Some("Snapshot of 2916eea8"), "{revision}");
+    }
+    // Hex that is not this commit, such as a branch named "cafe1234", keeps both.
+    page.revision = "cafe1234".into();
+    assert_eq!(snapshot_of(&page, MapKind::Code).as_deref(), Some("Snapshot of cafe1234 · 2916eea8"));
+}

@@ -386,17 +386,30 @@ async function assetReferences(){
   const i=node(file).index;
   await click((map().kind==='Modules'?'map-module-':'map-node-')+i);
   assert.equal(map().selected,i);
-  await click('map-go-to-reference');
+  await click('map-go-to-reference');reads();
+ }
+ // The first reference opens at once; rows and arrows each read another committed source.
+ function reads(n=1){report.reference_reads=(report.reference_reads??0)+n;}
+ // Back to the map: a narrow window with several references goes back to their list first.
+ async function closeReference(){
+  if(control('map-reference-list'))await click('map-reference-list');
+  await click('map-reference-close');
+  await until(()=>!map().reference,'reference view closed');
  }
  async function verify(tip,source,target,line,kind,text){
   const ref=map().reference;
   assert.equal(ref?.commit,tip);
   const index=ref.sites.findIndex(s=>s.source===source&&s.target===target&&s.line===line&&s.kind===kind);
   assert(index>=0,JSON.stringify({source,target,line,sites:ref.sites}));
-  if(ref.selected===null)await click('map-reference-'+index);
+  if(ref.selected!==index){
+   if(!control('map-reference-'+index)&&control('map-reference-list'))await click('map-reference-list');
+   await click('map-reference-'+index);reads();
+  }
   await until(()=>map().reference?.selected===index&&!map().reference.loading,'committed source');
   assert.equal(map().reference.error,null);
   assert.equal(map().reference.text,text);
+  // Asset references mark the target's name in the line.
+  assert.equal(map().reference.marked,target.split('/').pop());
   await until(()=>!!control('map-reference-source-line-'+line),'highlighted row in viewport');
   checkBounds();
   report.reference_opens=(report.reference_opens??0)+1;
@@ -423,17 +436,23 @@ async function assetReferences(){
  rust.write(src,'// staged Rust source\n');rust.git(['add','--',src]);rust.write(src,'// local Rust source\n');
  await folders(rust,second);await revision(first);await expand(['src']);await click('map-fit');
  const before=snapshot(rust);await pickFile(guide);assert.equal(map().reference.count,2);
- await click('map-reference-close');assert.equal(map().selected,node(guide).index);
- await click('map-go-to-reference');
+ await until(()=>map().reference.selected===0&&!map().reference.loading,'first reference opens at once');
+ assert.equal(map().reference.listing,false);
+ await click('map-reference-next');reads();await until(()=>map().reference.selected===1&&!map().reference.loading,'next reference');
+ assert.equal(map().reference.text,later);assert.equal(map().reference.window,true);
+ await click('map-reference-previous');reads();await until(()=>map().reference.selected===0&&!map().reference.loading,'previous reference');
+ assert.equal(map().reference.text,earlier);
+ await closeReference();assert.equal(map().selected,node(guide).index);
+ await click('map-go-to-reference');reads();
  await verify(first,src,guide,2,'include_str!',earlier);
- await click('map-reference-list');await verify(first,src,guide,728,'include_str!',later);
- await keepCapture('rust-reference');await click('map-reference-close');assert.equal(map().selected,node(guide).index);
- await pickFile(src);assert.equal(map().reference.count,3);await verify(first,src,single,55729,'include_bytes!',bytes);
- await click('map-reference-close');assert.deepEqual(snapshot(rust),before);
+ await verify(first,src,guide,728,'include_str!',later);
+ await keepCapture('rust-reference');await closeReference();assert.equal(map().selected,node(guide).index);
+ await pickFile(src);assert.equal(map().reference.count,3);await verify(first,src,single,55729,'include_bytes!',bytes);assert.equal(map().reference.window,true);
+ await closeReference();assert.deepEqual(snapshot(rust),before);
  passed('Folders opens both occurrences of a Rust embed and the byte embed at the selected older commit, including visible highlights on lines 728 and 55729');
  await modules('Rust',second);await pickFile(guide);
  await verify(second,src,guide,730,'include_str!',later.replace('const SECOND','pub const SECOND'));
- await click('map-reference-close');assert.deepEqual(snapshot(rust),before);
+ await closeReference();assert.deepEqual(snapshot(rust),before);
  passed('Modules follows the same asset to its moved line at a newer commit while the index and checkout contain different text');
 
  const web=fixture('Web locations 雪'), page='頁.html', sheet='site.css', base='base.css', pic='雪.png';
@@ -447,14 +466,19 @@ async function assetReferences(){
  // An external edit after the map has loaded must not change the source we open.
  fs.unlinkSync(path.join(web.repo,sheet));const unchanged=snapshot(web);
  await pickFile(pic);assert.equal(map().reference.count,3);
- await verify(original,page,pic,5,'srcset',html[4]);await click('map-reference-list');
- await verify(original,page,pic,7,'url()',html[6]);await click('map-reference-list');
- await verify(original,sheet,pic,5,'url()',css[4]);await click('map-reference-close');
+ await verify(original,page,pic,5,'srcset',html[4]);
+ await verify(original,page,pic,7,'url()',html[6]);
+ await verify(original,sheet,pic,5,'url()',css[4]);await closeReference();
  passed('Shared Unicode image opens the exact HTML srcset, entity-encoded inline CSS and standalone CSS lines after the working stylesheet is deleted');
  await modules('HtmlCss',original);await pickFile(base);assert.equal(map().reference.count,1);
- await verify(original,sheet,base,3,'@import',css[2]);await click('map-reference-close');
- await pickFile(page);await resize(780,620);await verify(original,page,sheet,3,'stylesheet',html[2]);
- await keepCapture('compact-reference');await click('map-reference-close');assert.equal(map().selected,node(page).index);
+ await verify(original,sheet,base,3,'@import',css[2]);await closeReference();
+ await pickFile(page);await resize(780,620);await verify(original,page,sheet,3,'stylesheet',html[2]);assert.equal(map().reference.window,false);
+ await keepCapture('compact-reference');
+ // Narrow: back goes to the list first, and a row opens the next reference in its place.
+ await click('map-reference-list');await until(()=>map().reference.listing&&!!control('map-reference-1'),'narrow list');
+ assert(!control('map-reference-copy')&&!control('map-reference-next'));await keepCapture('compact-reference-list');
+ await verify(original,page,pic,5,'srcset',html[4]);assert.equal(map().reference.listing,false);
+ await closeReference();assert.equal(map().selected,node(page).index);
  assert.deepEqual(snapshot(web),unchanged);
  passed('A single CSS import opens directly. A compact window shows the selected commit and highlighted HTML line, returns to the same module and preserves local files, index, config and HEAD');
 }
@@ -779,7 +803,7 @@ finally{
    if(focused.flag==='--references-only'){
     const records=diagnosticRecords().filter(r=>r.operation==='map-open-reference');
     const starts=records.filter(r=>r.event==='request_start');
-    assert.equal(starts.length,report.reference_opens);
+    assert.equal(starts.length,report.reference_reads);
     for(const start of starts) assert(records.some(r=>r.event==='request_end'&&r.session===start.session&&r.request===start.request));
     const logged=JSON.stringify(records);
     for(const privateText of ['入門.md','頁.html','雪.png','const SECOND',root])assert(!logged.includes(privateText));

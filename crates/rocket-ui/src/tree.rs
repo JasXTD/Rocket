@@ -667,9 +667,53 @@ pub(crate) fn view(
     }
 }
 
+/// How wide [`source_rows`] draws the line numbers: room for the last one.
+pub(crate) fn gutter_width(content: &Content) -> f32 {
+    let last = content.first + content.lines.len().max(1) - 1;
+    (last.to_string().len() as f32 * 8.0 + 22.0).max(46.0)
+}
+
+/// Appends a path as a viewer's title shows it: the folder faint, the name semibold.
+pub(crate) fn append_path(job: &mut text::LayoutJob, label: &str, size: f32) {
+    let (dir, name) = label.rsplit_once('/').unwrap_or(("", label));
+    if !dir.is_empty() {
+        job.append(&format!("{dir}/"), 0.0, TextFormat::simple(FontId::proportional(size), FAINT()));
+    }
+    job.append(name, 0.0, TextFormat::simple(semibold(size), TEXT()));
+}
+
+/// What Files' search and the map's references say above a file opened at `line`: an
+/// LFS pointer, the lines a large file was cut to, lossy text and preview limits.
+/// False when the file is binary, so no text follows.
+pub(crate) fn line_notes(ui: &mut Ui, content: &Content, line: usize, lfs: bool) -> bool {
+    if lfs {
+        pages::callout(ui, BLUE(), crate::i18n::tr("Git LFS pointer. The file's content is stored outside Git, so only this pointer was searched."));
+    }
+    if content.window {
+        let last = content.first + content.lines.len().saturating_sub(1);
+        pages::callout(
+            ui,
+            BLUE(),
+            &crate::i18n::trf!("Large file: showing lines {first} to {last}, around line {line}", first = pages::number_text(content.first), last = pages::number_text(last), line = pages::number_text(line)),
+        );
+    }
+    if content.lossy {
+        pages::callout(ui, MUTED(), crate::i18n::tr("Not UTF-8: invalid bytes are shown as �."));
+    }
+    if content.limited {
+        pages::callout(ui, AMBER(), crate::i18n::tr("Preview limited to 50,000 lines and 8 KiB per line."));
+    }
+    if content.kind == HistoricalFileKind::Binary {
+        pages::note(ui, crate::i18n::tr("This file is binary now, so its text can't be shown."));
+        return false;
+    }
+    true
+}
+
 /// Source lines with numbers from `content.first`, matches marked, the `focus` line
-/// banded, scrolled to `scroll` (an index into the lines) once when given. Each row
-/// is exactly 22 points so the virtualized row range stays accurate.
+/// banded with its number in the accent, scrolled to `scroll` (an index into the
+/// lines) once when given. Each row is exactly 22 points so the virtualized row range
+/// stays accurate.
 pub(crate) fn source_rows(
     ui: &mut Ui,
     content: &Content,
@@ -679,10 +723,7 @@ pub(crate) fn source_rows(
     scroll_id: &str,
     widgets: &mut HashMap<String, UiControl>,
 ) {
-    pages::divider(ui);
-    let last = content.first + content.lines.len().max(1) - 1;
-    let digits = last.to_string().len() as f32;
-    let gutter = (digits * 8.0 + 22.0).max(46.0);
+    let gutter = gutter_width(content);
     let size = ui
         .style()
         .text_styles
@@ -711,7 +752,8 @@ pub(crate) fn source_rows(
             ui.horizontal(|ui| {
                 ui.set_min_height(22.0);
                 ui.spacing_mut().item_spacing.x = 8.0;
-                pages::gutter(ui, &(content.first + i).to_string(), gutter, 22.0);
+                let number = if Some(i) == focus { ACCENT_TEXT() } else { FAINT() };
+                pages::gutter(ui, &(content.first + i).to_string(), gutter, 22.0, number);
                 match content.marks.get(&i) {
                     Some(marks) => ui.add(
                         Label::new(crate::code_search::marked_job(&content.lines[i], marks, 0, false, false, size)).extend(),
@@ -1015,6 +1057,7 @@ fn file_view(
     let Some(content) = s.content.as_ref().filter(|_| notes) else {
         return;
     };
+    pages::divider(ui);
     source_rows(
         ui,
         content,

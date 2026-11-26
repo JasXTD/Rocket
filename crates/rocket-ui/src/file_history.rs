@@ -1451,7 +1451,7 @@ fn inspector(
                                 b.path.display_lossy(),
                                 b.original_line
                             ));
-                            pages::gutter(ui, &b.line.to_string(), gutter, 23.0);
+                            pages::gutter(ui, &b.line.to_string(), gutter, 23.0, FAINT());
                             ui.add(
                                 Label::new(
                                     RichText::new(preview_text(&b.content, 8192)).monospace(),
@@ -1460,7 +1460,7 @@ fn inspector(
                             );
                         }
                         Mode::Contents => {
-                            pages::gutter(ui, &(i + 1).to_string(), gutter, 23.0);
+                            pages::gutter(ui, &(i + 1).to_string(), gutter, 23.0, FAINT());
                             ui.add(
                                 Label::new(
                                     RichText::new(&s.content.as_ref().unwrap().lines[i])

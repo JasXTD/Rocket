@@ -4063,7 +4063,8 @@ fn repository_map_state(state:&rocket_ui::repository_map::State)->Value {
         let sites = r.sites.iter().take(128).map(|s| json!({"source":rocket_ui::tree::path_label(&s.source),
             "target":rocket_ui::tree::path_label(&s.target),"kind":s.kind,"line":s.line})).collect::<Vec<_>>();
         json!({"commit":r.commit.as_str(),"selected":r.selected,"sites":sites,"count":r.sites.len(),
-            "loading":r.loading(),"error":r.error,"text":r.focused_text().map(|s|s.chars().take(256).collect::<String>())})
+            "loading":r.loading(),"error":r.error,"text":r.focused_text().map(|s|s.chars().take(256).collect::<String>()),
+            "listing":r.listing,"window":r.window(),"marked":r.marked_text()})
     });
     let mut result = json!({"kind":format!("{:?}",state.kind),"code_shows_modules":state.modules,"running":p.running(),"cancelling":p.cancelling,
         "package":p.package.as_ref().map(|v|rocket_ui::tree::path_label(&v.folder)),"package_language":p.package.as_ref().map(|v|format!("{:?}",v.language)),"whole":p.whole,"by_name":p.by_name,"expanded":p.expanded.iter().map(|v|rocket_ui::tree::path_label(v)).collect::<Vec<_>>(),

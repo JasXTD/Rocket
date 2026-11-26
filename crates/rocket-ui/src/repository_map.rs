@@ -490,10 +490,13 @@ impl Rocket {
         let mut more = false;
         match intent {
             MapIntent::References { commit, file } => {
+                let kind = tab.map.kind;
                 let page = tab.map.page_mut();
                 if let Some(sites) = page.reference_sites(&commit, &file) {
-                    let mut view = ReferenceView::new(commit, sites.iter().cloned().collect());
-                    if view.sites.len() == 1 { view.open(0, &self.context, backend.clone(), repo.clone()); }
+                    let snapshot = snapshot_of(page, kind).unwrap_or_default();
+                    let mut view = ReferenceView::new(commit, sites.iter().cloned().collect(), file, snapshot);
+                    // The first opens at once; with several, the list stays beside it.
+                    view.open(0, &self.context, backend.clone(), repo.clone());
                     page.reference = Some(view);
                 }
             }
@@ -760,37 +763,56 @@ fn chip(ui: &mut Ui, widgets: &mut HashMap<String, UiControl>, id: &str, text: &
     register(ui, widgets, id, &r);
     r.clicked()
 }
+/// Narrower than this, the map's toolbar and the reference view compact.
+const COMPACT: f32 = 850.;
 fn emit(out: &mut Vec<Intent>, intent: MapIntent) {
     out.push(Intent::Map(intent));
 }
 fn short(id: &ObjectId) -> &str {
     &id.as_str()[..8]
 }
-/// What the header says about the snapshot on screen.
-fn snapshot_line(s: &MapPage, kind: MapKind) -> String {
-    let what = if s.all_branches && kind.reads_commits() {
+/// What the map was read from: the revision, or all branches.
+fn snapshot_what(s: &MapPage, kind: MapKind) -> String {
+    if s.all_branches && kind.reads_commits() {
         crate::i18n::tr("all branches").to_owned()
     } else {
         s.revision.clone()
-    };
+    }
+}
+/// What the header says about the snapshot on screen.
+fn snapshot_line(s: &MapPage, kind: MapKind) -> String {
     if s.running() {
         return if s.cancelling {
             crate::i18n::tr("Stopping").into()
         } else {
-            trf!("Reading {what}", what = what)
+            trf!("Reading {what}", what = snapshot_what(s, kind))
         };
     }
-    let Some(d) = &s.data else {
-        return tr("How the code, history and people in this repository connect").into();
+    snapshot_of(s, kind).unwrap_or_else(|| tr("How the code, history and people in this repository connect").into())
+}
+/// "Snapshot of main · 1a2b3c4d" (and the commits read, where the map reads them) once
+/// a snapshot is loaded. The reference view keeps these words while its file loads.
+fn snapshot_of(s: &MapPage, kind: MapKind) -> Option<String> {
+    let d = s.data.as_ref()?;
+    let what = snapshot_what(s, kind);
+    // Read at a commit id: name that commit once, short, not the whole id and its start again.
+    let id = |tip: &&ObjectId| {
+        what.len() >= 7 && what.bytes().all(|b| b.is_ascii_hexdigit()) && tip.as_str().starts_with(&what.to_ascii_lowercase())
     };
-    let mut line = trf!("Snapshot of {what}", what = what);
-    if let Some(tip) = &d.tip {
-        line.push_str(&format!(" · {}", short(tip)));
-    }
+    let mut line = match d.tip.as_ref().filter(id) {
+        Some(tip) => trf!("Snapshot of {what}", what = short(tip)),
+        None => {
+            let mut line = trf!("Snapshot of {what}", what = what);
+            if let Some(tip) = &d.tip {
+                line.push_str(&format!(" · {}", short(tip)));
+            }
+            line
+        }
+    };
     if kind.reads_commits() {
         line.push_str(&format!(" · {}", trn!(d.scanned, "{n} commit", "{n} commits")));
     }
-    line
+    Some(line)
 }
 
 /// What the Code page's Packages, Folders and Modules show, read from whichever page
@@ -854,7 +876,7 @@ pub(crate) fn view(
         if reference.show(ui, intents, widgets) { tab.map.page_mut().reference = None; }
         return;
     }
-    let compact = ui.available_width() < 850.;
+    let compact = ui.available_width() < COMPACT;
     let low = ui.available_height() < 420.;
     let kind = tab.map.kind;
     let branches = revision_choices(tab);
@@ -1303,7 +1325,7 @@ fn strips(
     intents: &mut Vec<Intent>,
     widgets: &mut HashMap<String, UiControl>,
 ) {
-    let compact = ui.available_width() < 850.;
+    let compact = ui.available_width() < COMPACT;
     let margin = if compact { 12 } else { 24 };
     Frame::new()
         .inner_margin(Margin {

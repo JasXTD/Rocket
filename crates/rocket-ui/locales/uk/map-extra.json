@@ -493,5 +493,15 @@
   "Export as Mermaid, once the map shows something": "Експортувати як Mermaid, коли карта щось покаже",
   "Export as Mermaid, once this read finishes": "Експортувати як Mermaid після завершення читання",
   "CODEOWNERS matching limit reached · most commits": "Досягнуто межі зіставлення CODEOWNERS · за кількістю комітів",
-  "Code map read limit reached. Some connections or ownership data are unavailable.": "Досягнуто межі читання карти коду. Деякі зв’язки або дані про власників недоступні."
+  "Code map read limit reached. Some connections or ownership data are unavailable.": "Досягнуто межі читання карти коду. Деякі зв’язки або дані про власників недоступні.",
+  "Copy location": "Копіювати місце",
+  "{number} of {total}": "{number} із {total}",
+  "{n} references": {
+    "one": "{n} місце посилання",
+    "few": "{n} місця посилань",
+    "many": "{n} місць посилань",
+    "other": "{n} місця посилань"
+  },
+  "Previous reference": "Попереднє місце посилання",
+  "Next reference": "Наступне місце посилання"
 }

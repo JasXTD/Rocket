@@ -313,5 +313,10 @@
   "Export as Mermaid, once the map shows something": "Mermaid としてエクスポート（マップに何か表示されると使えます）",
   "Export as Mermaid, once this read finishes": "Mermaid としてエクスポート（読み取りが終わると使えます）",
   "CODEOWNERS matching limit reached · most commits": "CODEOWNERS の照合上限に到達 · コミット数で判定",
-  "Code map read limit reached. Some connections or ownership data are unavailable.": "コードマップの読み取り上限に達しました。一部の接続または所有者データは利用できません。"
+  "Code map read limit reached. Some connections or ownership data are unavailable.": "コードマップの読み取り上限に達しました。一部の接続または所有者データは利用できません。",
+  "Copy location": "場所をコピー",
+  "{number} of {total}": "{number} / {total}",
+  "{n} references": "参照箇所 {n} 件",
+  "Previous reference": "前の参照箇所",
+  "Next reference": "次の参照箇所"
 }
