@@ -6,25 +6,35 @@ umask 077
 [[ ${GITHUB_ACTIONS:-} == true && ${RUNNER_OS:-} == macOS && ${GITHUB_REPOSITORY:-} == JasXTD/Rocket ]]
 [[ $(uname -m) == x86_64 && -n ${RUNNER_TEMP:-} ]]
 out="$RUNNER_TEMP/rocket-spelling"
-mkdir -m 700 "$out"
 
 # The release job's Defender scan approved this exact Git source. Verify the
 # immutable run, its successful scan and the pinned bytes before building it.
-# No Windows job or new software version is needed for the editor-only check.
+# The short-lived Actions read token is scoped to this step alone.
+if [[ ${1:-} == verify-git ]]; then
+mkdir -m 700 "$out"
 node - "$out/git-scan.json" <<'JS'
 const fs=require('node:fs'),assert=require('node:assert/strict');
+let step='repository';
 (async()=>{
  const api='https://api.github.com/repos/JasXTD/Rocket';
- async function read(p){const r=await fetch(api+p,{redirect:'error',signal:AbortSignal.timeout(30000)});assert(r.ok);return r.json()}
- const repo=await read(''),run=await read('/actions/runs/45755297542');
+ const token=process.env.ROCKET_SCAN_READ;assert(token,'Missing temporary Actions read access');
+ async function read(p,label){
+  step=label;const r=await fetch(api+p,{headers:{Authorization:'Bearer '+token,Accept:'application/vnd.github+json'},redirect:'error',signal:AbortSignal.timeout(30000)});
+  if(!r.ok)throw Error('GitHub HTTP '+r.status);return r.json()
+ }
+ const repo=await read('','repository'),run=await read('/actions/runs/45755297542','release run');
  assert.equal(repo.private,false);assert.equal(run.head_repository.full_name,'JasXTD/Rocket');
  assert.equal(run.head_sha,'66f034ee6bf29b20bf3b596957538edb9d25ec66');assert.equal(run.path,'.github/workflows/macos-wasm-prototype.yml');
- const {jobs}=await read('/actions/runs/45755297542/attempts/1/jobs?per_page=100');
+ const {jobs}=await read('/actions/runs/45755297542/attempts/1/jobs?per_page=100','source scan');
  const scan=jobs.find(j=>j.name==='scan_git');assert.equal(scan.conclusion,'success');
  assert(scan.steps.some(s=>s.name==='Verify and scan the pinned Git source with Microsoft Defender'&&s.conclusion==='success'));
  fs.writeFileSync(process.argv[2],JSON.stringify({source:run.head_sha,run:run.id,scan:scan.id,passed:true}));
-})().catch(e=>{console.error(e.message);process.exitCode=1});
+})().catch(e=>{fs.writeFileSync(process.argv[2],JSON.stringify({passed:false,step,error:e.message.slice(0,240)}));process.exitCode=1});
 JS
+exit 0
+fi
+[[ -z ${1:-} && -z ${ROCKET_SCAN_READ:-} ]]
+node -e 'if(require(process.argv[1]).passed!==true)process.exit(1)' "$out/git-scan.json"
 read -r git_sha archive < tools/macos/release-git.sha256
 [[ $git_sha == fd0c0495427dc9ac445fdced8e36bb5eb6f233a14da5db3c6dfd8dcfa7f85761 && $archive == git-2.56.1.tar.gz ]]
 curl --proto '=https' --proto-redir '=https' -fsSL --max-time 120 \

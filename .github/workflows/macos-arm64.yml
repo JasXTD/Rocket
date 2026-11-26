@@ -35,6 +35,9 @@ jobs:
   spelling:
     if: ${{ (inputs.checks == 'spelling' || inputs.checks == 'spelling-service') && inputs.architecture == 'x64' && github.event.repository.private == false }}
     runs-on: macos-15-intel
+    permissions:
+      actions: read
+      contents: read
     timeout-minutes: ${{ inputs.checks == 'spelling-service' && 6 || 38 }}
     env:
       CARGO_TERM_COLOR: never
@@ -42,6 +45,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Verify the Git source scan for this runner
+        if: ${{ inputs.checks == 'spelling' }}
+        env:
+          ROCKET_SCAN_READ: ${{ github.token }}
+        run: bash tools/macos/test-intel-spelling.sh verify-git
       - name: Trace native spelling in the Intel commit editor
         if: ${{ inputs.checks == 'spelling' }}
         run: bash tools/macos/test-intel-spelling.sh
