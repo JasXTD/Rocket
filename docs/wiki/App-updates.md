@@ -13,7 +13,7 @@ portable ZIPs in that installation. Sideloaded test MSIX packages require a newe
 signed package with the same identity. This does not affect your repositories or
 settings. MSIX compatibility packaging is not yet a published Store release.
 
-The 0.92.6 packages are also available for manual download from GitHub Releases.
+The 0.92.7 packages are also available for manual download from GitHub Releases.
 The Mac preview ZIP cannot be installed through the updater because Developer ID
 signing and notarization are still pending.
 

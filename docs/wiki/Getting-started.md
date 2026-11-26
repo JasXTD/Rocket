@@ -7,7 +7,7 @@ account, SSH key or MCP server for this walkthrough.
 
 ## Before opening Rocket
 
-Download a portable package from [Rocket Releases](https://github.com/JasXTD/Rocket/releases/tag/v0.92.6),
+Download a portable package from [Rocket Releases](https://github.com/JasXTD/Rocket/releases/tag/v0.92.7),
 verify its checksum, and extract it into a new folder. Windows packages include
 Git; Linux packages need glibc 2.43+ and installed Git. The Apple Silicon and Intel macOS
 15+ preview needs installed Git and is not Developer-ID-signed or notarized.

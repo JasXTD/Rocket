@@ -40,16 +40,17 @@ open **Help → Setup Guide** in the app. **Ctrl+K** opens the command palette a
 guide.
 
 > [!NOTE]
-> [Download Rocket 0.92.6](https://github.com/JasXTD/Rocket/releases/tag/v0.92.6)
+> [Download Rocket 0.92.7](https://github.com/JasXTD/Rocket/releases/tag/v0.92.7)
 > Windows x64, Linux x64 (glibc 2.43+) and macOS 15+ previews for Apple Silicon and Intel.
 > The Mac preview is not Developer-ID-signed or notarized.
 > Pick your package on the [download page](https://jasxtd.github.io/Rocket/get.html), or
 > [build from source](#build-and-run).
 
-**New in 0.92.6** — Rocket bundles patched Git for Windows and checks the security
-patch level of installed Git. Code Map reads Java, Kotlin, C, C++ and C# modules.
-Portable updates verify files in parallel and show file counts while preparing
-to restart. See the [full release notes](docs/releases/0.92.6.md).
+**New in 0.92.7** — Select a Rust module, embedded file or web asset in Code Map
+and choose **Go to reference** to see the exact line in the selected commit,
+even after local edits. You can also trace scripts loaded by PowerShell, Bash,
+Lua and GitHub Actions. This release fixes partial staging, stash protection and
+linked-worktree repair. [Full release notes](docs/releases/0.92.7.md)
 
 ## Features
 

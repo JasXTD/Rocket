@@ -10,7 +10,9 @@ the About dialog, MCP server information and diagnostic session records. Update
 that value and this file together. Record observable changes and migration notes;
 keep detailed test evidence in `VALIDATION.md`.
 
-## Unreleased
+## 0.92.7 — Code Map references and safer Git workflows
+
+See the [release notes](docs/releases/0.92.7.md) for downloads and platform requirements.
 
 - Code Map’s **Go to reference** opens the committed source line for Rust module
   declarations, imports, re-exports, embedded files and HTML/CSS asset links.
@@ -45,6 +47,10 @@ keep detailed test evidence in `VALIDATION.md`.
 - Line staging respects legacy CRLF attributes and works with blank context lines when Git hides their leading spaces.
 - Moving a linked worktree preserves relative Git links at the new location.
 - Discard restores executable-bit-only changes on Linux and macOS. Windows reports when the requested mode cannot be represented.
+- Staging new files and restoring binary data now follow Git’s conversion settings. Rocket can repair an externally moved worktree that uses relative links.
+- Code Map follows the selected occurrence when a source line contains multiple references. It recognizes the default GitHub Actions checkout, keeps Rust macro input out of import results and decodes named HTML entities in asset references.
+- Dense Code Maps limit drawing work. Copied reference locations escape control characters in paths.
+- Unix recovery files and AI draft requests use private storage. Commit templates stay within the selected scope, and Rust import analysis shares a memory budget across files. The macOS Lua helper uses Wasmtime 50.0.2.
 
 ## 0.92.6 — Git security, Code Map and Windows updates
 
