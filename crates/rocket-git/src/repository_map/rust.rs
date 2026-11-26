@@ -21,6 +21,33 @@ enum Token {
     Punct(&'static str),
 }
 
+fn close(token: &Token) -> Option<&'static str> {
+    match token {
+        Token::Punct("(") => Some(")"),
+        Token::Punct("[") => Some("]"),
+        Token::Punct("{") => Some("}"),
+        _ => None,
+    }
+}
+
+/// Skip an opaque token tree in one pass. An unterminated group consumes the remainder.
+fn after_group(tokens: &[Token], open: usize) -> usize {
+    let mut depth = 0usize;
+    for (i, t) in tokens.iter().enumerate().skip(open) {
+        match t {
+            Token::Punct("(" | "[" | "{") => depth += 1,
+            Token::Punct(")" | "]" | "}") => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return i + 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    tokens.len()
+}
+
 /// What one file says about modules and names.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Facts {
@@ -46,6 +73,7 @@ pub(super) struct Facts {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Declaration {
+    pub line: u32,
     /// Inline modules the declaration sits in.
     pub chain: Vec<String>,
     pub name: String,
@@ -56,6 +84,8 @@ pub(super) struct Declaration {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Use {
+    pub line: u32,
+    pub kind: &'static str,
     pub chain: Vec<String>,
     pub segments: Vec<String>,
     pub alias: Option<String>,
@@ -126,7 +156,17 @@ fn quote(c: &[char], i: usize) -> usize {
     (j - i).max(1)
 }
 
-fn lex(source: &str, mut embed_line: impl FnMut(usize, u32)) -> Vec<Token> {
+/// First token on each occupied line after line one. Multiline literals are one token.
+#[derive(Default)]
+struct TokenLines(Vec<(usize, u32)>);
+impl TokenLines {
+    fn at(&self, token: usize) -> u32 {
+        let n = self.0.partition_point(|&(first, _)| first <= token);
+        n.checked_sub(1).map_or(1, |i| self.0[i].1)
+    }
+}
+
+fn lex(source: &str, mut new_line: impl FnMut(usize, u32)) -> Vec<Token> {
     let c: Vec<char> = source.chars().collect();
     let n = c.len();
     let (mut counted, mut line) = (0, 1u32);
@@ -156,6 +196,16 @@ fn lex(source: &str, mut embed_line: impl FnMut(usize, u32)) -> Vec<Token> {
                 }
             }
             continue;
+        }
+        if ch.is_whitespace() {
+            i += 1;
+            continue;
+        }
+        let breaks = c[counted..i].iter().filter(|&&ch| ch == '\n').count() as u32;
+        counted = i;
+        if breaks > 0 {
+            line += breaks;
+            new_line(out.len(), line);
         }
         // Prefixed literals and raw identifiers: b"", b'', br"", r"", r#""#, r#name, c"", cr"".
         if ch == 'r' && next == Some('#') && c.get(i + 2).is_some_and(|&a| ident_start(a)) {
@@ -213,13 +263,7 @@ fn lex(source: &str, mut embed_line: impl FnMut(usize, u32)) -> Vec<Token> {
             while i < n && ident_part(c[i]) {
                 i += 1;
             }
-            let name: String = c[start..i].iter().collect();
-            if matches!(name.as_str(), "include_str" | "include_bytes") {
-                line += c[counted..start].iter().filter(|&&ch| ch == '\n').count() as u32;
-                counted = start;
-                embed_line(out.len(), line);
-            }
-            out.push(Token::Ident(name));
+            out.push(Token::Ident(c[start..i].iter().collect()));
             continue;
         }
         let pair = |a: char, b: char| ch == a && next == Some(b);
@@ -252,7 +296,7 @@ fn lex(source: &str, mut embed_line: impl FnMut(usize, u32)) -> Vec<Token> {
         };
         if !punct.is_empty() {
             out.push(Token::Punct(punct));
-        } else if !ch.is_whitespace() {
+        } else {
             out.push(Token::Other);
         }
         i += punct.len().max(1);
@@ -337,8 +381,8 @@ pub(super) fn native_inputs(source: &str, helper_exists: impl Fn(&str) -> bool) 
 pub(super) fn read_with_budget(source: &str, budget: &mut ReadBudget) -> Facts {
     // A byte-order mark is no part of the first line.
     let source = source.strip_prefix('﻿').unwrap_or(source);
-    let mut embed_lines = std::collections::BTreeMap::new();
-    let t = lex(source, |token, line| { embed_lines.insert(token, line); });
+    let mut lines = TokenLines::default();
+    let t = lex(source, |token, line| lines.0.push((token, line)));
     let mut facts = Facts::default();
     let allowance = FILE_IMPORT_BYTES.min(MAP_IMPORT_BYTES.saturating_sub(budget.import_bytes));
     let mut import_budget = allowance;
@@ -357,12 +401,20 @@ pub(super) fn read_with_budget(source: &str, budget: &mut ReadBudget) -> Facts {
     // At the start of a statement or item: `use` and `mod` count only there.
     let mut fresh = true;
     let mut k = 0;
+    let mut macro_end = 0;
     while k < t.len() {
         if scopes.len() > MAX_NESTING {
             facts.limited = true;
             break;
         }
         match &t[k] {
+            Token::Punct("!") if k >= macro_end && k > 0 && t.get(k + 1).and_then(close).is_some()
+                && matches!(&t[k - 1], Token::Raw(_) | Token::Ident(_))
+                && !matches!(&t[k - 1], Token::Ident(w) if matches!(w.as_str(), "if" | "while" | "return" | "break" | "match" | "yield" | "in")) => {
+                // Keep existing name/path analysis inside expressions, but macro input is
+                // arbitrary data and cannot establish a module declaration or import site.
+                macro_end = after_group(&t, k + 1);
+            }
             Token::Punct("#") if is(k + 1, "[") || is(k + 1, "!") && is(k + 2, "[") => {
                 let outer = is(k + 1, "[");
                 let open = if outer { k + 1 } else { k + 2 };
@@ -444,7 +496,7 @@ pub(super) fn read_with_budget(source: &str, budget: &mut ReadBudget) -> Facts {
                     if let Some(symbol) = symbol { facts.native.push((chain(&scopes), binding, symbol)); }
                 }
             }
-            Token::Ident(w) if w == "mod" && fresh && module_level(&scopes) => {
+            Token::Ident(w) if w == "mod" && fresh && k >= macro_end && module_level(&scopes) => {
                 if let Some(module) = name(k + 1) {
                     if is(k + 2, ";") {
                         let path = attributes.iter().find_map(|a| match a.as_slice() {
@@ -458,6 +510,7 @@ pub(super) fn read_with_budget(source: &str, budget: &mut ReadBudget) -> Facts {
                             matches!(a.first(), Some(Token::Ident(c)) if c == "cfg") && word("test") && !word("not") && !word("any")
                         });
                         facts.declarations.push(Declaration {
+                            line: lines.at(k + 1),
                             chain: chain(&scopes),
                             name: module,
                             path,
@@ -479,26 +532,37 @@ pub(super) fn read_with_budget(source: &str, budget: &mut ReadBudget) -> Facts {
                     }
                 }
             }
-            Token::Ident(w) if w == "use" && fresh => {
+            Token::Ident(w) if w == "use" && fresh && k >= macro_end => {
                 let start = k + 1;
                 let mut end = start;
                 while end < t.len() && !is(end, ";") {
                     end += 1;
                 }
-                expand(&t[start..end], &chain(&scopes), &mut import_budget, &mut facts);
+                let kind = match visibility.as_deref() {
+                    None => "use",
+                    Some("pub") => "pub use",
+                    Some("pub(crate)") => "pub(crate) use",
+                    Some("pub(super)") => "pub(super) use",
+                    Some("pub(self)") => "pub(self) use",
+                    Some(_) => "pub(in …) use",
+                };
+                expand(&t[start..end], &chain(&scopes), kind, |i| lines.at(start + i), &mut import_budget, &mut facts);
                 k = end;
                 continue;
             }
-            Token::Ident(w) if w == "macro_rules" && is(k + 1, "!") && module_level(&scopes) => {
-                if let Some(item) = name(k + 2) {
+            Token::Ident(w) if w == "macro_rules" && is(k + 1, "!") && k >= macro_end => {
+                if module_level(&scopes) && let Some(item) = name(k + 2) {
                     let here = chain(&scopes);
                     if here.is_empty() {
                         facts.outline.push(outline(OutlineKind::Macro, &item, visibility.take()));
                     }
                     facts.items.push((here, item));
                 }
-                k += 3;
-                fresh = false;
+                let open = k + 3;
+                fresh = is(open, "{");
+                k = if t.get(open).and_then(close).is_some() { after_group(&t, open) } else { open };
+                attributes.clear();
+                visibility = None;
                 continue;
             }
             Token::Ident(w) if ITEMS.contains(&w.as_str()) && module_level(&scopes) => {
@@ -553,7 +617,7 @@ pub(super) fn read_with_budget(source: &str, budget: &mut ReadBudget) -> Facts {
     }
     budget.import_bytes += allowance - import_budget;
     if source.contains("include_str") || source.contains("include_bytes") {
-        embedded::calls(&t, &embed_lines, &mut budget.embed_candidates, &mut facts);
+        embedded::calls(&t, &lines, &mut budget.embed_candidates, &mut facts);
     }
     facts
 }
@@ -668,7 +732,7 @@ const MAX_NESTING: usize = 64;
 const FILE_IMPORT_BYTES: usize = 4 * 1024 * 1024;
 const MAP_IMPORT_BYTES: usize = 32 * 1024 * 1024;
 
-fn expand(body: &[Token], chain: &[String], budget: &mut usize, facts: &mut Facts) {
+fn expand(body: &[Token], chain: &[String], kind: &'static str, line_at: impl Fn(usize) -> u32, budget: &mut usize, facts: &mut Facts) {
     let cost = |part: &str| size_of::<String>() + part.len();
     let base = size_of::<Use>() + chain.iter().map(|part| cost(part)).sum::<usize>();
     let mut groups = Vec::new();
@@ -676,6 +740,7 @@ fn expand(body: &[Token], chain: &[String], budget: &mut usize, facts: &mut Fact
     let mut bytes = base;
     let mut i = 0;
     while let Some(token) = body.get(i) {
+        let leaf = i;
         i += 1;
         let mut alias = None;
         let glob = match token {
@@ -723,6 +788,8 @@ fn expand(body: &[Token], chain: &[String], budget: &mut usize, facts: &mut Fact
             };
             *budget = left;
             facts.uses.push(Use {
+                line: line_at(leaf),
+                kind,
                 chain: chain.to_vec(),
                 segments: segments.iter().map(|part| (*part).to_owned()).collect(),
                 alias: alias.cloned(),
@@ -883,7 +950,7 @@ mod both;
 
         let mut facts = Facts::default();
         let mut budget = size_of::<Use>() + 2 * size_of::<String>() + "groupOne".len();
-        expand(&lex("group::{One, Two}", |_, _| {}), &[], &mut budget, &mut facts);
+        expand(&lex("group::{One, Two}", |_, _| {}), &[], "use", |_| 1, &mut budget, &mut facts);
         assert!(facts.limited);
         assert_eq!(facts.uses.len(), 1);
         assert_eq!(facts.uses[0].segments, ["group", "One"]);

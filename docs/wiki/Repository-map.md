@@ -30,7 +30,7 @@ Rust source. For example, Rocket's `app_update.rs` points to the `extract.ps1` s
 it includes. In **Modules**, select the script to see **Used by**, then select a
 caller to trace the connection back. A shared file lists each calling module.
 
-In **Folders** or **Modules**, select either the source file or its asset, then choose
+In **Folders** or **Modules**, select either file in a connection, then choose
 **Go to reference** in Details. The first reference opens at once, with its line
 banded and the referenced name marked. The header shows the file that makes the
 reference, the file it points to, the kind (such as `include_str!`, `stylesheet` or
@@ -38,8 +38,16 @@ reference, the file it points to, the kind (such as `include_str!`, `stylesheet`
 choose another there or step with the arrows. In a narrow window, **← References**
 returns to the list. **Copy location** copies the path and line, such as
 `src/guide.rs:42`. A large file shows only the lines around the reference and says so.
-The viewer reads the map’s selected commit as it appeared there, even with local edits
-open. Choose **← Map** or press Esc to return to your map selection.
+The viewer reads the map’s selected commit, even if you have since edited, staged or
+deleted the source locally. Choose **← Map** or press Esc to return to your map
+selection.
+
+For Rust, the **mod** label marks a file-backed module declaration. **use** and
+**pub use** mark the places where another file imports or re-exports it. A grouped import
+opens on the selected member, and a glob opens on the `*`. For a local re-export,
+you can select the file that defines the item to find its callers. These jumps
+require a target that the map can resolve within the crate. Rust embeds and
+HTML/CSS assets open on the macro or URL that names the file.
 
 To trace a Rust native call, expand the crate in **Folders**. Select the Rust file
 and follow its arrow to the C-family source. The arrow lists matching linker names.

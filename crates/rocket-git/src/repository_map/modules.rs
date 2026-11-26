@@ -22,6 +22,7 @@ pub(super) struct Module {
     /// Its path in the crate; empty for the crate root.
     pub path: Vec<String>,
     pub file: Vec<u8>,
+    own_folder: bool,
     pub parent: Option<usize>,
     pub test: bool,
 }
@@ -47,6 +48,22 @@ fn child_directory(file: &[u8], own_folder: bool) -> Vec<u8> {
     join(&folder, name.strip_suffix(b".rs").unwrap_or(name))
 }
 
+impl Module {
+    fn declaration_files(&self, d: &rust::Declaration) -> Vec<(Vec<u8>, bool)> {
+        let inline = d.chain.iter().fold(child_directory(&self.file, self.own_folder), |dir, part| join(&dir, part.as_bytes()));
+        match &d.path {
+            Some(custom) => {
+                let base = if d.chain.is_empty() { directory(&self.file) } else { &inline };
+                cargo::relative(base, custom.as_bytes()).into_iter().map(|p| (p, true)).collect()
+            }
+            None => vec![
+                (join(&inline, format!("{}.rs", d.name).as_bytes()), false),
+                (join(&join(&inline, d.name.as_bytes()), b"mod.rs"), true),
+            ],
+        }
+    }
+}
+
 /// The module tree that `root` declares. Files not read yet that a declaration names
 /// are returned in `wanted` when `known` says the snapshot has them.
 pub(super) fn tree(
@@ -57,10 +74,10 @@ pub(super) fn tree(
     let mut modules = vec![Module {
         path: Vec::new(),
         file: root.to_vec(),
+        own_folder: true,
         parent: None,
         test: false,
     }];
-    let mut own_folder = vec![true];
     let mut used: HashSet<Vec<u8>> = HashSet::from([root.to_vec()]);
     let mut wanted = BTreeSet::new();
     let mut at = 0;
@@ -74,17 +91,7 @@ pub(super) fn tree(
             if path.len() + d.chain.len() >= DEPTH || modules.len() >= MAP_NODES {
                 break;
             }
-            let inline = d.chain.iter().fold(child_directory(&file, own_folder[at]), |dir, part| join(&dir, part.as_bytes()));
-            let candidates: Vec<(Vec<u8>, bool)> = match &d.path {
-                Some(custom) => {
-                    let base = if d.chain.is_empty() { directory(&file).to_vec() } else { inline };
-                    cargo::relative(&base, custom.as_bytes()).into_iter().map(|p| (p, true)).collect()
-                }
-                None => vec![
-                    (join(&inline, format!("{}.rs", d.name).as_bytes()), false),
-                    (join(&join(&inline, d.name.as_bytes()), b"mod.rs"), true),
-                ],
-            };
+            let candidates = modules[at].declaration_files(d);
             let Some((target, folder)) = candidates.iter().find(|(p, _)| facts.contains_key(p)).cloned() else {
                 if let Some((p, _)) = candidates.iter().find(|(p, _)| known(p)) {
                     wanted.insert(p.clone());
@@ -100,10 +107,10 @@ pub(super) fn tree(
             modules.push(Module {
                 path: child,
                 file: target,
+                own_folder: folder,
                 parent: Some(at),
                 test: test || d.test,
             });
-            own_folder.push(folder);
         }
         at += 1;
     }
@@ -322,8 +329,12 @@ pub(super) struct Links {
     pub unknown: usize,
     pub outside: BTreeMap<usize, BTreeSet<String>>,
 }
-pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel: &CancellationToken) -> Result<Links> {
+pub(super) fn links(
+    modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, known: &dyn Fn(&[u8]) -> bool, cancel: &CancellationToken,
+    mut reference: impl FnMut(usize, usize, u32, &'static str),
+) -> Result<Links> {
     let index = Index::new(modules, facts);
+    let by_file: HashMap<&[u8], usize> = modules.iter().enumerate().map(|(i, m)| (m.file.as_slice(), i)).collect();
     let mut out = Links {
         uses: BTreeMap::new(),
         native: BTreeSet::new(),
@@ -338,7 +349,7 @@ pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel:
                 out.native.insert((from, symbol));
                 (to, binding, true)
             }
-            Found::Outside => return,
+            Found::Outside => return None,
         };
         out.followed += 1;
         if !known {
@@ -347,14 +358,28 @@ pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel:
         if from != to {
             out.uses.entry((from, to)).or_default().insert(name);
         }
+        (known && from != to).then_some(to)
     };
     for (m, module) in modules.iter().enumerate() {
         cancel.check()?;
         let Some(f) = facts.get(&module.file) else { continue };
         let within = |chain: &[String]| [module.path.as_slice(), chain].concat();
+        for d in &f.declarations {
+            cancel.check()?;
+            let candidates = module.declaration_files(d);
+            // Check the snapshot, including candidates omitted by the source read limits.
+            let mut present = candidates.iter().filter(|(path, _)| known(path));
+            if let Some((path, _)) = present.next() && present.next().is_none()
+                && let Some(&to) = by_file.get(path.as_slice()) && m != to
+            {
+                reference(m, to, d.line, "mod");
+            }
+        }
         for u in f.uses.iter().filter(|u| !u.glob) {
-            if let Some(found) = index.resolve(&u.segments, &within(&u.chain), 0) {
-                add(m, found, &mut out);
+            if let Some(found) = index.resolve(&u.segments, &within(&u.chain), 0)
+                && let Some(to) = add(m, found, &mut out)
+            {
+                reference(m, to, u.line, u.kind);
             }
         }
         // `use std::…`, `use egui::…`: a first name that is no module or item here is a crate.
@@ -392,6 +417,9 @@ pub(super) fn links(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>, cancel:
             let Some((glob, used)) = index.module(&u.segments, &current) else { continue };
             if used < u.segments.len() || glob == current {
                 continue;
+            }
+            if let Some(to) = index.owner(&glob) && m != to {
+                reference(m, to, u.line, u.kind);
             }
             let mut seen = HashSet::new();
             for (chain, name) in f.names.iter().filter(|(chain, _)| chain.starts_with(&u.chain)) {
@@ -708,7 +736,6 @@ impl Repository {
             (modules, wanted) = tree(&root, &s.facts, &known);
         }
         cancel.check()?;
-        let found = self.runner.step(op, "connect-modules", || links(&modules, &s.facts, cancel))?;
         // Files no declaration of the library reaches: other programs, and the rest.
         let reached: HashSet<&[u8]> = modules.iter().map(|m| m.file.as_slice()).collect();
         let mut by_program: HashSet<Vec<u8>> = HashSet::new();
@@ -756,6 +783,11 @@ impl Repository {
             }
         }
         let shown = map.nodes.len() - base;
+        let found = self.runner.step(op, "connect-modules", || links(&modules, &facts, &known, cancel, |from, to, line, kind| {
+            if from < shown && to < shown {
+                details.references.add(&modules[from].file, &modules[to].file, line, kind);
+            }
+        }))?;
         let mut uses = found.uses;
         let mut sites = BTreeMap::<_, Vec<_>>::new();
         uses.retain(|&(from, to), _| from < shown && to < shown);
@@ -947,6 +979,10 @@ mod tests {
             .collect()
     }
 
+    fn connections(modules: &[Module], facts: &HashMap<Vec<u8>, Facts>) -> Links {
+        links(modules, facts, &|p| facts.contains_key(p), &CancellationToken::new(), |_, _, _, _| {}).unwrap()
+    }
+
     #[test]
     fn files_follow_rusts_module_rules() {
         let (modules, _) = build(&[
@@ -1010,7 +1046,7 @@ mod tests {
                 "use super::*;\npub fn card() { crate::app::Intent::A; super::super::top(); missing::thing(); let _ = Icon; view(); }\n",
             ),
         ]);
-        let found = links(&modules, &facts, &CancellationToken::new()).unwrap();
+        let found = connections(&modules, &facts);
         // The crate root's re-export, a re-export followed through `crate::Rocket`, a
         // glob of style, a child module's function, `super::super`, an enum's module,
         // and names that `use super::*` brings in from the parent and from its glob.
@@ -1043,7 +1079,7 @@ mod tests {
             // A sibling through `use super::*`, a module the parent imports by name, and an alias.
             ("src/map/drawing.rs", "use super::*;\nuse crate::helper as h;\nfn draw() { details::card(); style::icon(); h::x(); outside::thing(); }\n"),
         ]);
-        let found = links(&modules, &facts, &CancellationToken::new()).unwrap();
+        let found = connections(&modules, &facts);
         let found = named(&modules, &found);
         let row = |a: &str, b: &str, names: &[&str]| (a.to_owned(), b.to_owned(), names.iter().map(|n| n.to_string()).collect::<Vec<_>>());
         assert_eq!(
@@ -1067,7 +1103,7 @@ mod tests {
             ("src/a.rs", "pub fn label() {}\n"),
             ("src/b.rs", "use crate::a::*;\nfn label() {}\nfn run() { label(); }\n"),
         ]);
-        assert!(links(&modules, &facts, &CancellationToken::new()).unwrap().uses.is_empty());
+        assert!(connections(&modules, &facts).uses.is_empty());
     }
 
     #[test]
@@ -1086,7 +1122,7 @@ mod tests {
         let borrowed: Vec<(&str, &str)> = files.iter().map(|(p, s)| (p.as_str(), s.as_str())).collect();
         let (modules, facts) = build(&borrowed);
         let start = std::time::Instant::now();
-        let found = links(&modules, &facts, &CancellationToken::new()).unwrap();
+        let found = connections(&modules, &facts);
         assert!(start.elapsed() < std::time::Duration::from_secs(5), "{:?}", start.elapsed());
         // Each module uses the next one's function, found through the root's globs.
         assert_eq!(found.uses.iter().filter(|((a, _), _)| *a != 0).count(), count);
@@ -1102,7 +1138,7 @@ mod tests {
             ("src/lib.rs", "mod a;\n"),
             ("src/a.rs", "use ::serde::Serialize;\nuse std::fmt;\nuse fmt::Write;\nuse std::cmp::Ordering;\nuse Ordering::*;\nenum Mode { A }\nuse Mode::*;\n"),
         ]);
-        let found = links(&modules, &facts, &CancellationToken::new()).unwrap();
+        let found = connections(&modules, &facts);
         let outside: Vec<&str> = found.outside.get(&1).map(|n| n.iter().map(String::as_str).collect()).unwrap_or_default();
         assert_eq!(outside, ["serde", "std"]);
     }

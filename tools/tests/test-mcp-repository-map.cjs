@@ -11,6 +11,7 @@ const focused=[
  {flag:'--workflows-only',directory:'workflow-code-map',run:workflowLinks},
  {flag:'--web-only',directory:'web-code-map',run:webAssets},
  {flag:'--references-only',directory:'code-map-references',run:assetReferences},
+ {flag:'--rust-import-references-only',directory:'rust-import-references',run:rustImportReferences},
  {flag:'--rust-assets-only',directory:'rust-embedded-code-map',run:rustAssets},
 ].find(test=>process.argv.includes(test.flag));
 const evidence=path.resolve('tools/maintenance',focused?.directory??'repository-map-redesign-20261105');
@@ -376,53 +377,55 @@ function checkFitCounts(){
  return {width:state.viewport[0],height:state.viewport[1],zoom_percent:Math.round(map().zoom*100),
   arrows:arrows.length,visible_counts:labels.length};
 }
+async function selectReferenceRevision(tip){
+ await load(tip);
+ await until(()=>map().data?.tip===tip&&!map().running &&
+  (map().kind==='Modules'||map().code_map.links&&!map().code_map.running),'selected revision and links');
+}
+async function openReferencesFor(file){
+ const i=node(file).index;
+ await click((map().kind==='Modules'?'map-module-':'map-node-')+i);
+ assert.equal(map().selected,i);
+ await click('map-go-to-reference');reads();
+}
+// The first reference opens at once; rows and arrows each read another committed source.
+function reads(n=1){report.reference_reads=(report.reference_reads??0)+n;}
+async function expectReference(tip,source,target,line,kind,text){
+ const ref=map().reference;
+ assert.equal(ref?.commit,tip);
+ const index=ref.sites.findIndex(s=>s.source===source&&s.target===target&&s.line===line&&s.kind===kind);
+ assert(index>=0,JSON.stringify({source,target,line,sites:ref.sites}));
+ if(ref.selected!==index){
+  if(!control('map-reference-'+index)&&control('map-reference-list'))await click('map-reference-list');
+  await click('map-reference-'+index);reads();
+ }
+ await until(()=>map().reference?.selected===index&&!map().reference.loading,'committed source');
+ assert.equal(map().reference.error,null);
+ assert.equal(map().reference.text,text);
+ // Asset references mark the target's name in the line; module ones mark it only where the line spells it.
+ const marked=map().reference.marked;
+ if(['include_str!','include_bytes!','srcset','url()','@import','stylesheet','script','image','font'].includes(kind))assert.equal(marked,target.split('/').pop());
+ else if(marked!==null)assert(text.includes(marked),JSON.stringify({marked,text}));
+ await until(()=>!!control('map-reference-source-line-'+line),'highlighted row in viewport');
+ checkBounds();
+ report.reference_opens=(report.reference_opens??0)+1;
+}
+// Back to the map: a narrow window with several references goes back to their list first.
+async function closeReference(){
+ if(control('map-reference-list'))await click('map-reference-list');
+ await click('map-reference-close');
+ await until(()=>!map().reference,'reference view closed');
+}
+async function openReferenceModules(language,tip){
+ await click('map-mode-modules');
+ await until(()=>map().data?.kind==='Modules'&&!map().running);
+ if(map().data.modules?.language!==language){
+  const i=map().data.module_packages.findIndex(p=>p.language===language);assert(i>=0);
+  await click('map-module-package');await click('map-module-package-'+i);
+ }
+ await selectReferenceRevision(tip);
+}
 async function assetReferences(){
- async function revision(tip){
-  await load(tip);
-  await until(()=>map().data?.tip===tip&&!map().running &&
-   (map().kind==='Modules'||map().code_map.links&&!map().code_map.running),'selected revision and links');
- }
- async function pickFile(file){
-  const i=node(file).index;
-  await click((map().kind==='Modules'?'map-module-':'map-node-')+i);
-  assert.equal(map().selected,i);
-  await click('map-go-to-reference');reads();
- }
- // The first reference opens at once; rows and arrows each read another committed source.
- function reads(n=1){report.reference_reads=(report.reference_reads??0)+n;}
- // Back to the map: a narrow window with several references goes back to their list first.
- async function closeReference(){
-  if(control('map-reference-list'))await click('map-reference-list');
-  await click('map-reference-close');
-  await until(()=>!map().reference,'reference view closed');
- }
- async function verify(tip,source,target,line,kind,text){
-  const ref=map().reference;
-  assert.equal(ref?.commit,tip);
-  const index=ref.sites.findIndex(s=>s.source===source&&s.target===target&&s.line===line&&s.kind===kind);
-  assert(index>=0,JSON.stringify({source,target,line,sites:ref.sites}));
-  if(ref.selected!==index){
-   if(!control('map-reference-'+index)&&control('map-reference-list'))await click('map-reference-list');
-   await click('map-reference-'+index);reads();
-  }
-  await until(()=>map().reference?.selected===index&&!map().reference.loading,'committed source');
-  assert.equal(map().reference.error,null);
-  assert.equal(map().reference.text,text);
-  // Asset references mark the target's name in the line.
-  assert.equal(map().reference.marked,target.split('/').pop());
-  await until(()=>!!control('map-reference-source-line-'+line),'highlighted row in viewport');
-  checkBounds();
-  report.reference_opens=(report.reference_opens??0)+1;
- }
- async function modules(language,tip){
-  await click('map-mode-modules');
-  await until(()=>map().data?.kind==='Modules'&&!map().running);
-  if(map().data.modules?.language!==language){
-   const i=map().data.module_packages.findIndex(p=>p.language===language);assert(i>=0);
-   await click('map-module-package');await click('map-module-package-'+i);
-  }
-  await revision(tip);
- }
  const rust=fixture('Rust locations 雪'), src='src/lib.rs', guide='入門.md', single='one.bin';
  const earlier='const FIRST: &str = include_str!("../入門.md");';
  const later='const SECOND: &str = include_str!("../入門.md");';
@@ -434,8 +437,8 @@ async function assetReferences(){
  rust.write(src,'// moved\n// again\n'+body.replace('const SECOND','pub const SECOND'));
  const second=rust.commit('Move reference lines');
  rust.write(src,'// staged Rust source\n');rust.git(['add','--',src]);rust.write(src,'// local Rust source\n');
- await folders(rust,second);await revision(first);await expand(['src']);await click('map-fit');
- const before=snapshot(rust);await pickFile(guide);assert.equal(map().reference.count,2);
+ await folders(rust,second);await selectReferenceRevision(first);await expand(['src']);await click('map-fit');
+ const before=snapshot(rust);await openReferencesFor(guide);assert.equal(map().reference.count,2);
  await until(()=>map().reference.selected===0&&!map().reference.loading,'first reference opens at once');
  assert.equal(map().reference.listing,false);
  await click('map-reference-next');reads();await until(()=>map().reference.selected===1&&!map().reference.loading,'next reference');
@@ -444,14 +447,14 @@ async function assetReferences(){
  assert.equal(map().reference.text,earlier);
  await closeReference();assert.equal(map().selected,node(guide).index);
  await click('map-go-to-reference');reads();
- await verify(first,src,guide,2,'include_str!',earlier);
- await verify(first,src,guide,728,'include_str!',later);
+ await expectReference(first,src,guide,2,'include_str!',earlier);
+ await expectReference(first,src,guide,728,'include_str!',later);
  await keepCapture('rust-reference');await closeReference();assert.equal(map().selected,node(guide).index);
- await pickFile(src);assert.equal(map().reference.count,3);await verify(first,src,single,55729,'include_bytes!',bytes);assert.equal(map().reference.window,true);
+ await openReferencesFor(src);assert.equal(map().reference.count,3);await expectReference(first,src,single,55729,'include_bytes!',bytes);assert.equal(map().reference.window,true);
  await closeReference();assert.deepEqual(snapshot(rust),before);
  passed('Folders opens both occurrences of a Rust embed and the byte embed at the selected older commit, including visible highlights on lines 728 and 55729');
- await modules('Rust',second);await pickFile(guide);
- await verify(second,src,guide,730,'include_str!',later.replace('const SECOND','pub const SECOND'));
+ await openReferenceModules('Rust',second);await openReferencesFor(guide);
+ await expectReference(second,src,guide,730,'include_str!',later.replace('const SECOND','pub const SECOND'));
  await closeReference();assert.deepEqual(snapshot(rust),before);
  passed('Modules follows the same asset to its moved line at a newer commit while the index and checkout contain different text');
 
@@ -462,25 +465,66 @@ async function assetReferences(){
  const original=web.commit('Original web references');
  web.write(page,'\n\n'+html.join('\n'));web.write(sheet,'\n'+css.join('\n'));
  const head=web.commit('Move web references');web.write(page,'<p>Staged</p>');web.git(['add','--',page]);web.write(page,'<p>Unstaged</p>');
- await folders(web,head);await revision(original);
+ await folders(web,head);await selectReferenceRevision(original);
  // An external edit after the map has loaded must not change the source we open.
  fs.unlinkSync(path.join(web.repo,sheet));const unchanged=snapshot(web);
- await pickFile(pic);assert.equal(map().reference.count,3);
- await verify(original,page,pic,5,'srcset',html[4]);
- await verify(original,page,pic,7,'url()',html[6]);
- await verify(original,sheet,pic,5,'url()',css[4]);await closeReference();
+ await openReferencesFor(pic);assert.equal(map().reference.count,3);
+ await expectReference(original,page,pic,5,'srcset',html[4]);
+ await expectReference(original,page,pic,7,'url()',html[6]);
+ await expectReference(original,sheet,pic,5,'url()',css[4]);await closeReference();
  passed('Shared Unicode image opens the exact HTML srcset, entity-encoded inline CSS and standalone CSS lines after the working stylesheet is deleted');
- await modules('HtmlCss',original);await pickFile(base);assert.equal(map().reference.count,1);
- await verify(original,sheet,base,3,'@import',css[2]);await closeReference();
- await pickFile(page);await resize(780,620);await verify(original,page,sheet,3,'stylesheet',html[2]);assert.equal(map().reference.window,false);
+ await openReferenceModules('HtmlCss',original);await openReferencesFor(base);assert.equal(map().reference.count,1);
+ await expectReference(original,sheet,base,3,'@import',css[2]);await closeReference();
+ await openReferencesFor(page);await resize(780,620);await expectReference(original,page,sheet,3,'stylesheet',html[2]);assert.equal(map().reference.window,false);
  await keepCapture('compact-reference');
  // Narrow: back goes to the list first, and a row opens the next reference in its place.
  await click('map-reference-list');await until(()=>map().reference.listing&&!!control('map-reference-1'),'narrow list');
  assert(!control('map-reference-copy')&&!control('map-reference-next'));await keepCapture('compact-reference-list');
- await verify(original,page,pic,5,'srcset',html[4]);assert.equal(map().reference.listing,false);
+ await expectReference(original,page,pic,5,'srcset',html[4]);assert.equal(map().reference.listing,false);
  await closeReference();assert.equal(map().selected,node(page).index);
  assert.deepEqual(snapshot(web),unchanged);
  passed('A single CSS import opens directly. A compact window shows the selected commit and highlighted HTML line, returns to the same module and preserves local files, index, config and HEAD');
+}
+async function rustImportReferences(){
+ const f=fixture('Rust import locations 雪'), lib='src/lib.rs', user='src/client.rs', model='src/型.rs';
+ const decl=['mod client;', '#[path = "型.rs"]', 'pub mod model;', 'pub mod facade {',
+  '    pub(crate) use super::model::{', '        Alpha as One,', '        Beta,', '    };', '}'];
+ const imports=['use crate::facade::{', '    One as Local,', '    Beta,', '};', 'pub use crate::model::*;',
+  'use crate::model::Missing;', 'const TEXT: &str = stringify! { use crate::model::Alpha; };'];
+ f.write('Cargo.toml',"[package]\nname='reference_sites'\nversion='0.1.0'\n");
+ f.write(lib,decl.join('\r\n'));f.write(user,imports.join('\n'));f.write(model,'pub struct Alpha;\npub struct Beta;\n');
+ const original=f.commit('Rust module, imports and re-exports');
+ f.write(lib,'// moved\n'+decl.join('\n'));f.write(user,'// changed\n\n'+imports.join('\n'));
+ const head=f.commit('Shift the committed source lines');
+ for(const file of [lib,user]){f.write(file,'// staged replacement\n');f.git(['add','--',file]);f.write(file,'// local replacement\n');}
+ await folders(f,head);await selectReferenceRevision(original);await expand(['src']);await click('map-fit');
+ fs.unlinkSync(path.join(f.repo,user));const before=snapshot(f);
+ await openReferencesFor(model);assert.equal(map().reference.count,6);
+ await expectReference(original,lib,model,3,'mod',decl[2]);
+ await expectReference(original,lib,model,6,'pub(crate) use',decl[5]);
+ await expectReference(original,user,model,2,'use',imports[1]);
+ await expectReference(original,user,model,5,'pub use',imports[4]);await closeReference();
+ assert.equal(map().selected,node(model).index);
+ passed('Folders opens the Unicode target’s declaration, restricted re-export, aliased grouped import and glob at their older committed lines with staged replacements and a deleted working source');
+ await openReferenceModules('Rust',head);
+ await openReferencesFor(lib);await expectReference(head,lib,model,4,'mod',decl[2]);
+ await expectReference(head,lib,model,8,'pub(crate) use',decl[6]);await closeReference();
+ await openReferencesFor(user);await expectReference(head,user,model,5,'use',imports[2]);
+ await expectReference(head,user,model,7,'pub use',imports[4]);await closeReference();
+ assert.deepEqual(snapshot(f),before);
+ passed('Modules opens references from the importing files at their new committed lines, follows local re-exports, and preserves HEAD, index, configuration and remaining files');
+
+ const g=fixture('Nested Rust locations'), parent='src/nested/mod.rs', leaf='src/nested/group/type.rs';
+ const declaration='        r#type;';
+ g.write('Cargo.toml',"[package]\nname='nested_sites'\nversion='0.1.0'\n");
+ g.write(lib,'mod nested;\n');g.write(parent,['mod group {','    pub mod',declaration,'}'].join('\n'));
+ g.write(leaf,'pub struct Marker;\n');const tip=g.commit('Raw module name in an inline module');
+ g.write(parent,'// unrelated working lines\n');const secondBefore=snapshot(g);
+ await folders(g,tip);await expand(['src','src/nested','src/nested/group']);await click('map-fit');
+ await openReferencesFor(leaf);assert.equal(map().reference.count,1);assert.equal(map().reference.selected,0);
+ await expectReference(tip,parent,leaf,3,'mod',declaration);await closeReference();
+ assert.deepEqual(snapshot(g),secondBefore);
+ passed('A single nested mod declaration opens directly on its raw identifier after the working parent changes in a second repository');
 }
 async function rustAssets(){
  const f=fixture('Rust resources'), guide='docs/入門 #1.md', script='src/app_update/extract.ps1', image='assets/themes/astronaut.jpg';
@@ -800,13 +844,14 @@ finally{
   try{
    assert.equal(report.cleanup.service_exit,0,'isolated MCP service did not exit cleanly');
    assert(report.cleanup.token_removed && !report.forced_service_stop);
-   if(focused.flag==='--references-only'){
+   if(['--references-only','--rust-import-references-only'].includes(focused.flag)){
+    assert(report.reference_opens>0,'no committed source was opened');
     const records=diagnosticRecords().filter(r=>r.operation==='map-open-reference');
     const starts=records.filter(r=>r.event==='request_start');
     assert.equal(starts.length,report.reference_reads);
     for(const start of starts) assert(records.some(r=>r.event==='request_end'&&r.session===start.session&&r.request===start.request));
     const logged=JSON.stringify(records);
-    for(const privateText of ['入門.md','頁.html','雪.png','const SECOND',root])assert(!logged.includes(privateText));
+    for(const privateText of ['入門.md','頁.html','雪.png','const SECOND','型.rs','One as Local','r#type',root])assert(!logged.includes(privateText));
     passed('Each source read has paired diagnostic records without source text or fixture paths');
    }
    const base=fs.realpathSync(path.resolve('work/mcp-fixtures')), owned=fs.realpathSync(root);

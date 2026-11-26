@@ -1,5 +1,5 @@
 use super::super::{LABEL_BYTES, MAP_LINKS, ObjectId, packages};
-use super::{Facts, Token};
+use super::{Facts, Token, TokenLines, after_group, close};
 use crate::{CancellationToken, Result};
 use std::collections::BTreeMap;
 use std::ops::Bound;
@@ -62,33 +62,6 @@ pub(super) fn string_value(chars: &[char]) -> Option<String> {
     Some(value)
 }
 
-fn close(token: &Token) -> Option<&'static str> {
-    match token {
-        Token::Punct("(") => Some(")"),
-        Token::Punct("[") => Some("]"),
-        Token::Punct("{") => Some("}"),
-        _ => None,
-    }
-}
-
-/// Skip an opaque token tree in one pass. An unterminated group consumes the remainder.
-fn after_group(tokens: &[Token], open: usize) -> usize {
-    let mut depth = 0usize;
-    for (i, t) in tokens.iter().enumerate().skip(open) {
-        match t {
-            Token::Punct("(" | "[" | "{") => depth += 1,
-            Token::Punct(")" | "]" | "}") => {
-                depth = depth.saturating_sub(1);
-                if depth == 0 {
-                    return i + 1;
-                }
-            }
-            _ => {}
-        }
-    }
-    tokens.len()
-}
-
 /// A direct call may name a built-in explicitly. Exclude lookalike paths such
 /// as custom::std::include_str and unqualified names shadowed in this file.
 fn builtin(prefix: &[Token], shadowed: bool) -> bool {
@@ -107,7 +80,7 @@ fn builtin(prefix: &[Token], shadowed: bool) -> bool {
     }
 }
 
-pub(super) fn calls(tokens: &[Token], lines: &BTreeMap<usize, u32>, used: &mut usize, facts: &mut Facts) {
+pub(super) fn calls(tokens: &[Token], lines: &TokenLines, used: &mut usize, facts: &mut Facts) {
     use Token::{Ident, Punct, Str};
     let shadows =
         |name: &str| {
@@ -159,7 +132,7 @@ pub(super) fn calls(tokens: &[Token], lines: &BTreeMap<usize, u32>, used: &mut u
                     }
                     *used += 1;
                     if !path.is_empty() && path.len() <= LABEL_BYTES {
-                        facts.embeds.push((kind, path.clone(), lines[&i]));
+                        facts.embeds.push((kind, path.clone(), lines.at(i)));
                     }
                 }
             }

@@ -180,6 +180,8 @@ Use `--web-only` for HTML and CSS asset links, navigation from a shared styleshe
 back to its pages, compact windows and cancellation in two disposable repositories.
 Use `--rust-assets-only` to trace Rust embedded files in both directions, stop and
 reload a revision, and check Fit count placement in wide and compact windows.
+Use `--rust-import-references-only` to open Rust module declarations, imports and
+re-exports at two revisions after staging, editing or deleting the working source.
 Use `--references-only` to open Rust embeds and HTML/CSS references at their committed
 lines in temporary repositories with staged and unstaged edits.
 It tests the native Code, Git history and People pages through an isolated

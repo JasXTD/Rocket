@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-/// A literal dependency in a particular Git snapshot. Lines start at one.
+/// A source location connecting two files in a particular Git snapshot. Lines start at one.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AssetReference {
     pub source: Arc<[u8]>,

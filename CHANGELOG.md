@@ -12,9 +12,10 @@ keep detailed test evidence in `VALIDATION.md`.
 
 ## Unreleased
 
-- Code Map’s **Go to reference** opens the committed source line for Rust embeds and
-  HTML/CSS asset links. Select either file in Folders or Modules. When several lines
-  reference the same asset, choose the occurrence to open.
+- Code Map’s **Go to reference** opens the committed source line for Rust module
+  declarations, imports, re-exports, embedded files and HTML/CSS asset links.
+  Select either file in Folders or Modules. Grouped imports open on the selected
+  member, even after the working file changes.
 - The **Go to reference** view is redesigned. Its header names the file that makes the
   reference, the file it points to, the kind, the line and the map’s snapshot, in place of
   a raw commit hash. The code sits in a framed panel with the referenced name marked, and

@@ -20,6 +20,82 @@ fn pairs(links: &CodeLinks) -> Vec<String> {
 }
 
 #[test]
+fn rust_module_and_import_sites_follow_the_selected_commit_in_both_maps() {
+    isolated("ROCKET_CODE_MAP_TEST", "rust_module_and_import_sites_follow_the_selected_commit_in_both_maps", || {
+        let f = Fixture::new();
+        let model = "src/資料/型.rs";
+        let root = [
+            "// mod fake; use crate::model::A;",
+            "mod client;",
+            "#[path = \"資料/型.rs\"]",
+            "pub mod model;",
+            "pub mod facade {",
+            "    pub(crate) use super::model::{",
+            "        A as Renamed,",
+            "        B,",
+            "    };",
+            "}",
+            "#[path = \"資料/型.rs\"] mod second_name;",
+            "mod ambiguous;",
+        ].join("\r\n");
+        let client = [
+            "use crate::facade::{",
+            "    Renamed as Local,",
+            "    B,",
+            "};",
+            "pub use crate::model::*;",
+            "use crate::model::NotDeclared;",
+            "const EXAMPLE: &str = stringify! { use crate::model::A; };",
+            "fn run() { use crate::model::A; }",
+            "use crate::model::{self as types};",
+        ].join("\n");
+        f.write("Cargo.toml", "[package]\nname='rust_sites'\nversion='0.1.0'\n");
+        f.write("src/lib.rs", &root);
+        f.write("src/client.rs", &client);
+        f.write(model, "pub struct A;\npub struct B;\n");
+        f.write("src/ambiguous.rs", "pub struct Which;\n");
+        // Both conventional paths exist, even though the second exceeds the source-read limit.
+        f.write("src/ambiguous/mod.rs", vec![b' '; 1024 * 1024 + 1]);
+        f.commit("Original Rust paths");
+        let original = head(&f);
+        f.write("src/lib.rs", format!("// moved\n{root}"));
+        f.write("src/client.rs", format!("// new\n// lines\n{client}"));
+        f.commit("Move declarations and imports");
+        let newer = head(&f);
+        f.write("src/lib.rs", "// staged replacement\n");
+        f.run(&["add", "--", "src/lib.rs"]);
+        f.write("src/lib.rs", "// different working file\n");
+        let repo = f.repo();
+        for (tip, root_move, client_move) in [(original, 0, 0), (newer, 1, 2)] {
+            let folders = repo.code_links(&tip, None, &token()).unwrap();
+            let map = repo.repository_map(&MapOptions {
+                revision: tip.as_str().into(), kind: MapKind::Modules, ..Default::default()
+            }, &token()).unwrap();
+            assert_eq!(map.tip.as_ref(), Some(&tip));
+            let module_refs = &map.modules.as_ref().unwrap().references;
+            assert_eq!(&folders.references, module_refs);
+            assert!(module_refs.for_file(b"src/ambiguous.rs").is_none());
+            let sites = module_refs.for_file(model.as_bytes()).expect("references to the Unicode module file");
+            let actual: Vec<_> = sites.iter().map(|r| (r.source.as_ref(), r.line, r.kind)).collect();
+            assert_eq!(actual, [
+                (b"src/client.rs".as_slice(), 2 + client_move, "use"),
+                (b"src/client.rs", 3 + client_move, "use"),
+                (b"src/client.rs", 5 + client_move, "pub use"),
+                (b"src/client.rs", 8 + client_move, "use"),
+                (b"src/client.rs", 9 + client_move, "use"),
+                (b"src/lib.rs", 4 + root_move, "mod"),
+                (b"src/lib.rs", 7 + root_move, "pub(crate) use"),
+                (b"src/lib.rs", 8 + root_move, "pub(crate) use"),
+                (b"src/lib.rs", 11 + root_move, "mod"),
+            ]);
+            for site in sites {
+                assert!(module_refs.for_file(&site.source).unwrap().contains(site));
+            }
+        }
+    });
+}
+
+#[test]
 fn rust_embedded_files_connect_both_maps_at_the_selected_commit() {
     isolated("ROCKET_CODE_MAP_TEST", "rust_embedded_files_connect_both_maps_at_the_selected_commit", || {
         let f = Fixture::new();

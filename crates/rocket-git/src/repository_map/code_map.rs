@@ -706,7 +706,9 @@ impl Repository {
                 }
                 (crate_modules, wanted) = modules::tree(root, &facts, &known);
             }
-            let found = modules::links(&crate_modules, &facts, cancel)?;
+            let found = modules::links(&crate_modules, &facts, &known, cancel, |from, to, line, kind| {
+                b.references.add(&crate_modules[from].file, &crate_modules[to].file, line, kind);
+            })?;
             if !native.is_empty() && Some(root.as_slice()) != build && root != &packages::join(folder, b"build.rs") {
                 for (m, module) in crate_modules.iter().enumerate() {
                     cancel.check()?;
